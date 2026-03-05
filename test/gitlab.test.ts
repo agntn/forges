@@ -1,0 +1,717 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { FetchError } from 'ofetch';
+import {
+  NotFoundError,
+  AuthenticationError,
+  RateLimitError,
+  GixaError,
+} from '../src/errors.js';
+
+// --- Hoisted mocks ---
+
+const mocks = vi.hoisted(() => {
+  const client = vi.fn();
+  const cachedFetch = vi.fn((_client: unknown, url: string, opts?: unknown) => opts ? client(url, opts) : client(url));
+  return {
+    client,
+    cachedFetch,
+    createHttpClient: vi.fn(() => client),
+    rawFetch: vi.fn(),
+  };
+});
+
+vi.mock('../src/http.js', () => ({
+  createHttpClient: mocks.createHttpClient,
+  rawFetch: mocks.rawFetch,
+  FetchError,
+}));
+
+vi.mock('../src/cache.js', () => ({
+  cachedFetch: mocks.cachedFetch,
+}));
+
+import { GitLabProvider } from '../src/providers/gitlab.js';
+
+// --- Fixtures (matching real GitLab API v4 responses) ---
+
+const glProject = {
+  id: 278964,
+  name: 'gitlab-foss',
+  path_with_namespace: 'gitlab-org/gitlab-foss',
+  description: 'GitLab FOSS mirror',
+  visibility: 'public',
+  default_branch: 'master',
+  web_url: 'https://gitlab.com/gitlab-org/gitlab-foss',
+  http_url_to_repo: 'https://gitlab.com/gitlab-org/gitlab-foss.git',
+  namespace: {
+    path: 'gitlab-org',
+    avatar_url: 'https://gitlab.com/uploads/-/system/group/avatar/9970/logo.png',
+  },
+  owner: undefined as
+    | { username: string; avatar_url: string | null }
+    | undefined,
+};
+
+const glProjectWithOwner = {
+  ...glProject,
+  id: 100,
+  path_with_namespace: 'user1/my-project',
+  owner: {
+    username: 'user1',
+    avatar_url: 'https://gitlab.com/uploads/-/user/avatar/user1.png',
+  },
+};
+
+const glIssue = {
+  id: 5001,
+  iid: 15,
+  title: 'Login page broken',
+  description: 'Cannot log in after update',
+  state: 'opened',
+  labels: ['bug', 'critical'],
+  author: { username: 'tester' },
+  created_at: '2024-03-01T09:00:00Z',
+  updated_at: '2024-03-02T11:00:00Z',
+};
+
+const glMergeRequest = {
+  id: 7001,
+  iid: 33,
+  title: 'Refactor auth module',
+  description: 'Split auth into separate services',
+  state: 'opened',
+  labels: ['refactor'],
+  author: { username: 'dev' },
+  created_at: '2024-03-10T14:00:00Z',
+  updated_at: '2024-03-11T16:00:00Z',
+  source_branch: 'refactor/auth',
+  target_branch: 'main',
+  merged_at: null,
+  draft: false,
+};
+
+const glMergedMR = {
+  ...glMergeRequest,
+  id: 7002,
+  iid: 34,
+  state: 'merged',
+  merged_at: '2024-03-12T10:00:00Z',
+};
+
+const glUser = {
+  id: 1234,
+  username: 'johndoe',
+  name: 'John Doe',
+  email: 'john@example.com',
+  avatar_url:
+    'https://gitlab.com/uploads/-/system/user/avatar/1234/photo.jpg',
+  is_admin: false,
+};
+
+// --- Helpers ---
+
+function glHeaders(
+  opts: { nextPage?: string; total?: string } = {},
+): Headers {
+  const h = new Headers();
+  if (opts.nextPage !== undefined) h.set('x-next-page', opts.nextPage);
+  if (opts.total !== undefined) h.set('x-total', opts.total);
+  return h;
+}
+
+function makeFetchError(status: number, message?: string): FetchError {
+  const err = new FetchError(message || `HTTP ${status}`);
+  err.status = status;
+  err.statusCode = status;
+  (err as any).response = { headers: new Headers(), status };
+  return err;
+}
+
+/** Mock the resolveProjectId client call */
+function mockProjectResolve(projectId: number = 278964) {
+  mocks.client.mockResolvedValueOnce({ id: projectId });
+}
+
+// --- Tests ---
+
+describe('GitLabProvider', () => {
+  let gl: GitLabProvider;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.createHttpClient.mockReturnValue(mocks.client);
+    gl = new GitLabProvider({
+      baseURL: 'https://gitlab.com/api/v4',
+      token: 'glpat-test',
+    });
+  });
+
+  describe('constructor', () => {
+    it('creates http client with Private-Token auth', () => {
+      expect(mocks.createHttpClient).toHaveBeenCalledWith({
+        baseURL: 'https://gitlab.com/api/v4',
+        token: 'glpat-test',
+        tokenHeader: 'Private-Token',
+        tokenPrefix: '',
+      });
+    });
+
+    it('defaults baseURL when empty', () => {
+      new GitLabProvider({ baseURL: '', token: 't' });
+      expect(mocks.createHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://gitlab.com/api/v4' }),
+      );
+    });
+  });
+
+  // --- Repos ---
+
+  describe('repos.list', () => {
+    it('returns mapped repositories', async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glProject],
+        headers: glHeaders({ total: '1' }),
+      });
+
+      const result = await gl.repos.list('gitlab-org');
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        id: '278964',
+        name: 'gitlab-foss',
+        fullName: 'gitlab-org/gitlab-foss',
+        private: false,
+        defaultBranch: 'master',
+        url: 'https://gitlab.com/gitlab-org/gitlab-foss',
+        cloneUrl: 'https://gitlab.com/gitlab-org/gitlab-foss.git',
+      });
+    });
+
+    it('falls back to group projects endpoint on user 404', async () => {
+      mocks.rawFetch
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce({
+          data: [glProject],
+          headers: glHeaders(),
+        });
+
+      const result = await gl.repos.list('gitlab-org');
+
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
+      expect(result.items).toHaveLength(1);
+    });
+
+    it('does not fall back to group endpoint on non-404 errors', async () => {
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(401));
+
+      await expect(gl.repos.list('gitlab-org')).rejects.toThrow(AuthenticationError);
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('maps totalCount from x-total header', async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glProject],
+        headers: glHeaders({ total: '42' }),
+      });
+
+      const result = await gl.repos.list('gitlab-org');
+      expect(result.totalCount).toBe(42);
+    });
+  });
+
+  describe('repos.get', () => {
+    it('URL-encodes the project path', async () => {
+      mocks.client.mockResolvedValueOnce(glProject);
+
+      await gl.repos.get('gitlab-org', 'gitlab-foss');
+
+      expect(mocks.client).toHaveBeenCalledWith(
+        '/projects/gitlab-org%2Fgitlab-foss',
+      );
+    });
+
+    it('returns mapped repository', async () => {
+      mocks.client.mockResolvedValueOnce(glProject);
+
+      const repo = await gl.repos.get('gitlab-org', 'gitlab-foss');
+
+      expect(repo.fullName).toBe('gitlab-org/gitlab-foss');
+      expect(repo.url).toBe('https://gitlab.com/gitlab-org/gitlab-foss');
+    });
+
+    it('uses owner when present, falls back to namespace', async () => {
+      mocks.client.mockResolvedValueOnce(glProjectWithOwner);
+      const withOwner = await gl.repos.get('user1', 'my-project');
+      expect(withOwner.owner.login).toBe('user1');
+
+      mocks.client.mockResolvedValueOnce(glProject);
+      const withNamespace = await gl.repos.get('gitlab-org', 'gitlab-foss');
+      expect(withNamespace.owner.login).toBe('gitlab-org');
+    });
+  });
+
+  // --- Issues ---
+
+  describe('issues.list', () => {
+    it('resolves project ID then fetches issues', async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glIssue],
+        headers: glHeaders(),
+      });
+
+      const result = await gl.issues.list('gitlab-org', 'gitlab-foss');
+
+      expect(mocks.client).toHaveBeenCalledWith(
+        '/projects/gitlab-org%2Fgitlab-foss',
+      );
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        '/projects/278964/issues',
+        expect.any(Object),
+      );
+      expect(result.items).toHaveLength(1);
+    });
+
+    it('converts open state filter to opened for GitLab API', async () => {
+      mockProjectResolve();
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [],
+        headers: glHeaders(),
+      });
+
+      await gl.issues.list('o', 'r', { state: 'open' });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        expect.any(String),
+        expect.objectContaining({
+          query: expect.objectContaining({ state: 'opened' }),
+        }),
+      );
+    });
+  });
+
+  describe('issues.get', () => {
+    it('uses iid for project-scoped lookup', async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glIssue);
+
+      const issue = await gl.issues.get('gitlab-org', 'gitlab-foss', 15);
+
+      expect(mocks.client).toHaveBeenLastCalledWith(
+        '/projects/278964/issues/15',
+      );
+      expect(issue.number).toBe(15);
+    });
+  });
+
+  describe('issues.create', () => {
+    it('maps body → description and joins labels with comma', async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glIssue);
+
+      await gl.issues.create('gitlab-org', 'gitlab-foss', {
+        title: 'New issue',
+        body: 'Description here',
+        labels: ['bug', 'urgent'],
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(
+        '/projects/278964/issues',
+        {
+          method: 'POST',
+          body: {
+            title: 'New issue',
+            description: 'Description here',
+            labels: 'bug,urgent',
+          },
+        },
+      );
+    });
+  });
+
+  // --- Merge Requests → Pull Requests ---
+
+  describe('pullRequests.list', () => {
+    it('fetches merge_requests endpoint and maps to pullRequests', async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glMergeRequest],
+        headers: glHeaders(),
+      });
+
+      const result = await gl.pullRequests.list('gitlab-org', 'gitlab-foss');
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        '/projects/278964/merge_requests',
+        expect.any(Object),
+      );
+      expect(result.items[0]).toMatchObject({
+        id: '7001',
+        number: 33,
+        title: 'Refactor auth module',
+        sourceBranch: 'refactor/auth',
+        targetBranch: 'main',
+        merged: false,
+        draft: false,
+      });
+    });
+  });
+
+  describe('pullRequests.get', () => {
+    it('returns mapped merge request as pull request', async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce(glMergedMR);
+
+      const pr = await gl.pullRequests.get('o', 'r', 34);
+
+      expect(pr.merged).toBe(true);
+      expect(pr.state).toBe('closed');
+    });
+  });
+
+  describe('pullRequests.create', () => {
+    it('maps to GitLab merge_request API fields', async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glMergeRequest);
+
+      await gl.pullRequests.create('gitlab-org', 'gitlab-foss', {
+        title: 'New MR',
+        body: 'Description',
+        sourceBranch: 'feature/x',
+        targetBranch: 'main',
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(
+        '/projects/278964/merge_requests',
+        {
+          method: 'POST',
+          body: expect.objectContaining({
+            title: 'New MR',
+            description: 'Description',
+            source_branch: 'feature/x',
+            target_branch: 'main',
+          }),
+        },
+      );
+    });
+  });
+
+  // --- Users ---
+
+  describe('users.get', () => {
+    it('searches by username and returns first result', async () => {
+      mocks.client.mockResolvedValueOnce([glUser]);
+
+      const user = await gl.users.get('johndoe');
+
+      expect(mocks.client).toHaveBeenCalledWith('/users', {
+        query: { username: 'johndoe' },
+      });
+      expect(user).toMatchObject({
+        id: '1234',
+        login: 'johndoe',
+        name: 'John Doe',
+        email: 'john@example.com',
+      });
+    });
+
+    it('throws when user search returns empty', async () => {
+      mocks.client.mockResolvedValueOnce([]);
+
+      await expect(gl.users.get('nonexistent')).rejects.toThrow(GixaError);
+    });
+
+    it('throws NotFoundError with 404 status when user not found', async () => {
+      mocks.client.mockResolvedValueOnce([]);
+
+      const error = await gl.users.get('ghost').catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(NotFoundError);
+      expect((error as NotFoundError).status).toBe(404);
+      expect((error as NotFoundError).platform).toBe('gitlab');
+    });
+  });
+
+  describe('users.authenticated', () => {
+    it('fetches /user endpoint', async () => {
+      mocks.client.mockResolvedValueOnce(glUser);
+
+      const user = await gl.users.authenticated();
+
+      expect(mocks.client).toHaveBeenCalledWith('/user');
+      expect(user.login).toBe('johndoe');
+    });
+  });
+
+  // --- Field Mapping Verification ---
+
+  describe('field mapping (GitLab → unified)', () => {
+    it('maps path_with_namespace → fullName', async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...glProject,
+        path_with_namespace: 'org/repo',
+      });
+      const repo = await gl.repos.get('org', 'repo');
+      expect(repo.fullName).toBe('org/repo');
+    });
+
+    it('maps visibility → private boolean', async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...glProject,
+        visibility: 'private',
+      });
+      const priv = await gl.repos.get('o', 'r');
+      expect(priv.private).toBe(true);
+
+      mocks.client.mockResolvedValueOnce({
+        ...glProject,
+        visibility: 'public',
+      });
+      const pub = await gl.repos.get('o', 'r');
+      expect(pub.private).toBe(false);
+    });
+
+    it('maps web_url → url', async () => {
+      mocks.client.mockResolvedValueOnce(glProject);
+      const repo = await gl.repos.get('o', 'r');
+      expect(repo.url).toBe('https://gitlab.com/gitlab-org/gitlab-foss');
+    });
+
+    it('maps http_url_to_repo → cloneUrl', async () => {
+      mocks.client.mockResolvedValueOnce(glProject);
+      const repo = await gl.repos.get('o', 'r');
+      expect(repo.cloneUrl).toBe(
+        'https://gitlab.com/gitlab-org/gitlab-foss.git',
+      );
+    });
+
+    it('maps null default_branch → "main"', async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...glProject,
+        default_branch: null,
+      });
+      const repo = await gl.repos.get('o', 'r');
+      expect(repo.defaultBranch).toBe('main');
+    });
+
+    it('maps iid → number', async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({ ...glIssue, iid: 77 });
+      const issue = await gl.issues.get('o', 'r', 77);
+      expect(issue.number).toBe(77);
+    });
+
+    it('maps description → body', async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        ...glIssue,
+        description: 'Detailed description',
+      });
+      const issue = await gl.issues.get('o', 'r', 1);
+      expect(issue.body).toBe('Detailed description');
+    });
+
+    it('maps null description → empty string', async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        ...glIssue,
+        description: null,
+      });
+      const issue = await gl.issues.get('o', 'r', 1);
+      expect(issue.body).toBe('');
+    });
+
+    it('maps author.username → author.login', async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        ...glIssue,
+        author: { username: 'gitlab-user' },
+      });
+      const issue = await gl.issues.get('o', 'r', 1);
+      expect(issue.author.login).toBe('gitlab-user');
+    });
+
+    it('maps source_branch → sourceBranch, target_branch → targetBranch', async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        ...glMergeRequest,
+        source_branch: 'feat/x',
+        target_branch: 'develop',
+      });
+      const pr = await gl.pullRequests.get('o', 'r', 1);
+      expect(pr.sourceBranch).toBe('feat/x');
+      expect(pr.targetBranch).toBe('develop');
+    });
+
+    it('maps merged_at → merged boolean', async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        ...glMergeRequest,
+        merged_at: null,
+      });
+      const notMerged = await gl.pullRequests.get('o', 'r', 1);
+      expect(notMerged.merged).toBe(false);
+
+      // Project ID for 'o/r' is cached from first call — no extra resolve needed
+      mocks.client.mockResolvedValueOnce({
+        ...glMergeRequest,
+        merged_at: '2024-01-01T00:00:00Z',
+      });
+      const merged = await gl.pullRequests.get('o', 'r', 2);
+      expect(merged.merged).toBe(true);
+    });
+
+    it('maps GitLab states to unified states', async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({ ...glIssue, state: 'opened' });
+      const opened = await gl.issues.get('o', 'r', 1);
+      expect(opened.state).toBe('open');
+
+      // Project ID for 'o/r' is cached from first call — no extra resolve needed
+      mocks.client.mockResolvedValueOnce({ ...glIssue, state: 'closed' });
+      const closed = await gl.issues.get('o', 'r', 2);
+      expect(closed.state).toBe('closed');
+    });
+
+    it('maps merged MR state to closed', async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({ ...glMergedMR, state: 'merged' });
+      const merged = await gl.pullRequests.get('o', 'r', 1);
+      expect(merged.state).toBe('closed');
+    });
+
+    it('maps username → login and is_admin → isAdmin for users', async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...glUser,
+        username: 'gitlab-admin',
+        is_admin: true,
+      });
+      const user = await gl.users.authenticated();
+      expect(user.login).toBe('gitlab-admin');
+      expect(user.isAdmin).toBe(true);
+    });
+
+    it('defaults null avatar_url to empty string', async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...glUser,
+        avatar_url: null,
+      });
+      const user = await gl.users.authenticated();
+      expect(user.avatarUrl).toBe('');
+    });
+
+    it('converts numeric id to string', async () => {
+      mocks.client.mockResolvedValueOnce(glProject);
+      const repo = await gl.repos.get('o', 'r');
+      expect(repo.id).toBe('278964');
+    });
+  });
+
+  // --- Pagination ---
+
+  describe('pagination', () => {
+    it('parses x-next-page header', async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glProject],
+        headers: glHeaders({ nextPage: '2', total: '50' }),
+      });
+
+      const result = await gl.repos.list('gitlab-org');
+
+      expect(result.hasNextPage).toBe(true);
+      expect(result.nextPage).toBe(2);
+      expect(result.totalCount).toBe(50);
+    });
+
+    it('returns hasNextPage=false when x-next-page is empty string', async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glProject],
+        headers: glHeaders({ nextPage: '' }),
+      });
+
+      const result = await gl.repos.list('gitlab-org');
+
+      expect(result.hasNextPage).toBe(false);
+      expect(result.nextPage).toBeUndefined();
+    });
+
+    it('returns hasNextPage=false when no pagination headers', async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [],
+        headers: glHeaders(),
+      });
+
+      const result = await gl.repos.list('gitlab-org');
+
+      expect(result.hasNextPage).toBe(false);
+      expect(result.totalCount).toBeUndefined();
+    });
+  });
+
+  // --- Error Handling ---
+
+  describe('error handling', () => {
+    it('throws NotFoundError on 404', async () => {
+      mocks.client.mockRejectedValueOnce(makeFetchError(404));
+      await expect(gl.repos.get('x', 'nonexistent')).rejects.toThrow(
+        NotFoundError,
+      );
+    });
+
+    it('throws AuthenticationError on 401', async () => {
+      mocks.client.mockRejectedValueOnce(makeFetchError(401));
+      await expect(gl.users.authenticated()).rejects.toThrow(
+        AuthenticationError,
+      );
+    });
+
+    it('throws RateLimitError on 429', async () => {
+      // Both user and group project endpoints must fail (listRepos has fallback)
+      mocks.rawFetch
+        .mockRejectedValueOnce(makeFetchError(429))
+        .mockRejectedValueOnce(makeFetchError(429));
+      await expect(gl.repos.list('x')).rejects.toThrow(RateLimitError);
+    });
+
+    it('sets platform to gitlab on errors', async () => {
+      mocks.client.mockRejectedValueOnce(makeFetchError(500));
+
+      const error = await gl.repos.get('x', 'y').catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(GixaError);
+      expect((error as GixaError).platform).toBe('gitlab');
+    });
+  });
+
+  // --- Project ID Caching ---
+
+  describe('project ID resolution', () => {
+    it('caches project ID across calls to avoid redundant lookups', async () => {
+      // First call: resolveProjectId + getIssue
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glIssue);
+      await gl.issues.get('gitlab-org', 'gitlab-foss', 15);
+
+      // Second call: uses cached project ID, only getIssue
+      mocks.client.mockResolvedValueOnce(glIssue);
+      await gl.issues.get('gitlab-org', 'gitlab-foss', 16);
+
+      // resolveProjectId called only once: 1 (resolve) + 1 (get#15) + 1 (get#16) = 3
+      expect(mocks.client).toHaveBeenCalledTimes(3);
+    });
+
+    it('getRepo also populates project ID cache', async () => {
+      // getRepo caches the project ID
+      mocks.client.mockResolvedValueOnce(glProject);
+      await gl.repos.get('gitlab-org', 'gitlab-foss');
+
+      // Subsequent issue.get should not need resolveProjectId
+      mocks.client.mockResolvedValueOnce(glIssue);
+      await gl.issues.get('gitlab-org', 'gitlab-foss', 15);
+
+      // getRepo(1) + getIssue(1) = 2 total (no extra resolve call)
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+    });
+  });
+});
