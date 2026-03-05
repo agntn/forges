@@ -119,6 +119,20 @@ describe('createHttpClient', () => {
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });
+
+  it('skips auth header when token is empty', () => {
+    createHttpClient({
+      baseURL: 'https://api.github.com',
+      token: '',
+    });
+
+    const headers = new Map<string, string>();
+    mockCreateConfigs[0].onRequest({
+      request: { headers: { set: (k: string, v: string) => headers.set(k, v) } },
+    });
+
+    expect(headers.size).toBe(0);
+  });
 });
 
 describe('rawFetch', () => {
