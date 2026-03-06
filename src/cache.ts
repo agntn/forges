@@ -73,13 +73,57 @@ function generateCacheKey(url: string, options?: CachedFetchOptions): string {
 
   // Include query parameters in cache key if present
   if (options?.query) {
-    const queryStr = typeof options.query === 'string'
-      ? options.query
-      : new URLSearchParams(options.query).toString();
-    key += `?${queryStr}`;
+    const queryStr = serializeQueryForCache(options.query);
+    if (queryStr) {
+      key += `:query:${queryStr}`;
+    }
   }
 
   return key;
+}
+
+function serializeQueryForCache(query: unknown): string {
+  if (typeof query === 'string') {
+    return serializeQueryEntries(new URLSearchParams(query.startsWith('?') ? query.slice(1) : query).entries());
+  }
+
+  if (query instanceof URLSearchParams) {
+    return serializeQueryEntries(query.entries());
+  }
+
+  if (Array.isArray(query)) {
+    return serializeQueryEntries(query);
+  }
+
+  const params = new URLSearchParams();
+  for (const key of Object.keys(query as Record<string, unknown>).sort()) {
+    const value = (query as Record<string, unknown>)[key];
+    if (value === undefined) {
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        params.append(key, String(item));
+      }
+      continue;
+    }
+
+    params.append(key, String(value));
+  }
+
+  return params.toString();
+}
+
+function serializeQueryEntries(entries: Iterable<[string, string]>): string {
+  return new URLSearchParams(Array.from(entries).sort(compareQueryEntries)).toString();
+}
+
+function compareQueryEntries(
+  [leftKey, _leftValue]: [string, string],
+  [rightKey, _rightValue]: [string, string]
+): number {
+  return leftKey.localeCompare(rightKey);
 }
 
 /**
