@@ -73,13 +73,55 @@ function generateCacheKey(url: string, options?: CachedFetchOptions): string {
 
   // Include query parameters in cache key if present
   if (options?.query) {
-    const queryStr = typeof options.query === 'string'
-      ? options.query
-      : new URLSearchParams(options.query).toString();
-    key += `?${queryStr}`;
+    const queryStr = serializeQueryForCache(options.query);
+    key += `:query:${queryStr}`;
   }
 
   return key;
+}
+
+function serializeQueryForCache(query: unknown): string {
+  if (typeof query === 'string') {
+    return query;
+  }
+
+  if (query instanceof URLSearchParams) {
+    return new URLSearchParams(Array.from(query.entries()).sort(compareQueryEntries)).toString();
+  }
+
+  if (Array.isArray(query)) {
+    const params = new URLSearchParams();
+    for (const [key, value] of [...query].sort(compareQueryEntries)) {
+      params.append(key, value);
+    }
+    return params.toString();
+  }
+
+  const params = new URLSearchParams();
+  for (const key of Object.keys(query as Record<string, unknown>).sort()) {
+    const value = (query as Record<string, unknown>)[key];
+    if (value === undefined) {
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        params.append(key, String(item));
+      }
+      continue;
+    }
+
+    params.append(key, String(value));
+  }
+
+  return params.toString();
+}
+
+function compareQueryEntries(
+  [leftKey, _leftValue]: [string, string],
+  [rightKey, _rightValue]: [string, string]
+): number {
+  return leftKey.localeCompare(rightKey);
 }
 
 /**

@@ -52,6 +52,38 @@ describe('cachedFetch', () => {
     expect(r1).toEqual({ id: 1 });
     expect(r2).toEqual({ id: 2 });
   });
+
+  it('reuses cache for equivalent query objects with different key order', async () => {
+    const client = vi.fn().mockResolvedValue({ id: 1, name: 'gixa' });
+
+    const first = await cachedFetch(client as any, '/repos/unjs/ugp', {
+      query: { page: '1', state: 'open' },
+    });
+    const second = await cachedFetch(client as any, '/repos/unjs/ugp', {
+      query: { state: 'open', page: '1' },
+    });
+
+    expect(client).toHaveBeenCalledOnce();
+    expect(first).toEqual({ id: 1, name: 'gixa' });
+    expect(second).toEqual({ id: 1, name: 'gixa' });
+  });
+
+  it('differentiates cache entries by query parameters', async () => {
+    const client = vi.fn()
+      .mockResolvedValueOnce({ page: 1 })
+      .mockResolvedValueOnce({ page: 2 });
+
+    const first = await cachedFetch(client as any, '/repos', {
+      query: { page: '1' },
+    });
+    const second = await cachedFetch(client as any, '/repos', {
+      query: { page: '2' },
+    });
+
+    expect(client).toHaveBeenCalledTimes(2);
+    expect(first).toEqual({ page: 1 });
+    expect(second).toEqual({ page: 2 });
+  });
 });
 
 describe('clearCache', () => {
