@@ -74,7 +74,9 @@ function generateCacheKey(url: string, options?: CachedFetchOptions): string {
   // Include query parameters in cache key if present
   if (options?.query) {
     const queryStr = serializeQueryForCache(options.query);
-    key += `:query:${queryStr}`;
+    if (queryStr) {
+      key += `:query:${queryStr}`;
+    }
   }
 
   return key;
@@ -82,19 +84,15 @@ function generateCacheKey(url: string, options?: CachedFetchOptions): string {
 
 function serializeQueryForCache(query: unknown): string {
   if (typeof query === 'string') {
-    return query;
+    return serializeQueryEntries(new URLSearchParams(query.startsWith('?') ? query.slice(1) : query).entries());
   }
 
   if (query instanceof URLSearchParams) {
-    return new URLSearchParams(Array.from(query.entries()).sort(compareQueryEntries)).toString();
+    return serializeQueryEntries(query.entries());
   }
 
   if (Array.isArray(query)) {
-    const params = new URLSearchParams();
-    for (const [key, value] of [...query].sort(compareQueryEntries)) {
-      params.append(key, value);
-    }
-    return params.toString();
+    return serializeQueryEntries(query);
   }
 
   const params = new URLSearchParams();
@@ -115,6 +113,10 @@ function serializeQueryForCache(query: unknown): string {
   }
 
   return params.toString();
+}
+
+function serializeQueryEntries(entries: Iterable<[string, string]>): string {
+  return new URLSearchParams(Array.from(entries).sort(compareQueryEntries)).toString();
 }
 
 function compareQueryEntries(
