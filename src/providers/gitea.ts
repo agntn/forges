@@ -10,6 +10,7 @@ import { createHttpClient, rawFetch } from '../http';
 import { cachedFetch } from '../cache';
 import { parseLinkHeader } from '../pagination';
 import { normalizeError } from '../errors';
+import { normalizeApiBaseURL } from './base-url';
 import type {
   Provider,
   ProviderConfig,
@@ -200,7 +201,11 @@ const PLATFORM = 'gitea';
  * @param config Provider configuration. `baseURL` defaults to `https://gitea.com/api/v1`.
  */
 export function createGiteaProvider(config: ProviderConfig): Provider {
-  const baseURL = config.baseURL ?? 'https://gitea.com/api/v1';
+  const baseURL = normalizeApiBaseURL(
+    config.baseURL,
+    'https://gitea.com/api/v1',
+    '/api/v1'
+  );
 
   const client = createHttpClient({
     baseURL,

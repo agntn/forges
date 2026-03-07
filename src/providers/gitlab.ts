@@ -32,6 +32,7 @@ import type {
 import { createHttpClient, rawFetch } from '../http.js';
 import { cachedFetch } from '../cache.js';
 import { normalizeError, NotFoundError } from '../errors.js';
+import { normalizeApiBaseURL } from './base-url.js';
 
 // GitLab API response types (internal)
 
@@ -206,7 +207,11 @@ export class GitLabProvider implements Provider {
   users: UserResource;
 
   constructor(config: ProviderConfig) {
-    const baseURL = config.baseURL || 'https://gitlab.com/api/v4';
+    const baseURL = normalizeApiBaseURL(
+      config.baseURL,
+      'https://gitlab.com/api/v4',
+      '/api/v4'
+    );
 
     this.client = createHttpClient({
       baseURL,
