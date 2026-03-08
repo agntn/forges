@@ -33,11 +33,8 @@ function hasPathSegments(pathnameSegments: string[], apiSegments: string[]): boo
     return false;
   }
 
-  for (let index = 0; index <= pathnameSegments.length - apiSegments.length; index++) {
-    if (apiSegments.every((segment, offset) => pathnameSegments[index + offset] === segment)) {
-      return true;
-    }
-  }
-
-  return false;
+  const startIndex = pathnameSegments.length - apiSegments.length;
+  return apiSegments.every(
+    (segment, offset) => pathnameSegments[startIndex + offset] === segment
+  );
 }

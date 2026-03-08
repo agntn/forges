@@ -194,6 +194,14 @@ describe('GitLabProvider', () => {
         expect.objectContaining({ baseURL: 'https://gitlab.example.com/custom-api/v40/api/v4' }),
       );
     });
+
+    it('does not treat api paths with extra trailing segments as already prefixed', () => {
+      new GitLabProvider({ baseURL: 'https://gitlab.example.com/custom/api/v4/proxy', token: 't' });
+
+      expect(mocks.createHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://gitlab.example.com/custom/api/v4/proxy/api/v4' }),
+      );
+    });
   });
 
   // --- Repos ---
