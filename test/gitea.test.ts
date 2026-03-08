@@ -134,6 +134,14 @@ describe('Gitea Provider', () => {
       );
     });
 
+    it('defaults to the public API base URL when baseURL is empty', () => {
+      createGiteaProvider({ baseURL: '', token: 'test-token' });
+
+      expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://gitea.com/api/v1' }),
+      );
+    });
+
     it('appends /api/v1 for root instance URLs', () => {
       createGiteaProvider({ baseURL: 'https://codeberg.org', token: 'test-token' });
 
