@@ -7,16 +7,16 @@
  *   3. CLI tools (gh, glab, tea)
  */
 
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
-export type Platform = 'github' | 'gitlab' | 'gitea';
+export type Platform = "github" | "gitlab" | "gitea";
 
 export interface AuthResult {
   token: string;
-  source: 'explicit' | 'env' | 'cli' | 'config';
+  source: "explicit" | "env" | "cli" | "config";
 }
 
 /**
@@ -25,11 +25,11 @@ export interface AuthResult {
  */
 export function resolveToken(
   platform: Platform,
-  options?: { token?: string; baseURL?: string }
+  options?: { token?: string; baseURL?: string },
 ): AuthResult | null {
   // 1. Explicit token always wins (even empty string = intentional)
   if (options?.token !== undefined) {
-    return { token: options.token, source: 'explicit' };
+    return { token: options.token, source: "explicit" };
   }
 
   const hostname = extractHostname(platform, options?.baseURL);
@@ -37,19 +37,19 @@ export function resolveToken(
   // 2. Environment variables
   const envToken = resolveFromEnv(platform);
   if (envToken) {
-    return { token: envToken, source: 'env' };
+    return { token: envToken, source: "env" };
   }
 
   // 3. CLI tools
   const cliToken = resolveFromCli(platform, hostname);
   if (cliToken) {
-    return { token: cliToken, source: 'cli' };
+    return { token: cliToken, source: "cli" };
   }
 
   // 4. Config files (fallback if CLI not installed but config exists)
   const configToken = resolveFromConfig(platform, hostname);
   if (configToken) {
-    return { token: configToken, source: 'config' };
+    return { token: configToken, source: "config" };
   }
 
   return null;
@@ -65,18 +65,21 @@ function extractHostname(platform: Platform, baseURL?: string): string {
   }
 
   switch (platform) {
-    case 'github': return 'github.com';
-    case 'gitlab': return 'gitlab.com';
-    case 'gitea': return 'gitea.com';
+    case "github":
+      return "github.com";
+    case "gitlab":
+      return "gitlab.com";
+    case "gitea":
+      return "gitea.com";
   }
 }
 
 // --- Environment variables ---
 
 const ENV_MAP: Record<Platform, string[]> = {
-  github: ['GITHUB_TOKEN', 'GH_TOKEN'],
-  gitlab: ['GITLAB_TOKEN', 'GL_TOKEN', 'GITLAB_PAT'],
-  gitea: ['GITEA_TOKEN'],
+  github: ["GITHUB_TOKEN", "GH_TOKEN"],
+  gitlab: ["GITLAB_TOKEN", "GL_TOKEN", "GITLAB_PAT"],
+  gitea: ["GITEA_TOKEN"],
 };
 
 function resolveFromEnv(platform: Platform): string | null {
@@ -91,9 +94,12 @@ function resolveFromEnv(platform: Platform): string | null {
 
 function resolveFromCli(platform: Platform, hostname: string): string | null {
   switch (platform) {
-    case 'github': return ghAuthToken(hostname);
-    case 'gitlab': return glabAuthToken(hostname);
-    case 'gitea': return teaAuthToken(hostname);
+    case "github":
+      return ghAuthToken(hostname);
+    case "gitlab":
+      return glabAuthToken(hostname);
+    case "gitea":
+      return teaAuthToken(hostname);
   }
 }
 
@@ -103,11 +109,11 @@ function resolveFromCli(platform: Platform, hostname: string): string | null {
  */
 function ghAuthToken(hostname: string): string | null {
   try {
-    const result = execFileSync(
-      'gh',
-      ['auth', 'token', '--hostname', hostname],
-      { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] }
-    );
+    const result = execFileSync("gh", ["auth", "token", "--hostname", hostname], {
+      encoding: "utf-8",
+      timeout: 5000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     const token = result.trim();
     return token || null;
   } catch {
@@ -121,11 +127,11 @@ function ghAuthToken(hostname: string): string | null {
  */
 function glabAuthToken(hostname: string): string | null {
   try {
-    const result = execFileSync(
-      'glab',
-      ['auth', 'status', '-t', '-h', hostname],
-      { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] }
-    );
+    const result = execFileSync("glab", ["auth", "status", "-t", "-h", hostname], {
+      encoding: "utf-8",
+      timeout: 5000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     // Try both stdout and stderr-captured output
     const tokenMatch = result.match(/Token:\s*(\S+)/);
     if (tokenMatch) return tokenMatch[1];
@@ -149,9 +155,12 @@ function teaAuthToken(_hostname: string): string | null {
 
 function resolveFromConfig(platform: Platform, hostname: string): string | null {
   switch (platform) {
-    case 'github': return readGhConfig(hostname);
-    case 'gitlab': return readGlabConfig(hostname);
-    case 'gitea': return readTeaConfig(hostname);
+    case "github":
+      return readGhConfig(hostname);
+    case "gitlab":
+      return readGlabConfig(hostname);
+    case "gitea":
+      return readTeaConfig(hostname);
   }
 }
 
@@ -165,11 +174,11 @@ function resolveFromConfig(platform: Platform, hostname: string): string | null 
  */
 function readGhConfig(hostname: string): string | null {
   try {
-    const configPath = join(ghConfigDir(), 'hosts.yml');
-    const content = readFileSync(configPath, 'utf-8');
+    const configPath = join(ghConfigDir(), "hosts.yml");
+    const content = readFileSync(configPath, "utf-8");
     const hostSection = getYamlMappingSection(content, hostname);
     if (!hostSection) return null;
-    return extractYamlField(hostSection, 'oauth_token');
+    return extractYamlField(hostSection, "oauth_token");
   } catch {
     return null;
   }
@@ -185,15 +194,15 @@ function readGhConfig(hostname: string): string | null {
  */
 function readGlabConfig(hostname: string): string | null {
   try {
-    const configPath = join(configDir(), 'glab-cli', 'config.yml');
-    const content = readFileSync(configPath, 'utf-8');
-    const hostsSection = getYamlMappingSection(content, 'hosts');
+    const configPath = join(configDir(), "glab-cli", "config.yml");
+    const content = readFileSync(configPath, "utf-8");
+    const hostsSection = getYamlMappingSection(content, "hosts");
     if (!hostsSection) return null;
 
     const hostSection = getYamlMappingSection(hostsSection, hostname);
     if (!hostSection) return null;
 
-    return extractYamlField(hostSection, 'token');
+    return extractYamlField(hostSection, "token");
   } catch {
     return null;
   }
@@ -210,9 +219,9 @@ function readGlabConfig(hostname: string): string | null {
  */
 function readTeaConfig(hostname: string): string | null {
   try {
-    const configPath = join(configDir(), 'tea', 'config.yml');
-    const content = readFileSync(configPath, 'utf-8');
-    const loginsSection = getYamlMappingSection(content, 'logins');
+    const configPath = join(configDir(), "tea", "config.yml");
+    const content = readFileSync(configPath, "utf-8");
+    const loginsSection = getYamlMappingSection(content, "logins");
     if (!loginsSection) return null;
 
     const entries = parseYamlListEntries(loginsSection);
@@ -238,11 +247,11 @@ function readTeaConfig(hostname: string): string | null {
 // --- Helpers ---
 
 function configDir(): string {
-  return process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
+  return process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
 }
 
 function ghConfigDir(): string {
-  return process.env.GH_CONFIG_DIR || join(configDir(), 'gh');
+  return process.env.GH_CONFIG_DIR || join(configDir(), "gh");
 }
 
 function getYamlMappingSection(content: string, key: string): string | null {
@@ -273,7 +282,7 @@ function getYamlMappingSection(content: string, key: string): string | null {
       sectionLines.push(childLine);
     }
 
-    return sectionLines.join('\n');
+    return sectionLines.join("\n");
   }
 
   return null;
@@ -308,7 +317,7 @@ function parseYamlListEntries(section: string): Array<Record<string, string>> {
       if (itemMatch[1]) {
         const inlineField = itemMatch[1].match(/^([A-Za-z0-9_]+)\s*:\s*(.+?)\s*$/);
         if (inlineField) {
-          current[inlineField[1]] = parseYamlScalar(inlineField[2]) ?? '';
+          current[inlineField[1]] = parseYamlScalar(inlineField[2]) ?? "";
         }
       }
       continue;
@@ -318,7 +327,7 @@ function parseYamlListEntries(section: string): Array<Record<string, string>> {
     const fieldMatch = line.match(/^\s*([A-Za-z0-9_]+)\s*:\s*(.+?)\s*$/);
     if (!fieldMatch) continue;
 
-    current[fieldMatch[1]] = parseYamlScalar(fieldMatch[2]) ?? '';
+    current[fieldMatch[1]] = parseYamlScalar(fieldMatch[2]) ?? "";
   }
 
   if (current) {
@@ -333,8 +342,8 @@ function parseYamlScalar(raw: string): string | null {
   if (!value) return null;
 
   if (
-    (value.startsWith('"') && value.endsWith('"'))
-    || (value.startsWith("'") && value.endsWith("'"))
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
   ) {
     return value.slice(1, -1);
   }
@@ -344,10 +353,7 @@ function parseYamlScalar(raw: string): string | null {
 }
 
 function stripQuotes(raw: string): string {
-  if (
-    (raw.startsWith('"') && raw.endsWith('"'))
-    || (raw.startsWith("'") && raw.endsWith("'"))
-  ) {
+  if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
     return raw.slice(1, -1);
   }
 

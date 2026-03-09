@@ -3,7 +3,7 @@
  * Allows direct imports: import { GitHubProvider } from 'gixa/github'
  */
 
-export { GitHubProvider } from './providers/github.js';
+export { GitHubProvider } from "./providers/github.js";
 export type {
   User,
   Owner,
@@ -21,4 +21,4 @@ export type {
   PullRequestResource,
   UserResource,
   Provider,
-} from './types.js';
+} from "./types.js";

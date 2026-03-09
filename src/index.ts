@@ -3,12 +3,12 @@
  * Main entry point with factory function and public API exports
  */
 
-import type { ProviderConfig, Provider } from './types.js';
-import { GitHubProvider } from './providers/github.js';
-import { GitLabProvider } from './providers/gitlab.js';
-import { createGiteaProvider } from './providers/gitea.js';
-import { resolveToken } from './auth.js';
-import type { Platform } from './auth.js';
+import type { ProviderConfig, Provider } from "./types.js";
+import { GitHubProvider } from "./providers/github.js";
+import { GitLabProvider } from "./providers/gitlab.js";
+import { createGiteaProvider } from "./providers/gitea.js";
+import { resolveToken } from "./auth.js";
+import type { Platform } from "./auth.js";
 
 // --- Type exports ---
 export type {
@@ -28,11 +28,11 @@ export type {
   PullRequestResource,
   UserResource,
   Provider,
-} from './types.js';
+} from "./types.js";
 
 // --- Auth exports ---
-export { resolveToken } from './auth.js';
-export type { Platform, AuthResult } from './auth.js';
+export { resolveToken } from "./auth.js";
+export type { Platform, AuthResult } from "./auth.js";
 
 // --- Error exports ---
 export {
@@ -41,7 +41,7 @@ export {
   AuthenticationError,
   RateLimitError,
   normalizeError,
-} from './errors.js';
+} from "./errors.js";
 
 // --- Utility exports ---
 export {
@@ -50,9 +50,9 @@ export {
   fetchAllPages,
   type LinkHeaderEntry,
   type PaginationOptions,
-} from './pagination.js';
+} from "./pagination.js";
 
-export { createHttpClient, rawFetch, FetchError } from './http.js';
+export { createHttpClient, rawFetch, FetchError } from "./http.js";
 
 /**
  * Create a provider instance.
@@ -62,8 +62,8 @@ export { createHttpClient, rawFetch, FetchError } from './http.js';
  *   3. CLI config files (~/.config/gh/hosts.yml, etc.)
  */
 export function createProvider(
-  platform: 'github' | 'gitlab' | 'gitea',
-  config?: ProviderConfig
+  platform: "github" | "gitlab" | "gitea",
+  config?: ProviderConfig,
 ): Provider {
   const resolved = resolveToken(platform as Platform, {
     token: config?.token,
@@ -72,9 +72,9 @@ export function createProvider(
 
   if (!resolved) {
     throw new Error(
-      `No auth token found for ${platform}. `
-      + `Set ${envHint(platform)}, pass { token: '...' }, `
-      + `or log in with ${cliHint(platform)}.`
+      `No auth token found for ${platform}. ` +
+        `Set ${envHint(platform)}, pass { token: '...' }, ` +
+        `or log in with ${cliHint(platform)}.`,
     );
   }
 
@@ -84,34 +84,40 @@ export function createProvider(
   };
 
   switch (platform) {
-    case 'github':
+    case "github":
       return new GitHubProvider(finalConfig);
-    case 'gitlab':
+    case "gitlab":
       return new GitLabProvider(finalConfig);
-    case 'gitea':
+    case "gitea":
       return createGiteaProvider(finalConfig);
     default:
-      throw new Error(
-        `Unsupported platform: ${platform}. Supported: github, gitlab, gitea`
-      );
+      throw new Error(`Unsupported platform: ${platform}. Supported: github, gitlab, gitea`);
   }
 }
 
 function envHint(platform: string): string {
   switch (platform) {
-    case 'github': return 'GITHUB_TOKEN';
-    case 'gitlab': return 'GITLAB_TOKEN';
-    case 'gitea': return 'GITEA_TOKEN';
-    default: return `${platform.toUpperCase()}_TOKEN`;
+    case "github":
+      return "GITHUB_TOKEN";
+    case "gitlab":
+      return "GITLAB_TOKEN";
+    case "gitea":
+      return "GITEA_TOKEN";
+    default:
+      return `${platform.toUpperCase()}_TOKEN`;
   }
 }
 
 function cliHint(platform: string): string {
   switch (platform) {
-    case 'github': return '`gh auth login`';
-    case 'gitlab': return '`glab auth login`';
-    case 'gitea': return '`tea login add`';
-    default: return 'the platform CLI';
+    case "github":
+      return "`gh auth login`";
+    case "gitlab":
+      return "`glab auth login`";
+    case "gitea":
+      return "`tea login add`";
+    default:
+      return "the platform CLI";
   }
 }
 

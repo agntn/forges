@@ -32,42 +32,43 @@ test/
 
 ## WHERE TO LOOK
 
-| Task | Location | Notes |
-|------|----------|-------|
-| Add new provider | `src/providers/` | Copy github.ts as template. Implement `Provider` interface |
-| Add new resource | `src/types.ts` → provider files | Define interface in types.ts, implement in each provider |
-| Change auth logic | `src/auth.ts` | resolveToken() chain — order matters |
-| Change cache backend | `src/cache.ts` | `configureStorage()` swaps unstorage driver |
-| Fix pagination | `src/pagination.ts` | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab |
-| Fix error mapping | `src/errors.ts` | `normalizeError()` maps FetchError → GixaError subtypes |
-| Add sub-path export | `build.config.ts` + `package.json` | Must update both: entries array + exports map |
-| Debug HTTP | `src/http.ts` | `rawFetch()` returns headers, `createHttpClient()` configures auth |
+| Task                 | Location                           | Notes                                                              |
+| -------------------- | ---------------------------------- | ------------------------------------------------------------------ |
+| Add new provider     | `src/providers/`                   | Copy github.ts as template. Implement `Provider` interface         |
+| Add new resource     | `src/types.ts` → provider files    | Define interface in types.ts, implement in each provider           |
+| Change auth logic    | `src/auth.ts`                      | resolveToken() chain — order matters                               |
+| Change cache backend | `src/cache.ts`                     | `configureStorage()` swaps unstorage driver                        |
+| Fix pagination       | `src/pagination.ts`                | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab     |
+| Fix error mapping    | `src/errors.ts`                    | `normalizeError()` maps FetchError → GixaError subtypes            |
+| Add sub-path export  | `build.config.ts` + `package.json` | Must update both: entries array + exports map                      |
+| Debug HTTP           | `src/http.ts`                      | `rawFetch()` returns headers, `createHttpClient()` configures auth |
 
 ## CODE MAP
 
-| Symbol | Type | File | Role |
-|--------|------|------|------|
-| `createProvider` | factory | index.ts | Main entry — resolves auth, instantiates provider |
-| `Provider` | interface | types.ts | 4 resources: repos, issues, pullRequests, users |
-| `resolveToken` | function | auth.ts | Auth chain: explicit → env → CLI → config file |
-| `createHttpClient` | function | http.ts | ofetch.create() with auth headers, retry, rate limit |
-| `rawFetch` | function | http.ts | Returns data + headers (needed for pagination) |
-| `cachedFetch` | function | cache.ts | GET-only cache via unstorage LRU |
-| `normalizeError` | function | errors.ts | FetchError → NotFoundError / AuthError / RateLimitError |
-| `paginate` | async generator | pagination.ts | Handles Link + x-next-page headers |
-| `GitHubProvider` | class | providers/github.ts | Also serves GitBucket |
-| `GitLabProvider` | class | providers/gitlab.ts | Has internal projectIdCache |
-| `createGiteaProvider` | factory | providers/gitea.ts | Factory, not class |
+| Symbol                | Type            | File                | Role                                                    |
+| --------------------- | --------------- | ------------------- | ------------------------------------------------------- |
+| `createProvider`      | factory         | index.ts            | Main entry — resolves auth, instantiates provider       |
+| `Provider`            | interface       | types.ts            | 4 resources: repos, issues, pullRequests, users         |
+| `resolveToken`        | function        | auth.ts             | Auth chain: explicit → env → CLI → config file          |
+| `createHttpClient`    | function        | http.ts             | ofetch.create() with auth headers, retry, rate limit    |
+| `rawFetch`            | function        | http.ts             | Returns data + headers (needed for pagination)          |
+| `cachedFetch`         | function        | cache.ts            | GET-only cache via unstorage LRU                        |
+| `normalizeError`      | function        | errors.ts           | FetchError → NotFoundError / AuthError / RateLimitError |
+| `paginate`            | async generator | pagination.ts       | Handles Link + x-next-page headers                      |
+| `GitHubProvider`      | class           | providers/github.ts | Also serves GitBucket                                   |
+| `GitLabProvider`      | class           | providers/gitlab.ts | Has internal projectIdCache                             |
+| `createGiteaProvider` | factory         | providers/gitea.ts  | Factory, not class                                      |
 
 ## CONVENTIONS
 
 **Provider method structure** — every public method follows this pattern:
+
 ```typescript
 try {
   const data = await cachedFetch<RawType>(this.client, url);
   return mapFunction(data);
 } catch (error) {
-  throw normalizeError(error, 'platform');
+  throw normalizeError(error, "platform");
 }
 ```
 
@@ -96,6 +97,7 @@ try {
 ## TESTING
 
 **Mock pattern** — tests use `vi.hoisted()` to create mocks before imports:
+
 ```typescript
 const mocks = vi.hoisted(() => ({
   client: vi.fn(),
@@ -103,8 +105,11 @@ const mocks = vi.hoisted(() => ({
   cachedFetch: vi.fn(),
   rawFetch: vi.fn(),
 }));
-vi.mock('../src/http.js', () => ({ createHttpClient: mocks.createHttpClient, rawFetch: mocks.rawFetch }));
-vi.mock('../src/cache.js', () => ({ cachedFetch: mocks.cachedFetch }));
+vi.mock("../src/http.js", () => ({
+  createHttpClient: mocks.createHttpClient,
+  rawFetch: mocks.rawFetch,
+}));
+vi.mock("../src/cache.js", () => ({ cachedFetch: mocks.cachedFetch }));
 ```
 
 **Fixtures** — raw API response objects (snake_case) defined at file top. Match real API shape.

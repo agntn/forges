@@ -1,7 +1,7 @@
 export function normalizeApiBaseURL(
   baseURL: string | undefined,
   fallbackBaseURL: string,
-  apiPath: string
+  apiPath: string,
 ): string {
   if (!baseURL) {
     return fallbackBaseURL;
@@ -9,18 +9,16 @@ export function normalizeApiBaseURL(
 
   try {
     const url = new URL(baseURL);
-    const pathname = url.pathname.replace(/\/+$/, '');
-    const normalizedApiPath = apiPath.replace(/\/+$/, '');
-    const pathnameSegments = pathname.split('/').filter(Boolean);
-    const apiSegments = normalizedApiPath.split('/').filter(Boolean);
+    const pathname = url.pathname.replace(/\/+$/, "");
+    const normalizedApiPath = apiPath.replace(/\/+$/, "");
+    const pathnameSegments = pathname.split("/").filter(Boolean);
+    const apiSegments = normalizedApiPath.split("/").filter(Boolean);
 
     if (hasPathSegments(pathnameSegments, apiSegments)) {
       return url.toString();
     }
 
-    url.pathname = pathname
-      ? `${pathname}${normalizedApiPath}`
-      : normalizedApiPath;
+    url.pathname = pathname ? `${pathname}${normalizedApiPath}` : normalizedApiPath;
 
     return url.toString();
   } catch {
@@ -34,7 +32,5 @@ function hasPathSegments(pathnameSegments: string[], apiSegments: string[]): boo
   }
 
   const startIndex = pathnameSegments.length - apiSegments.length;
-  return apiSegments.every(
-    (segment, offset) => pathnameSegments[startIndex + offset] === segment
-  );
+  return apiSegments.every((segment, offset) => pathnameSegments[startIndex + offset] === segment);
 }

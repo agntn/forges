@@ -31,7 +31,7 @@ export function parseLinkHeader(header: string | null | undefined): Record<strin
   }
 
   // Split by comma to get individual link entries
-  const entries = header.split(',');
+  const entries = header.split(",");
 
   for (const entry of entries) {
     // Match <url>; rel="relation"
@@ -52,14 +52,14 @@ export function parseLinkHeader(header: string | null | undefined): Record<strin
 export async function* paginate<T>(
   fetcher: (url: string, options?: any) => Promise<{ data: T[]; headers: Headers }>,
   url: string,
-  options: PaginationOptions = {}
+  options: PaginationOptions = {},
 ): AsyncGenerator<T[], void, unknown> {
   const { perPage = 30, maxPages = Infinity } = options;
   const baseURL = (() => {
     try {
       return new URL(url).origin;
     } catch {
-      return 'https://example.invalid';
+      return "https://example.invalid";
     }
   })();
 
@@ -69,8 +69,8 @@ export async function* paginate<T>(
   while (pageCount < maxPages) {
     // Add per_page parameter if not already present
     const urlObj = new URL(currentUrl, baseURL);
-    if (!urlObj.searchParams.has('per_page')) {
-      urlObj.searchParams.set('per_page', String(perPage));
+    if (!urlObj.searchParams.has("per_page")) {
+      urlObj.searchParams.set("per_page", String(perPage));
     }
     currentUrl = urlObj.toString();
 
@@ -83,17 +83,17 @@ export async function* paginate<T>(
     pageCount++;
 
     // Check for next page via Link header (GitHub/Gitea)
-    const linkHeader = headers.get('Link');
+    const linkHeader = headers.get("Link");
     const links = parseLinkHeader(linkHeader);
 
     if (links.next) {
       currentUrl = links.next;
     } else {
       // Check for GitLab x-next-page header
-      const nextPage = headers.get('x-next-page');
+      const nextPage = headers.get("x-next-page");
       if (nextPage) {
         const urlObj = new URL(currentUrl, baseURL);
-        urlObj.searchParams.set('page', nextPage);
+        urlObj.searchParams.set("page", nextPage);
         currentUrl = urlObj.toString();
       } else {
         // No more pages
@@ -109,7 +109,7 @@ export async function* paginate<T>(
 export async function fetchAllPages<T>(
   fetcher: (url: string, options?: any) => Promise<{ data: T[]; headers: Headers }>,
   url: string,
-  options: PaginationOptions = {}
+  options: PaginationOptions = {},
 ): Promise<T[]> {
   const results: T[] = [];
 

@@ -1,12 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { FetchError } from 'ofetch';
+import { describe, it, expect } from "vitest";
+import { FetchError } from "ofetch";
 import {
   normalizeError,
   GixaError,
   AuthenticationError,
   NotFoundError,
   RateLimitError,
-} from '../src/errors';
+} from "../src/errors";
 
 function createFetchError(
   message: string,
@@ -22,49 +22,49 @@ function createFetchError(
   return error;
 }
 
-describe('normalizeError', () => {
-  it('maps 401 FetchError to AuthenticationError', () => {
-    const err = createFetchError('Unauthorized', 401);
-    const result = normalizeError(err, 'github');
+describe("normalizeError", () => {
+  it("maps 401 FetchError to AuthenticationError", () => {
+    const err = createFetchError("Unauthorized", 401);
+    const result = normalizeError(err, "github");
 
     expect(result).toBeInstanceOf(AuthenticationError);
     expect(result.status).toBe(401);
-    expect(result.platform).toBe('github');
-    expect(result.message).toContain('Authentication failed');
+    expect(result.platform).toBe("github");
+    expect(result.message).toContain("Authentication failed");
     expect(result.originalError).toBe(err);
   });
 
-  it('maps 404 FetchError to NotFoundError', () => {
-    const err = createFetchError('Not Found', 404);
-    const result = normalizeError(err, 'gitea');
+  it("maps 404 FetchError to NotFoundError", () => {
+    const err = createFetchError("Not Found", 404);
+    const result = normalizeError(err, "gitea");
 
     expect(result).toBeInstanceOf(NotFoundError);
     expect(result.status).toBe(404);
-    expect(result.platform).toBe('gitea');
-    expect(result.message).toContain('Resource not found');
+    expect(result.platform).toBe("gitea");
+    expect(result.message).toContain("Resource not found");
   });
 
-  it('maps 429 FetchError to RateLimitError with retryAfter', () => {
-    const err = createFetchError('Too Many Requests', 429, { 'Retry-After': '60' });
-    const result = normalizeError(err, 'github');
+  it("maps 429 FetchError to RateLimitError with retryAfter", () => {
+    const err = createFetchError("Too Many Requests", 429, { "Retry-After": "60" });
+    const result = normalizeError(err, "github");
 
     expect(result).toBeInstanceOf(RateLimitError);
     expect(result.status).toBe(429);
-    expect(result.message).toContain('Rate limit exceeded');
+    expect(result.message).toContain("Rate limit exceeded");
     expect((result as RateLimitError).retryAfter).toBe(60);
   });
 
-  it('maps 429 FetchError without Retry-After header', () => {
-    const err = createFetchError('Too Many Requests', 429);
-    const result = normalizeError(err, 'gitlab');
+  it("maps 429 FetchError without Retry-After header", () => {
+    const err = createFetchError("Too Many Requests", 429);
+    const result = normalizeError(err, "gitlab");
 
     expect(result).toBeInstanceOf(RateLimitError);
     expect((result as RateLimitError).retryAfter).toBeUndefined();
   });
 
-  it('maps other HTTP status to generic GixaError', () => {
-    const err = createFetchError('Internal Server Error', 500);
-    const result = normalizeError(err, 'github');
+  it("maps other HTTP status to generic GixaError", () => {
+    const err = createFetchError("Internal Server Error", 500);
+    const result = normalizeError(err, "github");
 
     expect(result).toBeInstanceOf(GixaError);
     expect(result).not.toBeInstanceOf(AuthenticationError);
@@ -73,28 +73,28 @@ describe('normalizeError', () => {
     expect(result.status).toBe(500);
   });
 
-  it('wraps generic Error in GixaError', () => {
-    const err = new Error('Network failure');
-    const result = normalizeError(err, 'gitea');
+  it("wraps generic Error in GixaError", () => {
+    const err = new Error("Network failure");
+    const result = normalizeError(err, "gitea");
 
     expect(result).toBeInstanceOf(GixaError);
-    expect(result.message).toBe('Network failure');
+    expect(result.message).toBe("Network failure");
     expect(result.status).toBeUndefined();
     expect(result.originalError).toBe(err);
   });
 
-  it('passes through existing GixaError unchanged', () => {
-    const original = new NotFoundError('Already normalized', 'github');
+  it("passes through existing GixaError unchanged", () => {
+    const original = new NotFoundError("Already normalized", "github");
     const result = normalizeError(original);
 
     expect(result).toBe(original);
   });
 
-  it('converts unknown error types to GixaError', () => {
-    const result = normalizeError('string error', 'github');
+  it("converts unknown error types to GixaError", () => {
+    const result = normalizeError("string error", "github");
 
     expect(result).toBeInstanceOf(GixaError);
-    expect(result.message).toBe('string error');
-    expect(result.platform).toBe('github');
+    expect(result.message).toBe("string error");
+    expect(result.platform).toBe("github");
   });
 });
