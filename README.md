@@ -3,6 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/gixa?style=flat&colorA=130f40&colorB=474787)](https://npmjs.com/package/gixa)
 [![npm downloads](https://img.shields.io/npm/dm/gixa?style=flat&colorA=130f40&colorB=474787)](https://npm.chart.dev/gixa)
 [![license](https://img.shields.io/github/license/oritwoen/gixa?style=flat&colorA=130f40&colorB=474787)](https://github.com/oritwoen/gixa/blob/main/LICENSE)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/oritwoen/gixa)
 
 One API for GitHub, GitLab, Gitea, and GitBucket. Write your code once, swap the provider string, done.
 
@@ -107,17 +108,7 @@ List operations return `PageResult<T>` with `items`, `hasNextPage`, `nextPage`, 
 
 ## Caching
 
-GET requests are cached by default using [unstorage](https://unstorage.unjs.io) with an LRU driver (5 min TTL, 500 entries). If you need something else — Redis, filesystem, Cloudflare KV — pass your own unstorage instance:
-
-```typescript
-import { configureStorage } from 'gixa'
-import { createStorage } from 'unstorage'
-import redisDriver from 'unstorage/drivers/redis'
-
-configureStorage(createStorage({
-  driver: redisDriver({ url: 'redis://localhost:6379' }),
-}))
-```
+GET requests are cached automatically using [unstorage](https://unstorage.unjs.io) with an LRU driver (5 min TTL, 500 entries). No configuration needed — it just keeps repeated reads fast.
 
 ## Errors
 
@@ -149,6 +140,7 @@ If you only need one provider, import it directly. Better for tree-shaking.
 import { GitHubProvider } from 'gixa/github'
 import { GitLabProvider } from 'gixa/gitlab'
 import { createGiteaProvider } from 'gixa/gitea'
+import type { Provider, Repository } from 'gixa/types'
 ```
 
 ## What this doesn't do
