@@ -166,6 +166,14 @@ describe('Gitea Provider', () => {
       );
     });
 
+    it('preserves already-prefixed api URLs under a subpath', () => {
+      createGiteaProvider({ baseURL: 'https://codeberg.org/forgejo/api/v1', token: 'test-token' });
+
+      expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://codeberg.org/forgejo/api/v1' }),
+      );
+    });
+
     it('does not treat api paths with extra trailing segments as already prefixed', () => {
       createGiteaProvider({
         baseURL: 'https://codeberg.org/custom/api/v1/proxy',

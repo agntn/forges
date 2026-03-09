@@ -187,6 +187,14 @@ describe('GitLabProvider', () => {
       );
     });
 
+    it('preserves already-prefixed api URLs under a subpath', () => {
+      new GitLabProvider({ baseURL: 'https://gitlab.example.com/gitlab/api/v4', token: 't' });
+
+      expect(mocks.createHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://gitlab.example.com/gitlab/api/v4' }),
+      );
+    });
+
     it('does not treat near-miss paths as already prefixed', () => {
       new GitLabProvider({ baseURL: 'https://gitlab.example.com/custom-api/v40', token: 't' });
 
