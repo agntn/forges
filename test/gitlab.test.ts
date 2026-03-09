@@ -162,6 +162,54 @@ describe('GitLabProvider', () => {
         expect.objectContaining({ baseURL: 'https://gitlab.com/api/v4' }),
       );
     });
+
+    it('appends /api/v4 for root instance URLs', () => {
+      new GitLabProvider({ baseURL: 'https://gitlab.example.com', token: 't' });
+
+      expect(mocks.createHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://gitlab.example.com/api/v4' }),
+      );
+    });
+
+    it('appends /api/v4 for subpath instance URLs with trailing slash', () => {
+      new GitLabProvider({ baseURL: 'https://gitlab.example.com/gitlab/', token: 't' });
+
+      expect(mocks.createHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://gitlab.example.com/gitlab/api/v4' }),
+      );
+    });
+
+    it('preserves already-prefixed api URLs', () => {
+      new GitLabProvider({ baseURL: 'https://gitlab.example.com/api/v4', token: 't' });
+
+      expect(mocks.createHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://gitlab.example.com/api/v4' }),
+      );
+    });
+
+    it('preserves already-prefixed api URLs under a subpath', () => {
+      new GitLabProvider({ baseURL: 'https://gitlab.example.com/gitlab/api/v4', token: 't' });
+
+      expect(mocks.createHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://gitlab.example.com/gitlab/api/v4' }),
+      );
+    });
+
+    it('does not treat near-miss paths as already prefixed', () => {
+      new GitLabProvider({ baseURL: 'https://gitlab.example.com/custom-api/v40', token: 't' });
+
+      expect(mocks.createHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://gitlab.example.com/custom-api/v40/api/v4' }),
+      );
+    });
+
+    it('does not treat api paths with extra trailing segments as already prefixed', () => {
+      new GitLabProvider({ baseURL: 'https://gitlab.example.com/custom/api/v4/proxy', token: 't' });
+
+      expect(mocks.createHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://gitlab.example.com/custom/api/v4/proxy/api/v4' }),
+      );
+    });
   });
 
   // --- Repos ---

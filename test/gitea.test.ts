@@ -32,9 +32,11 @@ vi.mock('../src/cache', () => ({
 
 // Import mocked modules to control them
 import { rawFetch } from '../src/http';
+import { createHttpClient } from '../src/http';
 import { FetchError } from 'ofetch';
 
 const mockedRawFetch = vi.mocked(rawFetch);
+const mockedCreateHttpClient = vi.mocked(createHttpClient);
 
 // -- Gitea API fixture data --
 
@@ -123,6 +125,65 @@ describe('Gitea Provider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     provider = createGiteaProvider({ token: 'test-token' });
+  });
+
+  describe('provider setup', () => {
+    it('defaults to the public API base URL', () => {
+      expect(mockedCreateHttpClient).toHaveBeenCalledWith(
+        expect.objectContaining({ baseURL: 'https://gitea.com/api/v1' }),
+      );
+    });
+
+    it('defaults to the public API base URL when baseURL is empty', () => {
+      createGiteaProvider({ baseURL: '', token: 'test-token' });
+
+      expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://gitea.com/api/v1' }),
+      );
+    });
+
+    it('appends /api/v1 for root instance URLs', () => {
+      createGiteaProvider({ baseURL: 'https://codeberg.org', token: 'test-token' });
+
+      expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://codeberg.org/api/v1' }),
+      );
+    });
+
+    it('appends /api/v1 for subpath instance URLs with trailing slash', () => {
+      createGiteaProvider({ baseURL: 'https://codeberg.org/forgejo/', token: 'test-token' });
+
+      expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://codeberg.org/forgejo/api/v1' }),
+      );
+    });
+
+    it('preserves already-prefixed api URLs', () => {
+      createGiteaProvider({ baseURL: 'https://codeberg.org/api/v1', token: 'test-token' });
+
+      expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://codeberg.org/api/v1' }),
+      );
+    });
+
+    it('preserves already-prefixed api URLs under a subpath', () => {
+      createGiteaProvider({ baseURL: 'https://codeberg.org/forgejo/api/v1', token: 'test-token' });
+
+      expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://codeberg.org/forgejo/api/v1' }),
+      );
+    });
+
+    it('does not treat api paths with extra trailing segments as already prefixed', () => {
+      createGiteaProvider({
+        baseURL: 'https://codeberg.org/custom/api/v1/proxy',
+        token: 'test-token',
+      });
+
+      expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseURL: 'https://codeberg.org/custom/api/v1/proxy/api/v1' }),
+      );
+    });
   });
 
   // --- repos ---
