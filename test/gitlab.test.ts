@@ -761,5 +761,157 @@ describe('GitLabProvider', () => {
       // getRepo(1) + getIssue(1) = 2 total (no extra resolve call)
       expect(mocks.client).toHaveBeenCalledTimes(2);
     });
+
+    it('evicts least recently used project IDs when cache is full', async () => {
+      const smallCacheProvider = new GitLabProvider({
+        baseURL: 'https://gitlab.com/api/v4',
+        token: 'glpat-test',
+        gitlab: {
+          projectIdCacheMax: 1,
+        },
+      });
+
+      mockProjectResolve(101);
+      mocks.client.mockResolvedValueOnce(glIssue);
+      await smallCacheProvider.issues.get('group', 'repo-one', 1);
+
+      mockProjectResolve(202);
+      mocks.client.mockResolvedValueOnce(glIssue);
+      await smallCacheProvider.issues.get('group', 'repo-two', 1);
+
+      mockProjectResolve(101);
+      mocks.client.mockResolvedValueOnce(glIssue);
+      await smallCacheProvider.issues.get('group', 'repo-one', 2);
+
+      expect(mocks.client).toHaveBeenCalledTimes(6);
+    });
+
+    it('expires cached project IDs after TTL', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+        const shortTtlProvider = new GitLabProvider({
+          baseURL: 'https://gitlab.com/api/v4',
+          token: 'glpat-test',
+          gitlab: {
+            projectIdCacheTtl: 1000,
+          },
+        });
+
+        mockProjectResolve(303);
+        mocks.client.mockResolvedValueOnce(glIssue);
+        await shortTtlProvider.issues.get('group', 'repo-ttl', 1);
+
+        vi.advanceTimersByTime(500);
+        mocks.client.mockResolvedValueOnce(glIssue);
+        await shortTtlProvider.issues.get('group', 'repo-ttl', 2);
+
+        vi.advanceTimersByTime(1001);
+        mockProjectResolve(303);
+        mocks.client.mockResolvedValueOnce(glIssue);
+        await shortTtlProvider.issues.get('group', 'repo-ttl', 3);
+
+        expect(mocks.client).toHaveBeenCalledTimes(5);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps most recently used project IDs when cache is full', async () => {
+      const smallCacheProvider = new GitLabProvider({
+        baseURL: 'https://gitlab.com/api/v4',
+        token: 'glpat-test',
+        gitlab: {
+          projectIdCacheMax: 2,
+        },
+      });
+
+      mockProjectResolve(1);
+      mocks.client.mockResolvedValueOnce(glIssue);
+      await smallCacheProvider.issues.get('g', 'repo-a', 1);
+
+      mockProjectResolve(2);
+      mocks.client.mockResolvedValueOnce(glIssue);
+      await smallCacheProvider.issues.get('g', 'repo-b', 1);
+
+      mocks.client.mockResolvedValueOnce(glIssue);
+      await smallCacheProvider.issues.get('g', 'repo-a', 2);
+
+      mockProjectResolve(3);
+      mocks.client.mockResolvedValueOnce(glIssue);
+      await smallCacheProvider.issues.get('g', 'repo-c', 1);
+
+      mockProjectResolve(2);
+      mocks.client.mockResolvedValueOnce(glIssue);
+      await smallCacheProvider.issues.get('g', 'repo-b', 2);
+
+      expect(mocks.client).toHaveBeenCalledTimes(9);
+    });
+
+    it('prunes expired entries before evicting valid ones', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+        const shortTtlProvider = new GitLabProvider({
+          baseURL: 'https://gitlab.com/api/v4',
+          token: 'glpat-test',
+          gitlab: {
+            projectIdCacheMax: 2,
+            projectIdCacheTtl: 1000,
+          },
+        });
+
+        mockProjectResolve(1);
+        mocks.client.mockResolvedValueOnce(glIssue);
+        await shortTtlProvider.issues.get('g', 'repo-a', 1);
+
+        vi.advanceTimersByTime(900);
+
+        mockProjectResolve(2);
+        mocks.client.mockResolvedValueOnce(glIssue);
+        await shortTtlProvider.issues.get('g', 'repo-b', 1);
+
+        vi.advanceTimersByTime(200);
+
+        mockProjectResolve(3);
+        mocks.client.mockResolvedValueOnce(glIssue);
+        await shortTtlProvider.issues.get('g', 'repo-c', 1);
+
+        mocks.client.mockResolvedValueOnce(glIssue);
+        await shortTtlProvider.issues.get('g', 'repo-b', 2);
+
+        mockProjectResolve(1);
+        mocks.client.mockResolvedValueOnce(glIssue);
+        await shortTtlProvider.issues.get('g', 'repo-a', 2);
+
+        expect(mocks.client).toHaveBeenCalledTimes(9);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('falls back to default cache settings for invalid config values', async () => {
+      const providerWithInvalidConfig = new GitLabProvider({
+        baseURL: 'https://gitlab.com/api/v4',
+        token: 'glpat-test',
+        gitlab: {
+          projectIdCacheMax: 0,
+          projectIdCacheTtl: Number.NaN,
+        },
+      });
+
+      mockProjectResolve(111);
+      mocks.client.mockResolvedValueOnce(glIssue);
+      await providerWithInvalidConfig.issues.get('g', 'repo-one', 1);
+
+      mockProjectResolve(222);
+      mocks.client.mockResolvedValueOnce(glIssue);
+      await providerWithInvalidConfig.issues.get('g', 'repo-two', 1);
+
+      mocks.client.mockResolvedValueOnce(glIssue);
+      await providerWithInvalidConfig.issues.get('g', 'repo-one', 2);
+
+      expect(mocks.client).toHaveBeenCalledTimes(5);
+    });
   });
 });

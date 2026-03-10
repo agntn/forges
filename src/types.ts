@@ -120,6 +120,10 @@ export interface ProviderConfig {
     ttl?: number;
     prefix?: string;
   };
+  gitlab?: {
+    projectIdCacheMax?: number;
+    projectIdCacheTtl?: number;
+  };
 }
 
 /**
