@@ -188,6 +188,22 @@ function encodeProjectPath(owner: string, repo: string): string {
   return encodeURIComponent(`${owner}/${repo}`);
 }
 
+const DEFAULT_PROJECT_ID_CACHE_MAX = 500;
+const DEFAULT_PROJECT_ID_CACHE_TTL = 300000;
+
+interface ProjectIdCacheEntry {
+  id: number;
+  cachedAt: number;
+}
+
+function normalizePositiveInteger(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isFinite(value) || value < 1) {
+    return fallback;
+  }
+
+  return Math.floor(value);
+}
+
 /**
  * GitLab provider — implements the unified Provider interface for GitLab API v4.
  *
@@ -199,7 +215,9 @@ function encodeProjectPath(owner: string, repo: string): string {
  */
 export class GitLabProvider implements Provider {
   private client: ReturnType<typeof createHttpClient>;
-  private projectIdCache = new Map<string, number>();
+  private projectIdCache = new Map<string, ProjectIdCacheEntry>();
+  private readonly projectIdCacheMax: number;
+  private readonly projectIdCacheTtl: number;
 
   repos: RepositoryResource;
   issues: IssueResource;
@@ -219,6 +237,15 @@ export class GitLabProvider implements Provider {
       tokenHeader: 'Private-Token',
       tokenPrefix: '',
     });
+
+    this.projectIdCacheMax = normalizePositiveInteger(
+      config.gitlab?.projectIdCacheMax,
+      DEFAULT_PROJECT_ID_CACHE_MAX
+    );
+    this.projectIdCacheTtl = normalizePositiveInteger(
+      config.gitlab?.projectIdCacheTtl,
+      DEFAULT_PROJECT_ID_CACHE_TTL
+    );
 
     this.repos = {
       list: (owner, options?) => this.listRepos(owner, options),
@@ -245,13 +272,56 @@ export class GitLabProvider implements Provider {
     };
   }
 
+  private getCachedProjectId(key: string): number | undefined {
+    const entry = this.projectIdCache.get(key);
+    if (!entry) {
+      return undefined;
+    }
+
+    if (Date.now() - entry.cachedAt > this.projectIdCacheTtl) {
+      this.projectIdCache.delete(key);
+      return undefined;
+    }
+
+    this.projectIdCache.delete(key);
+    this.projectIdCache.set(key, entry);
+    return entry.id;
+  }
+
+  private setCachedProjectId(key: string, projectId: number): void {
+    this.pruneExpiredProjectIdCache();
+
+    if (this.projectIdCache.size >= this.projectIdCacheMax && !this.projectIdCache.has(key)) {
+      const oldestKey = this.projectIdCache.keys().next().value;
+      if (oldestKey !== undefined) {
+        this.projectIdCache.delete(oldestKey);
+      }
+    }
+
+    this.projectIdCache.delete(key);
+    this.projectIdCache.set(key, {
+      id: projectId,
+      cachedAt: Date.now(),
+    });
+  }
+
+  private pruneExpiredProjectIdCache(): void {
+    const now = Date.now();
+
+    for (const [key, entry] of this.projectIdCache.entries()) {
+      if (now - entry.cachedAt > this.projectIdCacheTtl) {
+        this.projectIdCache.delete(key);
+      }
+    }
+  }
+
   /**
    * Resolve a project's numeric ID from owner/repo path.
    * Caches the result to avoid repeated lookups.
    */
   private async resolveProjectId(owner: string, repo: string): Promise<number> {
     const key = `${owner}/${repo}`;
-    const cached = this.projectIdCache.get(key);
+    const cached = this.getCachedProjectId(key);
     if (cached !== undefined) {
       return cached;
     }
@@ -261,7 +331,7 @@ export class GitLabProvider implements Provider {
       const project = await this.client<GitLabProject>(
         `/projects/${encoded}`
       );
-      this.projectIdCache.set(key, project.id);
+      this.setCachedProjectId(key, project.id);
       return project.id;
     } catch (error: unknown) {
       throw normalizeError(error, 'gitlab');
@@ -342,7 +412,7 @@ export class GitLabProvider implements Provider {
         `/projects/${encoded}`
       );
       // Cache project ID while we have it
-      this.projectIdCache.set(`${owner}/${repo}`, project.id);
+      this.setCachedProjectId(`${owner}/${repo}`, project.id);
       return mapRepository(project);
     } catch (error: unknown) {
       throw normalizeError(error, 'gitlab');
