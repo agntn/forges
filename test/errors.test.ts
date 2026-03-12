@@ -62,6 +62,50 @@ describe('normalizeError', () => {
     expect((result as RateLimitError).retryAfter).toBeUndefined();
   });
 
+  it('maps 429 with HTTP-date Retry-After to delay seconds', () => {
+    const futureDate = new Date(Date.now() + 120_000).toUTCString();
+    const err = createFetchError('Too Many Requests', 429, {
+      'Retry-After': futureDate,
+    });
+    const result = normalizeError(err, 'github') as RateLimitError;
+
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect(result.retryAfter).toBeTypeOf('number');
+    expect(result.retryAfter).toBeGreaterThan(0);
+    expect(result.retryAfter).toBeLessThanOrEqual(120);
+  });
+
+  it('maps 429 with past HTTP-date Retry-After to zero', () => {
+    const pastDate = new Date(Date.now() - 60_000).toUTCString();
+    const err = createFetchError('Too Many Requests', 429, {
+      'Retry-After': pastDate,
+    });
+    const result = normalizeError(err, 'github') as RateLimitError;
+
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect(result.retryAfter).toBe(0);
+  });
+
+  it('maps 429 with non-numeric Retry-After to undefined', () => {
+    const err = createFetchError('Too Many Requests', 429, {
+      'Retry-After': 'not-a-number',
+    });
+    const result = normalizeError(err, 'github') as RateLimitError;
+
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect(result.retryAfter).toBeUndefined();
+  });
+
+  it('maps 429 with negative Retry-After to undefined', () => {
+    const err = createFetchError('Too Many Requests', 429, {
+      'Retry-After': '-5',
+    });
+    const result = normalizeError(err, 'github') as RateLimitError;
+
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect(result.retryAfter).toBeUndefined();
+  });
+
   it('maps other HTTP status to generic GixaError', () => {
     const err = createFetchError('Internal Server Error', 500);
     const result = normalizeError(err, 'github');
