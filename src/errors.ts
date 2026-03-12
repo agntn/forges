@@ -124,15 +124,20 @@ function parseRetryAfter(value: string | null | undefined): number | undefined {
     return undefined;
   }
 
-  const seconds = parseInt(value, 10);
-  if (Number.isFinite(seconds) && seconds >= 0) {
-    return seconds;
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
   }
 
-  // Try HTTP-date format (e.g. "Thu, 01 Dec 2023 16:00:00 GMT")
-  // Only attempt if value looks like a date (contains a letter)
-  if (/[a-z]/i.test(value)) {
-    const date = Date.parse(value);
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = Number(trimmed);
+    if (Number.isSafeInteger(seconds)) {
+      return seconds;
+    }
+  }
+
+  if (/[a-z]/i.test(trimmed)) {
+    const date = Date.parse(trimmed);
     if (Number.isFinite(date)) {
       const delta = Math.ceil((date - Date.now()) / 1000);
       return delta > 0 ? delta : 0;

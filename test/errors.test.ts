@@ -54,6 +54,16 @@ describe('normalizeError', () => {
     expect((result as RateLimitError).retryAfter).toBe(60);
   });
 
+  it('maps 429 with whitespace-wrapped numeric Retry-After', () => {
+    const err = createFetchError('Too Many Requests', 429, {
+      'Retry-After': ' 60 ',
+    });
+    const result = normalizeError(err, 'github') as RateLimitError;
+
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect(result.retryAfter).toBe(60);
+  });
+
   it('maps 429 FetchError without Retry-After header', () => {
     const err = createFetchError('Too Many Requests', 429);
     const result = normalizeError(err, 'gitlab');
@@ -86,9 +96,52 @@ describe('normalizeError', () => {
     expect(result.retryAfter).toBe(0);
   });
 
+  it('maps 429 with whitespace-wrapped HTTP-date Retry-After', () => {
+    const futureDate = new Date(Date.now() + 120_000).toUTCString();
+    const err = createFetchError('Too Many Requests', 429, {
+      'Retry-After': ` ${futureDate} `,
+    });
+    const result = normalizeError(err, 'github') as RateLimitError;
+
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect(result.retryAfter).toBeTypeOf('number');
+    expect(result.retryAfter).toBeGreaterThan(0);
+    expect(result.retryAfter).toBeLessThanOrEqual(120);
+  });
+
   it('maps 429 with non-numeric Retry-After to undefined', () => {
     const err = createFetchError('Too Many Requests', 429, {
       'Retry-After': 'not-a-number',
+    });
+    const result = normalizeError(err, 'github') as RateLimitError;
+
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect(result.retryAfter).toBeUndefined();
+  });
+
+  it('maps 429 with partially numeric Retry-After to undefined', () => {
+    const err = createFetchError('Too Many Requests', 429, {
+      'Retry-After': '60s',
+    });
+    const result = normalizeError(err, 'github') as RateLimitError;
+
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect(result.retryAfter).toBeUndefined();
+  });
+
+  it('maps 429 with exponent-like Retry-After to undefined', () => {
+    const err = createFetchError('Too Many Requests', 429, {
+      'Retry-After': '1e3',
+    });
+    const result = normalizeError(err, 'github') as RateLimitError;
+
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect(result.retryAfter).toBeUndefined();
+  });
+
+  it('maps 429 with comma-formatted Retry-After to undefined', () => {
+    const err = createFetchError('Too Many Requests', 429, {
+      'Retry-After': '10,000',
     });
     const result = normalizeError(err, 'github') as RateLimitError;
 
