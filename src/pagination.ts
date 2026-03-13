@@ -18,6 +18,7 @@ export interface LinkHeaderEntry {
  */
 export interface PaginationOptions {
   perPage?: number;
+  perPageParam?: string;
   maxPages?: number;
 }
 
@@ -96,7 +97,7 @@ export async function* paginate<T>(
   url: string,
   options: PaginationOptions = {},
 ): AsyncGenerator<T[], void, unknown> {
-  const { perPage = 30 } = options;
+  const { perPage = 30, perPageParam = "per_page" } = options;
   const maxPages = resolveMaxPages(options.maxPages);
   let baseURL: string;
   try {
@@ -112,8 +113,8 @@ export async function* paginate<T>(
   while (pageCount < maxPages) {
     // Add per_page parameter if not already present
     const urlObj = new URL(currentUrl, baseURL);
-    if (!urlObj.searchParams.has("per_page")) {
-      urlObj.searchParams.set("per_page", String(perPage));
+    if (!urlObj.searchParams.has(perPageParam)) {
+      urlObj.searchParams.set(perPageParam, String(perPage));
     }
     const requestUrl = urlObj.toString();
     const canonicalCurrentUrl = canonicalizePaginationUrl(requestUrl, baseURL);
