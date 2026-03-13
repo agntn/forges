@@ -37,6 +37,10 @@ vi.mock('../src/cache', () => ({
   cachedFetch: vi.fn(async (client: any, url: string, opts?: any) =>
     client(url, opts)
   ),
+  createCache: vi.fn(),
+  configureStorage: vi.fn(),
+  clearCache: vi.fn(async () => {}),
+  invalidateCache: vi.fn(async () => {}),
 }));
 
 import { createProvider } from '../src/index';
@@ -239,6 +243,15 @@ describe('type exports', () => {
     const mod = await import('../src/index');
     expect(typeof mod.createHttpClient).toBe('function');
     expect(typeof mod.rawFetch).toBe('function');
+  });
+
+  it('exports cache management functions', async () => {
+    const mod = await import('../src/index');
+    expect(typeof mod.createCache).toBe('function');
+    expect(typeof mod.configureStorage).toBe('function');
+    expect(typeof mod.cachedFetch).toBe('function');
+    expect(typeof mod.clearCache).toBe('function');
+    expect(typeof mod.invalidateCache).toBe('function');
   });
 
   it('exports default as createProvider', async () => {
