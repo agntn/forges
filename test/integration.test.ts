@@ -41,6 +41,7 @@ import { createProvider } from "../src/index";
 import { GitHubProvider } from "../src/providers/github";
 import { GitLabProvider } from "../src/providers/gitlab";
 import { createGiteaProvider } from "../src/providers/gitea";
+import { AuthenticationError, GixaError } from "../src/errors";
 import type {
   Provider,
   ProviderConfig,
@@ -88,8 +89,19 @@ describe("createProvider factory", () => {
     expect(provider.users).toBeDefined();
   });
 
-  it("throws on unsupported platform", () => {
-    expect(() => createProvider("bitbucket" as any, baseConfig)).toThrow("Unsupported platform");
+  it("throws GixaError on unsupported platform", () => {
+    expect(() => createProvider("bitbucket" as any, baseConfig)).toThrow(GixaError);
+  });
+
+  it("throws AuthenticationError when no token is found", async () => {
+    const auth = await import("../src/auth");
+    const spy = vi.spyOn(auth, "resolveToken").mockReturnValue(null);
+
+    try {
+      expect(() => createProvider("github")).toThrow(AuthenticationError);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("GitHub provider is instance of GitHubProvider", () => {
