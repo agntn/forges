@@ -74,7 +74,7 @@ function extractHostname(platform: Platform, baseURL?: string): string {
 // --- Environment variables ---
 
 const ENV_MAP: Record<Platform, string[]> = {
-  github: ['GITHUB_TOKEN', 'GH_TOKEN'],
+  github: ['GH_TOKEN', 'GITHUB_TOKEN'],
   gitlab: ['GITLAB_TOKEN', 'GL_TOKEN', 'GITLAB_PAT'],
   gitea: ['GITEA_TOKEN'],
 };

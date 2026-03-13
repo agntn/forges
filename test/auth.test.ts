@@ -58,21 +58,21 @@ describe('resolveToken', () => {
   // --- Environment variables ---
 
   describe('env vars', () => {
-    it('resolves GITHUB_TOKEN', () => {
-      process.env.GITHUB_TOKEN = 'ghp_abc123';
+    it('resolves GH_TOKEN', () => {
+      process.env.GH_TOKEN = 'ghp_abc123';
       const result = resolveToken('github');
       expect(result).toEqual({ token: 'ghp_abc123', source: 'env' });
     });
 
-    it('resolves GH_TOKEN as fallback', () => {
-      process.env.GH_TOKEN = 'ghp_fallback';
+    it('resolves GITHUB_TOKEN as fallback', () => {
+      process.env.GITHUB_TOKEN = 'ghp_fallback';
       const result = resolveToken('github');
       expect(result).toEqual({ token: 'ghp_fallback', source: 'env' });
     });
 
-    it('prefers GITHUB_TOKEN over GH_TOKEN', () => {
-      process.env.GITHUB_TOKEN = 'primary';
-      process.env.GH_TOKEN = 'fallback';
+    it('prefers GH_TOKEN over GITHUB_TOKEN', () => {
+      process.env.GH_TOKEN = 'primary';
+      process.env.GITHUB_TOKEN = 'fallback';
       const result = resolveToken('github');
       expect(result!.token).toBe('primary');
     });
