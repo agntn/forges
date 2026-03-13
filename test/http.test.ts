@@ -33,7 +33,7 @@ describe('createHttpClient', () => {
     expect(config.baseURL).toBe('https://api.github.com');
     expect(config.retry).toBe(2);
     expect(config.retryDelay).toBe(1000);
-    expect(config.headers['User-Agent']).toBe('gixa/0.1.0');
+    expect(config.headers['User-Agent']).toBe('gixa/0.1.1');
   });
 
   it('uses custom userAgent when provided', () => {

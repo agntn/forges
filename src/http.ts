@@ -25,7 +25,7 @@ export function createHttpClient(config: HttpClientConfig) {
     token,
     tokenHeader = 'Authorization',
     tokenPrefix = 'token ',
-    userAgent = 'gixa/0.1.0',
+    userAgent = 'gixa/0.1.1',
   } = config;
 
   return $fetch.create({
