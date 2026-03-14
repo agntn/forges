@@ -76,14 +76,17 @@ export function normalizeError(error: unknown, platform?: string): GixaError {
         return new AuthenticationError(`Authentication failed: ${message}`, platform, error);
       case 404:
         return new NotFoundError(`Resource not found: ${message}`, platform, error);
-      case 429:
-        const retryAfter = error.response?.headers?.get("Retry-After");
+      case 429: {
+        const retryAfter = parseRetryAfter(
+          error.response?.headers?.get("Retry-After"),
+        );
         return new RateLimitError(
           `Rate limit exceeded: ${message}`,
-          retryAfter ? parseInt(retryAfter, 10) : undefined,
+          retryAfter,
           platform,
           error,
         );
+      }
       default:
         return new GixaError(message, status, platform, error);
     }
@@ -101,4 +104,37 @@ export function normalizeError(error: unknown, platform?: string): GixaError {
     platform,
     error instanceof Error ? error : undefined,
   );
+}
+
+/**
+ * Parse the Retry-After header value into delay seconds.
+ * Handles both delay-seconds and HTTP-date formats (RFC 7231 §7.1.3).
+ * Returns undefined for missing, empty, or unparseable values.
+ */
+function parseRetryAfter(value: string | null | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = Number(trimmed);
+    if (Number.isSafeInteger(seconds)) {
+      return seconds;
+    }
+  }
+
+  if (/[a-z]/i.test(trimmed)) {
+    const date = Date.parse(trimmed);
+    if (Number.isFinite(date)) {
+      const delta = Math.ceil((date - Date.now()) / 1000);
+      return delta > 0 ? delta : 0;
+    }
+  }
+
+  return undefined;
 }

@@ -1,21 +1,39 @@
-# PROJECT KNOWLEDGE BASE
+# AGENTS.md — gixa
 
-**Generated:** 2026-03-05
-**Commit:** 9d89386
-**Branch:** main
+Unified TypeScript API for GitHub, GitLab, Gitea, and GitBucket. Normalizes auth headers, pagination, and field names behind a single `Provider` interface. Built on unjs stack (obuild, ofetch, unstorage). ESM only.
 
-## OVERVIEW
+## Quick Commands
 
-Unified TypeScript API for GitHub, GitLab, Gitea, and GitBucket. Normalizes API differences (auth headers, pagination, field names) behind a single `Provider` interface. Built on unjs stack: obuild, ofetch, unstorage.
+```bash
+pnpm i                          # install deps (pnpm 10.x, node >=22)
+pnpm dev                        # obuild --stub (dev mode with live types)
+pnpm run build                  # obuild → dist/ (.mjs + .d.mts)
+pnpm typecheck                  # tsc --noEmit (strict mode)
+pnpm test                       # vitest watch mode
+pnpm test:run                   # single run (CI)
+pnpm release                    # test → build → changelogen → push tag
+```
 
-## STRUCTURE
+**Run a single test file:**
+```bash
+pnpm vitest run test/github.test.ts
+```
+
+**Run a single test by name:**
+```bash
+pnpm vitest run -t "should list repos"
+```
+
+**CI order:** typecheck → build → test (see `.github/workflows/test.yml`).
+
+## Codebase Map
 
 ```
 src/
 ├── index.ts              # createProvider() factory — single public entry point
 ├── types.ts              # Provider interface, resource interfaces, unified models
-├── auth.ts               # 4-level token detection chain (explicit → env → CLI → config)
-├── http.ts               # ofetch wrapper with configurable auth headers
+├── auth.ts               # 4-level token detection: explicit → env → CLI → config
+├── http.ts               # ofetch wrapper with auth headers, retry, rate limit
 ├── cache.ts              # unstorage LRU cache — GET-only, lazy-initialized
 ├── errors.ts             # GixaError hierarchy + normalizeError()
 ├── pagination.ts         # Link header + x-next-page async generator
@@ -23,46 +41,47 @@ src/
 ├── gitlab.ts             # Sub-path re-export for gixa/gitlab
 ├── gitea.ts              # Sub-path re-export for gixa/gitea
 └── providers/
+    ├── base-url.ts       # Base URL normalization for self-hosted instances
     ├── github.ts         # Class. Also handles GitBucket via baseURL
     ├── gitlab.ts         # Class. Project ID resolution + caching, Private-Token auth
     └── gitea.ts          # Factory function. limit param, null-safe fields
 test/
-└── *.test.ts             # 1:1 mirror of src/ + integration.test.ts
+└── *.test.ts             # 1:1 mirror of src/ + integration.test.ts (9 files, ~200 tests)
 ```
 
-## WHERE TO LOOK
+**Where to put new code:**
 
-| Task                 | Location                           | Notes                                                              |
-| -------------------- | ---------------------------------- | ------------------------------------------------------------------ |
-| Add new provider     | `src/providers/`                   | Copy github.ts as template. Implement `Provider` interface         |
-| Add new resource     | `src/types.ts` → provider files    | Define interface in types.ts, implement in each provider           |
-| Change auth logic    | `src/auth.ts`                      | resolveToken() chain — order matters                               |
-| Change cache backend | `src/cache.ts`                     | `configureStorage()` swaps unstorage driver                        |
-| Fix pagination       | `src/pagination.ts`                | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab     |
-| Fix error mapping    | `src/errors.ts`                    | `normalizeError()` maps FetchError → GixaError subtypes            |
-| Add sub-path export  | `build.config.ts` + `package.json` | Must update both: entries array + exports map                      |
-| Debug HTTP           | `src/http.ts`                      | `rawFetch()` returns headers, `createHttpClient()` configures auth |
+| Task | Location | Notes |
+|------|----------|-------|
+| Add new provider | `src/providers/` | Copy github.ts as template. Implement `Provider` interface |
+| Add new resource | `src/types.ts` → provider files | Define interface in types.ts, implement in each provider |
+| Change auth logic | `src/auth.ts` | `resolveToken()` chain — order matters |
+| Change cache backend | `src/cache.ts` | `configureStorage()` swaps unstorage driver |
+| Fix pagination | `src/pagination.ts` | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab |
+| Fix error mapping | `src/errors.ts` | `normalizeError()` maps FetchError → GixaError subtypes |
+| Add sub-path export | `build.config.ts` + `package.json` | Must update both: entries array + exports map |
+| Debug HTTP | `src/http.ts` | `rawFetch()` returns headers, `createHttpClient()` configures auth |
+| Add tests | `test/` | Name must match `test/<module>.test.ts` |
 
-## CODE MAP
+## Code Conventions
 
-| Symbol                | Type            | File                | Role                                                    |
-| --------------------- | --------------- | ------------------- | ------------------------------------------------------- |
-| `createProvider`      | factory         | index.ts            | Main entry — resolves auth, instantiates provider       |
-| `Provider`            | interface       | types.ts            | 4 resources: repos, issues, pullRequests, users         |
-| `resolveToken`        | function        | auth.ts             | Auth chain: explicit → env → CLI → config file          |
-| `createHttpClient`    | function        | http.ts             | ofetch.create() with auth headers, retry, rate limit    |
-| `rawFetch`            | function        | http.ts             | Returns data + headers (needed for pagination)          |
-| `cachedFetch`         | function        | cache.ts            | GET-only cache via unstorage LRU                        |
-| `normalizeError`      | function        | errors.ts           | FetchError → NotFoundError / AuthError / RateLimitError |
-| `paginate`            | async generator | pagination.ts       | Handles Link + x-next-page headers                      |
-| `GitHubProvider`      | class           | providers/github.ts | Also serves GitBucket                                   |
-| `GitLabProvider`      | class           | providers/gitlab.ts | Has internal projectIdCache                             |
-| `createGiteaProvider` | factory         | providers/gitea.ts  | Factory, not class                                      |
+### Imports
 
-## CONVENTIONS
+- ESM only (`type: "module"` in package.json, `.mjs` output)
+- Use `.js` extension in all relative imports: `import { Foo } from './bar.js'`
+- Use `import type` for type-only imports
+- Node builtins use `node:` prefix: `node:child_process`, `node:fs`
 
-**Provider method structure** — every public method follows this pattern:
+### TypeScript
 
+- **Strict mode** — all strict flags enabled, plus `noUnusedLocals`, `noUnusedParameters`, `noImplicitReturns`, `noFallthroughCasesInSwitch`
+- **Target:** ES2024, **module:** ESNext, **moduleResolution:** bundler
+- **No `as any` or `@ts-ignore`** — use proper generics
+- **IDs are strings** — always `String(raw.id)`, even when APIs return numbers
+
+### Provider method structure
+
+Every public method follows this pattern:
 ```typescript
 try {
   const data = await cachedFetch<RawType>(this.client, url);
@@ -72,69 +91,94 @@ try {
 }
 ```
 
-**Mapper functions** — each provider defines raw API interfaces (snake_case) and mapper functions that convert to unified types (camelCase). Mappers are pure functions, not methods.
+### Mapper functions
 
-**Resource binding** — resources (repos, issues, etc.) are object literals bound in constructor, delegating to private methods.
+Each provider defines raw API interfaces (snake_case) and mapper functions that convert to unified types (camelCase). Mappers are pure functions, not methods.
 
-**Auth header config** — GitHub uses `Authorization: token X`, GitLab uses `Private-Token: X`, Gitea uses `Authorization: token X`. Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
+### Resource binding
 
-**Token check** — use `!== undefined` not falsy check. Empty string is intentional (allow unauthenticated).
+Resources (repos, issues, etc.) are object literals bound in constructor, delegating to private methods.
 
-**List vs Get** — list operations use `rawFetch` (need headers for pagination), get operations use `cachedFetch`.
+### Auth headers
 
-**ID normalization** — all IDs are strings in unified types (`String(raw.id)`), even when APIs return numbers.
+| Platform | Header | Format |
+|----------|--------|--------|
+| GitHub | `Authorization` | `token X` |
+| GitLab | `Private-Token` | `X` |
+| Gitea | `Authorization` | `token X` |
 
-## ANTI-PATTERNS
+Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 
-- **No `as any` or `@ts-ignore`** — strict TypeScript, use proper generics
-- **No raw error throws** — always `throw normalizeError(error, platform)`
-- **No cache for mutations** — `cachedFetch` rejects non-GET automatically
-- **No hardcoded URLs** — all providers accept `baseURL` config
-- **No `execSync`** — use `execFileSync` with arg arrays (command injection prevention)
-- **No CJS** — ESM only, `type: "module"`, `.mjs` output
-- **No test pollution** — `vi.resetAllMocks()` + env restore in beforeEach/afterEach
+### Key rules
 
-## TESTING
+- **Token check:** use `!== undefined` not falsy check. Empty string is intentional (allow unauthenticated).
+- **List vs Get:** list operations use `rawFetch` (need headers for pagination), get operations use `cachedFetch`.
+- **No raw error throws** — always `throw normalizeError(error, platform)`.
+- **No cache for mutations** — `cachedFetch` rejects non-GET automatically.
+- **No hardcoded URLs** — all providers accept `baseURL` config.
+- **No `execSync`** — use `execFileSync` with arg arrays (command injection prevention).
+- **No CJS** — ESM only everywhere.
+
+## Testing
 
 **Mock pattern** — tests use `vi.hoisted()` to create mocks before imports:
 
 ```typescript
-const mocks = vi.hoisted(() => ({
-  client: vi.fn(),
-  createHttpClient: vi.fn(() => client),
-  cachedFetch: vi.fn(),
-  rawFetch: vi.fn(),
-}));
-vi.mock("../src/http.js", () => ({
-  createHttpClient: mocks.createHttpClient,
-  rawFetch: mocks.rawFetch,
-}));
-vi.mock("../src/cache.js", () => ({ cachedFetch: mocks.cachedFetch }));
+const mocks = vi.hoisted(() => {
+  const client = vi.fn();
+  return {
+    client,
+    createHttpClient: vi.fn(() => client),
+    cachedFetch: vi.fn(),
+    rawFetch: vi.fn(),
+  };
+});
+
+vi.mock('../src/http.js', () => ({ createHttpClient: mocks.createHttpClient, rawFetch: mocks.rawFetch }));
+vi.mock('../src/cache.js', () => ({ cachedFetch: mocks.cachedFetch }));
 ```
 
 **Fixtures** — raw API response objects (snake_case) defined at file top. Match real API shape.
 
 **Error helper** — `makeFetchError(status)` creates mock FetchError with status code.
 
-**200 tests total**, 9 test files. No coverage thresholds configured.
+**Test hygiene** — `vi.resetAllMocks()` + env restore in `beforeEach`/`afterEach`. No test pollution.
 
-## COMMANDS
+**Vitest config** — `environment: "node"`, `globals: true`. No coverage thresholds.
 
-```bash
-pnpm test          # vitest watch mode
-pnpm test:run      # single run (CI)
-pnpm run build     # obuild → dist/
-pnpm typecheck     # tsc --noEmit
-pnpm release       # test → build → changelogen → push tag
-```
+## Execution Workflow
 
-## NOTES
+1. **Explore** — read relevant source files before making changes. Understand the existing pattern.
+2. **Plan** — for non-trivial changes, state what you'll change and why.
+3. **Edit** — make focused changes. Follow existing patterns in the file.
+4. **Verify** — run after every change:
+   ```bash
+   pnpm typecheck && pnpm test:run
+   ```
+   If you changed a single module, run its test first: `pnpm vitest run test/<module>.test.ts`
+5. **Keep diffs small** — one concern per change. Don't refactor adjacent code.
 
-- **GitBucket** works via GitHub provider with custom `baseURL` — no separate provider needed
-- **GitLab `/users/:owner/projects`** returns 404 for groups — `listRepos` falls back to `/groups/:owner/projects` only on 404, re-throws other errors
-- **GitHub `/issues` returns PRs** — filtered by absence of `pull_request` key
-- **GitLab uses `iid`** (project-scoped) not `id` (global) for issue/MR numbers
-- **Gitea uses `limit`** param, not `per_page`
-- **unstorage memory driver has no TTL** — that's why lru-cache driver is used
-- **Node ≥22 required** — ES2024 target, uses modern APIs
-- **CI runs typecheck → build → test** in that order (test.yml on every push, release.yml on `v*` tags)
+## Safety and Git Hygiene
+
+- Do not commit unless explicitly asked.
+- Do not push unless explicitly asked.
+- No destructive git operations (`reset --hard`, `push --force`) without explicit request.
+- Never commit `.env`, credentials, or tokens.
+- Do not skip hooks (`--no-verify`).
+- New commits over amending — especially after hook failures.
+
+## Communication Style
+
+- Concise and direct. Lead with the answer.
+- Technical precision — use correct names for types, functions, files.
+- Explain *why* for non-obvious decisions, skip the *what* when the diff speaks.
+- No filler, no trailing summaries, no template prose.
+
+## Platform-Specific Notes
+
+- **GitBucket** works via GitHub provider with custom `baseURL` — no separate provider needed.
+- **GitLab `/users/:owner/projects`** returns 404 for groups — `listRepos` falls back to `/groups/:owner/projects` only on 404, re-throws other errors.
+- **GitHub `/issues` returns PRs** — filtered by absence of `pull_request` key.
+- **GitLab uses `iid`** (project-scoped) not `id` (global) for issue/MR numbers.
+- **Gitea uses `limit`** param, not `per_page`.
+- **unstorage memory driver has no TTL** — that's why lru-cache driver is used.

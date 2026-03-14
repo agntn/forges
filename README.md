@@ -14,7 +14,8 @@ If you've ever had to maintain separate API integrations for different git platf
 ## Install
 
 ```bash
-npm install gixa
+pnpm add gixa
+# or: npm install gixa
 ```
 
 ## Usage
@@ -95,7 +96,7 @@ const gt = createProvider("gitea", {
 
 Every provider gives you four resources. They all work the same way across platforms.
 
-**repos** - `list(owner)`, `get(owner, repo)`
+**repos** - `list(owner, opts?)`, `get(owner, repo)`
 
 **issues** - `list(owner, repo, opts?)`, `get(owner, repo, number)`, `create(owner, repo, input)`
 
@@ -103,11 +104,20 @@ Every provider gives you four resources. They all work the same way across platf
 
 **users** - `get(username)`, `authenticated()`
 
-List operations return `PageResult<T>` with `items`, `hasNextPage`, `nextPage`, and an optional `totalCount`.
+List operations accept `ListOptions`: `page`, `perPage`, and `state` (`'open' | 'closed' | 'all'`). They return `PageResult<T>` with `items`, `hasNextPage`, `nextPage`, and an optional `totalCount`.
 
 ## Caching
 
-GET requests are cached automatically using [unstorage](https://unstorage.unjs.io) with an LRU driver (5 min TTL, 500 entries). No configuration needed — it just keeps repeated reads fast.
+GET requests are cached automatically using [unstorage](https://unstorage.unjs.io) with an LRU driver (5 min TTL, 500 entries). Works out of the box, but you can tweak it:
+
+```typescript
+const github = createProvider('github', {
+  cache: {
+    ttl: 60_000,     // 1 minute
+    enabled: false,   // or turn it off entirely
+  },
+})
+```
 
 ## Errors
 
@@ -141,6 +151,19 @@ import { GitLabProvider } from "gixa/gitlab";
 import { createGiteaProvider } from "gixa/gitea";
 import type { Provider, Repository } from "gixa/types";
 ```
+
+## Utilities
+
+A few lower-level pieces are exported if you need them:
+
+```typescript
+import { resolveToken } from 'gixa'
+import { fetchAllPages, paginate } from 'gixa'
+```
+
+`resolveToken('github')` runs the same auth detection chain without creating a provider. Useful for checking if credentials exist.
+
+`fetchAllPages(fetcher, url)` collects every page into a single array. `paginate(fetcher, url)` is the async generator version if you want to process pages as they come.
 
 ## What this doesn't do
 

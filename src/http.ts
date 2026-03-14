@@ -35,11 +35,11 @@ export function createHttpClient(config: HttpClientConfig) {
     headers: {
       "User-Agent": userAgent,
     },
-    onRequest({ request }) {
+    onRequest({ options }) {
       // Skip auth header for unauthenticated requests (empty token is intentional)
       if (token) {
         const authValue = tokenPrefix ? `${tokenPrefix}${token}` : token;
-        request.headers.set(tokenHeader, authValue);
+        (options.headers as Headers).set(tokenHeader, authValue);
       }
     },
     onResponseError({ response }) {
