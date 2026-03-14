@@ -3,11 +3,8 @@
  * Provides configurable authentication, retry logic, and rate limit awareness
  */
 
-import { createRequire } from 'node:module';
 import { $fetch, FetchError } from 'ofetch';
-
-const require = createRequire(import.meta.url);
-const { version } = require('../package.json') as { version: string };
+import pkg from '../package.json' with { type: 'json' };
 
 /**
  * Configuration for HTTP client
@@ -29,7 +26,7 @@ export function createHttpClient(config: HttpClientConfig) {
     token,
     tokenHeader = 'Authorization',
     tokenPrefix = 'token ',
-    userAgent = `gixa/${version}`,
+    userAgent = `gixa/${pkg.version}`,
   } = config;
 
   return $fetch.create({
