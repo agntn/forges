@@ -55,6 +55,16 @@ export {
 
 export { createHttpClient, rawFetch, FetchError } from "./http.js";
 
+export {
+  createCache,
+  configureStorage,
+  cachedFetch,
+  clearCache,
+  invalidateCache,
+  type CacheOptions,
+  type CachedFetchOptions,
+} from "./cache.js";
+
 /**
  * Create a provider instance.
  * If no token is provided, attempts to auto-detect from:
