@@ -100,7 +100,7 @@ export async function* paginate<T>(
   const { perPage = 30, perPageParam = "per_page" } = options;
   const normalizedPerPageParam = perPageParam.trim();
   if (!normalizedPerPageParam) {
-    throw new Error("perPageParam must be a non-empty query parameter name");
+    throwPaginationError("perPageParam must be a non-empty query parameter name");
   }
   const maxPages = resolveMaxPages(options.maxPages);
   let baseURL: string;
@@ -115,7 +115,7 @@ export async function* paginate<T>(
   const visitedUrls = new Set<string>();
 
   while (pageCount < maxPages) {
-    // Add per_page parameter if not already present
+    // Add per-page parameter if not already present
     const urlObj = new URL(currentUrl, baseURL);
     if (!urlObj.searchParams.has(normalizedPerPageParam)) {
       urlObj.searchParams.set(normalizedPerPageParam, String(perPage));
