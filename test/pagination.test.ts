@@ -90,6 +90,60 @@ describe("paginate", () => {
     expect(pages).toHaveLength(1);
   });
 
+  it("throws on empty perPageParam", async () => {
+    const fetcher = async (_url: string) => ({
+      data: [{ id: 1 }],
+      headers: new Headers({}),
+    });
+
+    await expect(async () => {
+      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+        perPageParam: "",
+      })) {
+        /* drain */
+      }
+    }).rejects.toThrow("perPageParam must be a non-empty query parameter name");
+  });
+
+  it("throws on whitespace-only perPageParam", async () => {
+    const fetcher = async (_url: string) => ({
+      data: [{ id: 1 }],
+      headers: new Headers({}),
+    });
+
+    await expect(async () => {
+      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+        perPageParam: "  ",
+      })) {
+        /* drain */
+      }
+    }).rejects.toThrow("perPageParam must be a non-empty query parameter name");
+  });
+
+  it("uses custom perPageParam when provided", async () => {
+    const seenUrls: string[] = [];
+    const fetcher = async (url: string) => {
+      seenUrls.push(url);
+      return {
+        data: [{ id: 1 }],
+        headers: new Headers({}),
+      };
+    };
+
+    const pages: any[][] = [];
+    for await (const page of paginate(fetcher, "https://gitea.com/api/v1/repos", {
+      perPage: 50,
+      perPageParam: "limit",
+    })) {
+      pages.push(page);
+    }
+
+    expect(pages).toHaveLength(1);
+    const url = new URL(seenUrls[0]);
+    expect(url.searchParams.get("limit")).toBe("50");
+    expect(url.searchParams.has("per_page")).toBe(false);
+  });
+
   it("follows GitLab x-next-page while preserving original host", async () => {
     const seenUrls: string[] = [];
     const fetcher = async (url: string) => {
@@ -123,7 +177,7 @@ describe("paginate", () => {
     expect(seenUrls[1]).toContain("page=2");
   });
 
-  it('throws when Link pagination repeats the same URL', async () => {
+  it("throws when Link pagination repeats the same URL", async () => {
     const fetcher = async (_url: string) => ({
       data: [{ id: 1 }],
       headers: new Headers({
@@ -132,18 +186,20 @@ describe("paginate", () => {
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, 'https://api.github.com/repos', { maxPages: 5 })) {
+      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+        maxPages: 5,
+      })) {
       }
-    }).rejects.toThrow('Pagination loop detected');
+    }).rejects.toThrow("Pagination loop detected");
   });
 
-  it('accepts same-origin relative Link header pagination URLs', async () => {
+  it("accepts same-origin relative Link header pagination URLs", async () => {
     const seenUrls: string[] = [];
     const fetcher = async (url: string) => {
       seenUrls.push(url);
-      const page = new URL(url).searchParams.get('page') || '1';
+      const page = new URL(url).searchParams.get("page") || "1";
 
-      if (page === '1') {
+      if (page === "1") {
         return {
           data: [{ id: 1 }],
           headers: new Headers({
@@ -159,15 +215,15 @@ describe("paginate", () => {
     };
 
     const pages: Array<Array<{ id: number }>> = [];
-    for await (const page of paginate(fetcher, 'https://api.github.com/repos', { maxPages: 5 })) {
+    for await (const page of paginate(fetcher, "https://api.github.com/repos", { maxPages: 5 })) {
       pages.push(page);
     }
 
     expect(pages).toHaveLength(2);
-    expect(seenUrls[1]).toContain('https://api.github.com/repos?page=2');
+    expect(seenUrls[1]).toContain("https://api.github.com/repos?page=2");
   });
 
-  it('detects loops when Link next URL only reorders query params', async () => {
+  it("detects loops when Link next URL only reorders query params", async () => {
     let callCount = 0;
     const fetcher = async (_url: string) => {
       callCount++;
@@ -180,84 +236,98 @@ describe("paginate", () => {
     };
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, 'https://api.github.com/repos?a=1&page=1&b=2', { maxPages: 5 })) {
+      for await (const _page of paginate(fetcher, "https://api.github.com/repos?a=1&page=1&b=2", {
+        maxPages: 5,
+      })) {
       }
-    }).rejects.toThrow('Pagination loop detected');
+    }).rejects.toThrow("Pagination loop detected");
   });
 
-  it('throws when GitLab x-next-page repeats the current page', async () => {
+  it("throws when GitLab x-next-page repeats the current page", async () => {
     const fetcher = async (_url: string) => ({
       data: [{ id: 1 }],
-      headers: new Headers({ 'x-next-page': '1' }),
+      headers: new Headers({ "x-next-page": "1" }),
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, 'https://gitlab.example.com/api/v4/projects', { maxPages: 5 })) {
+      for await (const _page of paginate(fetcher, "https://gitlab.example.com/api/v4/projects", {
+        maxPages: 5,
+      })) {
       }
-    }).rejects.toThrow('Pagination loop detected');
+    }).rejects.toThrow("Pagination loop detected");
   });
 
-  it('throws for maxPages below 1', async () => {
-    const fetcher = async (_url: string) => ({
-      data: [{ id: 1 }],
-      headers: new Headers({}),
-    });
-
-    await expect(async () => {
-      for await (const _page of paginate(fetcher, 'https://api.github.com/repos', { maxPages: 0 })) {
-      }
-    }).rejects.toThrow('maxPages must be a finite number greater than or equal to 1');
-  });
-
-  it('throws for maxPages NaN', async () => {
+  it("throws for maxPages below 1", async () => {
     const fetcher = async (_url: string) => ({
       data: [{ id: 1 }],
       headers: new Headers({}),
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, 'https://api.github.com/repos', { maxPages: Number.NaN })) {
+      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+        maxPages: 0,
+      })) {
       }
-    }).rejects.toThrow('maxPages must be a finite number greater than or equal to 1');
+    }).rejects.toThrow("maxPages must be a finite number greater than or equal to 1");
   });
 
-  it('throws for negative maxPages', async () => {
+  it("throws for maxPages NaN", async () => {
     const fetcher = async (_url: string) => ({
       data: [{ id: 1 }],
       headers: new Headers({}),
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, 'https://api.github.com/repos', { maxPages: -1 })) {
+      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+        maxPages: Number.NaN,
+      })) {
       }
-    }).rejects.toThrow('maxPages must be a finite number greater than or equal to 1');
+    }).rejects.toThrow("maxPages must be a finite number greater than or equal to 1");
   });
 
-  it('throws for negative infinity maxPages', async () => {
+  it("throws for negative maxPages", async () => {
     const fetcher = async (_url: string) => ({
       data: [{ id: 1 }],
       headers: new Headers({}),
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, 'https://api.github.com/repos', { maxPages: Number.NEGATIVE_INFINITY })) {
+      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+        maxPages: -1,
+      })) {
       }
-    }).rejects.toThrow('maxPages must be a finite number greater than or equal to 1');
+    }).rejects.toThrow("maxPages must be a finite number greater than or equal to 1");
   });
 
-  it('throws for fractional maxPages below 1', async () => {
+  it("throws for negative infinity maxPages", async () => {
     const fetcher = async (_url: string) => ({
       data: [{ id: 1 }],
       headers: new Headers({}),
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, 'https://api.github.com/repos', { maxPages: 0.5 })) {
+      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+        maxPages: Number.NEGATIVE_INFINITY,
+      })) {
       }
-    }).rejects.toThrow('maxPages must be a finite number greater than or equal to 1');
+    }).rejects.toThrow("maxPages must be a finite number greater than or equal to 1");
   });
 
-  it('accepts and floors fractional maxPages above 1', async () => {
+  it("throws for fractional maxPages below 1", async () => {
+    const fetcher = async (_url: string) => ({
+      data: [{ id: 1 }],
+      headers: new Headers({}),
+    });
+
+    await expect(async () => {
+      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+        maxPages: 0.5,
+      })) {
+      }
+    }).rejects.toThrow("maxPages must be a finite number greater than or equal to 1");
+  });
+
+  it("accepts and floors fractional maxPages above 1", async () => {
     const fetcher = async (_url: string) => ({
       data: [{ id: 1 }],
       headers: new Headers({
@@ -266,7 +336,7 @@ describe("paginate", () => {
     });
 
     const pages: Array<Array<{ id: number }>> = [];
-    for await (const page of paginate(fetcher, 'https://api.github.com/repos', { maxPages: 1.5 })) {
+    for await (const page of paginate(fetcher, "https://api.github.com/repos", { maxPages: 1.5 })) {
       pages.push(page);
     }
 
@@ -274,11 +344,11 @@ describe("paginate", () => {
     expect(pages[0]).toEqual([{ id: 1 }]);
   });
 
-  it('accepts explicit Infinity maxPages', async () => {
+  it("accepts explicit Infinity maxPages", async () => {
     const fetcher = async (url: string) => {
-      const page = new URL(url).searchParams.get('page') || '1';
+      const page = new URL(url).searchParams.get("page") || "1";
 
-      if (page === '1') {
+      if (page === "1") {
         return {
           data: [{ id: 1 }],
           headers: new Headers({
@@ -294,26 +364,28 @@ describe("paginate", () => {
     };
 
     const pages: Array<Array<{ id: number }>> = [];
-    for await (const page of paginate(fetcher, 'https://api.github.com/repos', { maxPages: Infinity })) {
+    for await (const page of paginate(fetcher, "https://api.github.com/repos", {
+      maxPages: Infinity,
+    })) {
       pages.push(page);
     }
 
     expect(pages).toHaveLength(2);
   });
 
-  it('throws for invalid initial pagination URL', async () => {
+  it("throws for invalid initial pagination URL", async () => {
     const fetcher = async (_url: string) => ({
       data: [{ id: 1 }],
       headers: new Headers({}),
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, '://invalid-url')) {
+      for await (const _page of paginate(fetcher, "://invalid-url")) {
       }
-    }).rejects.toThrow('Invalid pagination URL');
+    }).rejects.toThrow("Invalid pagination URL");
   });
 
-  it('rejects cross-origin Link header pagination URLs', async () => {
+  it("rejects cross-origin Link header pagination URLs", async () => {
     const fetcher = async (_url: string) => ({
       data: [{ id: 1 }],
       headers: new Headers({
@@ -322,9 +394,11 @@ describe("paginate", () => {
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, 'https://api.github.com/repos', { maxPages: 5 })) {
+      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+        maxPages: 5,
+      })) {
       }
-    }).rejects.toThrow('Cross-origin pagination URL rejected');
+    }).rejects.toThrow("Cross-origin pagination URL rejected");
   });
 });
 
@@ -352,7 +426,7 @@ describe("fetchAllPages", () => {
     expect(result).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
   });
 
-  it('propagates pagination loop guard errors', async () => {
+  it("propagates pagination loop guard errors", async () => {
     const fetcher = async (_url: string) => ({
       data: [{ id: 1 }],
       headers: new Headers({
@@ -360,8 +434,28 @@ describe("fetchAllPages", () => {
       }),
     });
 
-    await expect(fetchAllPages(fetcher, 'https://api.github.com/repos', { maxPages: 5 })).rejects.toThrow(
-      'Pagination loop detected',
-    );
+    await expect(
+      fetchAllPages(fetcher, "https://api.github.com/repos", { maxPages: 5 }),
+    ).rejects.toThrow("Pagination loop detected");
+  });
+
+  it("passes perPageParam through to paginate", async () => {
+    const seenUrls: string[] = [];
+    const fetcher = async (url: string) => {
+      seenUrls.push(url);
+      return {
+        data: [{ id: 1 }],
+        headers: new Headers({}),
+      };
+    };
+
+    await fetchAllPages(fetcher, "https://gitea.com/api/v1/repos", {
+      perPage: 20,
+      perPageParam: "limit",
+    });
+
+    const url = new URL(seenUrls[0]);
+    expect(url.searchParams.get("limit")).toBe("20");
+    expect(url.searchParams.has("per_page")).toBe(false);
   });
 });
