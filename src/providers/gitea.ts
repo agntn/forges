@@ -6,11 +6,11 @@
  * - Some fields may be null where GitHub returns empty strings
  */
 
-import { createHttpClient, rawFetch } from '../http';
-import { cachedFetch } from '../cache';
-import { parseLinkHeader } from '../pagination';
-import { normalizeError } from '../errors';
-import { normalizeApiBaseURL } from './base-url';
+import { createHttpClient, rawFetch } from "../http";
+import { cachedFetch } from "../cache";
+import { parseLinkHeader } from "../pagination";
+import { normalizeError } from "../errors";
+import { normalizeApiBaseURL } from "./base-url";
 import type {
   Provider,
   ProviderConfig,
@@ -25,7 +25,7 @@ import type {
   Owner,
   PageResult,
   ListOptions,
-} from '../types';
+} from "../types";
 
 // -- Raw Gitea API response types --
 
@@ -94,9 +94,9 @@ function mapUser(raw: GiteaUser): User {
   return {
     id: String(raw.id),
     login: raw.login,
-    name: raw.full_name ?? '',
-    email: raw.email ?? '',
-    avatarUrl: raw.avatar_url ?? '',
+    name: raw.full_name ?? "",
+    email: raw.email ?? "",
+    avatarUrl: raw.avatar_url ?? "",
     isAdmin: raw.is_admin ?? false,
   };
 }
@@ -104,7 +104,7 @@ function mapUser(raw: GiteaUser): User {
 function mapOwner(raw: GiteaOwner): Owner {
   return {
     login: raw.login,
-    avatarUrl: raw.avatar_url ?? '',
+    avatarUrl: raw.avatar_url ?? "",
   };
 }
 
@@ -113,11 +113,11 @@ function mapRepository(raw: GiteaRepository): Repository {
     id: String(raw.id),
     name: raw.name,
     fullName: raw.full_name,
-    description: raw.description ?? '',
+    description: raw.description ?? "",
     private: raw.private,
-    defaultBranch: raw.default_branch ?? 'main',
-    url: raw.html_url ?? '',
-    cloneUrl: raw.clone_url ?? '',
+    defaultBranch: raw.default_branch ?? "main",
+    url: raw.html_url ?? "",
+    cloneUrl: raw.clone_url ?? "",
     owner: mapOwner(raw.owner),
   };
 }
@@ -127,8 +127,8 @@ function mapIssue(raw: GiteaIssue): Issue {
     id: String(raw.id),
     number: raw.number,
     title: raw.title,
-    body: raw.body ?? '',
-    state: raw.state === 'open' ? 'open' : 'closed',
+    body: raw.body ?? "",
+    state: raw.state === "open" ? "open" : "closed",
     labels: raw.labels?.map((l) => l.name) ?? [],
     author: { login: raw.user.login },
     createdAt: raw.created_at,
@@ -141,14 +141,14 @@ function mapPullRequest(raw: GiteaPullRequest): PullRequest {
     id: String(raw.id),
     number: raw.number,
     title: raw.title,
-    body: raw.body ?? '',
-    state: raw.state === 'open' ? 'open' : 'closed',
+    body: raw.body ?? "",
+    state: raw.state === "open" ? "open" : "closed",
     labels: raw.labels?.map((l) => l.name) ?? [],
     author: { login: raw.user.login },
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
-    sourceBranch: raw.head?.ref ?? '',
-    targetBranch: raw.base?.ref ?? '',
+    sourceBranch: raw.head?.ref ?? "",
+    targetBranch: raw.base?.ref ?? "",
     merged: raw.merged ?? false,
     draft: raw.draft ?? false,
   };
@@ -159,17 +159,17 @@ function mapPullRequest(raw: GiteaPullRequest): PullRequest {
 function buildPageResult<TRaw, T>(
   data: TRaw[],
   headers: Headers,
-  mapper: (raw: TRaw) => T
+  mapper: (raw: TRaw) => T,
 ): PageResult<T> {
   const items = data.map(mapper);
-  const links = parseLinkHeader(headers.get('Link'));
+  const links = parseLinkHeader(headers.get("Link"));
   const hasNextPage = !!links.next;
 
   let nextPage: number | undefined;
   if (links.next) {
     try {
       const url = new URL(links.next);
-      const page = url.searchParams.get('page');
+      const page = url.searchParams.get("page");
       if (page) nextPage = parseInt(page, 10);
     } catch {
       // malformed URL, ignore
@@ -193,7 +193,7 @@ function buildListQuery(options?: ListOptions): Record<string, string> {
 
 // -- Provider factory --
 
-const PLATFORM = 'gitea';
+const PLATFORM = "gitea";
 
 /**
  * Create a Gitea/Forgejo provider instance.
@@ -201,17 +201,13 @@ const PLATFORM = 'gitea';
  * @param config Provider configuration. `baseURL` defaults to `https://gitea.com/api/v1`.
  */
 export function createGiteaProvider(config: ProviderConfig): Provider {
-  const baseURL = normalizeApiBaseURL(
-    config.baseURL,
-    'https://gitea.com/api/v1',
-    '/api/v1'
-  );
+  const baseURL = normalizeApiBaseURL(config.baseURL, "https://gitea.com/api/v1", "/api/v1");
 
   const client = createHttpClient({
     baseURL,
-    token: config.token ?? '',
-    tokenHeader: 'Authorization',
-    tokenPrefix: 'token ',
+    token: config.token ?? "",
+    tokenHeader: "Authorization",
+    tokenPrefix: "token ",
   });
 
   // -- repos --
@@ -223,7 +219,7 @@ export function createGiteaProvider(config: ProviderConfig): Provider {
         const { data, headers } = await rawFetch<GiteaRepository[]>(
           client,
           `/users/${owner}/repos`,
-          { query }
+          { query },
         );
         return buildPageResult(data ?? [], headers, mapRepository);
       } catch (error) {
@@ -233,9 +229,7 @@ export function createGiteaProvider(config: ProviderConfig): Provider {
 
     async get(owner, repo) {
       try {
-        return mapRepository(
-          await cachedFetch<GiteaRepository>(client, `/repos/${owner}/${repo}`)
-        );
+        return mapRepository(await cachedFetch<GiteaRepository>(client, `/repos/${owner}/${repo}`));
       } catch (error) {
         throw normalizeError(error, PLATFORM);
       }
@@ -248,11 +242,11 @@ export function createGiteaProvider(config: ProviderConfig): Provider {
     async list(owner, repo, options?) {
       try {
         const query = buildListQuery(options);
-        query.type = 'issues'; // exclude PRs from issue list
+        query.type = "issues"; // exclude PRs from issue list
         const { data, headers } = await rawFetch<GiteaIssue[]>(
           client,
           `/repos/${owner}/${repo}/issues`,
-          { query }
+          { query },
         );
         return buildPageResult(data ?? [], headers, mapIssue);
       } catch (error) {
@@ -263,7 +257,7 @@ export function createGiteaProvider(config: ProviderConfig): Provider {
     async get(owner, repo, number) {
       try {
         return mapIssue(
-          await cachedFetch<GiteaIssue>(client, `/repos/${owner}/${repo}/issues/${number}`)
+          await cachedFetch<GiteaIssue>(client, `/repos/${owner}/${repo}/issues/${number}`),
         );
       } catch (error) {
         throw normalizeError(error, PLATFORM);
@@ -281,9 +275,9 @@ export function createGiteaProvider(config: ProviderConfig): Provider {
         }
         return mapIssue(
           await client<GiteaIssue>(`/repos/${owner}/${repo}/issues`, {
-            method: 'POST',
+            method: "POST",
             body,
-          })
+          }),
         );
       } catch (error) {
         throw normalizeError(error, PLATFORM);
@@ -300,7 +294,7 @@ export function createGiteaProvider(config: ProviderConfig): Provider {
         const { data, headers } = await rawFetch<GiteaPullRequest[]>(
           client,
           `/repos/${owner}/${repo}/pulls`,
-          { query }
+          { query },
         );
         return buildPageResult(data ?? [], headers, mapPullRequest);
       } catch (error) {
@@ -311,7 +305,7 @@ export function createGiteaProvider(config: ProviderConfig): Provider {
     async get(owner, repo, number) {
       try {
         return mapPullRequest(
-          await cachedFetch<GiteaPullRequest>(client, `/repos/${owner}/${repo}/pulls/${number}`)
+          await cachedFetch<GiteaPullRequest>(client, `/repos/${owner}/${repo}/pulls/${number}`),
         );
       } catch (error) {
         throw normalizeError(error, PLATFORM);
@@ -331,9 +325,9 @@ export function createGiteaProvider(config: ProviderConfig): Provider {
         }
         return mapPullRequest(
           await client<GiteaPullRequest>(`/repos/${owner}/${repo}/pulls`, {
-            method: 'POST',
+            method: "POST",
             body,
-          })
+          }),
         );
       } catch (error) {
         throw normalizeError(error, PLATFORM);
@@ -346,9 +340,7 @@ export function createGiteaProvider(config: ProviderConfig): Provider {
   const users: UserResource = {
     async get(username) {
       try {
-        return mapUser(
-          await cachedFetch<GiteaUser>(client, `/users/${username}`)
-        );
+        return mapUser(await cachedFetch<GiteaUser>(client, `/users/${username}`));
       } catch (error) {
         throw normalizeError(error, PLATFORM);
       }
@@ -356,9 +348,7 @@ export function createGiteaProvider(config: ProviderConfig): Provider {
 
     async authenticated() {
       try {
-        return mapUser(
-          await cachedFetch<GiteaUser>(client, '/user')
-        );
+        return mapUser(await cachedFetch<GiteaUser>(client, "/user"));
       } catch (error) {
         throw normalizeError(error, PLATFORM);
       }
