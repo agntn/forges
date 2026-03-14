@@ -3,9 +3,9 @@
  * Verifies API mapping, `limit` pagination param, and null-safe field handling
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createGiteaProvider } from '../src/providers/gitea';
-import type { Provider } from '../src/types';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createGiteaProvider } from "../src/providers/gitea";
+import type { Provider } from "../src/types";
 
 // -- Mock HTTP layer --
 
@@ -17,23 +17,23 @@ const mockRawResponse = {
 
 const mockClient = vi.fn().mockResolvedValue({});
 
-vi.mock('../src/http', () => ({
+vi.mock("../src/http", () => ({
   createHttpClient: vi.fn(() => mockClient),
   rawFetch: vi.fn(async (_client: unknown, _url: string, _opts?: unknown) => ({
     ...mockRawResponse,
   })),
 }));
 
-vi.mock('../src/cache', () => ({
+vi.mock("../src/cache", () => ({
   cachedFetch: vi.fn(async (client: any, url: string, opts?: any) =>
-    opts ? client(url, opts) : client(url)
+    opts ? client(url, opts) : client(url),
   ),
 }));
 
 // Import mocked modules to control them
-import { rawFetch } from '../src/http';
-import { createHttpClient } from '../src/http';
-import { FetchError } from 'ofetch';
+import { rawFetch } from "../src/http";
+import { createHttpClient } from "../src/http";
+import { FetchError } from "ofetch";
 
 const mockedRawFetch = vi.mocked(rawFetch);
 const mockedCreateHttpClient = vi.mocked(createHttpClient);
@@ -43,10 +43,10 @@ const mockedCreateHttpClient = vi.mocked(createHttpClient);
 function giteaUser(overrides: Record<string, unknown> = {}) {
   return {
     id: 42,
-    login: 'testuser',
-    full_name: 'Test User',
-    email: 'test@example.com',
-    avatar_url: 'https://gitea.com/avatars/42',
+    login: "testuser",
+    full_name: "Test User",
+    email: "test@example.com",
+    avatar_url: "https://gitea.com/avatars/42",
     is_admin: false,
     ...overrides,
   };
@@ -54,8 +54,8 @@ function giteaUser(overrides: Record<string, unknown> = {}) {
 
 function giteaOwner(overrides: Record<string, unknown> = {}) {
   return {
-    login: 'testowner',
-    avatar_url: 'https://gitea.com/avatars/1',
+    login: "testowner",
+    avatar_url: "https://gitea.com/avatars/1",
     ...overrides,
   };
 }
@@ -63,13 +63,13 @@ function giteaOwner(overrides: Record<string, unknown> = {}) {
 function giteaRepo(overrides: Record<string, unknown> = {}) {
   return {
     id: 100,
-    name: 'test-repo',
-    full_name: 'testowner/test-repo',
-    description: 'A test repository',
+    name: "test-repo",
+    full_name: "testowner/test-repo",
+    description: "A test repository",
     private: false,
-    default_branch: 'main',
-    html_url: 'https://gitea.com/testowner/test-repo',
-    clone_url: 'https://gitea.com/testowner/test-repo.git',
+    default_branch: "main",
+    html_url: "https://gitea.com/testowner/test-repo",
+    clone_url: "https://gitea.com/testowner/test-repo.git",
     owner: giteaOwner(),
     ...overrides,
   };
@@ -79,13 +79,13 @@ function giteaIssue(overrides: Record<string, unknown> = {}) {
   return {
     id: 200,
     number: 1,
-    title: 'Test issue',
-    body: 'Issue body text',
-    state: 'open',
-    labels: [{ id: 1, name: 'bug' }],
+    title: "Test issue",
+    body: "Issue body text",
+    state: "open",
+    labels: [{ id: 1, name: "bug" }],
     user: giteaUser(),
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-02T00:00:00Z',
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-02T00:00:00Z",
     ...overrides,
   };
 }
@@ -94,15 +94,15 @@ function giteaPullRequest(overrides: Record<string, unknown> = {}) {
   return {
     id: 300,
     number: 5,
-    title: 'Test PR',
-    body: 'PR body text',
-    state: 'open',
-    labels: [{ id: 2, name: 'enhancement' }],
+    title: "Test PR",
+    body: "PR body text",
+    state: "open",
+    labels: [{ id: 2, name: "enhancement" }],
     user: giteaUser(),
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-02T00:00:00Z',
-    head: { ref: 'feature-branch', label: 'testowner:feature-branch' },
-    base: { ref: 'main', label: 'testowner:main' },
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-02T00:00:00Z",
+    head: { ref: "feature-branch", label: "testowner:feature-branch" },
+    base: { ref: "main", label: "testowner:main" },
     merged: false,
     draft: false,
     ...overrides,
@@ -113,285 +113,292 @@ function makeHeaders(extra: Record<string, string> = {}): Headers {
   return new Headers(extra);
 }
 
-function linkHeader(page: number, limit: number, base = 'https://gitea.com/api/v1/users/testowner/repos'): string {
+function linkHeader(
+  page: number,
+  limit: number,
+  base = "https://gitea.com/api/v1/users/testowner/repos",
+): string {
   return `<${base}?page=${page}&limit=${limit}>; rel="next"`;
 }
 
 // -- Tests --
 
-describe('Gitea Provider', () => {
+describe("Gitea Provider", () => {
   let provider: Provider;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    provider = createGiteaProvider({ token: 'test-token' });
+    provider = createGiteaProvider({ token: "test-token" });
   });
 
-  describe('provider setup', () => {
-    it('defaults to the public API base URL', () => {
+  describe("provider setup", () => {
+    it("defaults to the public API base URL", () => {
       expect(mockedCreateHttpClient).toHaveBeenCalledWith(
-        expect.objectContaining({ baseURL: 'https://gitea.com/api/v1' }),
+        expect.objectContaining({ baseURL: "https://gitea.com/api/v1" }),
       );
     });
 
-    it('defaults to the public API base URL when baseURL is empty', () => {
-      createGiteaProvider({ baseURL: '', token: 'test-token' });
+    it("defaults to the public API base URL when baseURL is empty", () => {
+      createGiteaProvider({ baseURL: "", token: "test-token" });
 
       expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
-        expect.objectContaining({ baseURL: 'https://gitea.com/api/v1' }),
+        expect.objectContaining({ baseURL: "https://gitea.com/api/v1" }),
       );
     });
 
-    it('appends /api/v1 for root instance URLs', () => {
-      createGiteaProvider({ baseURL: 'https://codeberg.org', token: 'test-token' });
+    it("appends /api/v1 for root instance URLs", () => {
+      createGiteaProvider({ baseURL: "https://codeberg.org", token: "test-token" });
 
       expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
-        expect.objectContaining({ baseURL: 'https://codeberg.org/api/v1' }),
+        expect.objectContaining({ baseURL: "https://codeberg.org/api/v1" }),
       );
     });
 
-    it('appends /api/v1 for subpath instance URLs with trailing slash', () => {
-      createGiteaProvider({ baseURL: 'https://codeberg.org/forgejo/', token: 'test-token' });
+    it("appends /api/v1 for subpath instance URLs with trailing slash", () => {
+      createGiteaProvider({ baseURL: "https://codeberg.org/forgejo/", token: "test-token" });
 
       expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
-        expect.objectContaining({ baseURL: 'https://codeberg.org/forgejo/api/v1' }),
+        expect.objectContaining({ baseURL: "https://codeberg.org/forgejo/api/v1" }),
       );
     });
 
-    it('preserves already-prefixed api URLs', () => {
-      createGiteaProvider({ baseURL: 'https://codeberg.org/api/v1', token: 'test-token' });
+    it("preserves already-prefixed api URLs", () => {
+      createGiteaProvider({ baseURL: "https://codeberg.org/api/v1", token: "test-token" });
 
       expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
-        expect.objectContaining({ baseURL: 'https://codeberg.org/api/v1' }),
+        expect.objectContaining({ baseURL: "https://codeberg.org/api/v1" }),
       );
     });
 
-    it('preserves already-prefixed api URLs under a subpath', () => {
-      createGiteaProvider({ baseURL: 'https://codeberg.org/forgejo/api/v1', token: 'test-token' });
+    it("preserves already-prefixed api URLs under a subpath", () => {
+      createGiteaProvider({ baseURL: "https://codeberg.org/forgejo/api/v1", token: "test-token" });
 
       expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
-        expect.objectContaining({ baseURL: 'https://codeberg.org/forgejo/api/v1' }),
+        expect.objectContaining({ baseURL: "https://codeberg.org/forgejo/api/v1" }),
       );
     });
 
-    it('does not treat api paths with extra trailing segments as already prefixed', () => {
+    it("does not treat api paths with extra trailing segments as already prefixed", () => {
       createGiteaProvider({
-        baseURL: 'https://codeberg.org/custom/api/v1/proxy',
-        token: 'test-token',
+        baseURL: "https://codeberg.org/custom/api/v1/proxy",
+        token: "test-token",
       });
 
       expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
-        expect.objectContaining({ baseURL: 'https://codeberg.org/custom/api/v1/proxy/api/v1' }),
+        expect.objectContaining({ baseURL: "https://codeberg.org/custom/api/v1/proxy/api/v1" }),
       );
     });
   });
 
   // --- repos ---
 
-  describe('repos.list', () => {
-    it('returns mapped repositories', async () => {
+  describe("repos.list", () => {
+    it("returns mapped repositories", async () => {
       mockedRawFetch.mockResolvedValueOnce({
-        data: [giteaRepo(), giteaRepo({ id: 101, name: 'repo-2', full_name: 'testowner/repo-2' })],
+        data: [giteaRepo(), giteaRepo({ id: 101, name: "repo-2", full_name: "testowner/repo-2" })],
         headers: makeHeaders(),
         status: 200,
       });
 
-      const result = await provider.repos.list('testowner');
+      const result = await provider.repos.list("testowner");
 
       expect(result.items).toHaveLength(2);
       expect(result.items[0]).toEqual({
-        id: '100',
-        name: 'test-repo',
-        fullName: 'testowner/test-repo',
-        description: 'A test repository',
+        id: "100",
+        name: "test-repo",
+        fullName: "testowner/test-repo",
+        description: "A test repository",
         private: false,
-        defaultBranch: 'main',
-        url: 'https://gitea.com/testowner/test-repo',
-        cloneUrl: 'https://gitea.com/testowner/test-repo.git',
-        owner: { login: 'testowner', avatarUrl: 'https://gitea.com/avatars/1' },
+        defaultBranch: "main",
+        url: "https://gitea.com/testowner/test-repo",
+        cloneUrl: "https://gitea.com/testowner/test-repo.git",
+        owner: { login: "testowner", avatarUrl: "https://gitea.com/avatars/1" },
       });
-      expect(result.items[1].id).toBe('101');
+      expect(result.items[1].id).toBe("101");
     });
 
-    it('uses limit param instead of per_page', async () => {
+    it("uses limit param instead of per_page", async () => {
       mockedRawFetch.mockResolvedValueOnce({
         data: [],
         headers: makeHeaders(),
         status: 200,
       });
 
-      await provider.repos.list('testowner', { perPage: 50 });
+      await provider.repos.list("testowner", { perPage: 50 });
 
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        '/users/testowner/repos',
-        { query: { limit: '50' } },
-      );
+      expect(mockedRawFetch).toHaveBeenCalledWith(expect.anything(), "/users/testowner/repos", {
+        query: { limit: "50" },
+      });
     });
 
-    it('passes page parameter', async () => {
+    it("passes page parameter", async () => {
       mockedRawFetch.mockResolvedValueOnce({
         data: [],
         headers: makeHeaders(),
         status: 200,
       });
 
-      await provider.repos.list('testowner', { page: 3, perPage: 10 });
+      await provider.repos.list("testowner", { page: 3, perPage: 10 });
 
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        '/users/testowner/repos',
-        { query: { page: '3', limit: '10' } },
-      );
+      expect(mockedRawFetch).toHaveBeenCalledWith(expect.anything(), "/users/testowner/repos", {
+        query: { page: "3", limit: "10" },
+      });
     });
 
-    it('parses Link header for pagination', async () => {
+    it("parses Link header for pagination", async () => {
       mockedRawFetch.mockResolvedValueOnce({
         data: [giteaRepo()],
         headers: makeHeaders({ Link: linkHeader(2, 30) }),
         status: 200,
       });
 
-      const result = await provider.repos.list('testowner');
+      const result = await provider.repos.list("testowner");
 
       expect(result.hasNextPage).toBe(true);
       expect(result.nextPage).toBe(2);
     });
 
-    it('handles empty results', async () => {
+    it("handles empty results", async () => {
       mockedRawFetch.mockResolvedValueOnce({
         data: [],
         headers: makeHeaders(),
         status: 200,
       });
 
-      const result = await provider.repos.list('testowner');
+      const result = await provider.repos.list("testowner");
 
       expect(result.items).toHaveLength(0);
       expect(result.hasNextPage).toBe(false);
     });
   });
 
-  describe('repos.get', () => {
-    it('returns a mapped repository', async () => {
+  describe("repos.get", () => {
+    it("returns a mapped repository", async () => {
       mockClient.mockResolvedValueOnce(giteaRepo());
 
-      const result = await provider.repos.get('testowner', 'test-repo');
+      const result = await provider.repos.get("testowner", "test-repo");
 
-      expect(result.id).toBe('100');
-      expect(result.fullName).toBe('testowner/test-repo');
-      expect(result.owner.login).toBe('testowner');
-      expect(mockClient).toHaveBeenCalledWith('/repos/testowner/test-repo');
+      expect(result.id).toBe("100");
+      expect(result.fullName).toBe("testowner/test-repo");
+      expect(result.owner.login).toBe("testowner");
+      expect(mockClient).toHaveBeenCalledWith("/repos/testowner/test-repo");
     });
   });
 
   // --- issues ---
 
-  describe('issues.list', () => {
-    it('returns mapped issues', async () => {
+  describe("issues.list", () => {
+    it("returns mapped issues", async () => {
       mockedRawFetch.mockResolvedValueOnce({
         data: [giteaIssue()],
         headers: makeHeaders(),
         status: 200,
       });
 
-      const result = await provider.issues.list('testowner', 'test-repo');
+      const result = await provider.issues.list("testowner", "test-repo");
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0]).toEqual({
-        id: '200',
+        id: "200",
         number: 1,
-        title: 'Test issue',
-        body: 'Issue body text',
-        state: 'open',
-        labels: ['bug'],
-        author: { login: 'testuser' },
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-02T00:00:00Z',
+        title: "Test issue",
+        body: "Issue body text",
+        state: "open",
+        labels: ["bug"],
+        author: { login: "testuser" },
+        createdAt: "2024-01-01T00:00:00Z",
+        updatedAt: "2024-01-02T00:00:00Z",
       });
     });
 
-    it('uses limit param and includes type=issues filter', async () => {
+    it("uses limit param and includes type=issues filter", async () => {
       mockedRawFetch.mockResolvedValueOnce({
         data: [],
         headers: makeHeaders(),
         status: 200,
       });
 
-      await provider.issues.list('testowner', 'test-repo', { perPage: 25 });
+      await provider.issues.list("testowner", "test-repo", { perPage: 25 });
 
       expect(mockedRawFetch).toHaveBeenCalledWith(
         expect.anything(),
-        '/repos/testowner/test-repo/issues',
-        { query: expect.objectContaining({ limit: '25', type: 'issues' }) },
+        "/repos/testowner/test-repo/issues",
+        { query: expect.objectContaining({ limit: "25", type: "issues" }) },
       );
     });
 
-    it('passes state filter', async () => {
+    it("passes state filter", async () => {
       mockedRawFetch.mockResolvedValueOnce({
         data: [],
         headers: makeHeaders(),
         status: 200,
       });
 
-      await provider.issues.list('testowner', 'test-repo', { state: 'closed' });
+      await provider.issues.list("testowner", "test-repo", { state: "closed" });
 
       expect(mockedRawFetch).toHaveBeenCalledWith(
         expect.anything(),
-        '/repos/testowner/test-repo/issues',
-        { query: expect.objectContaining({ state: 'closed', type: 'issues' }) },
+        "/repos/testowner/test-repo/issues",
+        { query: expect.objectContaining({ state: "closed", type: "issues" }) },
       );
     });
   });
 
-  describe('issues.get', () => {
-    it('returns a mapped issue', async () => {
+  describe("issues.get", () => {
+    it("returns a mapped issue", async () => {
       mockClient.mockResolvedValueOnce(giteaIssue());
 
-      const result = await provider.issues.get('testowner', 'test-repo', 1);
+      const result = await provider.issues.get("testowner", "test-repo", 1);
 
-      expect(result.id).toBe('200');
+      expect(result.id).toBe("200");
       expect(result.number).toBe(1);
-      expect(result.state).toBe('open');
-      expect(result.labels).toEqual(['bug']);
-      expect(result.author.login).toBe('testuser');
+      expect(result.state).toBe("open");
+      expect(result.labels).toEqual(["bug"]);
+      expect(result.author.login).toBe("testuser");
     });
   });
 
-  describe('issues.create', () => {
-    it('creates and returns a mapped issue', async () => {
-      mockClient.mockResolvedValueOnce(giteaIssue({ id: 201, number: 2, title: 'New issue' }));
+  describe("issues.create", () => {
+    it("creates and returns a mapped issue", async () => {
+      mockClient.mockResolvedValueOnce(giteaIssue({ id: 201, number: 2, title: "New issue" }));
 
-      const result = await provider.issues.create('testowner', 'test-repo', {
-        title: 'New issue',
-        body: 'Issue body',
+      const result = await provider.issues.create("testowner", "test-repo", {
+        title: "New issue",
+        body: "Issue body",
       });
 
-      expect(result.id).toBe('201');
+      expect(result.id).toBe("201");
       expect(result.number).toBe(2);
-      expect(result.title).toBe('New issue');
+      expect(result.title).toBe("New issue");
       expect(mockClient).toHaveBeenCalledWith(
-        '/repos/testowner/test-repo/issues',
+        "/repos/testowner/test-repo/issues",
         expect.objectContaining({
-          method: 'POST',
-          body: expect.objectContaining({ title: 'New issue', body: 'Issue body' }),
+          method: "POST",
+          body: expect.objectContaining({ title: "New issue", body: "Issue body" }),
         }),
       );
     });
 
-    it('includes labels when provided', async () => {
-      mockClient.mockResolvedValueOnce(giteaIssue({ labels: [{ id: 1, name: 'bug' }, { id: 2, name: 'urgent' }] }));
+    it("includes labels when provided", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaIssue({
+          labels: [
+            { id: 1, name: "bug" },
+            { id: 2, name: "urgent" },
+          ],
+        }),
+      );
 
-      await provider.issues.create('testowner', 'test-repo', {
-        title: 'Bug report',
-        body: 'Critical bug',
-        labels: ['bug', 'urgent'],
+      await provider.issues.create("testowner", "test-repo", {
+        title: "Bug report",
+        body: "Critical bug",
+        labels: ["bug", "urgent"],
       });
 
       expect(mockClient).toHaveBeenCalledWith(
-        '/repos/testowner/test-repo/issues',
+        "/repos/testowner/test-repo/issues",
         expect.objectContaining({
-          body: expect.objectContaining({ labels: ['bug', 'urgent'] }),
+          body: expect.objectContaining({ labels: ["bug", "urgent"] }),
         }),
       );
     });
@@ -399,109 +406,109 @@ describe('Gitea Provider', () => {
 
   // --- pullRequests ---
 
-  describe('pullRequests.list', () => {
-    it('returns mapped pull requests', async () => {
+  describe("pullRequests.list", () => {
+    it("returns mapped pull requests", async () => {
       mockedRawFetch.mockResolvedValueOnce({
         data: [giteaPullRequest()],
         headers: makeHeaders(),
         status: 200,
       });
 
-      const result = await provider.pullRequests.list('testowner', 'test-repo');
+      const result = await provider.pullRequests.list("testowner", "test-repo");
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0]).toEqual({
-        id: '300',
+        id: "300",
         number: 5,
-        title: 'Test PR',
-        body: 'PR body text',
-        state: 'open',
-        labels: ['enhancement'],
-        author: { login: 'testuser' },
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-02T00:00:00Z',
-        sourceBranch: 'feature-branch',
-        targetBranch: 'main',
+        title: "Test PR",
+        body: "PR body text",
+        state: "open",
+        labels: ["enhancement"],
+        author: { login: "testuser" },
+        createdAt: "2024-01-01T00:00:00Z",
+        updatedAt: "2024-01-02T00:00:00Z",
+        sourceBranch: "feature-branch",
+        targetBranch: "main",
         merged: false,
         draft: false,
       });
     });
 
-    it('uses limit param for pagination', async () => {
+    it("uses limit param for pagination", async () => {
       mockedRawFetch.mockResolvedValueOnce({
         data: [],
         headers: makeHeaders(),
         status: 200,
       });
 
-      await provider.pullRequests.list('testowner', 'test-repo', { perPage: 15 });
+      await provider.pullRequests.list("testowner", "test-repo", { perPage: 15 });
 
       expect(mockedRawFetch).toHaveBeenCalledWith(
         expect.anything(),
-        '/repos/testowner/test-repo/pulls',
-        { query: { limit: '15' } },
+        "/repos/testowner/test-repo/pulls",
+        { query: { limit: "15" } },
       );
     });
   });
 
-  describe('pullRequests.get', () => {
-    it('returns a mapped pull request', async () => {
+  describe("pullRequests.get", () => {
+    it("returns a mapped pull request", async () => {
       mockClient.mockResolvedValueOnce(giteaPullRequest());
 
-      const result = await provider.pullRequests.get('testowner', 'test-repo', 5);
+      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
 
-      expect(result.id).toBe('300');
-      expect(result.sourceBranch).toBe('feature-branch');
-      expect(result.targetBranch).toBe('main');
+      expect(result.id).toBe("300");
+      expect(result.sourceBranch).toBe("feature-branch");
+      expect(result.targetBranch).toBe("main");
       expect(result.merged).toBe(false);
       expect(result.draft).toBe(false);
     });
   });
 
-  describe('pullRequests.create', () => {
-    it('creates a pull request with head/base params', async () => {
+  describe("pullRequests.create", () => {
+    it("creates a pull request with head/base params", async () => {
       mockClient.mockResolvedValueOnce(giteaPullRequest({ id: 301 }));
 
-      const result = await provider.pullRequests.create('testowner', 'test-repo', {
-        title: 'New PR',
-        body: 'PR body',
-        sourceBranch: 'feature',
-        targetBranch: 'main',
+      const result = await provider.pullRequests.create("testowner", "test-repo", {
+        title: "New PR",
+        body: "PR body",
+        sourceBranch: "feature",
+        targetBranch: "main",
       });
 
-      expect(result.id).toBe('301');
+      expect(result.id).toBe("301");
       expect(mockClient).toHaveBeenCalledWith(
-        '/repos/testowner/test-repo/pulls',
+        "/repos/testowner/test-repo/pulls",
         expect.objectContaining({
-          method: 'POST',
+          method: "POST",
           body: expect.objectContaining({
-            title: 'New PR',
-            head: 'feature',
-            base: 'main',
+            title: "New PR",
+            head: "feature",
+            base: "main",
           }),
         }),
       );
     });
 
-    it('includes draft field in request body when specified', async () => {
+    it("includes draft field in request body when specified", async () => {
       mockClient.mockResolvedValueOnce(giteaPullRequest({ id: 302 }));
 
-      await provider.pullRequests.create('testowner', 'test-repo', {
-        title: 'Draft PR',
-        body: 'WIP',
-        sourceBranch: 'wip-branch',
-        targetBranch: 'main',
+      await provider.pullRequests.create("testowner", "test-repo", {
+        title: "Draft PR",
+        body: "WIP",
+        sourceBranch: "wip-branch",
+        targetBranch: "main",
         draft: true,
       });
 
       expect(mockClient).toHaveBeenCalledWith(
-        '/repos/testowner/test-repo/pulls',
+        "/repos/testowner/test-repo/pulls",
         expect.objectContaining({
-          method: 'POST',
+          method: "POST",
           body: expect.objectContaining({
-            title: 'Draft PR',
-            head: 'wip-branch',
-            base: 'main',
+            title: "Draft PR",
+            head: "wip-branch",
+            base: "main",
             draft: true,
           }),
         }),
@@ -511,124 +518,134 @@ describe('Gitea Provider', () => {
 
   // --- users ---
 
-  describe('users.get', () => {
-    it('returns a mapped user', async () => {
+  describe("users.get", () => {
+    it("returns a mapped user", async () => {
       mockClient.mockResolvedValueOnce(giteaUser());
 
-      const result = await provider.users.get('testuser');
+      const result = await provider.users.get("testuser");
 
       expect(result).toEqual({
-        id: '42',
-        login: 'testuser',
-        name: 'Test User',
-        email: 'test@example.com',
-        avatarUrl: 'https://gitea.com/avatars/42',
+        id: "42",
+        login: "testuser",
+        name: "Test User",
+        email: "test@example.com",
+        avatarUrl: "https://gitea.com/avatars/42",
         isAdmin: false,
       });
     });
   });
 
-  describe('users.authenticated', () => {
-    it('returns the authenticated user', async () => {
+  describe("users.authenticated", () => {
+    it("returns the authenticated user", async () => {
       mockClient.mockResolvedValueOnce(giteaUser({ is_admin: true }));
 
       const result = await provider.users.authenticated();
 
       expect(result.isAdmin).toBe(true);
-      expect(mockClient).toHaveBeenCalledWith('/user');
+      expect(mockClient).toHaveBeenCalledWith("/user");
     });
   });
 
   // --- Null-safe field handling ---
 
-  describe('null-safe field handling', () => {
-    it('handles null description on repository', async () => {
+  describe("null-safe field handling", () => {
+    it("handles null description on repository", async () => {
       mockClient.mockResolvedValueOnce(giteaRepo({ description: null }));
 
-      const result = await provider.repos.get('testowner', 'test-repo');
-      expect(result.description).toBe('');
+      const result = await provider.repos.get("testowner", "test-repo");
+      expect(result.description).toBe("");
     });
 
-    it('handles null default_branch on repository', async () => {
+    it("handles null default_branch on repository", async () => {
       mockClient.mockResolvedValueOnce(giteaRepo({ default_branch: null }));
 
-      const result = await provider.repos.get('testowner', 'test-repo');
-      expect(result.defaultBranch).toBe('main');
+      const result = await provider.repos.get("testowner", "test-repo");
+      expect(result.defaultBranch).toBe("main");
     });
 
-    it('handles null html_url and clone_url on repository', async () => {
+    it("handles null html_url and clone_url on repository", async () => {
       mockClient.mockResolvedValueOnce(giteaRepo({ html_url: null, clone_url: null }));
 
-      const result = await provider.repos.get('testowner', 'test-repo');
-      expect(result.url).toBe('');
-      expect(result.cloneUrl).toBe('');
+      const result = await provider.repos.get("testowner", "test-repo");
+      expect(result.url).toBe("");
+      expect(result.cloneUrl).toBe("");
     });
 
-    it('handles null avatar_url on owner', async () => {
-      mockClient.mockResolvedValueOnce(giteaRepo({
-        owner: { login: 'testowner', avatar_url: null },
-      }));
+    it("handles null avatar_url on owner", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaRepo({
+          owner: { login: "testowner", avatar_url: null },
+        }),
+      );
 
-      const result = await provider.repos.get('testowner', 'test-repo');
-      expect(result.owner.avatarUrl).toBe('');
+      const result = await provider.repos.get("testowner", "test-repo");
+      expect(result.owner.avatarUrl).toBe("");
     });
 
-    it('handles null body on issue', async () => {
+    it("handles null body on issue", async () => {
       mockClient.mockResolvedValueOnce(giteaIssue({ body: null }));
 
-      const result = await provider.issues.get('testowner', 'test-repo', 1);
-      expect(result.body).toBe('');
+      const result = await provider.issues.get("testowner", "test-repo", 1);
+      expect(result.body).toBe("");
     });
 
-    it('handles null labels on issue', async () => {
+    it("handles null labels on issue", async () => {
       mockClient.mockResolvedValueOnce(giteaIssue({ labels: null }));
 
-      const result = await provider.issues.get('testowner', 'test-repo', 1);
+      const result = await provider.issues.get("testowner", "test-repo", 1);
       expect(result.labels).toEqual([]);
     });
 
-    it('handles null head/base refs on pull request', async () => {
-      mockClient.mockResolvedValueOnce(giteaPullRequest({
-        head: null,
-        base: null,
-      }));
+    it("handles null head/base refs on pull request", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaPullRequest({
+          head: null,
+          base: null,
+        }),
+      );
 
-      const result = await provider.pullRequests.get('testowner', 'test-repo', 5);
-      expect(result.sourceBranch).toBe('');
-      expect(result.targetBranch).toBe('');
+      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
+      expect(result.sourceBranch).toBe("");
+      expect(result.targetBranch).toBe("");
     });
 
-    it('handles null ref inside head/base on pull request', async () => {
-      mockClient.mockResolvedValueOnce(giteaPullRequest({
-        head: { ref: null, label: null },
-        base: { ref: null, label: null },
-      }));
+    it("handles null ref inside head/base on pull request", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaPullRequest({
+          head: { ref: null, label: null },
+          base: { ref: null, label: null },
+        }),
+      );
 
-      const result = await provider.pullRequests.get('testowner', 'test-repo', 5);
-      expect(result.sourceBranch).toBe('');
-      expect(result.targetBranch).toBe('');
+      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
+      expect(result.sourceBranch).toBe("");
+      expect(result.targetBranch).toBe("");
     });
 
-    it('handles null user fields', async () => {
-      mockClient.mockResolvedValueOnce(giteaUser({
-        full_name: null,
-        email: null,
-        avatar_url: null,
-      }));
+    it("handles null user fields", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaUser({
+          full_name: null,
+          email: null,
+          avatar_url: null,
+        }),
+      );
 
-      const result = await provider.users.get('testuser');
-      expect(result.name).toBe('');
-      expect(result.email).toBe('');
-      expect(result.avatarUrl).toBe('');
+      const result = await provider.users.get("testuser");
+      expect(result.name).toBe("");
+      expect(result.email).toBe("");
+      expect(result.avatarUrl).toBe("");
     });
 
-    it('handles undefined merged and draft on pull request', async () => {
-      mockClient.mockResolvedValueOnce(giteaPullRequest({
-        merged: undefined,
-        draft: undefined,
-      }));
+    it("handles undefined merged and draft on pull request", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaPullRequest({
+          merged: undefined,
+          draft: undefined,
+        }),
+      );
 
-      const result = await provider.pullRequests.get('testowner', 'test-repo', 5);
+      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
       expect(result.merged).toBe(false);
       expect(result.draft).toBe(false);
     });
@@ -636,71 +653,71 @@ describe('Gitea Provider', () => {
 
   // --- Error handling ---
 
-  describe('error handling', () => {
-    it('wraps errors with normalizeError', async () => {
-      const fetchErr = new FetchError('Not Found');
+  describe("error handling", () => {
+    it("wraps errors with normalizeError", async () => {
+      const fetchErr = new FetchError("Not Found");
       (fetchErr as any).status = 404;
       mockClient.mockRejectedValueOnce(fetchErr);
 
-      await expect(provider.repos.get('bad', 'repo')).rejects.toThrow();
+      await expect(provider.repos.get("bad", "repo")).rejects.toThrow();
     });
 
-    it('wraps list errors with normalizeError', async () => {
-      const fetchErr = new FetchError('Unauthorized');
+    it("wraps list errors with normalizeError", async () => {
+      const fetchErr = new FetchError("Unauthorized");
       (fetchErr as any).status = 401;
       mockedRawFetch.mockRejectedValueOnce(fetchErr);
 
-      await expect(provider.repos.list('bad')).rejects.toThrow();
+      await expect(provider.repos.list("bad")).rejects.toThrow();
     });
   });
 
   // --- ID normalization ---
 
-  describe('ID normalization', () => {
-    it('converts numeric IDs to strings for repos', async () => {
+  describe("ID normalization", () => {
+    it("converts numeric IDs to strings for repos", async () => {
       mockClient.mockResolvedValueOnce(giteaRepo({ id: 999 }));
 
-      const result = await provider.repos.get('testowner', 'test-repo');
-      expect(result.id).toBe('999');
-      expect(typeof result.id).toBe('string');
+      const result = await provider.repos.get("testowner", "test-repo");
+      expect(result.id).toBe("999");
+      expect(typeof result.id).toBe("string");
     });
 
-    it('converts numeric IDs to strings for issues', async () => {
+    it("converts numeric IDs to strings for issues", async () => {
       mockClient.mockResolvedValueOnce(giteaIssue({ id: 888 }));
 
-      const result = await provider.issues.get('testowner', 'test-repo', 1);
-      expect(result.id).toBe('888');
-      expect(typeof result.id).toBe('string');
+      const result = await provider.issues.get("testowner", "test-repo", 1);
+      expect(result.id).toBe("888");
+      expect(typeof result.id).toBe("string");
     });
 
-    it('converts numeric IDs to strings for users', async () => {
+    it("converts numeric IDs to strings for users", async () => {
       mockClient.mockResolvedValueOnce(giteaUser({ id: 777 }));
 
-      const result = await provider.users.get('testuser');
-      expect(result.id).toBe('777');
-      expect(typeof result.id).toBe('string');
+      const result = await provider.users.get("testuser");
+      expect(result.id).toBe("777");
+      expect(typeof result.id).toBe("string");
     });
   });
 
   // --- State mapping ---
 
-  describe('state mapping', () => {
-    it('maps open state correctly for issues', async () => {
-      mockClient.mockResolvedValueOnce(giteaIssue({ state: 'open' }));
-      const result = await provider.issues.get('testowner', 'test-repo', 1);
-      expect(result.state).toBe('open');
+  describe("state mapping", () => {
+    it("maps open state correctly for issues", async () => {
+      mockClient.mockResolvedValueOnce(giteaIssue({ state: "open" }));
+      const result = await provider.issues.get("testowner", "test-repo", 1);
+      expect(result.state).toBe("open");
     });
 
-    it('maps closed state correctly for issues', async () => {
-      mockClient.mockResolvedValueOnce(giteaIssue({ state: 'closed' }));
-      const result = await provider.issues.get('testowner', 'test-repo', 1);
-      expect(result.state).toBe('closed');
+    it("maps closed state correctly for issues", async () => {
+      mockClient.mockResolvedValueOnce(giteaIssue({ state: "closed" }));
+      const result = await provider.issues.get("testowner", "test-repo", 1);
+      expect(result.state).toBe("closed");
     });
 
-    it('maps non-open state to closed for pull requests', async () => {
-      mockClient.mockResolvedValueOnce(giteaPullRequest({ state: 'closed', merged: true }));
-      const result = await provider.pullRequests.get('testowner', 'test-repo', 5);
-      expect(result.state).toBe('closed');
+    it("maps non-open state to closed for pull requests", async () => {
+      mockClient.mockResolvedValueOnce(giteaPullRequest({ state: "closed", merged: true }));
+      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
+      expect(result.state).toBe("closed");
       expect(result.merged).toBe(true);
     });
   });

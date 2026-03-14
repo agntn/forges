@@ -41,7 +41,7 @@ export interface Repository {
 /**
  * Issue state
  */
-export type IssueState = 'open' | 'closed';
+export type IssueState = "open" | "closed";
 
 /**
  * Issue information
@@ -86,7 +86,7 @@ export interface PageResult<T> {
 export interface ListOptions {
   page?: number;
   perPage?: number;
-  state?: IssueState | 'all';
+  state?: IssueState | "all";
 }
 
 /**
@@ -138,34 +138,18 @@ export interface RepositoryResource {
  * Resource accessor for issues
  */
 export interface IssueResource {
-  list(
-    owner: string,
-    repo: string,
-    options?: ListOptions
-  ): Promise<PageResult<Issue>>;
+  list(owner: string, repo: string, options?: ListOptions): Promise<PageResult<Issue>>;
   get(owner: string, repo: string, number: number): Promise<Issue>;
-  create(
-    owner: string,
-    repo: string,
-    input: CreateIssueInput
-  ): Promise<Issue>;
+  create(owner: string, repo: string, input: CreateIssueInput): Promise<Issue>;
 }
 
 /**
  * Resource accessor for pull requests
  */
 export interface PullRequestResource {
-  list(
-    owner: string,
-    repo: string,
-    options?: ListOptions
-  ): Promise<PageResult<PullRequest>>;
+  list(owner: string, repo: string, options?: ListOptions): Promise<PageResult<PullRequest>>;
   get(owner: string, repo: string, number: number): Promise<PullRequest>;
-  create(
-    owner: string,
-    repo: string,
-    input: CreatePullRequestInput
-  ): Promise<PullRequest>;
+  create(owner: string, repo: string, input: CreatePullRequestInput): Promise<PullRequest>;
 }
 
 /**

@@ -1,4 +1,8 @@
 node_modules
 dist
 *.tgz
+*.log
+.env*
+.agents
+.claude
 .sisyphus

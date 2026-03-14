@@ -28,11 +28,11 @@ import type {
   CreateIssueInput,
   CreatePullRequestInput,
   IssueState,
-} from '../types.js';
-import { createHttpClient, rawFetch } from '../http.js';
-import { cachedFetch } from '../cache.js';
-import { normalizeError, NotFoundError } from '../errors.js';
-import { normalizeApiBaseURL } from './base-url.js';
+} from "../types.js";
+import { createHttpClient, rawFetch } from "../http.js";
+import { cachedFetch } from "../cache.js";
+import { normalizeError, NotFoundError } from "../errors.js";
+import { normalizeApiBaseURL } from "./base-url.js";
 
 // GitLab API response types (internal)
 
@@ -102,12 +102,12 @@ function mapOwner(project: GitLabProject): Owner {
   if (project.owner) {
     return {
       login: project.owner.username,
-      avatarUrl: project.owner.avatar_url ?? '',
+      avatarUrl: project.owner.avatar_url ?? "",
     };
   }
   return {
     login: project.namespace.path,
-    avatarUrl: project.namespace.avatar_url ?? '',
+    avatarUrl: project.namespace.avatar_url ?? "",
   };
 }
 
@@ -116,9 +116,9 @@ function mapRepository(project: GitLabProject): Repository {
     id: String(project.id),
     name: project.name,
     fullName: project.path_with_namespace,
-    description: project.description ?? '',
-    private: project.visibility === 'private',
-    defaultBranch: project.default_branch ?? 'main',
+    description: project.description ?? "",
+    private: project.visibility === "private",
+    defaultBranch: project.default_branch ?? "main",
     url: project.web_url,
     cloneUrl: project.http_url_to_repo,
     owner: mapOwner(project),
@@ -127,7 +127,7 @@ function mapRepository(project: GitLabProject): Repository {
 
 function mapGitLabState(state: string): IssueState {
   // GitLab uses 'opened'/'closed'/'merged'
-  return state === 'closed' || state === 'merged' ? 'closed' : 'open';
+  return state === "closed" || state === "merged" ? "closed" : "open";
 }
 
 function mapIssue(issue: GitLabIssue): Issue {
@@ -135,7 +135,7 @@ function mapIssue(issue: GitLabIssue): Issue {
     id: String(issue.id),
     number: issue.iid,
     title: issue.title,
-    body: issue.description ?? '',
+    body: issue.description ?? "",
     state: mapGitLabState(issue.state),
     labels: issue.labels,
     author: { login: issue.author.username },
@@ -149,7 +149,7 @@ function mapMergeRequest(mr: GitLabMergeRequest): PullRequest {
     id: String(mr.id),
     number: mr.iid,
     title: mr.title,
-    body: mr.description ?? '',
+    body: mr.description ?? "",
     state: mapGitLabState(mr.state),
     labels: mr.labels,
     author: { login: mr.author.username },
@@ -167,17 +167,17 @@ function mapUser(user: GitLabUser): User {
     id: String(user.id),
     login: user.username,
     name: user.name,
-    email: user.email ?? '',
-    avatarUrl: user.avatar_url ?? '',
+    email: user.email ?? "",
+    avatarUrl: user.avatar_url ?? "",
     isAdmin: user.is_admin ?? false,
   };
 }
 
 // GitLab state filter mapping
-function mapStateFilter(state?: IssueState | 'all'): string | undefined {
-  if (!state || state === 'all') return undefined;
+function mapStateFilter(state?: IssueState | "all"): string | undefined {
+  if (!state || state === "all") return undefined;
   // GitLab uses 'opened' not 'open'
-  return state === 'open' ? 'opened' : state;
+  return state === "open" ? "opened" : state;
 }
 
 /**
@@ -225,17 +225,13 @@ export class GitLabProvider implements Provider {
   users: UserResource;
 
   constructor(config: ProviderConfig) {
-    const baseURL = normalizeApiBaseURL(
-      config.baseURL,
-      'https://gitlab.com/api/v4',
-      '/api/v4'
-    );
+    const baseURL = normalizeApiBaseURL(config.baseURL, "https://gitlab.com/api/v4", "/api/v4");
 
     this.client = createHttpClient({
       baseURL,
-      token: config.token ?? '',
-      tokenHeader: 'Private-Token',
-      tokenPrefix: '',
+      token: config.token ?? "",
+      tokenHeader: "Private-Token",
+      tokenPrefix: "",
     });
 
     this.projectIdCacheMax = normalizePositiveInteger(
@@ -259,11 +255,9 @@ export class GitLabProvider implements Provider {
     };
 
     this.pullRequests = {
-      list: (owner, repo, options?) =>
-        this.listMergeRequests(owner, repo, options),
+      list: (owner, repo, options?) => this.listMergeRequests(owner, repo, options),
       get: (owner, repo, number) => this.getMergeRequest(owner, repo, number),
-      create: (owner, repo, input) =>
-        this.createMergeRequest(owner, repo, input),
+      create: (owner, repo, input) => this.createMergeRequest(owner, repo, input),
     };
 
     this.users = {
@@ -328,94 +322,72 @@ export class GitLabProvider implements Provider {
 
     try {
       const encoded = encodeProjectPath(owner, repo);
-      const project = await this.client<GitLabProject>(
-        `/projects/${encoded}`
-      );
+      const project = await this.client<GitLabProject>(`/projects/${encoded}`);
       this.setCachedProjectId(key, project.id);
       return project.id;
     } catch (error: unknown) {
-      throw normalizeError(error, 'gitlab');
+      throw normalizeError(error, "gitlab");
     }
   }
 
   /**
    * Parse GitLab pagination headers into PageResult metadata.
    */
-  private parsePagination<T>(
-    items: T[],
-    headers: Headers
-  ): PageResult<T> {
-    const nextPage = headers.get('x-next-page');
-    const total = headers.get('x-total');
+  private parsePagination<T>(items: T[], headers: Headers): PageResult<T> {
+    const nextPage = headers.get("x-next-page");
+    const total = headers.get("x-total");
 
     return {
       items,
       totalCount: total ? parseInt(total, 10) : undefined,
-      hasNextPage: nextPage !== null && nextPage !== '',
-      nextPage:
-        nextPage !== null && nextPage !== ''
-          ? parseInt(nextPage, 10)
-          : undefined,
+      hasNextPage: nextPage !== null && nextPage !== "",
+      nextPage: nextPage !== null && nextPage !== "" ? parseInt(nextPage, 10) : undefined,
     };
   }
 
   // --- Repos ---
 
-  private async listRepos(
-    owner: string,
-    options?: ListOptions
-  ): Promise<PageResult<Repository>> {
+  private async listRepos(owner: string, options?: ListOptions): Promise<PageResult<Repository>> {
     try {
       // Try user projects first, fall back to group projects
       let response: Awaited<ReturnType<typeof rawFetch<GitLabProject[]>>>;
       try {
-        response = await rawFetch<GitLabProject[]>(
-          this.client,
-          `/users/${owner}/projects`,
-          {
-            query: {
-              page: options?.page ?? 1,
-              per_page: options?.perPage ?? 30,
-            },
-          }
-        );
+        response = await rawFetch<GitLabProject[]>(this.client, `/users/${owner}/projects`, {
+          query: {
+            page: options?.page ?? 1,
+            per_page: options?.perPage ?? 30,
+          },
+        });
       } catch (error: unknown) {
-        const normalized = normalizeError(error, 'gitlab');
+        const normalized = normalizeError(error, "gitlab");
         if (normalized.status !== 404) {
           throw normalized;
         }
 
-        response = await rawFetch<GitLabProject[]>(
-          this.client,
-          `/groups/${owner}/projects`,
-          {
-            query: {
-              page: options?.page ?? 1,
-              per_page: options?.perPage ?? 30,
-            },
-          }
-        );
+        response = await rawFetch<GitLabProject[]>(this.client, `/groups/${owner}/projects`, {
+          query: {
+            page: options?.page ?? 1,
+            per_page: options?.perPage ?? 30,
+          },
+        });
       }
 
       const repos = (response.data ?? []).map(mapRepository);
       return this.parsePagination(repos, response.headers);
     } catch (error: unknown) {
-      throw normalizeError(error, 'gitlab');
+      throw normalizeError(error, "gitlab");
     }
   }
 
   private async getRepo(owner: string, repo: string): Promise<Repository> {
     try {
       const encoded = encodeProjectPath(owner, repo);
-      const project = await cachedFetch<GitLabProject>(
-        this.client,
-        `/projects/${encoded}`
-      );
+      const project = await cachedFetch<GitLabProject>(this.client, `/projects/${encoded}`);
       // Cache project ID while we have it
       this.setCachedProjectId(`${owner}/${repo}`, project.id);
       return mapRepository(project);
     } catch (error: unknown) {
-      throw normalizeError(error, 'gitlab');
+      throw normalizeError(error, "gitlab");
     }
   }
 
@@ -424,7 +396,7 @@ export class GitLabProvider implements Provider {
   private async listIssues(
     owner: string,
     repo: string,
-    options?: ListOptions
+    options?: ListOptions,
   ): Promise<PageResult<Issue>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
@@ -438,57 +410,44 @@ export class GitLabProvider implements Provider {
         query.state = stateFilter;
       }
 
-      const response = await rawFetch<GitLabIssue[]>(
-        this.client,
-        `/projects/${projectId}/issues`,
-        { query }
-      );
+      const response = await rawFetch<GitLabIssue[]>(this.client, `/projects/${projectId}/issues`, {
+        query,
+      });
 
       const issues = (response.data ?? []).map(mapIssue);
       return this.parsePagination(issues, response.headers);
     } catch (error: unknown) {
-      throw normalizeError(error, 'gitlab');
+      throw normalizeError(error, "gitlab");
     }
   }
 
-  private async getIssue(
-    owner: string,
-    repo: string,
-    iid: number
-  ): Promise<Issue> {
+  private async getIssue(owner: string, repo: string, iid: number): Promise<Issue> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const issue = await cachedFetch<GitLabIssue>(
         this.client,
-        `/projects/${projectId}/issues/${iid}`
+        `/projects/${projectId}/issues/${iid}`,
       );
       return mapIssue(issue);
     } catch (error: unknown) {
-      throw normalizeError(error, 'gitlab');
+      throw normalizeError(error, "gitlab");
     }
   }
 
-  private async createIssue(
-    owner: string,
-    repo: string,
-    input: CreateIssueInput
-  ): Promise<Issue> {
+  private async createIssue(owner: string, repo: string, input: CreateIssueInput): Promise<Issue> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const issue = await this.client<GitLabIssue>(
-        `/projects/${projectId}/issues`,
-        {
-          method: 'POST',
-          body: {
-            title: input.title,
-            description: input.body,
-            labels: input.labels?.join(','),
-          },
-        }
-      );
+      const issue = await this.client<GitLabIssue>(`/projects/${projectId}/issues`, {
+        method: "POST",
+        body: {
+          title: input.title,
+          description: input.body,
+          labels: input.labels?.join(","),
+        },
+      });
       return mapIssue(issue);
     } catch (error: unknown) {
-      throw normalizeError(error, 'gitlab');
+      throw normalizeError(error, "gitlab");
     }
   }
 
@@ -497,7 +456,7 @@ export class GitLabProvider implements Provider {
   private async listMergeRequests(
     owner: string,
     repo: string,
-    options?: ListOptions
+    options?: ListOptions,
   ): Promise<PageResult<PullRequest>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
@@ -514,37 +473,33 @@ export class GitLabProvider implements Provider {
       const response = await rawFetch<GitLabMergeRequest[]>(
         this.client,
         `/projects/${projectId}/merge_requests`,
-        { query }
+        { query },
       );
 
       const prs = (response.data ?? []).map(mapMergeRequest);
       return this.parsePagination(prs, response.headers);
     } catch (error: unknown) {
-      throw normalizeError(error, 'gitlab');
+      throw normalizeError(error, "gitlab");
     }
   }
 
-  private async getMergeRequest(
-    owner: string,
-    repo: string,
-    iid: number
-  ): Promise<PullRequest> {
+  private async getMergeRequest(owner: string, repo: string, iid: number): Promise<PullRequest> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const mr = await cachedFetch<GitLabMergeRequest>(
         this.client,
-        `/projects/${projectId}/merge_requests/${iid}`
+        `/projects/${projectId}/merge_requests/${iid}`,
       );
       return mapMergeRequest(mr);
     } catch (error: unknown) {
-      throw normalizeError(error, 'gitlab');
+      throw normalizeError(error, "gitlab");
     }
   }
 
   private async createMergeRequest(
     owner: string,
     repo: string,
-    input: CreatePullRequestInput
+    input: CreatePullRequestInput,
   ): Promise<PullRequest> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
@@ -562,13 +517,13 @@ export class GitLabProvider implements Provider {
       const mr = await this.client<GitLabMergeRequest>(
         `/projects/${projectId}/merge_requests`,
         {
-          method: 'POST',
+          method: "POST",
           body,
         }
       );
       return mapMergeRequest(mr);
     } catch (error: unknown) {
-      throw normalizeError(error, 'gitlab');
+      throw normalizeError(error, "gitlab");
     }
   }
 
@@ -578,28 +533,24 @@ export class GitLabProvider implements Provider {
     try {
       // GitLab doesn't have a direct /users/:username endpoint.
       // Instead, search by username and take the first result.
-      const users = await cachedFetch<GitLabUser[]>(
-        this.client,
-        '/users',
-        { query: { username } }
-      );
+      const users = await cachedFetch<GitLabUser[]>(this.client, "/users", { query: { username } });
 
       if (!users.length) {
-        throw new NotFoundError(`User not found: ${username}`, 'gitlab');
+        throw new NotFoundError(`User not found: ${username}`, "gitlab");
       }
 
       return mapUser(users[0]);
     } catch (error: unknown) {
-      throw normalizeError(error, 'gitlab');
+      throw normalizeError(error, "gitlab");
     }
   }
 
   private async getAuthenticatedUser(): Promise<User> {
     try {
-      const user = await cachedFetch<GitLabUser>(this.client, '/user');
+      const user = await cachedFetch<GitLabUser>(this.client, "/user");
       return mapUser(user);
     } catch (error: unknown) {
-      throw normalizeError(error, 'gitlab');
+      throw normalizeError(error, "gitlab");
     }
   }
 }
