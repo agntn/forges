@@ -90,7 +90,13 @@ describe("createProvider factory", () => {
   });
 
   it("throws GixaError on unsupported platform", () => {
-    expect(() => createProvider("bitbucket" as any, baseConfig)).toThrow(GixaError);
+    try {
+      createProvider("bitbucket" as any, baseConfig);
+      throw new Error("expected createProvider to throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(GixaError);
+      expect((e as GixaError).platform).toBe("bitbucket");
+    }
   });
 
   it("throws AuthenticationError when no token is found", async () => {
