@@ -503,16 +503,24 @@ export class GitLabProvider implements Provider {
   ): Promise<PullRequest> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const mr = await this.client<GitLabMergeRequest>(`/projects/${projectId}/merge_requests`, {
-        method: "POST",
-        body: {
-          title: input.title,
-          description: input.body,
-          source_branch: input.sourceBranch,
-          target_branch: input.targetBranch,
-          // GitLab uses squash_on_merge or draft prefix, but direct draft field works on newer versions
-        },
-      });
+      const body: Record<string, unknown> = {
+        title: input.title,
+        description: input.body,
+        source_branch: input.sourceBranch,
+        target_branch: input.targetBranch,
+      };
+
+      if (input.draft !== undefined) {
+        body.draft = input.draft;
+      }
+
+      const mr = await this.client<GitLabMergeRequest>(
+        `/projects/${projectId}/merge_requests`,
+        {
+          method: "POST",
+          body,
+        }
+      );
       return mapMergeRequest(mr);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");

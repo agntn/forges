@@ -425,6 +425,50 @@ describe("GitLabProvider", () => {
         }),
       });
     });
+
+    it('passes draft flag when set to true', async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce({ ...glMergeRequest, draft: true });
+
+      await gl.pullRequests.create('gitlab-org', 'gitlab-foss', {
+        title: 'WIP: Draft MR',
+        body: 'Work in progress',
+        sourceBranch: 'draft/feature',
+        targetBranch: 'main',
+        draft: true,
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(
+        '/projects/278964/merge_requests',
+        {
+          method: 'POST',
+          body: {
+            title: 'WIP: Draft MR',
+            description: 'Work in progress',
+            source_branch: 'draft/feature',
+            target_branch: 'main',
+            draft: true,
+          },
+        },
+      );
+    });
+
+    it('omits draft field when not specified', async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glMergeRequest);
+
+      await gl.pullRequests.create('gitlab-org', 'gitlab-foss', {
+        title: 'Regular MR',
+        body: 'No draft flag',
+        sourceBranch: 'feature/y',
+        targetBranch: 'main',
+      });
+
+      const calls = mocks.client.mock.calls;
+      const callArgs = calls[calls.length - 1];
+      const body = callArgs[1].body;
+      expect(body).not.toHaveProperty('draft');
+    });
   });
 
   // --- Users ---
