@@ -63,7 +63,7 @@ export {
   invalidateCache,
   type CacheOptions,
   type CachedFetchOptions,
-} from './cache.js';
+} from "./cache.js";
 
 /**
  * Create a provider instance.
