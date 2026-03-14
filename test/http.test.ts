@@ -52,9 +52,9 @@ describe('createHttpClient', () => {
       token: 'ghp_abc123',
     });
 
-    const headers = new Map<string, string>();
+    const headers = new Headers();
     mockCreateConfigs[0].onRequest({
-      request: { headers: { set: (k: string, v: string) => headers.set(k, v) } },
+      options: { headers },
     });
 
     expect(headers.get('Authorization')).toBe('token ghp_abc123');
@@ -68,9 +68,9 @@ describe('createHttpClient', () => {
       tokenPrefix: '',
     });
 
-    const headers = new Map<string, string>();
+    const headers = new Headers();
     mockCreateConfigs[0].onRequest({
-      request: { headers: { set: (k: string, v: string) => headers.set(k, v) } },
+      options: { headers },
     });
 
     expect(headers.get('Private-Token')).toBe('glpat-xyz');
@@ -126,12 +126,12 @@ describe('createHttpClient', () => {
       token: '',
     });
 
-    const headers = new Map<string, string>();
+    const headers = new Headers();
     mockCreateConfigs[0].onRequest({
-      request: { headers: { set: (k: string, v: string) => headers.set(k, v) } },
+      options: { headers },
     });
 
-    expect(headers.size).toBe(0);
+    expect(headers.has('Authorization')).toBe(false);
   });
 });
 
