@@ -3,7 +3,7 @@
  * Allows direct imports: import { createGiteaProvider } from 'gixa/gitea'
  */
 
-export { createGiteaProvider } from './providers/gitea.js';
+export { createGiteaProvider } from "./providers/gitea.js";
 export type {
   User,
   Owner,
@@ -21,4 +21,4 @@ export type {
   PullRequestResource,
   UserResource,
   Provider,
-} from './types.js';
+} from "./types.js";

@@ -1,17 +1,32 @@
 {
   "name": "gixa",
   "version": "0.1.1",
-  "type": "module",
   "description": "Unified Git Provider - single TypeScript API for GitHub, GitLab, Gitea, and GitBucket",
+  "keywords": [
+    "api",
+    "git",
+    "gitbucket",
+    "gitea",
+    "github",
+    "gitlab",
+    "provider",
+    "unified"
+  ],
+  "homepage": "https://github.com/oritwoen/gixa#readme",
+  "bugs": "https://github.com/oritwoen/gixa/issues",
   "license": "MIT",
   "author": "oritwoen (https://github.com/oritwoen)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/oritwoen/gixa.git"
   },
-  "homepage": "https://github.com/oritwoen/gixa#readme",
-  "bugs": "https://github.com/oritwoen/gixa/issues",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
   "sideEffects": false,
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
@@ -34,20 +49,13 @@
       "import": "./dist/types.mjs"
     }
   },
-  "main": "./dist/index.mjs",
-  "types": "./dist/index.d.mts",
-  "files": [
-    "dist"
-  ],
-  "engines": {
-    "node": ">=22"
-  },
-  "packageManager": "pnpm@10.12.1",
   "scripts": {
     "build": "obuild",
     "dev": "obuild --stub",
     "test": "vitest",
     "test:run": "vitest --run",
+    "fmt": "oxlint . --fix && oxfmt .",
+    "lint": "oxlint . && oxfmt --check .",
     "typecheck": "tsc --noEmit",
     "prepack": "pnpm run build",
     "release": "pnpm test:run && pnpm build && changelogen --release --push"
@@ -60,17 +68,13 @@
     "@types/node": "^24.0.0",
     "changelogen": "^0.6.2",
     "obuild": "^0.4.31",
+    "oxfmt": "^0.36.0",
+    "oxlint": "^1.51.0",
     "typescript": "^5.8.0",
     "vitest": "^3.2.0"
   },
-  "keywords": [
-    "git",
-    "github",
-    "gitlab",
-    "gitea",
-    "gitbucket",
-    "api",
-    "unified",
-    "provider"
-  ]
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.12.1"
 }
