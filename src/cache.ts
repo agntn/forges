@@ -3,9 +3,9 @@
  * Provides caching for HTTP requests with TTL support
  */
 
-import { createStorage, Storage } from 'unstorage';
-import lruCacheDriver from 'unstorage/drivers/lru-cache';
-import type { $Fetch } from 'ofetch';
+import { createStorage, Storage } from "unstorage";
+import lruCacheDriver from "unstorage/drivers/lru-cache";
+import type { $Fetch } from "ofetch";
 
 /**
  * Options for cache creation
@@ -83,8 +83,10 @@ function generateCacheKey(url: string, options?: CachedFetchOptions): string {
 }
 
 function serializeQueryForCache(query: unknown): string {
-  if (typeof query === 'string') {
-    return serializeQueryEntries(new URLSearchParams(query.startsWith('?') ? query.slice(1) : query).entries());
+  if (typeof query === "string") {
+    return serializeQueryEntries(
+      new URLSearchParams(query.startsWith("?") ? query.slice(1) : query).entries(),
+    );
   }
 
   if (query instanceof URLSearchParams) {
@@ -121,7 +123,7 @@ function serializeQueryEntries(entries: Iterable<[string, string]>): string {
 
 function compareQueryEntries(
   [leftKey, _leftValue]: [string, string],
-  [rightKey, _rightValue]: [string, string]
+  [rightKey, _rightValue]: [string, string],
 ): number {
   return leftKey.localeCompare(rightKey);
 }
@@ -136,12 +138,12 @@ function compareQueryEntries(
 export async function cachedFetch<T = any>(
   client: $Fetch,
   url: string,
-  options?: CachedFetchOptions
+  options?: CachedFetchOptions,
 ): Promise<T> {
-  const method = (options?.method || 'GET').toUpperCase();
+  const method = (options?.method || "GET").toUpperCase();
 
   // Only cache GET requests
-  if (method !== 'GET') {
+  if (method !== "GET") {
     return client<T>(url, options);
   }
 
@@ -179,10 +181,7 @@ export async function clearCache(): Promise<void> {
  * @param url Request URL
  * @param options Request options
  */
-export async function invalidateCache(
-  url: string,
-  options?: CachedFetchOptions
-): Promise<void> {
+export async function invalidateCache(url: string, options?: CachedFetchOptions): Promise<void> {
   const storage = getStorage();
   const cacheKey = generateCacheKey(url, options);
   await storage.removeItem(cacheKey);

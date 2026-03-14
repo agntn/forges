@@ -87,7 +87,7 @@ try {
   const data = await cachedFetch<RawType>(this.client, url);
   return mapFunction(data);
 } catch (error) {
-  throw normalizeError(error, 'platform');
+  throw normalizeError(error, "platform");
 }
 ```
 
@@ -122,6 +122,7 @@ Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 ## Testing
 
 **Mock pattern** — tests use `vi.hoisted()` to create mocks before imports:
+
 ```typescript
 const mocks = vi.hoisted(() => {
   const client = vi.fn();

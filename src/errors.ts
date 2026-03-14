@@ -3,7 +3,7 @@
  * Provides consistent error handling across different Git providers
  */
 
-import { FetchError } from 'ofetch';
+import { FetchError } from "ofetch";
 
 /**
  * Base error class for gixa operations
@@ -13,7 +13,7 @@ export class GixaError extends Error {
     message: string,
     public status?: number,
     public platform?: string,
-    public originalError?: Error
+    public originalError?: Error,
   ) {
     super(message);
     this.name = this.constructor.name;
@@ -49,7 +49,7 @@ export class RateLimitError extends GixaError {
     message: string,
     public retryAfter?: number,
     platform?: string,
-    originalError?: Error
+    originalError?: Error,
   ) {
     super(message, 429, platform, originalError);
     Object.setPrototypeOf(this, RateLimitError.prototype);
@@ -73,26 +73,18 @@ export function normalizeError(error: unknown, platform?: string): GixaError {
 
     switch (status) {
       case 401:
-        return new AuthenticationError(
-          `Authentication failed: ${message}`,
-          platform,
-          error
-        );
+        return new AuthenticationError(`Authentication failed: ${message}`, platform, error);
       case 404:
-        return new NotFoundError(
-          `Resource not found: ${message}`,
-          platform,
-          error
-        );
+        return new NotFoundError(`Resource not found: ${message}`, platform, error);
       case 429: {
         const retryAfter = parseRetryAfter(
-          error.response?.headers?.get('Retry-After')
+          error.response?.headers?.get("Retry-After"),
         );
         return new RateLimitError(
           `Rate limit exceeded: ${message}`,
           retryAfter,
           platform,
-          error
+          error,
         );
       }
       default:
@@ -110,7 +102,7 @@ export function normalizeError(error: unknown, platform?: string): GixaError {
     String(error),
     undefined,
     platform,
-    error instanceof Error ? error : undefined
+    error instanceof Error ? error : undefined,
   );
 }
 
