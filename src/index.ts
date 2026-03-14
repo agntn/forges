@@ -93,7 +93,11 @@ export function createProvider(
     case "gitea":
       return createGiteaProvider(finalConfig);
     default:
-      throw new GixaError(`Unsupported platform: ${platform}. Supported: github, gitlab, gitea`);
+      throw new GixaError(
+        `Unsupported platform: ${platform}. Supported: github, gitlab, gitea`,
+        undefined,
+        platform,
+      );
   }
 }
 
