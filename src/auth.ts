@@ -116,22 +116,18 @@ function ghAuthToken(hostname: string): string | null {
 }
 
 /**
- * Run `glab auth status -t -h <hostname>` to get GitLab token.
- * glab prints token on stderr in format: "Token: glpat-..."
+ * Run `glab config get token` to read the stored GitLab token.
+ * Outputs the raw token to stdout, designed for scripting.
  */
 function glabAuthToken(hostname: string): string | null {
   try {
     const result = execFileSync(
       'glab',
-      ['auth', 'status', '-t', '-h', hostname],
+      ['config', 'get', 'token', '--host', hostname],
       { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] }
     );
-    // Try both stdout and stderr-captured output
-    const tokenMatch = result.match(/Token:\s*(\S+)/);
-    if (tokenMatch) return tokenMatch[1];
-    // If plain token on stdout
-    const trimmed = result.trim();
-    return trimmed || null;
+    const token = result.trim();
+    return token || null;
   } catch {
     return null;
   }
