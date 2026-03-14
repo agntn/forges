@@ -1,4 +1,8 @@
+import { createRequire } from 'node:module';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const require = createRequire(import.meta.url);
+const { version } = require('../package.json') as { version: string };
 
 const mockCreateConfigs: any[] = [];
 const mockRaw = vi.fn();
@@ -33,7 +37,7 @@ describe('createHttpClient', () => {
     expect(config.baseURL).toBe('https://api.github.com');
     expect(config.retry).toBe(2);
     expect(config.retryDelay).toBe(1000);
-    expect(config.headers['User-Agent']).toBe('gixa/0.1.1');
+    expect(config.headers['User-Agent']).toBe(`gixa/${version}`);
   });
 
   it('uses custom userAgent when provided', () => {
