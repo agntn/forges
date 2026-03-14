@@ -135,10 +135,15 @@ describe('resolveToken', () => {
       expect(result).toBeNull();
     });
 
-    it('runs glab for GitLab', () => {
-      mockedExecFileSync.mockReturnValueOnce('Token: glpat-fromcli\n');
+    it('runs glab config get token for GitLab', () => {
+      mockedExecFileSync.mockReturnValueOnce('glpat-fromcli\n');
       const result = resolveToken('gitlab');
       expect(result).toEqual({ token: 'glpat-fromcli', source: 'cli' });
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'glab',
+        ['config', 'get', 'token', '--host', 'gitlab.com'],
+        expect.objectContaining({ encoding: 'utf-8', timeout: 5000 })
+      );
     });
 
     it('skips tea CLI (relies on config files)', () => {
@@ -266,11 +271,11 @@ describe('resolveToken', () => {
     });
 
     it('defaults to gitlab.com for GitLab', () => {
-      mockedExecFileSync.mockReturnValueOnce('Token: token\n');
+      mockedExecFileSync.mockReturnValueOnce('token\n');
       resolveToken('gitlab');
       expect(mockedExecFileSync).toHaveBeenCalledWith(
         'glab',
-        ['auth', 'status', '-t', '-h', 'gitlab.com'],
+        ['config', 'get', 'token', '--host', 'gitlab.com'],
         expect.any(Object)
       );
     });
