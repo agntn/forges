@@ -3,7 +3,8 @@
  * Provides configurable authentication, retry logic, and rate limit awareness
  */
 
-import { $fetch, FetchError } from "ofetch";
+import { $fetch, FetchError } from 'ofetch';
+import pkg from '../package.json' with { type: 'json' };
 
 /**
  * Configuration for HTTP client
@@ -23,9 +24,9 @@ export function createHttpClient(config: HttpClientConfig) {
   const {
     baseURL,
     token,
-    tokenHeader = "Authorization",
-    tokenPrefix = "token ",
-    userAgent = "gixa/0.1.0",
+    tokenHeader = 'Authorization',
+    tokenPrefix = 'token ',
+    userAgent = `gixa/${pkg.version}`,
   } = config;
 
   return $fetch.create({
@@ -33,22 +34,24 @@ export function createHttpClient(config: HttpClientConfig) {
     retry: 2,
     retryDelay: 1000,
     headers: {
-      "User-Agent": userAgent,
+      'User-Agent': userAgent,
     },
-    onRequest({ options }) {
+    onRequest({ request }) {
       // Skip auth header for unauthenticated requests (empty token is intentional)
       if (token) {
         const authValue = tokenPrefix ? `${tokenPrefix}${token}` : token;
-        (options.headers as Headers).set(tokenHeader, authValue);
+        request.headers.set(tokenHeader, authValue);
       }
     },
     onResponseError({ response }) {
       // Warn on low rate limit
-      const remaining = response.headers.get("X-RateLimit-Remaining");
+      const remaining = response.headers.get('X-RateLimit-Remaining');
       if (remaining !== null) {
         const remainingCount = parseInt(remaining, 10);
         if (remainingCount < 10) {
-          console.warn(`[gixa] Rate limit warning: ${remainingCount} requests remaining`);
+          console.warn(
+            `[gixa] Rate limit warning: ${remainingCount} requests remaining`
+          );
         }
       }
     },
@@ -62,7 +65,7 @@ export function createHttpClient(config: HttpClientConfig) {
 export async function rawFetch<T = unknown>(
   client: ReturnType<typeof createHttpClient>,
   url: string,
-  options?: Record<string, unknown>,
+  options?: Record<string, unknown>
 ): Promise<{ data: T | undefined; headers: Headers; status: number }> {
   const response = await client.raw<T>(url, options);
   return {
