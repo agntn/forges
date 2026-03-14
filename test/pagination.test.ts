@@ -90,6 +90,36 @@ describe("paginate", () => {
     expect(pages).toHaveLength(1);
   });
 
+  it("throws on empty perPageParam", async () => {
+    const fetcher = async (_url: string) => ({
+      data: [{ id: 1 }],
+      headers: new Headers({}),
+    });
+
+    await expect(async () => {
+      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+        perPageParam: "",
+      })) {
+        /* drain */
+      }
+    }).rejects.toThrow("perPageParam must be a non-empty query parameter name");
+  });
+
+  it("throws on whitespace-only perPageParam", async () => {
+    const fetcher = async (_url: string) => ({
+      data: [{ id: 1 }],
+      headers: new Headers({}),
+    });
+
+    await expect(async () => {
+      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+        perPageParam: "  ",
+      })) {
+        /* drain */
+      }
+    }).rejects.toThrow("perPageParam must be a non-empty query parameter name");
+  });
+
   it("uses custom perPageParam when provided", async () => {
     const seenUrls: string[] = [];
     const fetcher = async (url: string) => {

@@ -98,6 +98,10 @@ export async function* paginate<T>(
   options: PaginationOptions = {},
 ): AsyncGenerator<T[], void, unknown> {
   const { perPage = 30, perPageParam = "per_page" } = options;
+  const normalizedPerPageParam = perPageParam.trim();
+  if (!normalizedPerPageParam) {
+    throw new Error("perPageParam must be a non-empty query parameter name");
+  }
   const maxPages = resolveMaxPages(options.maxPages);
   let baseURL: string;
   try {
@@ -113,8 +117,8 @@ export async function* paginate<T>(
   while (pageCount < maxPages) {
     // Add per_page parameter if not already present
     const urlObj = new URL(currentUrl, baseURL);
-    if (!urlObj.searchParams.has(perPageParam)) {
-      urlObj.searchParams.set(perPageParam, String(perPage));
+    if (!urlObj.searchParams.has(normalizedPerPageParam)) {
+      urlObj.searchParams.set(normalizedPerPageParam, String(perPage));
     }
     const requestUrl = urlObj.toString();
     const canonicalCurrentUrl = canonicalizePaginationUrl(requestUrl, baseURL);
