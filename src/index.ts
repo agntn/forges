@@ -9,6 +9,7 @@ import { GitLabProvider } from "./providers/gitlab.js";
 import { createGiteaProvider } from "./providers/gitea.js";
 import { resolveToken } from "./auth.js";
 import type { Platform } from "./auth.js";
+import { AuthenticationError, GixaError } from "./errors.js";
 
 // --- Type exports ---
 export type {
@@ -71,10 +72,11 @@ export function createProvider(
   });
 
   if (!resolved) {
-    throw new Error(
+    throw new AuthenticationError(
       `No auth token found for ${platform}. ` +
         `Set ${envHint(platform)}, pass { token: '...' }, ` +
         `or log in with ${cliHint(platform)}.`,
+      platform,
     );
   }
 
@@ -91,7 +93,11 @@ export function createProvider(
     case "gitea":
       return createGiteaProvider(finalConfig);
     default:
-      throw new Error(`Unsupported platform: ${platform}. Supported: github, gitlab, gitea`);
+      throw new GixaError(
+        `Unsupported platform: ${platform}. Supported: github, gitlab, gitea`,
+        undefined,
+        platform,
+      );
   }
 }
 
