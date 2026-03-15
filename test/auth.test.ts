@@ -94,6 +94,13 @@ describe("resolveToken", () => {
       const result = resolveToken("gitea");
       expect(result).toEqual({ token: "gitea-abc", source: "env" });
     });
+
+    it("stops the chain when env var is empty string", () => {
+      process.env.GH_TOKEN = "";
+      const result = resolveToken("github");
+      expect(result).toEqual({ token: "", source: "env" });
+      expect(mockedExecFileSync).not.toHaveBeenCalled();
+    });
   });
 
   // --- CLI tools ---
