@@ -42,6 +42,16 @@ export class AuthenticationError extends GixaError {
 }
 
 /**
+ * Thrown when the server understands the request but refuses to authorize it (403)
+ */
+export class PermissionError extends GixaError {
+  constructor(message: string, platform?: string, originalError?: Error) {
+    super(message, 403, platform, originalError);
+    Object.setPrototypeOf(this, PermissionError.prototype);
+  }
+}
+
+/**
  * Thrown when rate limit is exceeded (429)
  */
 export class RateLimitError extends GixaError {
@@ -74,6 +84,8 @@ export function normalizeError(error: unknown, platform?: string): GixaError {
     switch (status) {
       case 401:
         return new AuthenticationError(`Authentication failed: ${message}`, platform, error);
+      case 403:
+        return new PermissionError(`Permission denied: ${message}`, platform, error);
       case 404:
         return new NotFoundError(`Resource not found: ${message}`, platform, error);
       case 429: {

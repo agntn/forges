@@ -4,6 +4,7 @@ import {
   normalizeError,
   GixaError,
   AuthenticationError,
+  PermissionError,
   NotFoundError,
   RateLimitError,
 } from "../src/errors";
@@ -31,6 +32,17 @@ describe("normalizeError", () => {
     expect(result.status).toBe(401);
     expect(result.platform).toBe("github");
     expect(result.message).toContain("Authentication failed");
+    expect(result.originalError).toBe(err);
+  });
+
+  it("maps 403 FetchError to PermissionError", () => {
+    const err = createFetchError("Forbidden", 403);
+    const result = normalizeError(err, "github");
+
+    expect(result).toBeInstanceOf(PermissionError);
+    expect(result.status).toBe(403);
+    expect(result.platform).toBe("github");
+    expect(result.message).toContain("Permission denied");
     expect(result.originalError).toBe(err);
   });
 
