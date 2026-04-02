@@ -46,6 +46,35 @@ describe("normalizeError", () => {
     expect(result.originalError).toBe(err);
   });
 
+  it("maps 403 with x-ratelimit-remaining 0 to RateLimitError", () => {
+    const err = createFetchError("Forbidden", 403, {
+      "x-ratelimit-remaining": "0",
+    });
+    const result = normalizeError(err, "github");
+
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect(result.status).toBe(429);
+    expect(result.message).toContain("Rate limit exceeded");
+  });
+
+  it("maps 403 with Retry-After header to RateLimitError", () => {
+    const err = createFetchError("Forbidden", 403, {
+      "Retry-After": "120",
+    });
+    const result = normalizeError(err, "github");
+
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect((result as RateLimitError).retryAfter).toBe(120);
+  });
+
+  it("maps 403 with rate limit message to RateLimitError", () => {
+    const err = createFetchError("API rate limit exceeded", 403);
+    const result = normalizeError(err, "github");
+
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect(result.message).toContain("Rate limit exceeded");
+  });
+
   it("maps 404 FetchError to NotFoundError", () => {
     const err = createFetchError("Not Found", 404);
     const result = normalizeError(err, "gitea");

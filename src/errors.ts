@@ -84,8 +84,24 @@ export function normalizeError(error: unknown, platform?: string): GixaError {
     switch (status) {
       case 401:
         return new AuthenticationError(`Authentication failed: ${message}`, platform, error);
-      case 403:
+      case 403: {
+        if (
+          error.response?.headers?.get("x-ratelimit-remaining") === "0" ||
+          error.response?.headers?.has("Retry-After") ||
+          /rate limit/i.test(message)
+        ) {
+          const retryAfter = parseRetryAfter(
+            error.response?.headers?.get("Retry-After"),
+          );
+          return new RateLimitError(
+            `Rate limit exceeded: ${message}`,
+            retryAfter,
+            platform,
+            error,
+          );
+        }
         return new PermissionError(`Permission denied: ${message}`, platform, error);
+      }
       case 404:
         return new NotFoundError(`Resource not found: ${message}`, platform, error);
       case 429: {
