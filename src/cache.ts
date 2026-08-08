@@ -20,7 +20,7 @@ export interface CacheOptions {
  */
 export interface CachedFetchOptions {
   method?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -135,7 +135,7 @@ function compareQueryEntries(
  * @param options Request options
  * @returns Cached or fresh response
  */
-export async function cachedFetch<T = any>(
+export async function cachedFetch<T>(
   client: $Fetch,
   url: string,
   options?: CachedFetchOptions,
@@ -159,8 +159,8 @@ export async function cachedFetch<T = any>(
   // Cache miss: fetch from client
   const result = options ? await client<T>(url, options) : await client<T>(url);
 
-  // Store in cache (cast to StorageValue)
-  await storage.setItem(cacheKey, result as any);
+  // Store in cache
+  await storage.setItem(cacheKey, result as Record<string, unknown>);
 
   return result;
 }
