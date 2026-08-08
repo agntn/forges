@@ -3,13 +3,14 @@
  * Main entry point with factory function and public API exports
  */
 
-import type { ProviderConfig, Provider } from "./types.js";
-import { GitHubProvider } from "./providers/github.js";
-import { GitLabProvider } from "./providers/gitlab.js";
-import { createGiteaProvider } from "./providers/gitea.js";
-import { resolveToken } from "./auth.js";
-import type { Platform } from "./auth.js";
-import { AuthenticationError, GixaError } from "./errors.js";
+import { Provider } from "./provider.ts";
+import type { ProviderConfig } from "./types.ts";
+import { GitHubProvider } from "./providers/github.ts";
+import { GitLabProvider } from "./providers/gitlab.ts";
+import { GiteaProvider } from "./providers/gitea.ts";
+import { resolveToken } from "./auth.ts";
+import type { Platform } from "./auth.ts";
+import { AuthenticationError, GixaError } from "./errors.ts";
 
 // --- Type exports ---
 export type {
@@ -28,12 +29,14 @@ export type {
   IssueResource,
   PullRequestResource,
   UserResource,
-  Provider,
-} from "./types.js";
+} from "./types.ts";
+
+export { Provider } from "./provider.ts";
+export type { ProviderRawTypes } from "./provider.ts";
 
 // --- Auth exports ---
-export { resolveToken } from "./auth.js";
-export type { Platform, AuthResult } from "./auth.js";
+export { resolveToken } from "./auth.ts";
+export type { Platform, AuthResult } from "./auth.ts";
 
 // --- Error exports ---
 export {
@@ -43,7 +46,7 @@ export {
   PermissionError,
   RateLimitError,
   normalizeError,
-} from "./errors.js";
+} from "./errors.ts";
 
 // --- Utility exports ---
 export {
@@ -52,9 +55,15 @@ export {
   fetchAllPages,
   type LinkHeaderEntry,
   type PaginationOptions,
-} from "./pagination.js";
+} from "./pagination.ts";
 
-export { createHttpClient, rawFetch, FetchError } from "./http.js";
+export {
+  createHttpClient,
+  rawFetch,
+  FetchError,
+  type HttpClient,
+  type RawFetchResult,
+} from "./http.ts";
 
 export {
   createCache,
@@ -64,7 +73,7 @@ export {
   invalidateCache,
   type CacheOptions,
   type CachedFetchOptions,
-} from "./cache.js";
+} from "./cache.ts";
 
 /**
  * Create a provider instance.
@@ -102,7 +111,7 @@ export function createProvider(
     case "gitlab":
       return new GitLabProvider(finalConfig);
     case "gitea":
-      return createGiteaProvider(finalConfig);
+      return new GiteaProvider(finalConfig);
     default:
       throw new GixaError(
         `Unsupported platform: ${platform}. Supported: github, gitlab, gitea`,

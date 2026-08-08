@@ -7,7 +7,7 @@ import {
   PermissionError,
   NotFoundError,
   RateLimitError,
-} from "../src/errors";
+} from "../src/errors.ts";
 
 function createFetchError(
   message: string,

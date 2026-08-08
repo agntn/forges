@@ -4,8 +4,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createGiteaProvider } from "../src/providers/gitea";
-import type { Provider } from "../src/types";
+import { GiteaProvider } from "../src/providers/gitea.ts";
+import { Provider } from "../src/provider.ts";
 
 // -- Mock HTTP layer --
 
@@ -17,22 +17,22 @@ const mockRawResponse = {
 
 const mockClient = vi.fn().mockResolvedValue({});
 
-vi.mock("../src/http", () => ({
+vi.mock("../src/http.ts", () => ({
   createHttpClient: vi.fn(() => mockClient),
   rawFetch: vi.fn(async (_client: unknown, _url: string, _opts?: unknown) => ({
     ...mockRawResponse,
   })),
 }));
 
-vi.mock("../src/cache", () => ({
-  cachedFetch: vi.fn(async (client: any, url: string, opts?: any) =>
+vi.mock("../src/cache.ts", () => ({
+  cachedFetch: vi.fn(async (client: (...args: unknown[]) => unknown, url: string, opts?: unknown) =>
     opts ? client(url, opts) : client(url),
   ),
 }));
 
 // Import mocked modules to control them
-import { rawFetch } from "../src/http";
-import { createHttpClient } from "../src/http";
+import { rawFetch } from "../src/http.ts";
+import { createHttpClient } from "../src/http.ts";
 import { FetchError } from "ofetch";
 
 const mockedRawFetch = vi.mocked(rawFetch);
@@ -128,10 +128,14 @@ describe("Gitea Provider", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    provider = createGiteaProvider({ token: "test-token" });
+    provider = new GiteaProvider({ token: "test-token" });
   });
 
   describe("provider setup", () => {
+    it("extends the abstract Provider base class", () => {
+      expect(provider).toBeInstanceOf(Provider);
+    });
+
     it("defaults to the public API base URL", () => {
       expect(mockedCreateHttpClient).toHaveBeenCalledWith(
         expect.objectContaining({ baseURL: "https://gitea.com/api/v1" }),
@@ -139,7 +143,7 @@ describe("Gitea Provider", () => {
     });
 
     it("defaults to the public API base URL when baseURL is empty", () => {
-      createGiteaProvider({ baseURL: "", token: "test-token" });
+      new GiteaProvider({ baseURL: "", token: "test-token" });
 
       expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
         expect.objectContaining({ baseURL: "https://gitea.com/api/v1" }),
@@ -147,7 +151,7 @@ describe("Gitea Provider", () => {
     });
 
     it("appends /api/v1 for root instance URLs", () => {
-      createGiteaProvider({ baseURL: "https://codeberg.org", token: "test-token" });
+      new GiteaProvider({ baseURL: "https://codeberg.org", token: "test-token" });
 
       expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
         expect.objectContaining({ baseURL: "https://codeberg.org/api/v1" }),
@@ -155,7 +159,7 @@ describe("Gitea Provider", () => {
     });
 
     it("appends /api/v1 for subpath instance URLs with trailing slash", () => {
-      createGiteaProvider({ baseURL: "https://codeberg.org/forgejo/", token: "test-token" });
+      new GiteaProvider({ baseURL: "https://codeberg.org/forgejo/", token: "test-token" });
 
       expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
         expect.objectContaining({ baseURL: "https://codeberg.org/forgejo/api/v1" }),
@@ -163,7 +167,7 @@ describe("Gitea Provider", () => {
     });
 
     it("preserves already-prefixed api URLs", () => {
-      createGiteaProvider({ baseURL: "https://codeberg.org/api/v1", token: "test-token" });
+      new GiteaProvider({ baseURL: "https://codeberg.org/api/v1", token: "test-token" });
 
       expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
         expect.objectContaining({ baseURL: "https://codeberg.org/api/v1" }),
@@ -171,7 +175,7 @@ describe("Gitea Provider", () => {
     });
 
     it("preserves already-prefixed api URLs under a subpath", () => {
-      createGiteaProvider({ baseURL: "https://codeberg.org/forgejo/api/v1", token: "test-token" });
+      new GiteaProvider({ baseURL: "https://codeberg.org/forgejo/api/v1", token: "test-token" });
 
       expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
         expect.objectContaining({ baseURL: "https://codeberg.org/forgejo/api/v1" }),
@@ -179,7 +183,7 @@ describe("Gitea Provider", () => {
     });
 
     it("does not treat api paths with extra trailing segments as already prefixed", () => {
-      createGiteaProvider({
+      new GiteaProvider({
         baseURL: "https://codeberg.org/custom/api/v1/proxy",
         token: "test-token",
       });
@@ -283,6 +287,24 @@ describe("Gitea Provider", () => {
       expect(result.owner.login).toBe("testowner");
       expect(mockClient).toHaveBeenCalledWith("/repos/testowner/test-repo");
     });
+
+    it("encodes repository path segments before transport", async () => {
+      mockClient.mockResolvedValueOnce(giteaRepo());
+
+      await provider.repos.get("test owner", "test#repo");
+
+      expect(mockClient).toHaveBeenCalledWith("/repos/test%20owner/test%23repo");
+    });
+
+    it.each(["", ".", "..", "../admin", "team/admin", "team\\admin", "%2e%2e", "%2Fadmin"])(
+      "rejects unsafe repository path segment %j before transport",
+      async (segment) => {
+        await expect(provider.repos.get(segment, "test-repo")).rejects.toThrow(
+          "Invalid API path segment",
+        );
+        expect(mockClient).not.toHaveBeenCalled();
+      },
+    );
   });
 
   // --- issues ---
@@ -656,7 +678,7 @@ describe("Gitea Provider", () => {
   describe("error handling", () => {
     it("wraps errors with normalizeError", async () => {
       const fetchErr = new FetchError("Not Found");
-      (fetchErr as any).status = 404;
+      fetchErr.status = 404;
       mockClient.mockRejectedValueOnce(fetchErr);
 
       await expect(provider.repos.get("bad", "repo")).rejects.toThrow();
@@ -664,7 +686,7 @@ describe("Gitea Provider", () => {
 
     it("wraps list errors with normalizeError", async () => {
       const fetchErr = new FetchError("Unauthorized");
-      (fetchErr as any).status = 401;
+      fetchErr.status = 401;
       mockedRawFetch.mockRejectedValueOnce(fetchErr);
 
       await expect(provider.repos.list("bad")).rejects.toThrow();

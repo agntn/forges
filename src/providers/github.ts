@@ -3,8 +3,8 @@
  * Also serves GitBucket (GitHub API v3 compatible) via custom baseURL
  */
 
+import { Provider, type ProviderRawTypes } from "../provider.ts";
 import type {
-  Provider,
   ProviderConfig,
   Repository,
   Issue,
@@ -15,16 +15,13 @@ import type {
   ListOptions,
   CreateIssueInput,
   CreatePullRequestInput,
-  RepositoryResource,
-  IssueResource,
-  PullRequestResource,
-  UserResource,
   IssueState,
-} from "../types.js";
-import { createHttpClient, rawFetch } from "../http.js";
-import { cachedFetch } from "../cache.js";
-import { parseLinkHeader } from "../pagination.js";
-import { normalizeError } from "../errors.js";
+} from "../types.ts";
+import { createHttpClient, rawFetch, type HttpClient } from "../http.ts";
+import { cachedFetch } from "../cache.ts";
+import { parseLinkHeader } from "../pagination.ts";
+import { encodePathSegment } from "./base-url.ts";
+import { normalizeError } from "../errors.ts";
 
 // --- GitHub API response types (snake_case) ---
 
@@ -78,62 +75,12 @@ interface GitHubPullRequest extends GitHubIssue {
   draft: boolean;
 }
 
-// --- Mappers (snake_case → camelCase) ---
-
-function mapOwner(gh: GitHubOwner): Owner {
-  return {
-    login: gh.login,
-    avatarUrl: gh.avatar_url,
-  };
-}
-
-function mapRepository(gh: GitHubRepo): Repository {
-  return {
-    id: String(gh.id),
-    name: gh.name,
-    fullName: gh.full_name,
-    description: gh.description ?? "",
-    private: gh.private,
-    defaultBranch: gh.default_branch,
-    url: gh.html_url,
-    cloneUrl: gh.clone_url,
-    owner: mapOwner(gh.owner),
-  };
-}
-
-function mapUser(gh: GitHubUser): User {
-  return {
-    id: String(gh.id),
-    login: gh.login,
-    name: gh.name ?? "",
-    email: gh.email ?? "",
-    avatarUrl: gh.avatar_url,
-    isAdmin: gh.site_admin,
-  };
-}
-
-function mapIssue(gh: GitHubIssue): Issue {
-  return {
-    id: String(gh.id),
-    number: gh.number,
-    title: gh.title,
-    body: gh.body ?? "",
-    state: gh.state as IssueState,
-    labels: gh.labels.map((l) => l.name),
-    author: { login: gh.user.login },
-    createdAt: gh.created_at,
-    updatedAt: gh.updated_at,
-  };
-}
-
-function mapPullRequest(gh: GitHubPullRequest): PullRequest {
-  return {
-    ...mapIssue(gh),
-    sourceBranch: gh.head.ref,
-    targetBranch: gh.base.ref,
-    merged: gh.merged,
-    draft: gh.draft,
-  };
+interface GitHubRawTypes extends ProviderRawTypes {
+  owner: GitHubOwner;
+  repository: GitHubRepo;
+  issue: GitHubIssue;
+  pullRequest: GitHubPullRequest;
+  user: GitHubUser;
 }
 
 // --- Pagination helper ---
@@ -163,66 +110,105 @@ function buildPageResult<TRaw, TMapped>(
 
 // --- Provider ---
 
-export class GitHubProvider implements Provider {
-  private client: ReturnType<typeof createHttpClient>;
-  public repos: RepositoryResource;
-  public issues: IssueResource;
-  public pullRequests: PullRequestResource;
-  public users: UserResource;
+export class GitHubProvider extends Provider<GitHubRawTypes> {
+  private client: HttpClient;
 
   constructor(config: ProviderConfig) {
+    super();
     this.client = createHttpClient({
       baseURL: config.baseURL || "https://api.github.com",
       token: config.token ?? "",
       tokenHeader: "Authorization",
       tokenPrefix: "token ",
     });
+  }
 
-    this.repos = {
-      list: (owner, options) => this.listRepos(owner, options),
-      get: (owner, repo) => this.getRepo(owner, repo),
+  protected override mapOwner(raw: GitHubOwner): Owner {
+    return {
+      login: raw.login,
+      avatarUrl: raw.avatar_url,
     };
+  }
 
-    this.issues = {
-      list: (owner, repo, options) => this.listIssues(owner, repo, options),
-      get: (owner, repo, num) => this.getIssue(owner, repo, num),
-      create: (owner, repo, input) => this.createIssue(owner, repo, input),
+  protected override mapRepository(raw: GitHubRepo): Repository {
+    return {
+      id: String(raw.id),
+      name: raw.name,
+      fullName: raw.full_name,
+      description: raw.description ?? "",
+      private: raw.private,
+      defaultBranch: raw.default_branch,
+      url: raw.html_url,
+      cloneUrl: raw.clone_url,
+      owner: this.mapOwner(raw.owner),
     };
+  }
 
-    this.pullRequests = {
-      list: (owner, repo, options) => this.listPullRequests(owner, repo, options),
-      get: (owner, repo, num) => this.getPullRequest(owner, repo, num),
-      create: (owner, repo, input) => this.createPullRequest(owner, repo, input),
+  protected override mapIssue(raw: GitHubIssue): Issue {
+    return {
+      id: String(raw.id),
+      number: raw.number,
+      title: raw.title,
+      body: raw.body ?? "",
+      state: raw.state as IssueState,
+      labels: raw.labels.map((label) => label.name),
+      author: { login: raw.user.login },
+      createdAt: raw.created_at,
+      updatedAt: raw.updated_at,
     };
+  }
 
-    this.users = {
-      get: (username) => this.getUser(username),
-      authenticated: () => this.getAuthenticatedUser(),
+  protected override mapPullRequest(raw: GitHubPullRequest): PullRequest {
+    return {
+      ...this.mapIssue(raw),
+      sourceBranch: raw.head.ref,
+      targetBranch: raw.base.ref,
+      merged: raw.merged,
+      draft: raw.draft,
+    };
+  }
+
+  protected override mapUser(raw: GitHubUser): User {
+    return {
+      id: String(raw.id),
+      login: raw.login,
+      name: raw.name ?? "",
+      email: raw.email ?? "",
+      avatarUrl: raw.avatar_url,
+      isAdmin: raw.site_admin,
     };
   }
 
   // --- Repos ---
 
-  private async listRepos(owner: string, options?: ListOptions): Promise<PageResult<Repository>> {
+  protected override async listRepos(
+    owner: string,
+    options?: ListOptions,
+  ): Promise<PageResult<Repository>> {
     try {
       const query: Record<string, string> = {};
       if (options?.page) query.page = String(options.page);
       if (options?.perPage) query.per_page = String(options.perPage);
 
-      const { data, headers } = await rawFetch<GitHubRepo[]>(this.client, `/users/${owner}/repos`, {
-        query,
-      });
+      const { data, headers } = await rawFetch<GitHubRepo[]>(
+        this.client,
+        `/users/${encodePathSegment(owner)}/repos`,
+        { query },
+      );
 
-      return buildPageResult(data ?? [], headers, mapRepository);
+      return buildPageResult(data ?? [], headers, (raw) => this.mapRepository(raw));
     } catch (error) {
       throw normalizeError(error, "github");
     }
   }
 
-  private async getRepo(owner: string, repo: string): Promise<Repository> {
+  protected override async getRepo(owner: string, repo: string): Promise<Repository> {
     try {
-      const data = await cachedFetch<GitHubRepo>(this.client, `/repos/${owner}/${repo}`);
-      return mapRepository(data);
+      const data = await cachedFetch<GitHubRepo>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
+      );
+      return this.mapRepository(data);
     } catch (error) {
       throw normalizeError(error, "github");
     }
@@ -230,7 +216,7 @@ export class GitHubProvider implements Provider {
 
   // --- Issues ---
 
-  private async listIssues(
+  protected override async listIssues(
     owner: string,
     repo: string,
     options?: ListOptions,
@@ -243,40 +229,51 @@ export class GitHubProvider implements Provider {
 
       const { data, headers } = await rawFetch<GitHubIssue[]>(
         this.client,
-        `/repos/${owner}/${repo}/issues`,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`,
         { query },
       );
 
       const issuesOnly = (data ?? []).filter((issue) => issue.pull_request === undefined);
-      return buildPageResult(issuesOnly, headers, mapIssue);
+      return buildPageResult(issuesOnly, headers, (raw) => this.mapIssue(raw));
     } catch (error) {
       throw normalizeError(error, "github");
     }
   }
 
-  private async getIssue(owner: string, repo: string, issueNumber: number): Promise<Issue> {
+  protected override async getIssue(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+  ): Promise<Issue> {
     try {
       const data = await cachedFetch<GitHubIssue>(
         this.client,
-        `/repos/${owner}/${repo}/issues/${issueNumber}`,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(issueNumber)}`,
       );
-      return mapIssue(data);
+      return this.mapIssue(data);
     } catch (error) {
       throw normalizeError(error, "github");
     }
   }
 
-  private async createIssue(owner: string, repo: string, input: CreateIssueInput): Promise<Issue> {
+  protected override async createIssue(
+    owner: string,
+    repo: string,
+    input: CreateIssueInput,
+  ): Promise<Issue> {
     try {
-      const data = await this.client<GitHubIssue>(`/repos/${owner}/${repo}/issues`, {
-        method: "POST",
-        body: {
-          title: input.title,
-          body: input.body,
-          labels: input.labels,
+      const data = await this.client<GitHubIssue>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`,
+        {
+          method: "POST",
+          body: {
+            title: input.title,
+            body: input.body,
+            labels: input.labels,
+          },
         },
-      });
-      return mapIssue(data);
+      );
+      return this.mapIssue(data);
     } catch (error) {
       throw normalizeError(error, "github");
     }
@@ -284,7 +281,7 @@ export class GitHubProvider implements Provider {
 
   // --- Pull Requests ---
 
-  private async listPullRequests(
+  protected override async listPullRequests(
     owner: string,
     repo: string,
     options?: ListOptions,
@@ -297,17 +294,17 @@ export class GitHubProvider implements Provider {
 
       const { data, headers } = await rawFetch<GitHubPullRequest[]>(
         this.client,
-        `/repos/${owner}/${repo}/pulls`,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls`,
         { query },
       );
 
-      return buildPageResult(data ?? [], headers, mapPullRequest);
+      return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequest(raw));
     } catch (error) {
       throw normalizeError(error, "github");
     }
   }
 
-  private async getPullRequest(
+  protected override async getPullRequest(
     owner: string,
     repo: string,
     prNumber: number,
@@ -315,31 +312,34 @@ export class GitHubProvider implements Provider {
     try {
       const data = await cachedFetch<GitHubPullRequest>(
         this.client,
-        `/repos/${owner}/${repo}/pulls/${prNumber}`,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(prNumber)}`,
       );
-      return mapPullRequest(data);
+      return this.mapPullRequest(data);
     } catch (error) {
       throw normalizeError(error, "github");
     }
   }
 
-  private async createPullRequest(
+  protected override async createPullRequest(
     owner: string,
     repo: string,
     input: CreatePullRequestInput,
   ): Promise<PullRequest> {
     try {
-      const data = await this.client<GitHubPullRequest>(`/repos/${owner}/${repo}/pulls`, {
-        method: "POST",
-        body: {
-          title: input.title,
-          body: input.body,
-          head: input.sourceBranch,
-          base: input.targetBranch,
-          draft: input.draft,
+      const data = await this.client<GitHubPullRequest>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls`,
+        {
+          method: "POST",
+          body: {
+            title: input.title,
+            body: input.body,
+            head: input.sourceBranch,
+            base: input.targetBranch,
+            draft: input.draft,
+          },
         },
-      });
-      return mapPullRequest(data);
+      );
+      return this.mapPullRequest(data);
     } catch (error) {
       throw normalizeError(error, "github");
     }
@@ -347,19 +347,22 @@ export class GitHubProvider implements Provider {
 
   // --- Users ---
 
-  private async getUser(username: string): Promise<User> {
+  protected override async getUser(username: string): Promise<User> {
     try {
-      const data = await cachedFetch<GitHubUser>(this.client, `/users/${username}`);
-      return mapUser(data);
+      const data = await cachedFetch<GitHubUser>(
+        this.client,
+        `/users/${encodePathSegment(username)}`,
+      );
+      return this.mapUser(data);
     } catch (error) {
       throw normalizeError(error, "github");
     }
   }
 
-  private async getAuthenticatedUser(): Promise<User> {
+  protected override async getAuthenticatedUser(): Promise<User> {
     try {
       const data = await cachedFetch<GitHubUser>(this.client, "/user");
-      return mapUser(data);
+      return this.mapUser(data);
     } catch (error) {
       throw normalizeError(error, "github");
     }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { resolveToken } from "../src/auth.js";
+import { resolveToken } from "../src/auth.ts";
 
 // Mock child_process and fs
 vi.mock("node:child_process", () => ({

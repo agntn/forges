@@ -1,7 +1,7 @@
 /**
  * Integration tests
  * - createProvider factory with all platforms
- * - Cross-provider interface consistency
+ * - Cross-provider base class consistency
  * - Type exports verification
  */
 
@@ -9,7 +9,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // -- Mock HTTP layer before importing providers --
 
-vi.mock("../src/http", () => ({
+vi.mock("../src/http.ts", () => ({
   createHttpClient: vi.fn(() => {
     const client = vi.fn().mockResolvedValue({});
     client.raw = vi.fn().mockResolvedValue({
@@ -33,27 +33,28 @@ vi.mock("../src/http", () => ({
   },
 }));
 
-vi.mock("../src/cache", () => ({
-  cachedFetch: vi.fn(async (client: any, url: string, opts?: any) => client(url, opts)),
+vi.mock("../src/cache.ts", () => ({
+  cachedFetch: vi.fn(async (client: (...args: unknown[]) => unknown, url: string, opts?: unknown) =>
+    client(url, opts),
+  ),
   createCache: vi.fn(),
   configureStorage: vi.fn(),
   clearCache: vi.fn(async () => {}),
   invalidateCache: vi.fn(async () => {}),
 }));
 
-import { createProvider } from "../src/index";
-import { GitHubProvider } from "../src/providers/github";
-import { GitLabProvider } from "../src/providers/gitlab";
-import { createGiteaProvider } from "../src/providers/gitea";
-import { AuthenticationError, GixaError } from "../src/errors";
+import { createProvider, Provider } from "../src/index.ts";
+import { GitHubProvider } from "../src/providers/github.ts";
+import { GitLabProvider } from "../src/providers/gitlab.ts";
+import { GiteaProvider } from "../src/providers/gitea.ts";
+import { AuthenticationError, GixaError } from "../src/errors.ts";
 import type {
-  Provider,
   ProviderConfig,
   RepositoryResource,
   IssueResource,
   PullRequestResource,
   UserResource,
-} from "../src/types";
+} from "../src/types.ts";
 
 // --- createProvider factory ---
 
@@ -95,7 +96,8 @@ describe("createProvider factory", () => {
 
   it("throws GixaError on unsupported platform", () => {
     try {
-      createProvider("bitbucket" as any, baseConfig);
+      // "bitbucket" is invalid by design; cast via never to exercise the runtime guard.
+      createProvider("bitbucket" as never, baseConfig);
       throw new Error("expected createProvider to throw");
     } catch (e) {
       expect(e).toBeInstanceOf(GixaError);
@@ -104,7 +106,7 @@ describe("createProvider factory", () => {
   });
 
   it("throws AuthenticationError when no token is found", async () => {
-    const auth = await import("../src/auth");
+    const auth = await import("../src/auth.ts");
     const spy = vi.spyOn(auth, "resolveToken").mockReturnValue(null);
 
     try {
@@ -124,25 +126,21 @@ describe("createProvider factory", () => {
     expect(provider).toBeInstanceOf(GitLabProvider);
   });
 
-  it("Gitea provider is a plain object with Provider shape", () => {
+  it("Gitea provider is instance of GiteaProvider", () => {
     const provider = createProvider("gitea", baseConfig);
-    // Gitea uses factory function, not class
-    expect(typeof provider.repos.list).toBe("function");
-    expect(typeof provider.repos.get).toBe("function");
-    expect(typeof provider.issues.list).toBe("function");
-    expect(typeof provider.issues.get).toBe("function");
-    expect(typeof provider.issues.create).toBe("function");
-    expect(typeof provider.pullRequests.list).toBe("function");
-    expect(typeof provider.pullRequests.get).toBe("function");
-    expect(typeof provider.pullRequests.create).toBe("function");
-    expect(typeof provider.users.get).toBe("function");
-    expect(typeof provider.users.authenticated).toBe("function");
+    expect(provider).toBeInstanceOf(GiteaProvider);
+  });
+
+  it("all concrete providers inherit from Provider", () => {
+    expect(createProvider("github", baseConfig)).toBeInstanceOf(Provider);
+    expect(createProvider("gitlab", baseConfig)).toBeInstanceOf(Provider);
+    expect(createProvider("gitea", baseConfig)).toBeInstanceOf(Provider);
   });
 });
 
-// --- Cross-provider interface consistency ---
+// --- Cross-provider class consistency ---
 
-describe("cross-provider interface consistency", () => {
+describe("cross-provider class consistency", () => {
   const platforms = ["github", "gitlab", "gitea"] as const;
   const providers: Record<string, Provider> = {};
 
@@ -217,14 +215,26 @@ describe("cross-provider interface consistency", () => {
 
 // --- Type exports verification ---
 
+// Dynamic imports below intentionally verify each public module boundary.
+
 describe("type exports", () => {
   it("exports createProvider function", async () => {
-    const mod = await import("../src/index");
+    const mod = await import("../src/index.ts");
     expect(typeof mod.createProvider).toBe("function");
   });
 
+  it("exports the abstract Provider base class", async () => {
+    const mod = await import("../src/index.ts");
+    expect(mod.Provider).toBe(Provider);
+  });
+
+  it("provider sub-path exports the same Provider class", async () => {
+    const mod = await import("../src/provider.ts");
+    expect(mod.Provider).toBe(Provider);
+  });
+
   it("exports error classes", async () => {
-    const mod = await import("../src/index");
+    const mod = await import("../src/index.ts");
     expect(mod.GixaError).toBeDefined();
     expect(mod.NotFoundError).toBeDefined();
     expect(mod.AuthenticationError).toBeDefined();
@@ -232,25 +242,25 @@ describe("type exports", () => {
   });
 
   it("exports normalizeError function", async () => {
-    const mod = await import("../src/index");
+    const mod = await import("../src/index.ts");
     expect(typeof mod.normalizeError).toBe("function");
   });
 
   it("exports pagination utilities", async () => {
-    const mod = await import("../src/index");
+    const mod = await import("../src/index.ts");
     expect(typeof mod.parseLinkHeader).toBe("function");
     expect(typeof mod.paginate).toBe("function");
     expect(typeof mod.fetchAllPages).toBe("function");
   });
 
   it("exports HTTP utilities", async () => {
-    const mod = await import("../src/index");
+    const mod = await import("../src/index.ts");
     expect(typeof mod.createHttpClient).toBe("function");
     expect(typeof mod.rawFetch).toBe("function");
   });
 
   it("exports cache management functions", async () => {
-    const mod = await import("../src/index");
+    const mod = await import("../src/index.ts");
     expect(typeof mod.createCache).toBe("function");
     expect(typeof mod.configureStorage).toBe("function");
     expect(typeof mod.cachedFetch).toBe("function");
@@ -259,26 +269,26 @@ describe("type exports", () => {
   });
 
   it("exports default as createProvider", async () => {
-    const mod = await import("../src/index");
+    const mod = await import("../src/index.ts");
     expect(mod.default).toBe(mod.createProvider);
   });
 
   it("github sub-path exports GitHubProvider", async () => {
-    const mod = await import("../src/github");
+    const mod = await import("../src/github.ts");
     expect(mod.GitHubProvider).toBeDefined();
     expect(typeof mod.GitHubProvider).toBe("function");
   });
 
   it("gitlab sub-path exports GitLabProvider", async () => {
-    const mod = await import("../src/gitlab");
+    const mod = await import("../src/gitlab.ts");
     expect(mod.GitLabProvider).toBeDefined();
     expect(typeof mod.GitLabProvider).toBe("function");
   });
 
-  it("gitea sub-path exports createGiteaProvider", async () => {
-    const mod = await import("../src/gitea");
-    expect(mod.createGiteaProvider).toBeDefined();
-    expect(typeof mod.createGiteaProvider).toBe("function");
+  it("gitea sub-path exports GiteaProvider", async () => {
+    const mod = await import("../src/gitea.ts");
+    expect(mod.GiteaProvider).toBeDefined();
+    expect(typeof mod.GiteaProvider).toBe("function");
   });
 });
 
@@ -309,8 +319,8 @@ describe("direct provider instantiation", () => {
     expect(provider.users).toBeDefined();
   });
 
-  it("createGiteaProvider returns a Provider", () => {
-    const provider = createGiteaProvider({ token: "test" });
+  it("GiteaProvider can be instantiated directly", () => {
+    const provider = new GiteaProvider({ token: "test" });
 
     expect(provider.repos).toBeDefined();
     expect(provider.issues).toBeDefined();
@@ -334,8 +344,8 @@ describe("direct provider instantiation", () => {
 // --- Type-level consistency (compile-time) ---
 
 describe("type-level consistency", () => {
-  it("all providers satisfy Provider interface", () => {
-    // These assignments verify at compile-time that each provider satisfies Provider
+  it("all providers satisfy the Provider base class", () => {
+    // These assignments verify at compile-time that each provider extends Provider.
     const gh: Provider = createProvider("github", { baseURL: "", token: "" });
     const gl: Provider = createProvider("gitlab", { baseURL: "", token: "" });
     const gt: Provider = createProvider("gitea", { baseURL: "", token: "" });

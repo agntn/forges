@@ -3,7 +3,7 @@
  * Provides caching for HTTP requests with TTL support
  */
 
-import { createStorage, Storage } from "unstorage";
+import { createStorage, type Storage } from "unstorage";
 import lruCacheDriver from "unstorage/drivers/lru-cache";
 import type { $Fetch } from "ofetch";
 

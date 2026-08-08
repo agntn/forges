@@ -1,3 +1,28 @@
+/**
+ * Encode an API identifier as exactly one URL path segment.
+ *
+ * @throws {TypeError} When a numeric identifier is not a positive safe integer,
+ * or when a string identifier is empty, a dot segment, contains a path
+ * separator or control character, or is already percent-encoded.
+ */
+export function encodePathSegment(value: string | number): string {
+  const segment = String(value);
+  if (
+    (typeof value === "number" && (!Number.isSafeInteger(value) || value < 1)) ||
+    segment.length === 0 ||
+    segment === "." ||
+    segment === ".." ||
+    segment.includes("/") ||
+    segment.includes("\\") ||
+    segment.includes("%") ||
+    /[\u0000-\u001F\u007F]/.test(segment)
+  ) {
+    throw new TypeError("Invalid API path segment");
+  }
+
+  return encodeURIComponent(segment);
+}
+
 export function normalizeApiBaseURL(
   baseURL: string | undefined,
   fallbackBaseURL: string,

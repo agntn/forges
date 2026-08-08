@@ -3,7 +3,7 @@
  * Allows direct imports: import { GitLabProvider } from 'gixa/gitlab'
  */
 
-export { GitLabProvider } from "./providers/gitlab.js";
+export { GitLabProvider } from "./providers/gitlab.ts";
 export type {
   User,
   Owner,
@@ -20,5 +20,6 @@ export type {
   IssueResource,
   PullRequestResource,
   UserResource,
-  Provider,
-} from "./types.js";
+} from "./types.ts";
+export { Provider } from "./provider.ts";
+export type { ProviderRawTypes } from "./provider.ts";

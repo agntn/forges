@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseLinkHeader, paginate, fetchAllPages } from "../src/pagination";
+import { parseLinkHeader, paginate, fetchAllPages } from "../src/pagination.ts";
 
 describe("parseLinkHeader", () => {
   it("returns empty object for null or undefined", () => {

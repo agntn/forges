@@ -3,8 +3,8 @@
  * Provides configurable authentication, retry logic, and rate limit awareness
  */
 
-import { $fetch, FetchError } from 'ofetch';
-import pkg from '../package.json' with { type: 'json' };
+import { $fetch, FetchError, type $Fetch } from "ofetch";
+import pkg from "../package.json" with { type: "json" };
 
 /**
  * Configuration for HTTP client
@@ -18,14 +18,28 @@ export interface HttpClientConfig {
 }
 
 /**
+ * Configured ofetch client used by provider implementations.
+ */
+export type HttpClient = $Fetch;
+
+/**
+ * Response data and metadata returned by {@link rawFetch}.
+ */
+export interface RawFetchResult<T> {
+  data: T | undefined;
+  headers: Headers;
+  status: number;
+}
+
+/**
  * Create a configured ofetch instance with auth interceptors and retry logic
  */
-export function createHttpClient(config: HttpClientConfig) {
+export function createHttpClient(config: HttpClientConfig): HttpClient {
   const {
     baseURL,
     token,
-    tokenHeader = 'Authorization',
-    tokenPrefix = 'token ',
+    tokenHeader = "Authorization",
+    tokenPrefix = "token ",
     userAgent = `gixa/${pkg.version}`,
   } = config;
 
@@ -34,7 +48,7 @@ export function createHttpClient(config: HttpClientConfig) {
     retry: 2,
     retryDelay: 1000,
     headers: {
-      'User-Agent': userAgent,
+      "User-Agent": userAgent,
     },
     onRequest({ request }) {
       // Skip auth header for unauthenticated requests (empty token is intentional)
@@ -45,13 +59,11 @@ export function createHttpClient(config: HttpClientConfig) {
     },
     onResponseError({ response }) {
       // Warn on low rate limit
-      const remaining = response.headers.get('X-RateLimit-Remaining');
+      const remaining = response.headers.get("X-RateLimit-Remaining");
       if (remaining !== null) {
         const remainingCount = parseInt(remaining, 10);
         if (remainingCount < 10) {
-          console.warn(
-            `[gixa] Rate limit warning: ${remainingCount} requests remaining`
-          );
+          console.warn(`[gixa] Rate limit warning: ${remainingCount} requests remaining`);
         }
       }
     },
@@ -63,10 +75,10 @@ export function createHttpClient(config: HttpClientConfig) {
  * Useful for pagination and other header-based operations
  */
 export async function rawFetch<T = unknown>(
-  client: ReturnType<typeof createHttpClient>,
+  client: HttpClient,
   url: string,
-  options?: Record<string, unknown>
-): Promise<{ data: T | undefined; headers: Headers; status: number }> {
+  options?: Record<string, unknown>,
+): Promise<RawFetchResult<T>> {
   const response = await client.raw<T>(url, options);
   return {
     data: response._data,

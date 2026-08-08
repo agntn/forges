@@ -1,6 +1,6 @@
 # AGENTS.md — gixa
 
-Unified TypeScript API for GitHub, GitLab, Gitea, and GitBucket. Normalizes auth headers, pagination, and field names behind a single `Provider` interface. Built on unjs stack (obuild, ofetch, unstorage). ESM only.
+Unified TypeScript API for GitHub, GitLab, Gitea, and GitBucket. Normalizes auth headers, pagination, and field names behind a single abstract `Provider` base class. Built on unjs stack (obuild, ofetch, unstorage). ESM only.
 
 ## Quick Commands
 
@@ -15,11 +15,13 @@ pnpm release                    # test → build → changelogen → push tag
 ```
 
 **Run a single test file:**
+
 ```bash
 pnpm vitest run test/github.test.ts
 ```
 
 **Run a single test by name:**
+
 ```bash
 pnpm vitest run -t "should list repos"
 ```
@@ -31,7 +33,8 @@ pnpm vitest run -t "should list repos"
 ```
 src/
 ├── index.ts              # createProvider() factory — single public entry point
-├── types.ts              # Provider interface, resource interfaces, unified models
+├── provider.ts           # Runtime abstract Provider base + typed mapper contract
+├── types.ts              # Resource interfaces and unified data models (type-only)
 ├── auth.ts               # 4-level token detection: explicit → env → CLI → config
 ├── http.ts               # ofetch wrapper with auth headers, retry, rate limit
 ├── cache.ts              # unstorage LRU cache — GET-only, lazy-initialized
@@ -41,71 +44,76 @@ src/
 ├── gitlab.ts             # Sub-path re-export for gixa/gitlab
 ├── gitea.ts              # Sub-path re-export for gixa/gitea
 └── providers/
-    ├── base-url.ts       # Base URL normalization for self-hosted instances
+    ├── base-url.ts       # Base URL normalization + safe API path encoding
     ├── github.ts         # Class. Also handles GitBucket via baseURL
     ├── gitlab.ts         # Class. Project ID resolution + caching, Private-Token auth
-    └── gitea.ts          # Factory function. limit param, null-safe fields
+    └── gitea.ts          # Class. limit param, null-safe fields
 test/
-└── *.test.ts             # 1:1 mirror of src/ + integration.test.ts (9 files, ~200 tests)
+└── *.test.ts             # 1:1 mirror of src/ + integration.test.ts (10 files, ~313 tests)
 ```
 
 **Where to put new code:**
 
-| Task | Location | Notes |
-|------|----------|-------|
-| Add new provider | `src/providers/` | Copy github.ts as template. Implement `Provider` interface |
-| Add new resource | `src/types.ts` → provider files | Define interface in types.ts, implement in each provider |
-| Change auth logic | `src/auth.ts` | `resolveToken()` chain — order matters |
-| Change cache backend | `src/cache.ts` | `configureStorage()` swaps unstorage driver |
-| Fix pagination | `src/pagination.ts` | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab |
-| Fix error mapping | `src/errors.ts` | `normalizeError()` maps FetchError → GixaError subtypes |
-| Add sub-path export | `build.config.ts` + `package.json` | Must update both: entries array + exports map |
-| Debug HTTP | `src/http.ts` | `rawFetch()` returns headers, `createHttpClient()` configures auth |
-| Add tests | `test/` | Name must match `test/<module>.test.ts` |
+| Task                 | Location                            | Notes                                                              |
+| -------------------- | ----------------------------------- | ------------------------------------------------------------------ |
+| Add new provider     | `src/providers/`                    | Copy github.ts as template. Extend the abstract `Provider` base    |
+| Add new resource     | `src/types.ts` → provider files     | Define interface in types.ts, implement in each provider           |
+| Change auth logic    | `src/auth.ts`                       | `resolveToken()` chain — order matters                             |
+| Change cache backend | `src/cache.ts`                      | `configureStorage()` swaps unstorage driver                        |
+| Fix pagination       | `src/pagination.ts`                 | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab     |
+| Fix error mapping    | `src/errors.ts`                     | `normalizeError()` maps FetchError → GixaError subtypes            |
+| Add sub-path export  | `build.config.mjs` + `package.json` | Must update both: entries array + exports map                      |
+| Debug HTTP           | `src/http.ts`                       | `rawFetch()` returns headers, `createHttpClient()` configures auth |
+| Add tests            | `test/`                             | Name must match `test/<module>.test.ts`                            |
 
 ## Code Conventions
 
 ### Imports
 
 - ESM only (`type: "module"` in package.json, `.mjs` output)
-- Use `.js` extension in all relative imports: `import { Foo } from './bar.js'`
+- Use explicit `.ts` extensions in relative source imports: `import { Foo } from './bar.ts'`
 - Use `import type` for type-only imports
 - Node builtins use `node:` prefix: `node:child_process`, `node:fs`
+- TypeScript uses NodeNext resolution with `allowImportingTsExtensions` and `noEmit`; obuild owns JavaScript and declaration emission
 
 ### TypeScript
 
-- **Strict mode** — all strict flags enabled, plus `noUnusedLocals`, `noUnusedParameters`, `noImplicitReturns`, `noFallthroughCasesInSwitch`
-- **Target:** ES2024, **module:** ESNext, **moduleResolution:** bundler
+- **Strict mode** — plus `noUncheckedIndexedAccess`, `noImplicitOverride`, `noUnusedLocals`, `noUnusedParameters`, `noImplicitReturns`, and `noFallthroughCasesInSwitch`
+- **Target:** ESNext, **module:** NodeNext, **moduleResolution:** NodeNext
 - **No `as any` or `@ts-ignore`** — use proper generics
 - **IDs are strings** — always `String(raw.id)`, even when APIs return numbers
 
 ### Provider method structure
 
-Every public method follows this pattern:
+Every provider operation follows this pattern:
+
 ```typescript
 try {
   const data = await cachedFetch<RawType>(this.client, url);
-  return mapFunction(data);
+  return this.mapRepository(data);
 } catch (error) {
   throw normalizeError(error, "platform");
 }
 ```
 
-### Mapper functions
+### Mapper methods
 
-Each provider defines raw API interfaces (snake_case) and mapper functions that convert to unified types (camelCase). Mappers are pure functions, not methods.
+The abstract `Provider` requires typed `mapOwner`, `mapRepository`, `mapIssue`,
+`mapPullRequest`, and `mapUser` methods. Each concrete provider supplies its raw
+API response types and implements these protected mappers without side effects.
+Provider operations invoke them through `this`.
 
 ### Resource binding
 
-Resources (repos, issues, etc.) are object literals bound in constructor, delegating to private methods.
+The abstract `Provider` constructor binds resource objects to protected platform-specific methods.
 
 ### Auth headers
 
-| Platform | Header | Format |
-|----------|--------|--------|
-| GitHub | `Authorization` | `token X` |
-| GitLab | `Private-Token` | `X` |
-| Gitea | `Authorization` | `token X` |
+| Platform | Header          | Format    |
+| -------- | --------------- | --------- |
+| GitHub   | `Authorization` | `token X` |
+| GitLab   | `Private-Token` | `X`       |
+| Gitea    | `Authorization` | `token X` |
 
 Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 
@@ -134,8 +142,11 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../src/http.js', () => ({ createHttpClient: mocks.createHttpClient, rawFetch: mocks.rawFetch }));
-vi.mock('../src/cache.js', () => ({ cachedFetch: mocks.cachedFetch }));
+vi.mock("../src/http.ts", () => ({
+  createHttpClient: mocks.createHttpClient,
+  rawFetch: mocks.rawFetch,
+}));
+vi.mock("../src/cache.ts", () => ({ cachedFetch: mocks.cachedFetch }));
 ```
 
 **Fixtures** — raw API response objects (snake_case) defined at file top. Match real API shape.
@@ -171,7 +182,7 @@ vi.mock('../src/cache.js', () => ({ cachedFetch: mocks.cachedFetch }));
 
 - Concise and direct. Lead with the answer.
 - Technical precision — use correct names for types, functions, files.
-- Explain *why* for non-obvious decisions, skip the *what* when the diff speaks.
+- Explain _why_ for non-obvious decisions, skip the _what_ when the diff speaks.
 - No filler, no trailing summaries, no template prose.
 
 ## Platform-Specific Notes
