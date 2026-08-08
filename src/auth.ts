@@ -127,11 +127,11 @@ function ghAuthToken(hostname: string): string | null {
  */
 function glabAuthToken(hostname: string): string | null {
   try {
-    const result = execFileSync(
-      "glab",
-      ["config", "get", "token", "--host", hostname],
-      { encoding: "utf-8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"] },
-    );
+    const result = execFileSync("glab", ["config", "get", "token", "--host", hostname], {
+      encoding: "utf-8",
+      timeout: 5000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     const token = result.trim();
     return token || null;
   } catch {
@@ -255,16 +255,23 @@ function getYamlMappingSection(content: string, key: string): string | null {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    if (line === undefined) continue;
+
     const match = line.match(/^(\s*)([^:#][^:]*)\s*:\s*(?:#.*)?$/);
     if (!match) continue;
 
-    const indent = match[1].length;
-    const rawKey = stripQuotes(match[2].trim());
+    const indentText = match[1];
+    const matchedKey = match[2];
+    if (indentText === undefined || matchedKey === undefined) continue;
+
+    const indent = indentText.length;
+    const rawKey = stripQuotes(matchedKey.trim());
     if (rawKey !== key) continue;
 
     const sectionLines: string[] = [];
     for (let j = i + 1; j < lines.length; j++) {
       const childLine = lines[j];
+      if (childLine === undefined) continue;
       if (!childLine.trim()) {
         sectionLines.push(childLine);
         continue;
@@ -290,8 +297,10 @@ function extractYamlField(section: string, field: string): string | null {
     const match = line.match(/^\s*([A-Za-z0-9_]+)\s*:\s*(.+?)\s*$/);
     if (!match) continue;
 
-    if (match[1] !== field) continue;
-    return parseYamlScalar(match[2]);
+    const matchedField = match[1];
+    const rawValue = match[2];
+    if (matchedField !== field || rawValue === undefined) continue;
+    return parseYamlScalar(rawValue);
   }
 
   return null;
@@ -310,10 +319,13 @@ function parseYamlListEntries(section: string): Array<Record<string, string>> {
       }
       current = {};
 
-      if (itemMatch[1]) {
-        const inlineField = itemMatch[1].match(/^([A-Za-z0-9_]+)\s*:\s*(.+?)\s*$/);
-        if (inlineField) {
-          current[inlineField[1]] = parseYamlScalar(inlineField[2]) ?? "";
+      const itemBody = itemMatch[1];
+      if (itemBody) {
+        const inlineField = itemBody.match(/^([A-Za-z0-9_]+)\s*:\s*(.+?)\s*$/);
+        const key = inlineField?.[1];
+        const rawValue = inlineField?.[2];
+        if (key !== undefined && rawValue !== undefined) {
+          current[key] = parseYamlScalar(rawValue) ?? "";
         }
       }
       continue;
@@ -321,9 +333,11 @@ function parseYamlListEntries(section: string): Array<Record<string, string>> {
 
     if (!current) continue;
     const fieldMatch = line.match(/^\s*([A-Za-z0-9_]+)\s*:\s*(.+?)\s*$/);
-    if (!fieldMatch) continue;
+    const key = fieldMatch?.[1];
+    const rawValue = fieldMatch?.[2];
+    if (key === undefined || rawValue === undefined) continue;
 
-    current[fieldMatch[1]] = parseYamlScalar(fieldMatch[2]) ?? "";
+    current[key] = parseYamlScalar(rawValue) ?? "";
   }
 
   if (current) {

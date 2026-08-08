@@ -5,7 +5,7 @@ import {
   cachedFetch,
   clearCache,
   invalidateCache,
-} from "../src/cache";
+} from "../src/cache.ts";
 
 describe("cachedFetch", () => {
   beforeEach(() => {

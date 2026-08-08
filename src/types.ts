@@ -1,6 +1,6 @@
 /**
- * Core type definitions for unified git provider interface
- * Normalizes across GitHub, GitLab, Gitea, and GitBucket APIs
+ * Core contracts for the unified abstract git provider API.
+ * Normalizes across GitHub, GitLab, Gitea, and GitBucket APIs.
  */
 
 /**
@@ -158,14 +158,4 @@ export interface PullRequestResource {
 export interface UserResource {
   get(username: string): Promise<User>;
   authenticated(): Promise<User>;
-}
-
-/**
- * Main provider interface - unified API for all git platforms
- */
-export interface Provider {
-  repos: RepositoryResource;
-  issues: IssueResource;
-  pullRequests: PullRequestResource;
-  users: UserResource;
 }

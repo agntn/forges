@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { FetchError } from "ofetch";
-import { NotFoundError, AuthenticationError, RateLimitError, GixaError } from "../src/errors.js";
+import { NotFoundError, AuthenticationError, RateLimitError, GixaError } from "../src/errors.ts";
 
 // --- Hoisted mocks ---
 
@@ -17,17 +17,17 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../src/http.js", () => ({
+vi.mock("../src/http.ts", () => ({
   createHttpClient: mocks.createHttpClient,
   rawFetch: mocks.rawFetch,
   FetchError,
 }));
 
-vi.mock("../src/cache.js", () => ({
+vi.mock("../src/cache.ts", () => ({
   cachedFetch: mocks.cachedFetch,
 }));
 
-import { GitLabProvider } from "../src/providers/gitlab.js";
+import { GitLabProvider } from "../src/providers/gitlab.ts";
 
 // --- Fixtures (matching real GitLab API v4 responses) ---
 
@@ -115,7 +115,7 @@ function makeFetchError(status: number, message?: string): FetchError {
   const err = new FetchError(message || `HTTP ${status}`);
   err.status = status;
   err.statusCode = status;
-  (err as any).response = { headers: new Headers(), status };
+  err.response = Object.assign(new Response(null, { status }), { _data: undefined });
   return err;
 }
 
@@ -241,6 +241,33 @@ describe("GitLabProvider", () => {
       expect(result.items).toHaveLength(1);
     });
 
+    it("encodes nested group paths for both lookup endpoints", async () => {
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404)).mockResolvedValueOnce({
+        data: [glProject],
+        headers: glHeaders(),
+      });
+
+      await gl.repos.list("parent/child");
+
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        1,
+        mocks.client,
+        "/users/parent%2Fchild/projects",
+        expect.any(Object),
+      );
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        2,
+        mocks.client,
+        "/groups/parent%2Fchild/projects",
+        expect.any(Object),
+      );
+    });
+
+    it("rejects unsafe namespace segments before transport", async () => {
+      await expect(gl.repos.list("../admin")).rejects.toThrow("Invalid API path segment");
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    });
+
     it("does not fall back to group endpoint on non-404 errors", async () => {
       mocks.rawFetch.mockRejectedValueOnce(makeFetchError(401));
 
@@ -266,6 +293,14 @@ describe("GitLabProvider", () => {
       await gl.repos.get("gitlab-org", "gitlab-foss");
 
       expect(mocks.client).toHaveBeenCalledWith("/projects/gitlab-org%2Fgitlab-foss");
+    });
+
+    it("preserves nested groups while encoding each project path segment", async () => {
+      mocks.client.mockResolvedValueOnce(glProject);
+
+      await gl.repos.get("parent/child", "project name");
+
+      expect(mocks.client).toHaveBeenCalledWith("/projects/parent%2Fchild%2Fproject%20name");
     });
 
     it("returns mapped repository", async () => {
@@ -426,48 +461,45 @@ describe("GitLabProvider", () => {
       });
     });
 
-    it('passes draft flag when set to true', async () => {
+    it("passes draft flag when set to true", async () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce({ ...glMergeRequest, draft: true });
 
-      await gl.pullRequests.create('gitlab-org', 'gitlab-foss', {
-        title: 'WIP: Draft MR',
-        body: 'Work in progress',
-        sourceBranch: 'draft/feature',
-        targetBranch: 'main',
+      await gl.pullRequests.create("gitlab-org", "gitlab-foss", {
+        title: "WIP: Draft MR",
+        body: "Work in progress",
+        sourceBranch: "draft/feature",
+        targetBranch: "main",
         draft: true,
       });
 
-      expect(mocks.client).toHaveBeenLastCalledWith(
-        '/projects/278964/merge_requests',
-        {
-          method: 'POST',
-          body: {
-            title: 'WIP: Draft MR',
-            description: 'Work in progress',
-            source_branch: 'draft/feature',
-            target_branch: 'main',
-            draft: true,
-          },
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/merge_requests", {
+        method: "POST",
+        body: {
+          title: "WIP: Draft MR",
+          description: "Work in progress",
+          source_branch: "draft/feature",
+          target_branch: "main",
+          draft: true,
         },
-      );
+      });
     });
 
-    it('omits draft field when not specified', async () => {
+    it("omits draft field when not specified", async () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glMergeRequest);
 
-      await gl.pullRequests.create('gitlab-org', 'gitlab-foss', {
-        title: 'Regular MR',
-        body: 'No draft flag',
-        sourceBranch: 'feature/y',
-        targetBranch: 'main',
+      await gl.pullRequests.create("gitlab-org", "gitlab-foss", {
+        title: "Regular MR",
+        body: "No draft flag",
+        sourceBranch: "feature/y",
+        targetBranch: "main",
       });
 
       const calls = mocks.client.mock.calls;
       const callArgs = calls[calls.length - 1];
       const body = callArgs[1].body;
-      expect(body).not.toHaveProperty('draft');
+      expect(body).not.toHaveProperty("draft");
     });
   });
 
@@ -780,10 +812,10 @@ describe("GitLabProvider", () => {
       expect(mocks.client).toHaveBeenCalledTimes(2);
     });
 
-    it('evicts least recently used project IDs when cache is full', async () => {
+    it("evicts least recently used project IDs when cache is full", async () => {
       const smallCacheProvider = new GitLabProvider({
-        baseURL: 'https://gitlab.com/api/v4',
-        token: 'glpat-test',
+        baseURL: "https://gitlab.com/api/v4",
+        token: "glpat-test",
         gitlab: {
           projectIdCacheMax: 1,
         },
@@ -791,26 +823,26 @@ describe("GitLabProvider", () => {
 
       mockProjectResolve(101);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get('group', 'repo-one', 1);
+      await smallCacheProvider.issues.get("group", "repo-one", 1);
 
       mockProjectResolve(202);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get('group', 'repo-two', 1);
+      await smallCacheProvider.issues.get("group", "repo-two", 1);
 
       mockProjectResolve(101);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get('group', 'repo-one', 2);
+      await smallCacheProvider.issues.get("group", "repo-one", 2);
 
       expect(mocks.client).toHaveBeenCalledTimes(6);
     });
 
-    it('expires cached project IDs after TTL', async () => {
+    it("expires cached project IDs after TTL", async () => {
       vi.useFakeTimers();
       try {
-        vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+        vi.setSystemTime(new Date("2024-01-01T00:00:00.000Z"));
         const shortTtlProvider = new GitLabProvider({
-          baseURL: 'https://gitlab.com/api/v4',
-          token: 'glpat-test',
+          baseURL: "https://gitlab.com/api/v4",
+          token: "glpat-test",
           gitlab: {
             projectIdCacheTtl: 1000,
           },
@@ -818,16 +850,16 @@ describe("GitLabProvider", () => {
 
         mockProjectResolve(303);
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get('group', 'repo-ttl', 1);
+        await shortTtlProvider.issues.get("group", "repo-ttl", 1);
 
         vi.advanceTimersByTime(500);
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get('group', 'repo-ttl', 2);
+        await shortTtlProvider.issues.get("group", "repo-ttl", 2);
 
         vi.advanceTimersByTime(1001);
         mockProjectResolve(303);
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get('group', 'repo-ttl', 3);
+        await shortTtlProvider.issues.get("group", "repo-ttl", 3);
 
         expect(mocks.client).toHaveBeenCalledTimes(5);
       } finally {
@@ -835,10 +867,10 @@ describe("GitLabProvider", () => {
       }
     });
 
-    it('keeps most recently used project IDs when cache is full', async () => {
+    it("keeps most recently used project IDs when cache is full", async () => {
       const smallCacheProvider = new GitLabProvider({
-        baseURL: 'https://gitlab.com/api/v4',
-        token: 'glpat-test',
+        baseURL: "https://gitlab.com/api/v4",
+        token: "glpat-test",
         gitlab: {
           projectIdCacheMax: 2,
         },
@@ -846,33 +878,33 @@ describe("GitLabProvider", () => {
 
       mockProjectResolve(1);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get('g', 'repo-a', 1);
+      await smallCacheProvider.issues.get("g", "repo-a", 1);
 
       mockProjectResolve(2);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get('g', 'repo-b', 1);
+      await smallCacheProvider.issues.get("g", "repo-b", 1);
 
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get('g', 'repo-a', 2);
+      await smallCacheProvider.issues.get("g", "repo-a", 2);
 
       mockProjectResolve(3);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get('g', 'repo-c', 1);
+      await smallCacheProvider.issues.get("g", "repo-c", 1);
 
       mockProjectResolve(2);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get('g', 'repo-b', 2);
+      await smallCacheProvider.issues.get("g", "repo-b", 2);
 
       expect(mocks.client).toHaveBeenCalledTimes(9);
     });
 
-    it('prunes expired entries before evicting valid ones', async () => {
+    it("prunes expired entries before evicting valid ones", async () => {
       vi.useFakeTimers();
       try {
-        vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+        vi.setSystemTime(new Date("2024-01-01T00:00:00.000Z"));
         const shortTtlProvider = new GitLabProvider({
-          baseURL: 'https://gitlab.com/api/v4',
-          token: 'glpat-test',
+          baseURL: "https://gitlab.com/api/v4",
+          token: "glpat-test",
           gitlab: {
             projectIdCacheMax: 2,
             projectIdCacheTtl: 1000,
@@ -881,26 +913,26 @@ describe("GitLabProvider", () => {
 
         mockProjectResolve(1);
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get('g', 'repo-a', 1);
+        await shortTtlProvider.issues.get("g", "repo-a", 1);
 
         vi.advanceTimersByTime(900);
 
         mockProjectResolve(2);
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get('g', 'repo-b', 1);
+        await shortTtlProvider.issues.get("g", "repo-b", 1);
 
         vi.advanceTimersByTime(200);
 
         mockProjectResolve(3);
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get('g', 'repo-c', 1);
+        await shortTtlProvider.issues.get("g", "repo-c", 1);
 
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get('g', 'repo-b', 2);
+        await shortTtlProvider.issues.get("g", "repo-b", 2);
 
         mockProjectResolve(1);
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get('g', 'repo-a', 2);
+        await shortTtlProvider.issues.get("g", "repo-a", 2);
 
         expect(mocks.client).toHaveBeenCalledTimes(9);
       } finally {
@@ -908,10 +940,10 @@ describe("GitLabProvider", () => {
       }
     });
 
-    it('falls back to default cache settings for invalid config values', async () => {
+    it("falls back to default cache settings for invalid config values", async () => {
       const providerWithInvalidConfig = new GitLabProvider({
-        baseURL: 'https://gitlab.com/api/v4',
-        token: 'glpat-test',
+        baseURL: "https://gitlab.com/api/v4",
+        token: "glpat-test",
         gitlab: {
           projectIdCacheMax: 0,
           projectIdCacheTtl: Number.NaN,
@@ -920,14 +952,14 @@ describe("GitLabProvider", () => {
 
       mockProjectResolve(111);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await providerWithInvalidConfig.issues.get('g', 'repo-one', 1);
+      await providerWithInvalidConfig.issues.get("g", "repo-one", 1);
 
       mockProjectResolve(222);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await providerWithInvalidConfig.issues.get('g', 'repo-two', 1);
+      await providerWithInvalidConfig.issues.get("g", "repo-two", 1);
 
       mocks.client.mockResolvedValueOnce(glIssue);
-      await providerWithInvalidConfig.issues.get('g', 'repo-one', 2);
+      await providerWithInvalidConfig.issues.get("g", "repo-one", 2);
 
       expect(mocks.client).toHaveBeenCalledTimes(5);
     });

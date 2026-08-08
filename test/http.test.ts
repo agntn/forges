@@ -1,13 +1,13 @@
-import { createRequire } from 'node:module';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createRequire } from "node:module";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const require = createRequire(import.meta.url);
-const { version } = require('../package.json') as { version: string };
+const { version } = require("../package.json") as { version: string };
 
 const mockCreateConfigs: any[] = [];
 const mockRaw = vi.fn();
 
-vi.mock('ofetch', () => ({
+vi.mock("ofetch", () => ({
   $fetch: {
     create: (config: any) => {
       mockCreateConfigs.push(config);
@@ -19,41 +19,41 @@ vi.mock('ofetch', () => ({
   FetchError: class FetchError extends Error {},
 }));
 
-import { createHttpClient, rawFetch } from '../src/http';
+import { createHttpClient, rawFetch } from "../src/http.ts";
 
-describe('createHttpClient', () => {
+describe("createHttpClient", () => {
   beforeEach(() => {
     mockCreateConfigs.length = 0;
     mockRaw.mockReset();
   });
 
-  it('passes baseURL, retry, and default User-Agent to $fetch.create', () => {
+  it("passes baseURL, retry, and default User-Agent to $fetch.create", () => {
     createHttpClient({
-      baseURL: 'https://api.github.com',
-      token: 'test-token',
+      baseURL: "https://api.github.com",
+      token: "test-token",
     });
 
     const config = mockCreateConfigs[0];
-    expect(config.baseURL).toBe('https://api.github.com');
+    expect(config.baseURL).toBe("https://api.github.com");
     expect(config.retry).toBe(2);
     expect(config.retryDelay).toBe(1000);
-    expect(config.headers['User-Agent']).toBe(`gixa/${version}`);
+    expect(config.headers["User-Agent"]).toBe(`gixa/${version}`);
   });
 
-  it('uses custom userAgent when provided', () => {
+  it("uses custom userAgent when provided", () => {
     createHttpClient({
-      baseURL: 'https://api.github.com',
-      token: 'test',
-      userAgent: 'my-app/2.0',
+      baseURL: "https://api.github.com",
+      token: "test",
+      userAgent: "my-app/2.0",
     });
 
-    expect(mockCreateConfigs[0].headers['User-Agent']).toBe('my-app/2.0');
+    expect(mockCreateConfigs[0].headers["User-Agent"]).toBe("my-app/2.0");
   });
 
   it('sets Authorization header with default "token " prefix', () => {
     createHttpClient({
-      baseURL: 'https://api.github.com',
-      token: 'ghp_abc123',
+      baseURL: "https://api.github.com",
+      token: "ghp_abc123",
     });
 
     const headers = new Headers();
@@ -61,15 +61,15 @@ describe('createHttpClient', () => {
       request: { headers },
     });
 
-    expect(headers.get('Authorization')).toBe('token ghp_abc123');
+    expect(headers.get("Authorization")).toBe("token ghp_abc123");
   });
 
-  it('supports custom tokenHeader and empty tokenPrefix (GitLab style)', () => {
+  it("supports custom tokenHeader and empty tokenPrefix (GitLab style)", () => {
     createHttpClient({
-      baseURL: 'https://gitlab.com/api/v4',
-      token: 'glpat-xyz',
-      tokenHeader: 'Private-Token',
-      tokenPrefix: '',
+      baseURL: "https://gitlab.com/api/v4",
+      token: "glpat-xyz",
+      tokenHeader: "Private-Token",
+      tokenPrefix: "",
     });
 
     const headers = new Headers();
@@ -77,33 +77,33 @@ describe('createHttpClient', () => {
       request: { headers },
     });
 
-    expect(headers.get('Private-Token')).toBe('glpat-xyz');
+    expect(headers.get("Private-Token")).toBe("glpat-xyz");
   });
 
-  it('warns when X-RateLimit-Remaining < 10', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    createHttpClient({ baseURL: 'https://api.github.com', token: 'test' });
+  it("warns when X-RateLimit-Remaining < 10", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    createHttpClient({ baseURL: "https://api.github.com", token: "test" });
 
     mockCreateConfigs[0].onResponseError({
       response: {
         headers: {
-          get: (key: string) => (key === 'X-RateLimit-Remaining' ? '5' : null),
+          get: (key: string) => (key === "X-RateLimit-Remaining" ? "5" : null),
         },
       },
     });
 
-    expect(warn).toHaveBeenCalledWith('[gixa] Rate limit warning: 5 requests remaining');
+    expect(warn).toHaveBeenCalledWith("[gixa] Rate limit warning: 5 requests remaining");
     warn.mockRestore();
   });
 
-  it('does not warn when X-RateLimit-Remaining >= 10', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    createHttpClient({ baseURL: 'https://api.github.com', token: 'test' });
+  it("does not warn when X-RateLimit-Remaining >= 10", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    createHttpClient({ baseURL: "https://api.github.com", token: "test" });
 
     mockCreateConfigs[0].onResponseError({
       response: {
         headers: {
-          get: (key: string) => (key === 'X-RateLimit-Remaining' ? '50' : null),
+          get: (key: string) => (key === "X-RateLimit-Remaining" ? "50" : null),
         },
       },
     });
@@ -112,9 +112,9 @@ describe('createHttpClient', () => {
     warn.mockRestore();
   });
 
-  it('does not warn when X-RateLimit-Remaining header is absent', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    createHttpClient({ baseURL: 'https://api.github.com', token: 'test' });
+  it("does not warn when X-RateLimit-Remaining header is absent", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    createHttpClient({ baseURL: "https://api.github.com", token: "test" });
 
     mockCreateConfigs[0].onResponseError({
       response: { headers: { get: () => null } },
@@ -124,10 +124,10 @@ describe('createHttpClient', () => {
     warn.mockRestore();
   });
 
-  it('skips auth header when token is empty', () => {
+  it("skips auth header when token is empty", () => {
     createHttpClient({
-      baseURL: 'https://api.github.com',
-      token: '',
+      baseURL: "https://api.github.com",
+      token: "",
     });
 
     const headers = new Headers();
@@ -135,29 +135,29 @@ describe('createHttpClient', () => {
       request: { headers },
     });
 
-    expect(headers.has('Authorization')).toBe(false);
+    expect(headers.has("Authorization")).toBe(false);
   });
 });
 
-describe('rawFetch', () => {
+describe("rawFetch", () => {
   beforeEach(() => {
     mockCreateConfigs.length = 0;
     mockRaw.mockReset();
   });
 
-  it('returns { data, headers, status } from client.raw()', async () => {
-    const responseHeaders = new Headers({ 'content-type': 'application/json' });
+  it("returns { data, headers, status } from client.raw()", async () => {
+    const responseHeaders = new Headers({ "content-type": "application/json" });
     mockRaw.mockResolvedValueOnce({
-      _data: [{ id: 1, name: 'gixa' }],
+      _data: [{ id: 1, name: "gixa" }],
       headers: responseHeaders,
       status: 200,
     });
 
-    const client = createHttpClient({ baseURL: 'https://api.github.com', token: 'test' });
-    const result = await rawFetch(client, '/repos/unjs/ugp');
+    const client = createHttpClient({ baseURL: "https://api.github.com", token: "test" });
+    const result = await rawFetch(client, "/repos/unjs/ugp");
 
-    expect(mockRaw).toHaveBeenCalledWith('/repos/unjs/ugp', undefined);
-    expect(result.data).toEqual([{ id: 1, name: 'gixa' }]);
+    expect(mockRaw).toHaveBeenCalledWith("/repos/unjs/ugp", undefined);
+    expect(result.data).toEqual([{ id: 1, name: "gixa" }]);
     expect(result.status).toBe(200);
     expect(result.headers).toBe(responseHeaders);
   });

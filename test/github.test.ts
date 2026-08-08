@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { FetchError } from "ofetch";
-import { NotFoundError, AuthenticationError, RateLimitError, GixaError } from "../src/errors.js";
+import { NotFoundError, AuthenticationError, RateLimitError, GixaError } from "../src/errors.ts";
 
 // --- Hoisted mocks ---
 
@@ -14,17 +14,17 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../src/http.js", () => ({
+vi.mock("../src/http.ts", () => ({
   createHttpClient: mocks.createHttpClient,
   rawFetch: mocks.rawFetch,
   FetchError,
 }));
 
-vi.mock("../src/cache.js", () => ({
+vi.mock("../src/cache.ts", () => ({
   cachedFetch: mocks.cachedFetch,
 }));
 
-import { GitHubProvider } from "../src/providers/github.js";
+import { GitHubProvider } from "../src/providers/github.ts";
 
 // --- Fixtures (snake_case matching real GitHub API) ---
 
@@ -92,7 +92,7 @@ function makeFetchError(status: number, message?: string): FetchError {
   const err = new FetchError(message || `HTTP ${status}`);
   err.status = status;
   err.statusCode = status;
-  (err as any).response = { headers: new Headers(), status };
+  err.response = Object.assign(new Response(null, { status }), { _data: undefined });
   return err;
 }
 
@@ -192,6 +192,36 @@ describe("GitHubProvider", () => {
       expect(mocks.cachedFetch).toHaveBeenCalledWith(mocks.client, "/repos/octocat/hello-world");
       expect(repo.fullName).toBe("octocat/hello-world");
     });
+
+    it("encodes repository path segments before transport", async () => {
+      mocks.cachedFetch.mockResolvedValueOnce(ghRepo);
+
+      await gh.repos.get("octo cat", "hello#world");
+
+      expect(mocks.cachedFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/octo%20cat/hello%23world",
+      );
+    });
+
+    it.each([
+      "",
+      ".",
+      "..",
+      "../admin",
+      "team/admin",
+      "team\\admin",
+      "%2e%2e",
+      "%2Fadmin",
+      String.fromCharCode(0),
+      String.fromCharCode(10),
+      String.fromCharCode(127),
+    ])("rejects unsafe repository path segment %j before transport", async (segment) => {
+      await expect(gh.repos.get(segment, "hello-world")).rejects.toThrow(
+        "Invalid API path segment",
+      );
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
+    });
   });
 
   // --- Issues ---
@@ -266,6 +296,21 @@ describe("GitHubProvider", () => {
       );
       expect(issue.number).toBe(42);
       expect(issue.author.login).toBe("reporter");
+    });
+
+    it.each([
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      0,
+      -1,
+      1.5,
+      Number.MAX_SAFE_INTEGER + 1,
+    ])("rejects invalid issue number %s before transport", async (number) => {
+      await expect(gh.issues.get("octocat", "hello-world", number)).rejects.toThrow(
+        "Invalid API path segment",
+      );
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
     });
   });
 

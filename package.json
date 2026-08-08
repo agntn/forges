@@ -44,6 +44,10 @@
       "types": "./dist/gitea.d.mts",
       "import": "./dist/gitea.mjs"
     },
+    "./provider": {
+      "types": "./dist/provider.d.mts",
+      "import": "./dist/provider.mjs"
+    },
     "./types": {
       "types": "./dist/types.d.mts",
       "import": "./dist/types.mjs"

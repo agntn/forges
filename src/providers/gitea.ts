@@ -6,18 +6,14 @@
  * - Some fields may be null where GitHub returns empty strings
  */
 
-import { createHttpClient, rawFetch } from "../http.js";
-import { cachedFetch } from "../cache.js";
-import { parseLinkHeader } from "../pagination.js";
-import { normalizeError } from "../errors.js";
-import { normalizeApiBaseURL } from "./base-url.js";
+import { createHttpClient, rawFetch, type HttpClient } from "../http.ts";
+import { cachedFetch } from "../cache.ts";
+import { parseLinkHeader } from "../pagination.ts";
+import { normalizeError } from "../errors.ts";
+import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
+import { Provider, type ProviderRawTypes } from "../provider.ts";
 import type {
-  Provider,
   ProviderConfig,
-  RepositoryResource,
-  IssueResource,
-  PullRequestResource,
-  UserResource,
   Repository,
   Issue,
   PullRequest,
@@ -25,7 +21,9 @@ import type {
   Owner,
   PageResult,
   ListOptions,
-} from "../types.js";
+  CreateIssueInput,
+  CreatePullRequestInput,
+} from "../types.ts";
 
 // -- Raw Gitea API response types --
 
@@ -88,70 +86,12 @@ interface GiteaPullRequest {
   draft?: boolean;
 }
 
-// -- Field mappers --
-
-function mapUser(raw: GiteaUser): User {
-  return {
-    id: String(raw.id),
-    login: raw.login,
-    name: raw.full_name ?? "",
-    email: raw.email ?? "",
-    avatarUrl: raw.avatar_url ?? "",
-    isAdmin: raw.is_admin ?? false,
-  };
-}
-
-function mapOwner(raw: GiteaOwner): Owner {
-  return {
-    login: raw.login,
-    avatarUrl: raw.avatar_url ?? "",
-  };
-}
-
-function mapRepository(raw: GiteaRepository): Repository {
-  return {
-    id: String(raw.id),
-    name: raw.name,
-    fullName: raw.full_name,
-    description: raw.description ?? "",
-    private: raw.private,
-    defaultBranch: raw.default_branch ?? "main",
-    url: raw.html_url ?? "",
-    cloneUrl: raw.clone_url ?? "",
-    owner: mapOwner(raw.owner),
-  };
-}
-
-function mapIssue(raw: GiteaIssue): Issue {
-  return {
-    id: String(raw.id),
-    number: raw.number,
-    title: raw.title,
-    body: raw.body ?? "",
-    state: raw.state === "open" ? "open" : "closed",
-    labels: raw.labels?.map((l) => l.name) ?? [],
-    author: { login: raw.user.login },
-    createdAt: raw.created_at,
-    updatedAt: raw.updated_at,
-  };
-}
-
-function mapPullRequest(raw: GiteaPullRequest): PullRequest {
-  return {
-    id: String(raw.id),
-    number: raw.number,
-    title: raw.title,
-    body: raw.body ?? "",
-    state: raw.state === "open" ? "open" : "closed",
-    labels: raw.labels?.map((l) => l.name) ?? [],
-    author: { login: raw.user.login },
-    createdAt: raw.created_at,
-    updatedAt: raw.updated_at,
-    sourceBranch: raw.head?.ref ?? "",
-    targetBranch: raw.base?.ref ?? "",
-    merged: raw.merged ?? false,
-    draft: raw.draft ?? false,
-  };
+interface GiteaRawTypes extends ProviderRawTypes {
+  owner: GiteaOwner;
+  repository: GiteaRepository;
+  issue: GiteaIssue;
+  pullRequest: GiteaPullRequest;
+  user: GiteaUser;
 }
 
 // -- Pagination helper --
@@ -191,169 +131,265 @@ function buildListQuery(options?: ListOptions): Record<string, string> {
   return query;
 }
 
-// -- Provider factory --
+// -- Provider --
 
 const PLATFORM = "gitea";
 
 /**
- * Create a Gitea/Forgejo provider instance.
- *
- * @param config Provider configuration. `baseURL` defaults to `https://gitea.com/api/v1`.
+ * Gitea/Forgejo provider implementation.
  */
-export function createGiteaProvider(config: ProviderConfig): Provider {
-  const baseURL = normalizeApiBaseURL(config.baseURL, "https://gitea.com/api/v1", "/api/v1");
+export class GiteaProvider extends Provider<GiteaRawTypes> {
+  private client: HttpClient;
 
-  const client = createHttpClient({
-    baseURL,
-    token: config.token ?? "",
-    tokenHeader: "Authorization",
-    tokenPrefix: "token ",
-  });
+  /**
+   * Create a Gitea/Forgejo provider.
+   *
+   * @param config Provider configuration. `baseURL` defaults to `https://gitea.com/api/v1`.
+   */
+  constructor(config: ProviderConfig) {
+    super();
+    const baseURL = normalizeApiBaseURL(config.baseURL, "https://gitea.com/api/v1", "/api/v1");
 
-  // -- repos --
+    this.client = createHttpClient({
+      baseURL,
+      token: config.token ?? "",
+      tokenHeader: "Authorization",
+      tokenPrefix: "token ",
+    });
+  }
 
-  const repos: RepositoryResource = {
-    async list(owner, options?) {
-      try {
-        const query = buildListQuery(options);
-        const { data, headers } = await rawFetch<GiteaRepository[]>(
-          client,
-          `/users/${owner}/repos`,
-          { query },
-        );
-        return buildPageResult(data ?? [], headers, mapRepository);
-      } catch (error) {
-        throw normalizeError(error, PLATFORM);
+  protected override mapOwner(raw: GiteaOwner): Owner {
+    return {
+      login: raw.login,
+      avatarUrl: raw.avatar_url ?? "",
+    };
+  }
+
+  protected override mapRepository(raw: GiteaRepository): Repository {
+    return {
+      id: String(raw.id),
+      name: raw.name,
+      fullName: raw.full_name,
+      description: raw.description ?? "",
+      private: raw.private,
+      defaultBranch: raw.default_branch ?? "main",
+      url: raw.html_url ?? "",
+      cloneUrl: raw.clone_url ?? "",
+      owner: this.mapOwner(raw.owner),
+    };
+  }
+
+  protected override mapIssue(raw: GiteaIssue): Issue {
+    return {
+      id: String(raw.id),
+      number: raw.number,
+      title: raw.title,
+      body: raw.body ?? "",
+      state: raw.state === "open" ? "open" : "closed",
+      labels: raw.labels?.map((label) => label.name) ?? [],
+      author: { login: raw.user.login },
+      createdAt: raw.created_at,
+      updatedAt: raw.updated_at,
+    };
+  }
+
+  protected override mapPullRequest(raw: GiteaPullRequest): PullRequest {
+    return {
+      id: String(raw.id),
+      number: raw.number,
+      title: raw.title,
+      body: raw.body ?? "",
+      state: raw.state === "open" ? "open" : "closed",
+      labels: raw.labels?.map((label) => label.name) ?? [],
+      author: { login: raw.user.login },
+      createdAt: raw.created_at,
+      updatedAt: raw.updated_at,
+      sourceBranch: raw.head?.ref ?? "",
+      targetBranch: raw.base?.ref ?? "",
+      merged: raw.merged ?? false,
+      draft: raw.draft ?? false,
+    };
+  }
+
+  protected override mapUser(raw: GiteaUser): User {
+    return {
+      id: String(raw.id),
+      login: raw.login,
+      name: raw.full_name ?? "",
+      email: raw.email ?? "",
+      avatarUrl: raw.avatar_url ?? "",
+      isAdmin: raw.is_admin ?? false,
+    };
+  }
+
+  protected override async listRepos(
+    owner: string,
+    options?: ListOptions,
+  ): Promise<PageResult<Repository>> {
+    try {
+      const query = buildListQuery(options);
+      const { data, headers } = await rawFetch<GiteaRepository[]>(
+        this.client,
+        `/users/${encodePathSegment(owner)}/repos`,
+        { query },
+      );
+      return buildPageResult(data ?? [], headers, (raw) => this.mapRepository(raw));
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async getRepo(owner: string, repo: string): Promise<Repository> {
+    try {
+      return this.mapRepository(
+        await cachedFetch<GiteaRepository>(
+          this.client,
+          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
+        ),
+      );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async listIssues(
+    owner: string,
+    repo: string,
+    options?: ListOptions,
+  ): Promise<PageResult<Issue>> {
+    try {
+      const query = buildListQuery(options);
+      query.type = "issues";
+      const { data, headers } = await rawFetch<GiteaIssue[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`,
+        { query },
+      );
+      return buildPageResult(data ?? [], headers, (raw) => this.mapIssue(raw));
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async getIssue(owner: string, repo: string, number: number): Promise<Issue> {
+    try {
+      return this.mapIssue(
+        await cachedFetch<GiteaIssue>(
+          this.client,
+          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}`,
+        ),
+      );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async createIssue(
+    owner: string,
+    repo: string,
+    input: CreateIssueInput,
+  ): Promise<Issue> {
+    try {
+      const body: Record<string, unknown> = {
+        title: input.title,
+        body: input.body,
+      };
+      if (input.labels?.length) {
+        body.labels = input.labels;
       }
-    },
-
-    async get(owner, repo) {
-      try {
-        return mapRepository(await cachedFetch<GiteaRepository>(client, `/repos/${owner}/${repo}`));
-      } catch (error) {
-        throw normalizeError(error, PLATFORM);
-      }
-    },
-  };
-
-  // -- issues --
-
-  const issues: IssueResource = {
-    async list(owner, repo, options?) {
-      try {
-        const query = buildListQuery(options);
-        query.type = "issues"; // exclude PRs from issue list
-        const { data, headers } = await rawFetch<GiteaIssue[]>(
-          client,
-          `/repos/${owner}/${repo}/issues`,
-          { query },
-        );
-        return buildPageResult(data ?? [], headers, mapIssue);
-      } catch (error) {
-        throw normalizeError(error, PLATFORM);
-      }
-    },
-
-    async get(owner, repo, number) {
-      try {
-        return mapIssue(
-          await cachedFetch<GiteaIssue>(client, `/repos/${owner}/${repo}/issues/${number}`),
-        );
-      } catch (error) {
-        throw normalizeError(error, PLATFORM);
-      }
-    },
-
-    async create(owner, repo, input) {
-      try {
-        const body: Record<string, unknown> = {
-          title: input.title,
-          body: input.body,
-        };
-        if (input.labels?.length) {
-          body.labels = input.labels;
-        }
-        return mapIssue(
-          await client<GiteaIssue>(`/repos/${owner}/${repo}/issues`, {
+      return this.mapIssue(
+        await this.client<GiteaIssue>(
+          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`,
+          {
             method: "POST",
             body,
-          }),
-        );
-      } catch (error) {
-        throw normalizeError(error, PLATFORM);
+          },
+        ),
+      );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async listPullRequests(
+    owner: string,
+    repo: string,
+    options?: ListOptions,
+  ): Promise<PageResult<PullRequest>> {
+    try {
+      const query = buildListQuery(options);
+      const { data, headers } = await rawFetch<GiteaPullRequest[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls`,
+        { query },
+      );
+      return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequest(raw));
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async getPullRequest(
+    owner: string,
+    repo: string,
+    number: number,
+  ): Promise<PullRequest> {
+    try {
+      return this.mapPullRequest(
+        await cachedFetch<GiteaPullRequest>(
+          this.client,
+          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}`,
+        ),
+      );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async createPullRequest(
+    owner: string,
+    repo: string,
+    input: CreatePullRequestInput,
+  ): Promise<PullRequest> {
+    try {
+      const body: Record<string, unknown> = {
+        title: input.title,
+        body: input.body,
+        head: input.sourceBranch,
+        base: input.targetBranch,
+      };
+      if (input.draft !== undefined) {
+        body.draft = input.draft;
       }
-    },
-  };
-
-  // -- pullRequests --
-
-  const pullRequests: PullRequestResource = {
-    async list(owner, repo, options?) {
-      try {
-        const query = buildListQuery(options);
-        const { data, headers } = await rawFetch<GiteaPullRequest[]>(
-          client,
-          `/repos/${owner}/${repo}/pulls`,
-          { query },
-        );
-        return buildPageResult(data ?? [], headers, mapPullRequest);
-      } catch (error) {
-        throw normalizeError(error, PLATFORM);
-      }
-    },
-
-    async get(owner, repo, number) {
-      try {
-        return mapPullRequest(
-          await cachedFetch<GiteaPullRequest>(client, `/repos/${owner}/${repo}/pulls/${number}`),
-        );
-      } catch (error) {
-        throw normalizeError(error, PLATFORM);
-      }
-    },
-
-    async create(owner, repo, input) {
-      try {
-        const body: Record<string, unknown> = {
-          title: input.title,
-          body: input.body,
-          head: input.sourceBranch,
-          base: input.targetBranch,
-        };
-        if (input.draft !== undefined) {
-          body.draft = input.draft;
-        }
-        return mapPullRequest(
-          await client<GiteaPullRequest>(`/repos/${owner}/${repo}/pulls`, {
+      return this.mapPullRequest(
+        await this.client<GiteaPullRequest>(
+          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls`,
+          {
             method: "POST",
             body,
-          }),
-        );
-      } catch (error) {
-        throw normalizeError(error, PLATFORM);
-      }
-    },
-  };
+          },
+        ),
+      );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
 
-  // -- users --
+  protected override async getUser(username: string): Promise<User> {
+    try {
+      return this.mapUser(
+        await cachedFetch<GiteaUser>(this.client, `/users/${encodePathSegment(username)}`),
+      );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
 
-  const users: UserResource = {
-    async get(username) {
-      try {
-        return mapUser(await cachedFetch<GiteaUser>(client, `/users/${username}`));
-      } catch (error) {
-        throw normalizeError(error, PLATFORM);
-      }
-    },
-
-    async authenticated() {
-      try {
-        return mapUser(await cachedFetch<GiteaUser>(client, "/user"));
-      } catch (error) {
-        throw normalizeError(error, PLATFORM);
-      }
-    },
-  };
-
-  return { repos, issues, pullRequests, users };
+  protected override async getAuthenticatedUser(): Promise<User> {
+    try {
+      return this.mapUser(await cachedFetch<GiteaUser>(this.client, "/user"));
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
 }

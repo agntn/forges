@@ -1,9 +1,9 @@
 /**
  * Gitea provider entry point
- * Allows direct imports: import { createGiteaProvider } from 'gixa/gitea'
+ * Allows direct imports: import { GiteaProvider } from 'gixa/gitea'
  */
 
-export { createGiteaProvider } from "./providers/gitea.js";
+export { GiteaProvider } from "./providers/gitea.ts";
 export type {
   User,
   Owner,
@@ -20,5 +20,6 @@ export type {
   IssueResource,
   PullRequestResource,
   UserResource,
-  Provider,
-} from "./types.js";
+} from "./types.ts";
+export { Provider } from "./provider.ts";
+export type { ProviderRawTypes } from "./provider.ts";

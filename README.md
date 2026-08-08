@@ -9,7 +9,7 @@ One API for GitHub, GitLab, Gitea, and GitBucket. Write your code once, swap the
 
 If you've ever had to maintain separate API integrations for different git platforms, you know the pain. They all do the same things but none of them agree on how. GitLab calls them "merge requests", GitHub calls them "pull requests". GitLab paginates with `x-next-page` headers, GitHub uses `Link` headers. GitLab authenticates with `Private-Token`, GitHub with `Authorization: token`. And so on.
 
-`gixa` normalizes all of that behind a single interface.
+`gixa` normalizes all of that behind one abstract provider API.
 
 ## Install
 
@@ -111,12 +111,12 @@ List operations accept `ListOptions`: `page`, `perPage`, and `state` (`'open' | 
 GET requests are cached automatically using [unstorage](https://unstorage.unjs.io) with an LRU driver (5 min TTL, 500 entries). Works out of the box, but you can tweak it:
 
 ```typescript
-const github = createProvider('github', {
+const github = createProvider("github", {
   cache: {
-    ttl: 60_000,     // 1 minute
-    enabled: false,   // or turn it off entirely
+    ttl: 60_000, // 1 minute
+    enabled: false, // or turn it off entirely
   },
-})
+});
 ```
 
 ## Errors
@@ -146,19 +146,32 @@ A 404 from GitHub and a 404 from GitLab both become `NotFoundError`. Same for 40
 If you only need one provider, import it directly. Better for tree-shaking.
 
 ```typescript
+import { Provider } from "gixa";
 import { GitHubProvider } from "gixa/github";
 import { GitLabProvider } from "gixa/gitlab";
-import { createGiteaProvider } from "gixa/gitea";
-import type { Provider, Repository } from "gixa/types";
+import { GiteaProvider } from "gixa/gitea";
+import type { Repository } from "gixa/types";
+
+const gitea = new GiteaProvider({ token: process.env.GITEA_TOKEN });
+
+console.log(gitea instanceof Provider); // true
 ```
+
+`Provider` is the abstract base class for every implementation. It owns the
+four resource accessors and requires typed mapping methods for owners,
+repositories, issues, pull requests, and users. Concrete classes implement
+those mappers and the platform-specific API operations.
+
+The runtime base class is also available from `gixa/provider`. The
+`gixa/types` subpath contains only TypeScript models and resource interfaces.
 
 ## Utilities
 
 A few lower-level pieces are exported if you need them:
 
 ```typescript
-import { resolveToken } from 'gixa'
-import { fetchAllPages, paginate } from 'gixa'
+import { resolveToken } from "gixa";
+import { fetchAllPages, paginate } from "gixa";
 ```
 
 `resolveToken('github')` runs the same auth detection chain without creating a provider. Useful for checking if credentials exist.

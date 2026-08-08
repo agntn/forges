@@ -3,7 +3,7 @@
  * Supports Link header parsing and async pagination
  */
 
-import { normalizeError } from "./errors.js";
+import { normalizeError } from "./errors.ts";
 
 /**
  * Parsed Link header entry
@@ -79,8 +79,11 @@ export function parseLinkHeader(header: string | null | undefined): Record<strin
   for (const entry of entries) {
     // Match <url>; rel="relation"
     const match = entry.match(/<([^>]+)>;\s*rel="([^"]+)"/);
-    if (match) {
-      const [, url, rel] = match;
+    if (!match) continue;
+
+    const url = match[1];
+    const rel = match[2];
+    if (url !== undefined && rel !== undefined) {
       links[rel] = url;
     }
   }
