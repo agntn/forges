@@ -36,19 +36,19 @@ export function resolveToken(
 
   // 2. Environment variables
   const envToken = resolveFromEnv(platform);
-  if (envToken) {
+  if (envToken !== null) {
     return { token: envToken, source: "env" };
   }
 
   // 3. CLI tools
   const cliToken = resolveFromCli(platform, hostname);
-  if (cliToken) {
+  if (cliToken !== null) {
     return { token: cliToken, source: "cli" };
   }
 
   // 4. Config files (fallback if CLI not installed but config exists)
   const configToken = resolveFromConfig(platform, hostname);
-  if (configToken) {
+  if (configToken !== null) {
     return { token: configToken, source: "config" };
   }
 
@@ -85,7 +85,7 @@ const ENV_MAP: Record<Platform, string[]> = {
 function resolveFromEnv(platform: Platform): string | null {
   for (const key of ENV_MAP[platform]) {
     const val = process.env[key];
-    if (val) return val;
+    if (val !== undefined) return val;
   }
   return null;
 }
