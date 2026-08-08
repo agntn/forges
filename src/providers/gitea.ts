@@ -6,11 +6,11 @@
  * - Some fields may be null where GitHub returns empty strings
  */
 
-import { createHttpClient, rawFetch } from "../http";
-import { cachedFetch } from "../cache";
-import { parseLinkHeader } from "../pagination";
-import { normalizeError } from "../errors";
-import { normalizeApiBaseURL } from "./base-url";
+import { createHttpClient, rawFetch } from "../http.js";
+import { cachedFetch } from "../cache.js";
+import { parseLinkHeader } from "../pagination.js";
+import { normalizeError } from "../errors.js";
+import { normalizeApiBaseURL } from "./base-url.js";
 import type {
   Provider,
   ProviderConfig,
@@ -25,7 +25,7 @@ import type {
   Owner,
   PageResult,
   ListOptions,
-} from "../types";
+} from "../types.js";
 
 // -- Raw Gitea API response types --
 
