@@ -96,7 +96,8 @@ describe("createProvider factory", () => {
 
   it("throws GixaError on unsupported platform", () => {
     try {
-      Reflect.apply(createProvider, undefined, ["bitbucket", baseConfig]);
+      // "bitbucket" is invalid by design; cast via never to exercise the runtime guard.
+      createProvider("bitbucket" as never, baseConfig);
       throw new Error("expected createProvider to throw");
     } catch (e) {
       expect(e).toBeInstanceOf(GixaError);

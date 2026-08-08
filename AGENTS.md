@@ -49,7 +49,7 @@ src/
     ├── gitlab.ts         # Class. Project ID resolution + caching, Private-Token auth
     └── gitea.ts          # Class. limit param, null-safe fields
 test/
-└── *.test.ts             # 1:1 mirror of src/ + integration.test.ts (9 files, ~294 tests)
+└── *.test.ts             # 1:1 mirror of src/ + integration.test.ts (10 files, ~313 tests)
 ```
 
 **Where to put new code:**
@@ -142,11 +142,11 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../src/http.js", () => ({
+vi.mock("../src/http.ts", () => ({
   createHttpClient: mocks.createHttpClient,
   rawFetch: mocks.rawFetch,
 }));
-vi.mock("../src/cache.js", () => ({ cachedFetch: mocks.cachedFetch }));
+vi.mock("../src/cache.ts", () => ({ cachedFetch: mocks.cachedFetch }));
 ```
 
 **Fixtures** — raw API response objects (snake_case) defined at file top. Match real API shape.
