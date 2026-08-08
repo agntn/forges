@@ -40,6 +40,7 @@ export {
   GixaError,
   NotFoundError,
   AuthenticationError,
+  PermissionError,
   RateLimitError,
   normalizeError,
 } from "./errors.js";
