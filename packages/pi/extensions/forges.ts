@@ -1,0 +1,204 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+
+import type * as ForgesTools from "../../../dist/tool-operations.d.mts";
+
+const sourceModuleUrl = new URL("../../../src/tool-operations.ts", import.meta.url);
+const distributionModuleUrl = new URL("../../../dist/tool-operations.mjs", import.meta.url);
+let toolOperationsPromise: Promise<typeof ForgesTools> | undefined;
+
+function loadToolOperations(): Promise<typeof ForgesTools> {
+  toolOperationsPromise ??= import(
+    existsSync(fileURLToPath(sourceModuleUrl)) ? sourceModuleUrl.href : distributionModuleUrl.href
+  ) as Promise<typeof ForgesTools>;
+  return toolOperationsPromise;
+}
+
+const platform = Type.Unsafe<ForgesTools.ForgesPlatform>({
+  type: "string",
+  enum: ["github", "gitlab", "gitea"],
+  description: "Git hosting platform",
+});
+const owner = Type.String({ description: "Repository owner or organization", minLength: 1 });
+const repo = Type.String({ description: "Repository name", minLength: 1 });
+const page = Type.Optional(Type.Integer({ description: "Page number", minimum: 1 }));
+const perPage = Type.Optional(
+  Type.Integer({ description: "Results per page", minimum: 1, maximum: 100 }),
+);
+const state = Type.Optional(
+  Type.Unsafe<"open" | "closed" | "all">({
+    type: "string",
+    enum: ["open", "closed", "all"],
+    description: "Filter by state",
+  }),
+);
+const number = Type.Integer({ description: "Issue or pull-request number", minimum: 1 });
+
+const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
+const repositoryParameters = Type.Object({ platform, owner, repo });
+const listRepositoryItemsParameters = Type.Object({ platform, owner, repo, page, perPage, state });
+const repositoryItemParameters = Type.Object({ platform, owner, repo, number });
+const createIssueParameters = Type.Object({
+  platform,
+  owner,
+  repo,
+  title: Type.String({ description: "Issue title", minLength: 1 }),
+  body: Type.String({ description: "Issue body" }),
+  labels: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+});
+const createPullRequestParameters = Type.Object({
+  platform,
+  owner,
+  repo,
+  title: Type.String({ description: "Pull-request title", minLength: 1 }),
+  body: Type.String({ description: "Pull-request body" }),
+  sourceBranch: Type.String({ description: "Source branch", minLength: 1 }),
+  targetBranch: Type.String({ description: "Target branch", minLength: 1 }),
+  draft: Type.Optional(Type.Boolean({ description: "Create as a draft pull request" })),
+});
+const userParameters = Type.Object({
+  platform,
+  username: Type.String({ description: "Platform username", minLength: 1 }),
+});
+const authenticatedUserParameters = Type.Object({ platform });
+
+export default function forgesExtension(pi: ExtensionAPI): void {
+  pi.registerTool({
+    name: "forges_repos_list",
+    label: "Forges Repositories",
+    description: "List repositories owned by a user or organization on a supported Git platform",
+    promptSnippet: "List repositories through GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_repos_list for repository discovery instead of constructing provider API requests.",
+    ],
+    parameters: listRepositoriesParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listRepositories(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_repos_get",
+    label: "Forges Repository",
+    description: "Get one repository by owner and name from a supported Git platform",
+    promptSnippet: "Get normalized repository metadata from GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_repos_get when exact normalized repository metadata is required.",
+    ],
+    parameters: repositoryParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getRepository(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_issues_list",
+    label: "Forges Issues",
+    description: "List normalized issues for a repository, optionally filtered by state",
+    promptSnippet: "List repository issues across GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_issues_list to inspect issue queues across supported platforms.",
+    ],
+    parameters: listRepositoryItemsParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listIssues(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_issues_get",
+    label: "Forges Issue",
+    description: "Get one normalized repository issue by number",
+    promptSnippet: "Get one repository issue from GitHub, GitLab, or Gitea.",
+    promptGuidelines: ["Use forges_issues_get when the exact issue number is known."],
+    parameters: repositoryItemParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getIssue(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_issues_create",
+    label: "Create Forges Issue",
+    description: "Create an issue in a repository; this mutates the selected Git platform",
+    promptSnippet: "Create a repository issue on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_issues_create only when the user explicitly asks to create an issue.",
+    ],
+    parameters: createIssueParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).createIssue(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_list",
+    label: "Forges Pull Requests",
+    description: "List normalized pull requests for a repository, optionally filtered by state",
+    promptSnippet: "List repository pull requests across GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_pull_requests_list to inspect pull-request queues across supported platforms.",
+    ],
+    parameters: listRepositoryItemsParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listPullRequests(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_get",
+    label: "Forges Pull Request",
+    description: "Get one normalized pull request by repository and number",
+    promptSnippet: "Get one pull request from GitHub, GitLab, or Gitea.",
+    promptGuidelines: ["Use forges_pull_requests_get when the exact pull-request number is known."],
+    parameters: repositoryItemParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getPullRequest(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_create",
+    label: "Create Forges Pull Request",
+    description: "Create a pull request in a repository; this mutates the selected Git platform",
+    promptSnippet: "Create a pull request on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_pull_requests_create only when the user explicitly asks to create a pull request.",
+    ],
+    parameters: createPullRequestParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).createPullRequest(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_users_get",
+    label: "Forges User",
+    description: "Get one normalized user profile by username from a supported Git platform",
+    promptSnippet: "Get a user profile from GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_users_get to resolve a platform username to normalized metadata.",
+    ],
+    parameters: userParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getUser(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_users_authenticated",
+    label: "Forges Authenticated User",
+    description: "Get the normalized user profile for the currently authenticated account",
+    promptSnippet: "Identify the authenticated GitHub, GitLab, or Gitea account.",
+    promptGuidelines: [
+      "Use forges_users_authenticated to identify the account selected by trusted local authentication.",
+    ],
+    parameters: authenticatedUserParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getAuthenticatedUser(params);
+    },
+  });
+}

@@ -15,6 +15,7 @@ export default defineBuildConfig({
         "./src/gitea.ts",
         "./src/provider.ts",
         "./src/types.ts",
+        "./src/tool-operations.ts",
       ],
     },
   ],
