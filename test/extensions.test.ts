@@ -9,7 +9,7 @@ import type {
   ExtensionContext as PiExtensionContext,
   ToolDefinition as PiToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Value } from "typebox/value";
 
 import forgesOmpExtension from "../packages/omp/extensions/forges.ts";
@@ -110,6 +110,10 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("Forges Pi extension", () => {
   it("registers the complete tool set with self-identifying guidelines", () => {
     const tools = registerPiTools();
@@ -139,7 +143,7 @@ describe("Forges Pi extension", () => {
       unusedPiContext,
     );
 
-    expect(mocks.createProvider).toHaveBeenCalledWith("github");
+    expect(mocks.createProvider).toHaveBeenCalledWith("github", undefined);
     expect(mocks.repos.list).toHaveBeenCalledWith("agntn", {
       page: 2,
       perPage: 25,
@@ -150,6 +154,29 @@ describe("Forges Pi extension", () => {
       result: { items: [], hasNextPage: false },
     });
   });
+
+  it.each([
+    ["github", "FORGES_GITHUB_BASE_URL", "https://github.example.com/api/v3"],
+    ["gitlab", "FORGES_GITLAB_BASE_URL", "https://gitlab.example.com/api/v4"],
+    ["gitea", "FORGES_GITEA_BASE_URL", "https://gitea.example.com/api/v1"],
+  ] as const)(
+    "uses trusted local base URL configuration for %s without exposing it to the model",
+    async (platform, envName, baseURL) => {
+      vi.stubEnv(envName, baseURL);
+      const tool = requirePiTool(registerPiTools(), "forges_repos_list");
+
+      await tool.execute(
+        "test",
+        { platform, owner: "agntn" },
+        undefined,
+        undefined,
+        unusedPiContext,
+      );
+
+      expect(mocks.createProvider).toHaveBeenCalledWith(platform, { baseURL });
+      expect(JSON.stringify(tool.parameters)).not.toMatch(/baseURL/u);
+    },
+  );
 
   it("bounds model-facing issue and pull-request list output", async () => {
     const body = "x".repeat(65_536);
@@ -277,7 +304,7 @@ describe("Forges OMP extension", () => {
       unusedOmpContext,
     );
 
-    expect(mocks.createProvider).toHaveBeenCalledWith("gitlab");
+    expect(mocks.createProvider).toHaveBeenCalledWith("gitlab", undefined);
     expect(mocks.issues.create).toHaveBeenCalledWith("agntn", "forges", {
       title: "Bug",
       body: "Details",

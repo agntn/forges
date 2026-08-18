@@ -1,4 +1,5 @@
 import { createProvider } from "./index.ts";
+import type { Provider } from "./provider.ts";
 import type {
   CreateIssueInput,
   CreatePullRequestInput,
@@ -12,6 +13,17 @@ import type {
 } from "./types.ts";
 
 export type ForgesPlatform = "github" | "gitlab" | "gitea";
+
+const baseUrlEnvByPlatform: Record<ForgesPlatform, string> = {
+  github: "FORGES_GITHUB_BASE_URL",
+  gitlab: "FORGES_GITLAB_BASE_URL",
+  gitea: "FORGES_GITEA_BASE_URL",
+};
+
+function createConfiguredProvider(platform: ForgesPlatform): Provider {
+  const baseURL = process.env[baseUrlEnvByPlatform[platform]];
+  return createProvider(platform, baseURL === undefined ? undefined : { baseURL });
+}
 
 export interface PlatformParams {
   platform: ForgesPlatform;
@@ -98,7 +110,7 @@ function listOptions(params: {
 export async function listRepositories(
   params: ListRepositoriesParams,
 ): Promise<ForgesToolResult<PageResult<Repository>>> {
-  const repositories = await createProvider(params.platform).repos.list(
+  const repositories = await createConfiguredProvider(params.platform).repos.list(
     params.owner,
     listOptions(params),
   );
@@ -108,14 +120,17 @@ export async function listRepositories(
 export async function getRepository(
   params: GetRepositoryParams,
 ): Promise<ForgesToolResult<Repository>> {
-  const repository = await createProvider(params.platform).repos.get(params.owner, params.repo);
+  const repository = await createConfiguredProvider(params.platform).repos.get(
+    params.owner,
+    params.repo,
+  );
   return result(params.platform, repository);
 }
 
 export async function listIssues(
   params: ListRepositoryItemsParams,
 ): Promise<ForgesToolResult<PageResult<Issue>>> {
-  const issues = await createProvider(params.platform).issues.list(
+  const issues = await createConfiguredProvider(params.platform).issues.list(
     params.owner,
     params.repo,
     listOptions(params),
@@ -129,7 +144,7 @@ export async function listIssues(
 }
 
 export async function getIssue(params: GetRepositoryItemParams): Promise<ForgesToolResult<Issue>> {
-  const issue = await createProvider(params.platform).issues.get(
+  const issue = await createConfiguredProvider(params.platform).issues.get(
     params.owner,
     params.repo,
     params.number,
@@ -138,18 +153,22 @@ export async function getIssue(params: GetRepositoryItemParams): Promise<ForgesT
 }
 
 export async function createIssue(params: CreateIssueParams): Promise<ForgesToolResult<Issue>> {
-  const issue = await createProvider(params.platform).issues.create(params.owner, params.repo, {
-    title: params.title,
-    body: params.body,
-    labels: params.labels,
-  });
+  const issue = await createConfiguredProvider(params.platform).issues.create(
+    params.owner,
+    params.repo,
+    {
+      title: params.title,
+      body: params.body,
+      labels: params.labels,
+    },
+  );
   return result(params.platform, issue);
 }
 
 export async function listPullRequests(
   params: ListRepositoryItemsParams,
 ): Promise<ForgesToolResult<PageResult<PullRequest>>> {
-  const pullRequests = await createProvider(params.platform).pullRequests.list(
+  const pullRequests = await createConfiguredProvider(params.platform).pullRequests.list(
     params.owner,
     params.repo,
     listOptions(params),
@@ -165,7 +184,7 @@ export async function listPullRequests(
 export async function getPullRequest(
   params: GetRepositoryItemParams,
 ): Promise<ForgesToolResult<PullRequest>> {
-  const pullRequest = await createProvider(params.platform).pullRequests.get(
+  const pullRequest = await createConfiguredProvider(params.platform).pullRequests.get(
     params.owner,
     params.repo,
     params.number,
@@ -176,7 +195,7 @@ export async function getPullRequest(
 export async function createPullRequest(
   params: CreatePullRequestParams,
 ): Promise<ForgesToolResult<PullRequest>> {
-  const pullRequest = await createProvider(params.platform).pullRequests.create(
+  const pullRequest = await createConfiguredProvider(params.platform).pullRequests.create(
     params.owner,
     params.repo,
     {
@@ -191,13 +210,13 @@ export async function createPullRequest(
 }
 
 export async function getUser(params: GetUserParams): Promise<ForgesToolResult<User>> {
-  const user = await createProvider(params.platform).users.get(params.username);
+  const user = await createConfiguredProvider(params.platform).users.get(params.username);
   return result(params.platform, user);
 }
 
 export async function getAuthenticatedUser(
   params: PlatformParams,
 ): Promise<ForgesToolResult<User>> {
-  const user = await createProvider(params.platform).users.authenticated();
+  const user = await createConfiguredProvider(params.platform).users.authenticated();
   return result(params.platform, user);
 }
