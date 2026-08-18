@@ -109,6 +109,21 @@ function giteaPullRequest(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function giteaReviewComment(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 11,
+    body: "Please rename this",
+    user: giteaUser(),
+    html_url: "https://gitea.com/testowner/test-repo/pulls/5#issuecomment-11",
+    created_at: "2024-01-03T00:00:00Z",
+    path: "src/main.ts",
+    position: 8,
+    original_position: 8,
+    resolver: null,
+    ...overrides,
+  };
+}
+
 function makeHeaders(extra: Record<string, string> = {}): Headers {
   return new Headers(extra);
 }
@@ -741,6 +756,112 @@ describe("Gitea Provider", () => {
       const result = await provider.pullRequests.get("testowner", "test-repo", 5);
       expect(result.state).toBe("closed");
       expect(result.merged).toBe(true);
+    });
+  });
+
+  describe("threads", () => {
+    it("lists each review comment as its own thread", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [{ id: 1, comments_count: 2 }],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [
+            giteaReviewComment({ id: 11 }),
+            giteaReviewComment({ id: 12, body: "Independent comment on the same line" }),
+          ],
+          headers: makeHeaders(),
+          status: 200,
+        });
+
+      const result = await provider.threads.list("testowner", "test-repo", 5);
+
+      expect(result.items).toHaveLength(2);
+      expect(result.items.map((thread) => thread.id)).toEqual(["11", "12"]);
+      expect(result.items[0]?.isOutdated).toBe(false);
+      expect(result.items[0]?.comments).toHaveLength(1);
+      expect(result.items[1]?.comments[0]?.body).toBe("Independent comment on the same line");
+    });
+
+    it("stops review pagination when a page is empty even if Link next exists", async () => {
+      let calls = 0;
+      mockedRawFetch.mockImplementation(async () => {
+        calls += 1;
+        if (calls > 3) {
+          throw new Error(`pagination looped ${calls} times`);
+        }
+        return {
+          data: [],
+          headers: makeHeaders({
+            Link: '<https://gitea.com/api/v1/repos/testowner/test-repo/pulls/5/reviews?page=2>; rel="next"',
+          }),
+          status: 200,
+        };
+      });
+
+      const result = await provider.threads.list("testowner", "test-repo", 5);
+
+      expect(calls).toBe(1);
+      expect(result.items).toEqual([]);
+    });
+
+    it("replies through the review-comment replies endpoint", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [{ id: 1, comments_count: 1 }],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaReviewComment({ id: 11 })],
+          headers: makeHeaders(),
+          status: 200,
+        });
+      mockClient.mockResolvedValueOnce(giteaReviewComment({ id: 13, body: "Renamed." }));
+
+      const comment = await provider.threads.reply("testowner", "test-repo", 5, "11", {
+        body: "Renamed.",
+      });
+
+      expect(mockClient).toHaveBeenLastCalledWith(
+        "/repos/testowner/test-repo/pulls/5/comments/11/replies",
+        { method: "POST", body: { body: "Renamed." } },
+      );
+      expect(comment.id).toBe("13");
+    });
+
+    it("resolves a review comment conversation", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [{ id: 1, comments_count: 1 }],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaReviewComment({ id: 11 })],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [{ id: 1, comments_count: 1 }],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaReviewComment({ id: 11, resolver: giteaUser() })],
+          headers: makeHeaders(),
+          status: 200,
+        });
+      mockClient.mockResolvedValueOnce(undefined);
+
+      const thread = await provider.threads.resolve("testowner", "test-repo", 5, "11");
+
+      expect(mockClient).toHaveBeenCalledWith("/repos/testowner/test-repo/pulls/comments/11/resolve", {
+        method: "POST",
+      });
+      expect(thread.isResolved).toBe(true);
     });
   });
 });

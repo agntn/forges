@@ -99,7 +99,7 @@ try {
 ### Mapper methods
 
 The abstract `Provider` requires typed `mapOwner`, `mapRepository`, `mapIssue`,
-`mapPullRequest`, and `mapUser` methods. Each concrete provider supplies its raw
+`mapPullRequest`, `mapUser`, and `mapThread` methods. Each concrete provider supplies its raw
 API response types and implements these protected mappers without side effects.
 Provider operations invoke them through `this`.
 

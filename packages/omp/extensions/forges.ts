@@ -71,6 +71,33 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     username: Type.String({ description: "Platform username", minLength: 1 }),
   });
   const authenticatedUserParameters = Type.Object({ platform });
+  const threadState = Type.Optional(
+    Type.Union([Type.Literal("unresolved"), Type.Literal("resolved"), Type.Literal("all")], {
+      description: "Filter by resolved state",
+    }),
+  );
+  const threadId = Type.String({ description: "Review thread id", minLength: 1 });
+  const listThreadsParameters = Type.Object({
+    platform,
+    owner,
+    repo,
+    number,
+    page,
+    perPage,
+    state: threadState,
+  });
+  const threadParameters = Type.Object({ platform, owner, repo, number, threadId });
+  const replyThreadParameters = Type.Object({
+    platform,
+    owner,
+    repo,
+    number,
+    threadId,
+    body: Type.String({ description: "Reply body", minLength: 1 }),
+    commentId: Type.Optional(
+      Type.String({ description: "Comment id to reply to", minLength: 1 }),
+    ),
+  });
 
   pi.registerTool({
     name: "forges_repos_list",
@@ -179,6 +206,61 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getAuthenticatedUser(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_threads_list",
+    label: "Forges Threads",
+    description: "List normalized pull-request review threads, optionally filtered by resolved state",
+    parameters: listThreadsParameters,
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listThreads(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_threads_get",
+    label: "Forges Thread",
+    description: "Get one normalized pull-request review thread by id",
+    parameters: threadParameters,
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getThread(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_threads_reply",
+    label: "Reply Forges Thread",
+    description: "Reply inside an existing pull-request review thread; this mutates the selected Git platform",
+    parameters: replyThreadParameters,
+    approval: "write",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).replyToThread(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_threads_resolve",
+    label: "Resolve Forges Thread",
+    description: "Mark a pull-request review thread as resolved; this mutates the selected Git platform",
+    parameters: threadParameters,
+    approval: "write",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).resolveThread(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_threads_unresolve",
+    label: "Unresolve Forges Thread",
+    description: "Mark a pull-request review thread as unresolved; this mutates the selected Git platform",
+    parameters: threadParameters,
+    approval: "write",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).unresolveThread(params);
     },
   });
 }

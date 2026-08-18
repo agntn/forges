@@ -54,6 +54,7 @@ import type {
   IssueResource,
   PullRequestResource,
   UserResource,
+  ThreadResource,
 } from "../src/types.ts";
 
 // --- createProvider factory ---
@@ -189,6 +190,18 @@ describe("cross-provider class consistency", () => {
     }
   });
 
+  it("all providers have threads resource", () => {
+    for (const platform of platforms) {
+      const p = providers[platform];
+      expect(p.threads).toBeDefined();
+      expect(typeof p.threads.list).toBe("function");
+      expect(typeof p.threads.get).toBe("function");
+      expect(typeof p.threads.reply).toBe("function");
+      expect(typeof p.threads.resolve).toBe("function");
+      expect(typeof p.threads.unresolve).toBe("function");
+    }
+  });
+
   it("all providers have identical resource method signatures", () => {
     for (const platform of platforms) {
       const p = providers[platform];
@@ -209,6 +222,10 @@ describe("cross-provider class consistency", () => {
 
       // users: get(username), authenticated()
       expect(p.users.get.length).toBeGreaterThanOrEqual(1);
+
+      // threads: list(owner, repo, number, options?), get/reply/resolve/unresolve
+      expect(p.threads.list.length).toBeGreaterThanOrEqual(3);
+      expect(p.threads.get.length).toBeGreaterThanOrEqual(4);
     }
   });
 });
@@ -305,6 +322,7 @@ describe("direct provider instantiation", () => {
     expect(provider.issues).toBeDefined();
     expect(provider.pullRequests).toBeDefined();
     expect(provider.users).toBeDefined();
+    expect(provider.threads).toBeDefined();
   });
 
   it("GitLabProvider can be instantiated directly", () => {
@@ -317,6 +335,7 @@ describe("direct provider instantiation", () => {
     expect(provider.issues).toBeDefined();
     expect(provider.pullRequests).toBeDefined();
     expect(provider.users).toBeDefined();
+    expect(provider.threads).toBeDefined();
   });
 
   it("GiteaProvider can be instantiated directly", () => {
@@ -326,6 +345,7 @@ describe("direct provider instantiation", () => {
     expect(provider.issues).toBeDefined();
     expect(provider.pullRequests).toBeDefined();
     expect(provider.users).toBeDefined();
+    expect(provider.threads).toBeDefined();
   });
 
   it("GitHubProvider works as GitBucket with custom baseURL", () => {
@@ -338,6 +358,7 @@ describe("direct provider instantiation", () => {
     expect(provider.issues).toBeDefined();
     expect(provider.pullRequests).toBeDefined();
     expect(provider.users).toBeDefined();
+    expect(provider.threads).toBeDefined();
   });
 });
 
@@ -364,10 +385,12 @@ describe("type-level consistency", () => {
     const issues: IssueResource = provider.issues;
     const prs: PullRequestResource = provider.pullRequests;
     const users: UserResource = provider.users;
+    const threads: ThreadResource = provider.threads;
 
     expect(repos).toBeDefined();
     expect(issues).toBeDefined();
     expect(prs).toBeDefined();
     expect(users).toBeDefined();
+    expect(threads).toBeDefined();
   });
 });

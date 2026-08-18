@@ -8,12 +8,18 @@ import type {
   Issue,
   IssueResource,
   ListOptions,
+  ListThreadOptions,
   Owner,
   PageResult,
   PullRequest,
   PullRequestResource,
+  ReplyThreadInput,
   Repository,
   RepositoryResource,
+  Thread,
+  ThreadComment,
+  ThreadResource,
+  ThreadState,
   User,
   UserResource,
 } from "./types.ts";
@@ -30,6 +36,7 @@ export interface ProviderRawTypes {
   issue: unknown;
   pullRequest: unknown;
   user: unknown;
+  thread: unknown;
 }
 
 /**
@@ -43,6 +50,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   public readonly issues: IssueResource;
   public readonly pullRequests: PullRequestResource;
   public readonly users: UserResource;
+  public readonly threads: ThreadResource;
 
   protected constructor() {
     this.repos = {
@@ -63,6 +71,15 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       get: (username) => this.getUser(username),
       authenticated: () => this.getAuthenticatedUser(),
     };
+    this.threads = {
+      list: (owner, repo, number, options) => this.listThreads(owner, repo, number, options),
+      get: (owner, repo, number, threadId) => this.getThread(owner, repo, number, threadId),
+      reply: (owner, repo, number, threadId, input) =>
+        this.replyToThread(owner, repo, number, threadId, input),
+      resolve: (owner, repo, number, threadId) => this.resolveThread(owner, repo, number, threadId),
+      unresolve: (owner, repo, number, threadId) =>
+        this.unresolveThread(owner, repo, number, threadId),
+    };
   }
 
   protected abstract mapOwner(raw: Raw["owner"]): Owner;
@@ -70,6 +87,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   protected abstract mapIssue(raw: Raw["issue"]): Issue;
   protected abstract mapPullRequest(raw: Raw["pullRequest"]): PullRequest;
   protected abstract mapUser(raw: Raw["user"]): User;
+  protected abstract mapThread(raw: Raw["thread"]): Thread;
 
   protected abstract listRepos(
     owner: string,
@@ -104,4 +122,43 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   ): Promise<PullRequest>;
   protected abstract getUser(username: string): Promise<User>;
   protected abstract getAuthenticatedUser(): Promise<User>;
+  protected abstract listThreads(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListThreadOptions,
+  ): Promise<PageResult<Thread>>;
+  protected abstract getThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread>;
+  protected abstract replyToThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+    input: ReplyThreadInput,
+  ): Promise<ThreadComment>;
+  protected abstract resolveThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread>;
+  protected abstract unresolveThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread>;
+
+  protected filterThreadsByState(threads: Thread[], state?: ThreadState): Thread[] {
+    if (state === undefined || state === "all") {
+      return threads;
+    }
+    const resolved = state === "resolved";
+    return threads.filter((thread) => thread.isResolved === resolved);
+  }
 }

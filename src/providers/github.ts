@@ -13,15 +13,19 @@ import type {
   Owner,
   PageResult,
   ListOptions,
+  ListThreadOptions,
   CreateIssueInput,
   CreatePullRequestInput,
   IssueState,
+  ReplyThreadInput,
+  Thread,
+  ThreadComment,
 } from "../types.ts";
+import { ForgesError, NotFoundError, normalizeError } from "../errors.ts";
 import { createHttpClient, rawFetch, type HttpClient } from "../http.ts";
 import { cachedFetch } from "../cache.ts";
 import { parseLinkHeader } from "../pagination.ts";
 import { encodePathSegment } from "./base-url.ts";
-import { normalizeError } from "../errors.ts";
 
 // --- GitHub API response types (snake_case) ---
 
@@ -81,6 +85,135 @@ interface GitHubRawTypes extends ProviderRawTypes {
   issue: GitHubIssue;
   pullRequest: GitHubPullRequest;
   user: GitHubUser;
+  thread: GitHubGraphQLReviewThread;
+}
+
+interface GitHubReviewComment {
+  id: number;
+  body: string;
+  user: { login: string } | null;
+  html_url: string;
+  created_at: string;
+}
+
+interface GitHubGraphQLPageInfo {
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
+interface GitHubGraphQLReviewComment {
+  databaseId: number | null;
+  body: string;
+  url: string;
+  createdAt: string;
+  author: { login: string } | null;
+}
+
+interface GitHubGraphQLCommentConnection {
+  pageInfo: GitHubGraphQLPageInfo;
+  nodes: Array<GitHubGraphQLReviewComment | null> | null;
+}
+
+interface GitHubGraphQLReviewThread {
+  id: string;
+  isResolved: boolean;
+  isOutdated: boolean;
+  path: string | null;
+  line: number | null;
+  startLine: number | null;
+  comments: GitHubGraphQLCommentConnection;
+}
+
+interface GitHubGraphQLError {
+  message: string;
+  type?: string;
+}
+
+interface GitHubGraphQLResponse<T> {
+  data?: T | null;
+  errors?: GitHubGraphQLError[];
+}
+
+interface GitHubGraphQLThreadListData {
+  repository: {
+    pullRequest: {
+      reviewThreads: {
+        pageInfo: GitHubGraphQLPageInfo;
+        nodes: Array<GitHubGraphQLReviewThread | null> | null;
+      };
+    } | null;
+  } | null;
+}
+
+interface GitHubGraphQLThreadNodeData {
+  node: GitHubGraphQLReviewThread | null;
+}
+
+interface GitHubGraphQLThreadMutationData {
+  resolveReviewThread?: { thread: GitHubGraphQLReviewThread | null };
+  unresolveReviewThread?: { thread: GitHubGraphQLReviewThread | null };
+}
+
+const THREAD_FIELDS = `
+  id
+  isResolved
+  isOutdated
+  path
+  line
+  startLine
+  comments(first: 100, after: $commentsAfter) {
+    pageInfo { hasNextPage endCursor }
+    nodes { databaseId body url createdAt author { login } }
+  }
+`;
+
+const LIST_THREADS_QUERY = `
+  query($owner: String!, $name: String!, $number: Int!, $first: Int!, $after: String, $commentsAfter: String) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        reviewThreads(first: $first, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes { ${THREAD_FIELDS} }
+        }
+      }
+    }
+  }
+`;
+
+const GET_THREAD_QUERY = `
+  query($id: ID!, $commentsAfter: String) {
+    node(id: $id) {
+      ... on PullRequestReviewThread { ${THREAD_FIELDS} }
+    }
+  }
+`;
+
+const RESOLVE_THREAD_MUTATION = `
+  mutation($id: ID!, $commentsAfter: String) {
+    resolveReviewThread(input: {threadId: $id}) {
+      thread { ${THREAD_FIELDS} }
+    }
+  }
+`;
+
+const UNRESOLVE_THREAD_MUTATION = `
+  mutation($id: ID!, $commentsAfter: String) {
+    unresolveReviewThread(input: {threadId: $id}) {
+      thread { ${THREAD_FIELDS} }
+    }
+  }
+`;
+
+function githubGraphqlUrl(restBaseURL: string): string {
+  const base = restBaseURL.replace(/\/+$/, "");
+  if (base.endsWith("/api/v3")) {
+    return `${base.slice(0, -"/api/v3".length)}/api/graphql`;
+  }
+  return "/graphql";
+}
+
+function presentGraphQLNodes<T>(nodes: Array<T | null> | null | undefined): T[] {
+  return (nodes ?? []).filter((node): node is T => node !== null);
 }
 
 // --- Pagination helper ---
@@ -112,11 +245,13 @@ function buildPageResult<TRaw, TMapped>(
 
 export class GitHubProvider extends Provider<GitHubRawTypes> {
   private client: HttpClient;
+  private readonly restBaseURL: string;
 
   constructor(config: ProviderConfig) {
     super();
+    this.restBaseURL = config.baseURL || "https://api.github.com";
     this.client = createHttpClient({
-      baseURL: config.baseURL || "https://api.github.com",
+      baseURL: this.restBaseURL,
       token: config.token ?? "",
       tokenHeader: "Authorization",
       tokenPrefix: "token ",
@@ -176,6 +311,24 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       email: raw.email ?? "",
       avatarUrl: raw.avatar_url,
       isAdmin: raw.site_admin,
+    };
+  }
+
+  protected override mapThread(raw: GitHubGraphQLReviewThread): Thread {
+    return {
+      id: raw.id,
+      isResolved: raw.isResolved,
+      isOutdated: raw.isOutdated,
+      path: raw.path ?? "",
+      line: raw.line,
+      startLine: raw.startLine,
+      comments: presentGraphQLNodes(raw.comments.nodes).map((comment) => ({
+        id: comment.databaseId === null ? "" : String(comment.databaseId),
+        body: comment.body,
+        author: { login: comment.author?.login ?? "" },
+        url: comment.url,
+        createdAt: comment.createdAt,
+      })),
     };
   }
 
@@ -366,5 +519,239 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     } catch (error) {
       throw normalizeError(error, "github");
     }
+  }
+
+  // --- Threads ---
+
+  protected override async listThreads(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListThreadOptions,
+  ): Promise<PageResult<Thread>> {
+    try {
+      const perPage = options?.perPage ?? 30;
+      const page = options?.page ?? 1;
+      const skip = (page - 1) * perPage;
+      const matched: Thread[] = [];
+      let cursor: string | undefined;
+      let hasMore = true;
+
+      while (hasMore && matched.length < skip + perPage) {
+        const data = await this.graphql<GitHubGraphQLThreadListData>(LIST_THREADS_QUERY, {
+          owner,
+          name: repo,
+          number,
+          first: 50,
+          after: cursor ?? null,
+          commentsAfter: null,
+        });
+        const pullRequest = data.repository?.pullRequest;
+        if (!pullRequest) {
+          throw new NotFoundError(
+            `Resource not found: pull request ${owner}/${repo}#${number}`,
+            "github",
+          );
+        }
+        const connection = pullRequest.reviewThreads;
+        for (const node of presentGraphQLNodes(connection.nodes)) {
+          const thread = this.mapThread(await this.completeThreadComments(node));
+          if (this.filterThreadsByState([thread], options?.state).length > 0) {
+            matched.push(thread);
+          }
+        }
+        const endCursor = connection.pageInfo.endCursor;
+        hasMore =
+          connection.pageInfo.hasNextPage &&
+          endCursor !== null &&
+          endCursor !== "" &&
+          endCursor !== cursor;
+        cursor = endCursor ?? undefined;
+      }
+
+      const items = matched.slice(skip, skip + perPage);
+      const hasNextPage = matched.length > skip + perPage || (hasMore && items.length === perPage);
+      return {
+        items,
+        hasNextPage,
+        nextPage: hasNextPage ? page + 1 : undefined,
+      };
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async getThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread> {
+    try {
+      const data = await this.graphql<GitHubGraphQLThreadNodeData>(GET_THREAD_QUERY, {
+        id: threadId,
+        commentsAfter: null,
+      });
+      if (!data.node) {
+        throw new NotFoundError(
+          `Resource not found: thread ${threadId} on ${owner}/${repo}#${number}`,
+          "github",
+        );
+      }
+      return this.mapThread(await this.completeThreadComments(data.node));
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async replyToThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+    input: ReplyThreadInput,
+  ): Promise<ThreadComment> {
+    try {
+      const commentId = input.commentId ?? (await this.rootCommentId(owner, repo, number, threadId));
+      const data = await this.client<GitHubReviewComment>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/comments/${encodePathSegment(Number(commentId))}/replies`,
+        {
+          method: "POST",
+          body: { body: input.body },
+        },
+      );
+      return {
+        id: String(data.id),
+        body: data.body,
+        author: { login: data.user?.login ?? "" },
+        url: data.html_url,
+        createdAt: data.created_at,
+      };
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async resolveThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread> {
+    return this.mutateThread(
+      owner,
+      repo,
+      number,
+      threadId,
+      RESOLVE_THREAD_MUTATION,
+      "resolveReviewThread",
+    );
+  }
+
+  protected override async unresolveThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread> {
+    return this.mutateThread(
+      owner,
+      repo,
+      number,
+      threadId,
+      UNRESOLVE_THREAD_MUTATION,
+      "unresolveReviewThread",
+    );
+  }
+
+  private async mutateThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+    query: string,
+    field: "resolveReviewThread" | "unresolveReviewThread",
+  ): Promise<Thread> {
+    try {
+      const data = await this.graphql<GitHubGraphQLThreadMutationData>(query, {
+        id: threadId,
+        commentsAfter: null,
+      });
+      const thread = data[field]?.thread;
+      if (!thread) {
+        throw new NotFoundError(
+          `Resource not found: thread ${threadId} on ${owner}/${repo}#${number}`,
+          "github",
+        );
+      }
+      return this.mapThread(await this.completeThreadComments(thread));
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  private async rootCommentId(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<string> {
+    const thread = await this.getThread(owner, repo, number, threadId);
+    const commentId = thread.comments[0]?.id;
+    if (!commentId) {
+      throw new ForgesError(
+        `Review thread ${threadId} has no comment id to reply to`,
+        undefined,
+        "github",
+      );
+    }
+    return commentId;
+  }
+
+  private async completeThreadComments(
+    thread: GitHubGraphQLReviewThread,
+  ): Promise<GitHubGraphQLReviewThread> {
+    const nodes = presentGraphQLNodes(thread.comments.nodes);
+    let cursor = thread.comments.pageInfo.endCursor;
+    let hasNextPage = thread.comments.pageInfo.hasNextPage;
+    while (hasNextPage && cursor) {
+      const data = await this.graphql<GitHubGraphQLThreadNodeData>(GET_THREAD_QUERY, {
+        id: thread.id,
+        commentsAfter: cursor,
+      });
+      const connection = data.node?.comments;
+      if (!connection) {
+        break;
+      }
+      nodes.push(...presentGraphQLNodes(connection.nodes));
+      const nextCursor = connection.pageInfo.endCursor;
+      if (!nextCursor || nextCursor === cursor) {
+        break;
+      }
+      hasNextPage = connection.pageInfo.hasNextPage;
+      cursor = nextCursor;
+    }
+    return {
+      ...thread,
+      comments: { pageInfo: { hasNextPage: false, endCursor: null }, nodes },
+    };
+  }
+
+  private async graphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+    const response = await this.client<GitHubGraphQLResponse<T>>(githubGraphqlUrl(this.restBaseURL), {
+      method: "POST",
+      body: { query, variables },
+    });
+    const firstError = response.errors?.[0];
+    if (firstError) {
+      if (firstError.type === "NOT_FOUND") {
+        throw new NotFoundError(`Resource not found: ${firstError.message}`, "github");
+      }
+      throw new ForgesError(firstError.message, undefined, "github");
+    }
+    if (response.data === undefined || response.data === null) {
+      throw new ForgesError("GitHub GraphQL returned no data", undefined, "github");
+    }
+    return response.data;
   }
 }

@@ -110,6 +110,54 @@ export interface CreatePullRequestInput {
 }
 
 /**
+ * Review-thread state filter
+ */
+export type ThreadState = "unresolved" | "resolved" | "all";
+
+/**
+ * One comment inside a review thread
+ */
+export interface ThreadComment {
+  id: string;
+  body: string;
+  author: {
+    login: string;
+  };
+  url: string;
+  createdAt: string;
+}
+
+/**
+ * Pull-request review thread
+ */
+export interface Thread {
+  id: string;
+  isResolved: boolean;
+  isOutdated: boolean;
+  path: string;
+  line: number | null;
+  startLine: number | null;
+  comments: ThreadComment[];
+}
+
+/**
+ * List operation options for review threads
+ */
+export interface ListThreadOptions {
+  page?: number;
+  perPage?: number;
+  state?: ThreadState;
+}
+
+/**
+ * Input for replying inside an existing review thread
+ */
+export interface ReplyThreadInput {
+  body: string;
+  commentId?: string;
+}
+
+/**
  * Provider configuration
  */
 export interface ProviderConfig {
@@ -158,4 +206,26 @@ export interface PullRequestResource {
 export interface UserResource {
   get(username: string): Promise<User>;
   authenticated(): Promise<User>;
+}
+
+/**
+ * Resource accessor for pull-request review threads
+ */
+export interface ThreadResource {
+  list(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListThreadOptions,
+  ): Promise<PageResult<Thread>>;
+  get(owner: string, repo: string, number: number, threadId: string): Promise<Thread>;
+  reply(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+    input: ReplyThreadInput,
+  ): Promise<ThreadComment>;
+  resolve(owner: string, repo: string, number: number, threadId: string): Promise<Thread>;
+  unresolve(owner: string, repo: string, number: number, threadId: string): Promise<Thread>;
 }

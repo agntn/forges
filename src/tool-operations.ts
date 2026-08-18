@@ -6,9 +6,14 @@ import type {
   Issue,
   IssueState,
   ListOptions,
+  ListThreadOptions,
   PageResult,
   PullRequest,
+  ReplyThreadInput,
   Repository,
+  Thread,
+  ThreadComment,
+  ThreadState,
   User,
 } from "./types.ts";
 
@@ -219,4 +224,102 @@ export async function getAuthenticatedUser(
 ): Promise<ForgesToolResult<User>> {
   const user = await createConfiguredProvider(params.platform).users.authenticated();
   return result(params.platform, user);
+}
+
+export interface ListThreadsParams extends RepositoryParams {
+  number: number;
+  page?: number;
+  perPage?: number;
+  state?: ThreadState;
+}
+
+export interface GetThreadParams extends RepositoryParams {
+  number: number;
+  threadId: string;
+}
+
+export type ReplyThreadParams = GetThreadParams & ReplyThreadInput;
+
+function summarizeThreadPage(page: PageResult<Thread>): PageResult<Thread> {
+  return {
+    ...page,
+    items: page.items.map((thread) => ({
+      ...thread,
+      comments: thread.comments.map((comment) => ({
+        ...comment,
+        body: comment.body.split("\n").slice(0, 12).join("\n"),
+      })),
+    })),
+  };
+}
+
+function threadListOptions(params: ListThreadsParams): ListThreadOptions {
+  return {
+    page: params.page,
+    perPage: params.perPage,
+    state: params.state,
+  };
+}
+
+export async function listThreads(
+  params: ListThreadsParams,
+): Promise<ForgesToolResult<PageResult<Thread>>> {
+  const threads = await createConfiguredProvider(params.platform).threads.list(
+    params.owner,
+    params.repo,
+    params.number,
+    threadListOptions(params),
+  );
+  return result(
+    params.platform,
+    threads,
+    summarizeThreadPage(threads),
+    "Comment bodies are truncated in list output; use forges_threads_get to read one full thread.",
+  );
+}
+
+export async function getThread(params: GetThreadParams): Promise<ForgesToolResult<Thread>> {
+  const thread = await createConfiguredProvider(params.platform).threads.get(
+    params.owner,
+    params.repo,
+    params.number,
+    params.threadId,
+  );
+  return result(params.platform, thread);
+}
+
+export async function replyToThread(
+  params: ReplyThreadParams,
+): Promise<ForgesToolResult<ThreadComment>> {
+  const comment = await createConfiguredProvider(params.platform).threads.reply(
+    params.owner,
+    params.repo,
+    params.number,
+    params.threadId,
+    {
+      body: params.body,
+      commentId: params.commentId,
+    },
+  );
+  return result(params.platform, comment);
+}
+
+export async function resolveThread(params: GetThreadParams): Promise<ForgesToolResult<Thread>> {
+  const thread = await createConfiguredProvider(params.platform).threads.resolve(
+    params.owner,
+    params.repo,
+    params.number,
+    params.threadId,
+  );
+  return result(params.platform, thread);
+}
+
+export async function unresolveThread(params: GetThreadParams): Promise<ForgesToolResult<Thread>> {
+  const thread = await createConfiguredProvider(params.platform).threads.unresolve(
+    params.owner,
+    params.repo,
+    params.number,
+    params.threadId,
+  );
+  return result(params.platform, thread);
 }

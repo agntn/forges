@@ -21,6 +21,11 @@ const expectedToolNames = [
   "forges_pull_requests_create",
   "forges_users_get",
   "forges_users_authenticated",
+  "forges_threads_list",
+  "forges_threads_get",
+  "forges_threads_reply",
+  "forges_threads_resolve",
+  "forges_threads_unresolve",
 ];
 
 async function assertDistributionFallback(extensionPath, api) {

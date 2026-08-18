@@ -11,15 +11,21 @@ export type {
   IssueState,
   Issue,
   PullRequest,
+  ThreadState,
+  ThreadComment,
+  Thread,
   PageResult,
   ListOptions,
+  ListThreadOptions,
   CreateIssueInput,
   CreatePullRequestInput,
+  ReplyThreadInput,
   ProviderConfig,
   RepositoryResource,
   IssueResource,
   PullRequestResource,
   UserResource,
+  ThreadResource,
 } from "./types.ts";
 export { Provider } from "./provider.ts";
 export type { ProviderRawTypes } from "./provider.ts";
