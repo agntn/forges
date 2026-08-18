@@ -1,4 +1,4 @@
-import { fetchAllPages, GixaError, paginate } from "gixa";
+import { fetchAllPages, ForgesError, paginate } from "@agntn/forges";
 
 type Repo = { id: number; name: string };
 
@@ -17,13 +17,17 @@ async function githubFetcher(url: string): Promise<{ data: Repo[]; headers: Head
   const response = await fetch(url, {
     headers: {
       Accept: "application/vnd.github+json",
-      "User-Agent": "gixa-example",
+      "User-Agent": "forges-example",
       ...(token ? { Authorization: `token ${token}` } : {}),
     },
   });
 
   if (!response.ok) {
-    throw new GixaError(`GitHub request failed with status ${response.status}`, response.status, "github");
+    throw new ForgesError(
+      `GitHub request failed with status ${response.status}`,
+      response.status,
+      "github",
+    );
   }
 
   const payload = await response.json();
@@ -56,8 +60,12 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  if (error instanceof GixaError) {
-    console.error("gixa error", { message: error.message, status: error.status, platform: error.platform });
+  if (error instanceof ForgesError) {
+    console.error("forges error", {
+      message: error.message,
+      status: error.status,
+      platform: error.platform,
+    });
   } else {
     console.error(error);
   }

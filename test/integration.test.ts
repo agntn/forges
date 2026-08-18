@@ -47,7 +47,7 @@ import { createProvider, Provider } from "../src/index.ts";
 import { GitHubProvider } from "../src/providers/github.ts";
 import { GitLabProvider } from "../src/providers/gitlab.ts";
 import { GiteaProvider } from "../src/providers/gitea.ts";
-import { AuthenticationError, GixaError } from "../src/errors.ts";
+import { AuthenticationError, ForgesError } from "../src/errors.ts";
 import type {
   ProviderConfig,
   RepositoryResource,
@@ -94,14 +94,14 @@ describe("createProvider factory", () => {
     expect(provider.users).toBeDefined();
   });
 
-  it("throws GixaError on unsupported platform", () => {
+  it("throws ForgesError on unsupported platform", () => {
     try {
       // "bitbucket" is invalid by design; cast via never to exercise the runtime guard.
       createProvider("bitbucket" as never, baseConfig);
       throw new Error("expected createProvider to throw");
     } catch (e) {
-      expect(e).toBeInstanceOf(GixaError);
-      expect((e as GixaError).platform).toBe("bitbucket");
+      expect(e).toBeInstanceOf(ForgesError);
+      expect((e as ForgesError).platform).toBe("bitbucket");
     }
   });
 
@@ -235,7 +235,7 @@ describe("type exports", () => {
 
   it("exports error classes", async () => {
     const mod = await import("../src/index.ts");
-    expect(mod.GixaError).toBeDefined();
+    expect(mod.ForgesError).toBeDefined();
     expect(mod.NotFoundError).toBeDefined();
     expect(mod.AuthenticationError).toBeDefined();
     expect(mod.RateLimitError).toBeDefined();

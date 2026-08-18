@@ -13,22 +13,22 @@ describe("cachedFetch", () => {
   });
 
   it("fetches from client on cache miss", async () => {
-    const client = vi.fn().mockResolvedValue({ id: 1, name: "gixa" });
+    const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
 
     const result = await cachedFetch(client as any, "/repos/unjs/ugp");
 
     expect(client).toHaveBeenCalledOnce();
-    expect(result).toEqual({ id: 1, name: "gixa" });
+    expect(result).toEqual({ id: 1, name: "forges" });
   });
 
   it("returns cached value on cache hit without calling client", async () => {
-    const client = vi.fn().mockResolvedValue({ id: 1, name: "gixa" });
+    const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
 
     await cachedFetch(client as any, "/repos/unjs/ugp");
     const result = await cachedFetch(client as any, "/repos/unjs/ugp");
 
     expect(client).toHaveBeenCalledOnce();
-    expect(result).toEqual({ id: 1, name: "gixa" });
+    expect(result).toEqual({ id: 1, name: "forges" });
   });
 
   it("does not cache non-GET requests", async () => {
@@ -52,7 +52,7 @@ describe("cachedFetch", () => {
   });
 
   it("reuses cache for equivalent query objects with different key order", async () => {
-    const client = vi.fn().mockResolvedValue({ id: 1, name: "gixa" });
+    const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
 
     const first = await cachedFetch(client as any, "/repos/unjs/ugp", {
       query: { page: "1", state: "open" },
@@ -62,12 +62,12 @@ describe("cachedFetch", () => {
     });
 
     expect(client).toHaveBeenCalledOnce();
-    expect(first).toEqual({ id: 1, name: "gixa" });
-    expect(second).toEqual({ id: 1, name: "gixa" });
+    expect(first).toEqual({ id: 1, name: "forges" });
+    expect(second).toEqual({ id: 1, name: "forges" });
   });
 
   it("reuses cache for equivalent query strings with different key order", async () => {
-    const client = vi.fn().mockResolvedValue({ id: 1, name: "gixa" });
+    const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
 
     const first = await cachedFetch(client as any, "/repos/unjs/ugp", {
       query: "page=1&state=open",
@@ -77,8 +77,8 @@ describe("cachedFetch", () => {
     });
 
     expect(client).toHaveBeenCalledOnce();
-    expect(first).toEqual({ id: 1, name: "gixa" });
-    expect(second).toEqual({ id: 1, name: "gixa" });
+    expect(first).toEqual({ id: 1, name: "forges" });
+    expect(second).toEqual({ id: 1, name: "forges" });
   });
 
   it("differentiates cache entries by query parameters", async () => {
@@ -97,7 +97,7 @@ describe("cachedFetch", () => {
   });
 
   it("treats empty query like no query", async () => {
-    const client = vi.fn().mockResolvedValue({ id: 1, name: "gixa" });
+    const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
 
     const noQuery = await cachedFetch(client as any, "/repos/unjs/ugp");
     const emptyObject = await cachedFetch(client as any, "/repos/unjs/ugp", {
@@ -108,9 +108,9 @@ describe("cachedFetch", () => {
     });
 
     expect(client).toHaveBeenCalledOnce();
-    expect(noQuery).toEqual({ id: 1, name: "gixa" });
-    expect(emptyObject).toEqual({ id: 1, name: "gixa" });
-    expect(emptyParams).toEqual({ id: 1, name: "gixa" });
+    expect(noQuery).toEqual({ id: 1, name: "forges" });
+    expect(emptyObject).toEqual({ id: 1, name: "forges" });
+    expect(emptyParams).toEqual({ id: 1, name: "forges" });
   });
 });
 

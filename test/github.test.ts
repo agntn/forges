@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { FetchError } from "ofetch";
-import { NotFoundError, AuthenticationError, RateLimitError, GixaError } from "../src/errors.ts";
+import { NotFoundError, AuthenticationError, RateLimitError, ForgesError } from "../src/errors.ts";
 
 // --- Hoisted mocks ---
 
@@ -595,16 +595,16 @@ describe("GitHubProvider", () => {
       mocks.cachedFetch.mockRejectedValueOnce(makeFetchError(500));
 
       const error = await gh.repos.get("x", "y").catch((e: unknown) => e);
-      expect(error).toBeInstanceOf(GixaError);
-      expect((error as GixaError).platform).toBe("github");
+      expect(error).toBeInstanceOf(ForgesError);
+      expect((error as ForgesError).platform).toBe("github");
     });
 
     it("preserves status code on generic errors", async () => {
       mocks.cachedFetch.mockRejectedValueOnce(makeFetchError(503));
 
       const error = await gh.repos.get("x", "y").catch((e: unknown) => e);
-      expect(error).toBeInstanceOf(GixaError);
-      expect((error as GixaError).status).toBe(503);
+      expect(error).toBeInstanceOf(ForgesError);
+      expect((error as ForgesError).status).toBe(503);
     });
   });
 });

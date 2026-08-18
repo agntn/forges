@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { FetchError } from "ofetch";
 import {
   normalizeError,
-  GixaError,
+  ForgesError,
   AuthenticationError,
   PermissionError,
   NotFoundError,
@@ -200,38 +200,38 @@ describe("normalizeError", () => {
     expect(result.retryAfter).toBeUndefined();
   });
 
-  it("maps other HTTP status to generic GixaError", () => {
+  it("maps other HTTP status to generic ForgesError", () => {
     const err = createFetchError("Internal Server Error", 500);
     const result = normalizeError(err, "github");
 
-    expect(result).toBeInstanceOf(GixaError);
+    expect(result).toBeInstanceOf(ForgesError);
     expect(result).not.toBeInstanceOf(AuthenticationError);
     expect(result).not.toBeInstanceOf(NotFoundError);
     expect(result).not.toBeInstanceOf(RateLimitError);
     expect(result.status).toBe(500);
   });
 
-  it("wraps generic Error in GixaError", () => {
+  it("wraps generic Error in ForgesError", () => {
     const err = new Error("Network failure");
     const result = normalizeError(err, "gitea");
 
-    expect(result).toBeInstanceOf(GixaError);
+    expect(result).toBeInstanceOf(ForgesError);
     expect(result.message).toBe("Network failure");
     expect(result.status).toBeUndefined();
     expect(result.originalError).toBe(err);
   });
 
-  it("passes through existing GixaError unchanged", () => {
+  it("passes through existing ForgesError unchanged", () => {
     const original = new NotFoundError("Already normalized", "github");
     const result = normalizeError(original);
 
     expect(result).toBe(original);
   });
 
-  it("converts unknown error types to GixaError", () => {
+  it("converts unknown error types to ForgesError", () => {
     const result = normalizeError("string error", "github");
 
-    expect(result).toBeInstanceOf(GixaError);
+    expect(result).toBeInstanceOf(ForgesError);
     expect(result.message).toBe("string error");
     expect(result.platform).toBe("github");
   });

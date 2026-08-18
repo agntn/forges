@@ -1,4 +1,4 @@
-# AGENTS.md — gixa
+# AGENTS.md — forges
 
 Unified TypeScript API for GitHub, GitLab, Gitea, and GitBucket. Normalizes auth headers, pagination, and field names behind a single abstract `Provider` base class. Built on unjs stack (obuild, ofetch, unstorage). ESM only.
 
@@ -38,11 +38,11 @@ src/
 ├── auth.ts               # 4-level token detection: explicit → env → CLI → config
 ├── http.ts               # ofetch wrapper with auth headers, retry, rate limit
 ├── cache.ts              # unstorage LRU cache — GET-only, lazy-initialized
-├── errors.ts             # GixaError hierarchy + normalizeError()
+├── errors.ts             # ForgesError hierarchy + normalizeError()
 ├── pagination.ts         # Link header + x-next-page async generator
-├── github.ts             # Sub-path re-export for gixa/github
-├── gitlab.ts             # Sub-path re-export for gixa/gitlab
-├── gitea.ts              # Sub-path re-export for gixa/gitea
+├── github.ts             # Sub-path re-export for @agntn/forges/github
+├── gitlab.ts             # Sub-path re-export for @agntn/forges/gitlab
+├── gitea.ts              # Sub-path re-export for @agntn/forges/gitea
 └── providers/
     ├── base-url.ts       # Base URL normalization + safe API path encoding
     ├── github.ts         # Class. Also handles GitBucket via baseURL
@@ -61,7 +61,7 @@ test/
 | Change auth logic    | `src/auth.ts`                       | `resolveToken()` chain — order matters                             |
 | Change cache backend | `src/cache.ts`                      | `configureStorage()` swaps unstorage driver                        |
 | Fix pagination       | `src/pagination.ts`                 | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab     |
-| Fix error mapping    | `src/errors.ts`                     | `normalizeError()` maps FetchError → GixaError subtypes            |
+| Fix error mapping    | `src/errors.ts`                     | `normalizeError()` maps FetchError → ForgesError subtypes          |
 | Add sub-path export  | `build.config.mjs` + `package.json` | Must update both: entries array + exports map                      |
 | Debug HTTP           | `src/http.ts`                       | `rawFetch()` returns headers, `createHttpClient()` configures auth |
 | Add tests            | `test/`                             | Name must match `test/<module>.test.ts`                            |

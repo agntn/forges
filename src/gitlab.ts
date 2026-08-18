@@ -1,6 +1,6 @@
 /**
  * GitLab provider entry point
- * Allows direct imports: import { GitLabProvider } from 'gixa/gitlab'
+ * Allows direct imports: import { GitLabProvider } from '@agntn/forges/gitlab'
  */
 
 export { GitLabProvider } from "./providers/gitlab.ts";

@@ -40,7 +40,7 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
     token,
     tokenHeader = "Authorization",
     tokenPrefix = "token ",
-    userAgent = `gixa/${pkg.version}`,
+    userAgent = `forges/${pkg.version}`,
   } = config;
 
   return $fetch.create({
@@ -63,7 +63,7 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
       if (remaining !== null) {
         const remainingCount = parseInt(remaining, 10);
         if (remainingCount < 10) {
-          console.warn(`[gixa] Rate limit warning: ${remainingCount} requests remaining`);
+          console.warn(`[forges] Rate limit warning: ${remainingCount} requests remaining`);
         }
       }
     },

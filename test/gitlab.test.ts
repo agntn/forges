@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { FetchError } from "ofetch";
-import { NotFoundError, AuthenticationError, RateLimitError, GixaError } from "../src/errors.ts";
+import { NotFoundError, AuthenticationError, RateLimitError, ForgesError } from "../src/errors.ts";
 
 // --- Hoisted mocks ---
 
@@ -525,7 +525,7 @@ describe("GitLabProvider", () => {
     it("throws when user search returns empty", async () => {
       mocks.client.mockResolvedValueOnce([]);
 
-      await expect(gl.users.get("nonexistent")).rejects.toThrow(GixaError);
+      await expect(gl.users.get("nonexistent")).rejects.toThrow(ForgesError);
     });
 
     it("throws NotFoundError with 404 status when user not found", async () => {
@@ -777,8 +777,8 @@ describe("GitLabProvider", () => {
       mocks.client.mockRejectedValueOnce(makeFetchError(500));
 
       const error = await gl.repos.get("x", "y").catch((e: unknown) => e);
-      expect(error).toBeInstanceOf(GixaError);
-      expect((error as GixaError).platform).toBe("gitlab");
+      expect(error).toBeInstanceOf(ForgesError);
+      expect((error as ForgesError).platform).toBe("gitlab");
     });
   });
 

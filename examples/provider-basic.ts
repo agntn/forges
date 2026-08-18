@@ -1,10 +1,13 @@
-import { createProvider } from "gixa";
+import { createProvider } from "@agntn/forges";
 
 async function main(): Promise<void> {
   const github = createProvider("github");
 
   const repos = await github.repos.list("unjs", { perPage: 5 });
-  console.log("repos", repos.items.map((repo) => repo.fullName));
+  console.log(
+    "repos",
+    repos.items.map((repo) => repo.fullName),
+  );
 
   const firstRepo = repos.items[0];
   if (firstRepo) {
@@ -12,7 +15,10 @@ async function main(): Promise<void> {
       state: "open",
       perPage: 3,
     });
-    console.log("issues", issues.items.map((issue) => issue.title));
+    console.log(
+      "issues",
+      issues.items.map((issue) => issue.title),
+    );
   }
 }
 

@@ -6,9 +6,9 @@
 import { FetchError } from "ofetch";
 
 /**
- * Base error class for gixa operations
+ * Base error class for forges operations
  */
-export class GixaError extends Error {
+export class ForgesError extends Error {
   constructor(
     message: string,
     public status?: number,
@@ -17,14 +17,14 @@ export class GixaError extends Error {
   ) {
     super(message);
     this.name = this.constructor.name;
-    Object.setPrototypeOf(this, GixaError.prototype);
+    Object.setPrototypeOf(this, ForgesError.prototype);
   }
 }
 
 /**
  * Thrown when a resource is not found (404)
  */
-export class NotFoundError extends GixaError {
+export class NotFoundError extends ForgesError {
   constructor(message: string, platform?: string, originalError?: Error) {
     super(message, 404, platform, originalError);
     Object.setPrototypeOf(this, NotFoundError.prototype);
@@ -34,7 +34,7 @@ export class NotFoundError extends GixaError {
 /**
  * Thrown when authentication fails (401)
  */
-export class AuthenticationError extends GixaError {
+export class AuthenticationError extends ForgesError {
   constructor(message: string, platform?: string, originalError?: Error) {
     super(message, 401, platform, originalError);
     Object.setPrototypeOf(this, AuthenticationError.prototype);
@@ -44,7 +44,7 @@ export class AuthenticationError extends GixaError {
 /**
  * Thrown when the server understands the request but refuses to authorize it (403)
  */
-export class PermissionError extends GixaError {
+export class PermissionError extends ForgesError {
   constructor(message: string, platform?: string, originalError?: Error) {
     super(message, 403, platform, originalError);
     Object.setPrototypeOf(this, PermissionError.prototype);
@@ -54,7 +54,7 @@ export class PermissionError extends GixaError {
 /**
  * Thrown when rate limit is exceeded (429)
  */
-export class RateLimitError extends GixaError {
+export class RateLimitError extends ForgesError {
   constructor(
     message: string,
     public retryAfter?: number,
@@ -67,12 +67,12 @@ export class RateLimitError extends GixaError {
 }
 
 /**
- * Normalize FetchError or other errors into GixaError hierarchy
+ * Normalize FetchError or other errors into ForgesError hierarchy
  * Maps HTTP status codes to appropriate error types
  */
-export function normalizeError(error: unknown, platform?: string): GixaError {
-  // Already a GixaError
-  if (error instanceof GixaError) {
+export function normalizeError(error: unknown, platform?: string): ForgesError {
+  // Already a ForgesError
+  if (error instanceof ForgesError) {
     return error;
   }
 
@@ -90,43 +90,29 @@ export function normalizeError(error: unknown, platform?: string): GixaError {
           error.response?.headers?.has("Retry-After") ||
           /rate limit/i.test(message)
         ) {
-          const retryAfter = parseRetryAfter(
-            error.response?.headers?.get("Retry-After"),
-          );
-          return new RateLimitError(
-            `Rate limit exceeded: ${message}`,
-            retryAfter,
-            platform,
-            error,
-          );
+          const retryAfter = parseRetryAfter(error.response?.headers?.get("Retry-After"));
+          return new RateLimitError(`Rate limit exceeded: ${message}`, retryAfter, platform, error);
         }
         return new PermissionError(`Permission denied: ${message}`, platform, error);
       }
       case 404:
         return new NotFoundError(`Resource not found: ${message}`, platform, error);
       case 429: {
-        const retryAfter = parseRetryAfter(
-          error.response?.headers?.get("Retry-After"),
-        );
-        return new RateLimitError(
-          `Rate limit exceeded: ${message}`,
-          retryAfter,
-          platform,
-          error,
-        );
+        const retryAfter = parseRetryAfter(error.response?.headers?.get("Retry-After"));
+        return new RateLimitError(`Rate limit exceeded: ${message}`, retryAfter, platform, error);
       }
       default:
-        return new GixaError(message, status, platform, error);
+        return new ForgesError(message, status, platform, error);
     }
   }
 
   // Generic Error
   if (error instanceof Error) {
-    return new GixaError(error.message, undefined, platform, error);
+    return new ForgesError(error.message, undefined, platform, error);
   }
 
   // Unknown error
-  return new GixaError(
+  return new ForgesError(
     String(error),
     undefined,
     platform,

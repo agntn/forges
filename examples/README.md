@@ -1,6 +1,6 @@
 # Examples
 
-This directory contains small runnable examples for common `gixa` workflows.
+This directory contains small runnable examples for common `@agntn/forges` workflows.
 
 - `provider-basic.ts` - create providers and fetch repositories/issues
 - `pagination-helpers.ts` - use exported pagination helpers with explicit limits and error handling
