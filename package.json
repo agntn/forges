@@ -65,6 +65,7 @@
     "dev": "obuild --stub",
     "test": "vitest",
     "test:run": "vitest --run",
+    "test:packed": "node --experimental-strip-types test/eval-packed-extensions.mjs",
     "fmt": "oxlint . --fix && oxfmt .",
     "lint": "oxlint . && oxfmt --check .",
     "typecheck": "tsc --noEmit && pnpm build && tsc --noEmit -p tsconfig.extensions.json",
