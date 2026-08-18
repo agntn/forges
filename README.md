@@ -92,6 +92,18 @@ const gt = createProvider("gitea", {
 });
 ```
 
+## Agent extensions
+
+The package ships separate Pi and OMP extensions with tools for repositories, issues, pull requests, and users. They use the normal token detection chain. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
+
+| Platform           | Environment variable     |
+| ------------------ | ------------------------ |
+| GitHub / GitBucket | `FORGES_GITHUB_BASE_URL` |
+| GitLab             | `FORGES_GITLAB_BASE_URL` |
+| Gitea / Forgejo    | `FORGES_GITEA_BASE_URL`  |
+
+These values are read from the agent process environment and are never exposed as model-callable tool arguments.
+
 ## API
 
 Every provider gives you four resources. They all work the same way across platforms.

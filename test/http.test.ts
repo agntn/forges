@@ -58,7 +58,8 @@ describe("createHttpClient", () => {
 
     const headers = new Headers();
     mockCreateConfigs[0].onRequest({
-      request: { headers },
+      request: "https://api.github.com/repos/agntn/forges",
+      options: { headers },
     });
 
     expect(headers.get("Authorization")).toBe("token ghp_abc123");
@@ -74,7 +75,8 @@ describe("createHttpClient", () => {
 
     const headers = new Headers();
     mockCreateConfigs[0].onRequest({
-      request: { headers },
+      request: "https://gitlab.com/api/v4/projects/agntn%2Fforges",
+      options: { headers },
     });
 
     expect(headers.get("Private-Token")).toBe("glpat-xyz");
@@ -132,7 +134,8 @@ describe("createHttpClient", () => {
 
     const headers = new Headers();
     mockCreateConfigs[0].onRequest({
-      request: { headers },
+      request: "https://api.github.com/repos/agntn/forges",
+      options: { headers },
     });
 
     expect(headers.has("Authorization")).toBe(false);
