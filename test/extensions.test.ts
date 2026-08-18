@@ -96,6 +96,9 @@ const unusedOmpContext = {} as OmpExtensionContext;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("FORGES_GITHUB_BASE_URL", undefined);
+  vi.stubEnv("FORGES_GITLAB_BASE_URL", undefined);
+  vi.stubEnv("FORGES_GITEA_BASE_URL", undefined);
   mocks.repos.list.mockResolvedValue({ items: [], hasNextPage: false });
   mocks.issues.create.mockResolvedValue({
     id: "42",

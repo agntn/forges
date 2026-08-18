@@ -8,6 +8,8 @@ import * as OmpTypeBox from "@oh-my-pi/omptype/typebox";
 const root = process.cwd();
 const temporaryRoot = await mkdtemp(join(root, ".forges-packed-test-"));
 const packageRoot = join(temporaryRoot, "package");
+const environmentKeys = ["FORGES_GITHUB_BASE_URL", "GH_TOKEN", "GITHUB_TOKEN"];
+const originalEnvironment = environmentKeys.map((key) => [key, process.env[key]]);
 const expectedToolNames = [
   "forges_repos_list",
   "forges_repos_get",
@@ -71,6 +73,10 @@ try {
     setLabel() {},
   });
 } finally {
+  for (const [key, value] of originalEnvironment) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   await rm(temporaryRoot, { recursive: true, force: true });
 }
 
