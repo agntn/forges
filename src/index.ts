@@ -10,7 +10,7 @@ import { GitLabProvider } from "./providers/gitlab.ts";
 import { GiteaProvider } from "./providers/gitea.ts";
 import { resolveToken } from "./auth.ts";
 import type { Platform } from "./auth.ts";
-import { AuthenticationError, GixaError } from "./errors.ts";
+import { AuthenticationError, ForgesError } from "./errors.ts";
 
 // --- Type exports ---
 export type {
@@ -40,7 +40,7 @@ export type { Platform, AuthResult } from "./auth.ts";
 
 // --- Error exports ---
 export {
-  GixaError,
+  ForgesError,
   NotFoundError,
   AuthenticationError,
   PermissionError,
@@ -113,7 +113,7 @@ export function createProvider(
     case "gitea":
       return new GiteaProvider(finalConfig);
     default:
-      throw new GixaError(
+      throw new ForgesError(
         `Unsupported platform: ${platform}. Supported: github, gitlab, gitea`,
         undefined,
         platform,

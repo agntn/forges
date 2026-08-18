@@ -1,6 +1,6 @@
 /**
  * Gitea provider entry point
- * Allows direct imports: import { GiteaProvider } from 'gixa/gitea'
+ * Allows direct imports: import { GiteaProvider } from '@agntn/forges/gitea'
  */
 
 export { GiteaProvider } from "./providers/gitea.ts";

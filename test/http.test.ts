@@ -37,7 +37,7 @@ describe("createHttpClient", () => {
     expect(config.baseURL).toBe("https://api.github.com");
     expect(config.retry).toBe(2);
     expect(config.retryDelay).toBe(1000);
-    expect(config.headers["User-Agent"]).toBe(`gixa/${version}`);
+    expect(config.headers["User-Agent"]).toBe(`forges/${version}`);
   });
 
   it("uses custom userAgent when provided", () => {
@@ -92,7 +92,7 @@ describe("createHttpClient", () => {
       },
     });
 
-    expect(warn).toHaveBeenCalledWith("[gixa] Rate limit warning: 5 requests remaining");
+    expect(warn).toHaveBeenCalledWith("[forges] Rate limit warning: 5 requests remaining");
     warn.mockRestore();
   });
 
@@ -148,7 +148,7 @@ describe("rawFetch", () => {
   it("returns { data, headers, status } from client.raw()", async () => {
     const responseHeaders = new Headers({ "content-type": "application/json" });
     mockRaw.mockResolvedValueOnce({
-      _data: [{ id: 1, name: "gixa" }],
+      _data: [{ id: 1, name: "forges" }],
       headers: responseHeaders,
       status: 200,
     });
@@ -157,7 +157,7 @@ describe("rawFetch", () => {
     const result = await rawFetch(client, "/repos/unjs/ugp");
 
     expect(mockRaw).toHaveBeenCalledWith("/repos/unjs/ugp", undefined);
-    expect(result.data).toEqual([{ id: 1, name: "gixa" }]);
+    expect(result.data).toEqual([{ id: 1, name: "forges" }]);
     expect(result.status).toBe(200);
     expect(result.headers).toBe(responseHeaders);
   });

@@ -1,21 +1,21 @@
-# gixa
+# forges
 
-[![npm version](https://img.shields.io/npm/v/gixa?style=flat&colorA=130f40&colorB=474787)](https://npmjs.com/package/gixa)
-[![npm downloads](https://img.shields.io/npm/dm/gixa?style=flat&colorA=130f40&colorB=474787)](https://npm.chart.dev/gixa)
-[![license](https://img.shields.io/github/license/oritwoen/gixa?style=flat&colorA=130f40&colorB=474787)](https://github.com/oritwoen/gixa/blob/main/LICENSE)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/oritwoen/gixa)
+[![npm version](https://img.shields.io/npm/v/%40agntn%2Fforges?style=flat&colorA=130f40&colorB=474787)](https://npmjs.com/package/@agntn/forges)
+[![npm downloads](https://img.shields.io/npm/dm/%40agntn%2Fforges?style=flat&colorA=130f40&colorB=474787)](https://npm.chart.dev/@agntn/forges)
+[![license](https://img.shields.io/github/license/agntn/forges?style=flat&colorA=130f40&colorB=474787)](https://github.com/agntn/forges/blob/main/LICENSE)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/agntn/forges)
 
 One API for GitHub, GitLab, Gitea, and GitBucket. Write your code once, swap the provider string, done.
 
 If you've ever had to maintain separate API integrations for different git platforms, you know the pain. They all do the same things but none of them agree on how. GitLab calls them "merge requests", GitHub calls them "pull requests". GitLab paginates with `x-next-page` headers, GitHub uses `Link` headers. GitLab authenticates with `Private-Token`, GitHub with `Authorization: token`. And so on.
 
-`gixa` normalizes all of that behind one abstract provider API.
+`@agntn/forges` normalizes all of that behind one abstract provider API.
 
 ## Install
 
 ```bash
-pnpm add gixa
-# or: npm install gixa
+pnpm add @agntn/forges
+# or: npm install @agntn/forges
 ```
 
 ## Usage
@@ -23,13 +23,13 @@ pnpm add gixa
 If you have `gh` (GitHub CLI) installed and logged in, this just works:
 
 ```typescript
-import { createProvider } from "gixa";
+import { createProvider } from "@agntn/forges";
 
 // No token needed - picked up from `gh auth token`
 const github = createProvider("github");
 
 const { items: repos } = await github.repos.list("unjs");
-const repo = await github.repos.get("unjs", "gixa");
+const repo = await github.repos.get("agntn", "forges");
 console.log(repo.fullName, repo.defaultBranch);
 ```
 
@@ -124,7 +124,7 @@ const github = createProvider("github", {
 All providers throw the same error types:
 
 ```typescript
-import { NotFoundError, AuthenticationError, RateLimitError } from "gixa";
+import { NotFoundError, AuthenticationError, RateLimitError } from "@agntn/forges";
 
 try {
   await provider.repos.get("owner", "nope");
@@ -139,18 +139,18 @@ try {
 }
 ```
 
-A 404 from GitHub and a 404 from GitLab both become `NotFoundError`. Same for 401 (`AuthenticationError`) and 429 (`RateLimitError`). Everything else is a generic `GixaError`.
+A 404 from GitHub and a 404 from GitLab both become `NotFoundError`. Same for 401 (`AuthenticationError`) and 429 (`RateLimitError`). Everything else is a generic `ForgesError`.
 
 ## Sub-path exports
 
 If you only need one provider, import it directly. Better for tree-shaking.
 
 ```typescript
-import { Provider } from "gixa";
-import { GitHubProvider } from "gixa/github";
-import { GitLabProvider } from "gixa/gitlab";
-import { GiteaProvider } from "gixa/gitea";
-import type { Repository } from "gixa/types";
+import { Provider } from "@agntn/forges";
+import { GitHubProvider } from "@agntn/forges/github";
+import { GitLabProvider } from "@agntn/forges/gitlab";
+import { GiteaProvider } from "@agntn/forges/gitea";
+import type { Repository } from "@agntn/forges/types";
 
 const gitea = new GiteaProvider({ token: process.env.GITEA_TOKEN });
 
@@ -162,16 +162,16 @@ four resource accessors and requires typed mapping methods for owners,
 repositories, issues, pull requests, and users. Concrete classes implement
 those mappers and the platform-specific API operations.
 
-The runtime base class is also available from `gixa/provider`. The
-`gixa/types` subpath contains only TypeScript models and resource interfaces.
+The runtime base class is also available from `@agntn/forges/provider`. The
+`@agntn/forges/types` subpath contains only TypeScript models and resource interfaces.
 
 ## Utilities
 
 A few lower-level pieces are exported if you need them:
 
 ```typescript
-import { resolveToken } from "gixa";
-import { fetchAllPages, paginate } from "gixa";
+import { resolveToken } from "@agntn/forges";
+import { fetchAllPages, paginate } from "@agntn/forges";
 ```
 
 `resolveToken('github')` runs the same auth detection chain without creating a provider. Useful for checking if credentials exist.

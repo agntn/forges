@@ -1,5 +1,5 @@
 {
-  "name": "gixa",
+  "name": "@agntn/forges",
   "version": "0.1.2",
   "description": "Unified Git Provider - single TypeScript API for GitHub, GitLab, Gitea, and GitBucket",
   "keywords": [
@@ -12,13 +12,13 @@
     "provider",
     "unified"
   ],
-  "homepage": "https://github.com/oritwoen/gixa#readme",
-  "bugs": "https://github.com/oritwoen/gixa/issues",
+  "homepage": "https://github.com/agntn/forges#readme",
+  "bugs": "https://github.com/agntn/forges/issues",
   "license": "MIT",
   "author": "oritwoen (https://github.com/oritwoen)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/oritwoen/gixa.git"
+    "url": "git+https://github.com/agntn/forges.git"
   },
   "files": [
     "dist"
@@ -52,6 +52,9 @@
       "types": "./dist/types.d.mts",
       "import": "./dist/types.mjs"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "obuild",

@@ -1,6 +1,6 @@
 /**
  * GitHub provider entry point
- * Allows direct imports: import { GitHubProvider } from 'gixa/github'
+ * Allows direct imports: import { GitHubProvider } from '@agntn/forges/github'
  */
 
 export { GitHubProvider } from "./providers/github.ts";
