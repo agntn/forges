@@ -89,9 +89,7 @@ const replyThreadParameters = Type.Object({
   number,
   threadId,
   body: Type.String({ description: "Reply body", minLength: 1 }),
-  commentId: Type.Optional(
-    Type.String({ description: "Comment id to reply to", minLength: 1 }),
-  ),
+  commentId: Type.Optional(Type.String({ description: "Comment id to reply to", minLength: 1 })),
 });
 
 export default function forgesExtension(pi: ExtensionAPI): void {
@@ -234,7 +232,8 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_threads_list",
     label: "Forges Threads",
-    description: "List normalized pull-request review threads, optionally filtered by resolved state",
+    description:
+      "List normalized pull-request review threads, optionally filtered by resolved state",
     promptSnippet: "List review threads on a pull request across GitHub, GitLab, or Gitea.",
     promptGuidelines: [
       "Use forges_threads_list to inspect review threads instead of dumping full PR comments.",
@@ -260,7 +259,8 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_threads_reply",
     label: "Reply Forges Thread",
-    description: "Reply inside an existing pull-request review thread; this mutates the selected Git platform",
+    description:
+      "Reply inside an existing pull-request review thread; this mutates the selected Git platform",
     promptSnippet: "Reply inside a review thread on GitHub, GitLab, or Gitea.",
     promptGuidelines: [
       "Use forges_threads_reply to answer inside the thread, not as a standalone pull-request comment.",
@@ -274,7 +274,8 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_threads_resolve",
     label: "Resolve Forges Thread",
-    description: "Mark a pull-request review thread as resolved; this mutates the selected Git platform",
+    description:
+      "Mark a pull-request review thread as resolved; this mutates the selected Git platform",
     promptSnippet: "Resolve a review thread on GitHub, GitLab, or Gitea.",
     promptGuidelines: [
       "Use forges_threads_resolve only when the user explicitly asks to resolve a thread.",
@@ -288,7 +289,8 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_threads_unresolve",
     label: "Unresolve Forges Thread",
-    description: "Mark a pull-request review thread as unresolved; this mutates the selected Git platform",
+    description:
+      "Mark a pull-request review thread as unresolved; this mutates the selected Git platform",
     promptSnippet: "Unresolve a review thread on GitHub, GitLab, or Gitea.",
     promptGuidelines: [
       "Use forges_threads_unresolve only when the user explicitly asks to reopen a thread.",

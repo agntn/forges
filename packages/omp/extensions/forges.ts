@@ -94,9 +94,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     number,
     threadId,
     body: Type.String({ description: "Reply body", minLength: 1 }),
-    commentId: Type.Optional(
-      Type.String({ description: "Comment id to reply to", minLength: 1 }),
-    ),
+    commentId: Type.Optional(Type.String({ description: "Comment id to reply to", minLength: 1 })),
   });
 
   pi.registerTool({
@@ -212,7 +210,8 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_threads_list",
     label: "Forges Threads",
-    description: "List normalized pull-request review threads, optionally filtered by resolved state",
+    description:
+      "List normalized pull-request review threads, optionally filtered by resolved state",
     parameters: listThreadsParameters,
     approval: "read",
     async execute(_toolCallId, params) {
@@ -234,7 +233,8 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_threads_reply",
     label: "Reply Forges Thread",
-    description: "Reply inside an existing pull-request review thread; this mutates the selected Git platform",
+    description:
+      "Reply inside an existing pull-request review thread; this mutates the selected Git platform",
     parameters: replyThreadParameters,
     approval: "write",
     async execute(_toolCallId, params) {
@@ -245,7 +245,8 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_threads_resolve",
     label: "Resolve Forges Thread",
-    description: "Mark a pull-request review thread as resolved; this mutates the selected Git platform",
+    description:
+      "Mark a pull-request review thread as resolved; this mutates the selected Git platform",
     parameters: threadParameters,
     approval: "write",
     async execute(_toolCallId, params) {
@@ -256,7 +257,8 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_threads_unresolve",
     label: "Unresolve Forges Thread",
-    description: "Mark a pull-request review thread as unresolved; this mutates the selected Git platform",
+    description:
+      "Mark a pull-request review thread as unresolved; this mutates the selected Git platform",
     parameters: threadParameters,
     approval: "write",
     async execute(_toolCallId, params) {
