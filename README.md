@@ -106,7 +106,7 @@ These values are read from the agent process environment and are never exposed a
 
 ## API
 
-Every provider gives you five resources. They all work the same way across platforms.
+Every provider gives you five resources with the same method shapes. Thread semantics still follow the platform: GitHub and GitLab return real multi-comment conversations, while Gitea has no parent id on review comments, so each one comes back as its own single-comment thread.
 
 **repos** - `list(owner, opts?)`, `get(owner, repo)`
 
@@ -120,7 +120,7 @@ Every provider gives you five resources. They all work the same way across platf
 
 List operations accept `ListOptions`: `page`, `perPage`, and `state` (`'open' | 'closed' | 'all'`). They return `PageResult<T>` with `items`, `hasNextPage`, `nextPage`, and an optional `totalCount`.
 
-Thread list operations accept `ListThreadOptions`: `page`, `perPage`, and `state` (`'unresolved' | 'resolved' | 'all'`). GitHub review-thread list/get/resolve uses GraphQL so `isResolved` and `isOutdated` stay accurate; replies still go through the REST comment-reply endpoint.
+Thread list operations accept `ListThreadOptions`: `page`, `perPage`, and `state` (`'unresolved' | 'resolved' | 'all'`). GitHub review-thread list/get/resolve uses GraphQL so `isResolved` and `isOutdated` stay accurate; replies still go through the REST comment-reply endpoint. GitBucket serves only REST v3, so thread operations against it fail with an explicit unsupported-endpoint error rather than a bare 404.
 
 ## Caching
 
@@ -195,6 +195,7 @@ import { fetchAllPages, paginate } from "@agntn/forges";
 `fetchAllPages(fetcher, url)` collects every page into a single array. `paginate(fetcher, url)` is the async generator version if you want to process pages as they come.
 
 ## What this doesn't do
+
 This is an MVP. It covers repos, issues, PRs, users, and review threads. It does not handle:
 
 - File/content operations (reading files, commits, trees)
