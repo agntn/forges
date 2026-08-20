@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
   return {
     client,
     cachedFetch,
+    invalidateCache: vi.fn(),
     createHttpClient: vi.fn(() => client),
     rawFetch: vi.fn(),
   };
@@ -25,6 +26,7 @@ vi.mock("../src/http.ts", () => ({
 
 vi.mock("../src/cache.ts", () => ({
   cachedFetch: mocks.cachedFetch,
+  invalidateCache: mocks.invalidateCache,
 }));
 
 import { GitLabProvider } from "../src/providers/gitlab.ts";
@@ -1085,13 +1087,16 @@ describe("GitLabProvider", () => {
       expect(result.hasNextPage).toBe(false);
     });
 
-    it("gets one discussion by id", async () => {
+    it("gets one discussion by id through the GET cache", async () => {
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce(glDiscussion);
 
       const thread = await gl.threads.get("gitlab-org", "gitlab-foss", 33, glDiscussion.id);
 
-      expect(mocks.cachedFetch).not.toHaveBeenCalled();
+      expect(mocks.cachedFetch).toHaveBeenCalledWith(
+        mocks.client,
+        `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}`,
+      );
       expect(thread.comments[0]?.body).toBe("Please extract this helper");
     });
 
@@ -1112,6 +1117,9 @@ describe("GitLabProvider", () => {
       expect(mocks.client).toHaveBeenLastCalledWith(
         `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}/notes`,
         { method: "POST", body: { body: "Done." } },
+      );
+      expect(mocks.invalidateCache).toHaveBeenCalledWith(
+        `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}`,
       );
       expect(comment.id).toBe("2001");
     });
@@ -1136,6 +1144,11 @@ describe("GitLabProvider", () => {
         `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}`,
         { method: "PUT", body: { resolved: true } },
       );
+      expect(mocks.client).toHaveBeenCalledWith(
+        `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}`,
+        { method: "PUT", body: { resolved: false } },
+      );
+      expect(mocks.invalidateCache).toHaveBeenCalledTimes(2);
       expect(resolved.isResolved).toBe(true);
       expect(unresolved.isResolved).toBe(false);
     });

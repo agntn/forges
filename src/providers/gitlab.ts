@@ -30,7 +30,7 @@ import type {
   ThreadComment,
 } from "../types.ts";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
-import { cachedFetch } from "../cache.ts";
+import { cachedFetch, invalidateCache } from "../cache.ts";
 import { normalizeError, NotFoundError } from "../errors.ts";
 import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
 
@@ -284,7 +284,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       isOutdated: false,
       path: position?.new_path ?? position?.old_path ?? "",
       line: position?.new_line ?? position?.old_line ?? null,
-      startLine: position?.line_range?.start?.new_line ?? position?.line_range?.start?.old_line ?? null,
+      startLine:
+        position?.line_range?.start?.new_line ?? position?.line_range?.start?.old_line ?? null,
       comments: notes.map((note) => ({
         id: String(note.id),
         body: note.body,
@@ -682,14 +683,12 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     input: ReplyThreadInput,
   ): Promise<ThreadComment> {
     try {
-      const projectId = await this.resolveProjectId(owner, repo);
-      const note = await this.client<GitLabDiscussionNote>(
-        `/projects/${projectId}/merge_requests/${encodePathSegment(number)}/discussions/${encodePathSegment(threadId)}/notes`,
-        {
-          method: "POST",
-          body: { body: input.body },
-        },
-      );
+      const url = await this.discussionUrl(owner, repo, number, threadId);
+      const note = await this.client<GitLabDiscussionNote>(`${url}/notes`, {
+        method: "POST",
+        body: { body: input.body },
+      });
+      await invalidateCache(url);
       return {
         id: String(note.id),
         body: note.body,
@@ -720,15 +719,25 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     return this.setDiscussionResolved(owner, repo, number, threadId, false);
   }
 
+  private async discussionUrl(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<string> {
+    const projectId = await this.resolveProjectId(owner, repo);
+    return `/projects/${projectId}/merge_requests/${encodePathSegment(number)}/discussions/${encodePathSegment(threadId)}`;
+  }
+
   private async fetchDiscussion(
     owner: string,
     repo: string,
     number: number,
     threadId: string,
   ): Promise<GitLabDiscussion> {
-    const projectId = await this.resolveProjectId(owner, repo);
-    return this.client<GitLabDiscussion>(
-      `/projects/${projectId}/merge_requests/${encodePathSegment(number)}/discussions/${encodePathSegment(threadId)}`,
+    return cachedFetch<GitLabDiscussion>(
+      this.client,
+      await this.discussionUrl(owner, repo, number, threadId),
     );
   }
 
@@ -740,14 +749,12 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     resolved: boolean,
   ): Promise<Thread> {
     try {
-      const projectId = await this.resolveProjectId(owner, repo);
-      const discussion = await this.client<GitLabDiscussion>(
-        `/projects/${projectId}/merge_requests/${encodePathSegment(number)}/discussions/${encodePathSegment(threadId)}`,
-        {
-          method: "PUT",
-          body: { resolved },
-        },
-      );
+      const url = await this.discussionUrl(owner, repo, number, threadId);
+      const discussion = await this.client<GitLabDiscussion>(url, {
+        method: "PUT",
+        body: { resolved },
+      });
+      await invalidateCache(url);
       return this.mapThread(discussion);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
