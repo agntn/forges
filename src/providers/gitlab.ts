@@ -688,7 +688,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         method: "POST",
         body: { body: input.body },
       });
-      await invalidateCache(this.client, url);
+      await this.dropCachedDiscussion(url);
       return {
         id: String(note.id),
         body: note.body,
@@ -717,6 +717,19 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     threadId: string,
   ): Promise<Thread> {
     return this.setDiscussionResolved(owner, repo, number, threadId, false);
+  }
+
+  /**
+   * Cache eviction must never fail a mutation the platform already accepted:
+   * a rejecting storage backend would surface as a failed reply and invite a
+   * duplicate retry.
+   */
+  private async dropCachedDiscussion(url: string): Promise<void> {
+    try {
+      await invalidateCache(this.client, url);
+    } catch (error) {
+      console.warn(`[forges] Could not invalidate cached discussion ${url}: ${String(error)}`);
+    }
   }
 
   private async discussionUrl(
@@ -754,7 +767,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         method: "PUT",
         body: { resolved },
       });
-      await invalidateCache(this.client, url);
+      await this.dropCachedDiscussion(url);
       return this.mapThread(discussion);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
