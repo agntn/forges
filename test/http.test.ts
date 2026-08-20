@@ -20,6 +20,42 @@ vi.mock("ofetch", () => ({
 }));
 
 import { createHttpClient, rawFetch } from "../src/http.ts";
+import { CACHE_SCOPE } from "../src/cache.ts";
+
+describe("cache scope tagging", () => {
+  const scopeOf = (client: unknown) => (client as Record<symbol, string>)[CACHE_SCOPE];
+
+  it("separates clients by base URL", () => {
+    const saas = createHttpClient({ baseURL: "https://gitlab.com/api/v4", token: "t" });
+    const selfHosted = createHttpClient({ baseURL: "https://git.example.com/api/v4", token: "t" });
+
+    expect(scopeOf(saas)).not.toBe(scopeOf(selfHosted));
+  });
+
+  it("separates clients by token on the same host", () => {
+    const alice = createHttpClient({ baseURL: "https://gitlab.com/api/v4", token: "alice" });
+    const bob = createHttpClient({ baseURL: "https://gitlab.com/api/v4", token: "bob" });
+
+    expect(scopeOf(alice)).not.toBe(scopeOf(bob));
+  });
+
+  it("never puts the raw token in the scope", () => {
+    const client = createHttpClient({
+      baseURL: "https://gitlab.com/api/v4",
+      token: "glpat-super-secret",
+    });
+
+    expect(scopeOf(client)).not.toContain("glpat-super-secret");
+    expect(scopeOf(client)).toContain("https://gitlab.com/api/v4");
+  });
+
+  it("reuses one scope for the same host and token", () => {
+    const first = createHttpClient({ baseURL: "https://gitlab.com/api/v4", token: "t" });
+    const second = createHttpClient({ baseURL: "https://gitlab.com/api/v4", token: "t" });
+
+    expect(scopeOf(first)).toBe(scopeOf(second));
+  });
+});
 
 describe("createHttpClient", () => {
   beforeEach(() => {

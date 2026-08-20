@@ -21,12 +21,16 @@ import type {
   Owner,
   PageResult,
   ListOptions,
+  ListThreadOptions,
   CreateIssueInput,
   CreatePullRequestInput,
   IssueState,
+  ReplyThreadInput,
+  Thread,
+  ThreadComment,
 } from "../types.ts";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
-import { cachedFetch } from "../cache.ts";
+import { cachedFetch, invalidateCache } from "../cache.ts";
 import { normalizeError, NotFoundError } from "../errors.ts";
 import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
 
@@ -98,6 +102,34 @@ interface GitLabRawTypes extends ProviderRawTypes {
   issue: GitLabIssue;
   pullRequest: GitLabMergeRequest;
   user: GitLabUser;
+  thread: GitLabDiscussion;
+}
+
+interface GitLabDiscussionPosition {
+  new_path?: string | null;
+  old_path?: string | null;
+  new_line?: number | null;
+  old_line?: number | null;
+  line_range?: {
+    start?: { new_line?: number | null; old_line?: number | null };
+  };
+}
+
+interface GitLabDiscussionNote {
+  id: number;
+  body: string;
+  author: { username: string };
+  created_at: string;
+  system: boolean;
+  resolvable?: boolean;
+  resolved?: boolean;
+  position?: GitLabDiscussionPosition | null;
+}
+
+interface GitLabDiscussion {
+  id: string;
+  individual_note: boolean;
+  notes: GitLabDiscussionNote[];
 }
 
 /**
@@ -238,6 +270,29 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       email: raw.email ?? "",
       avatarUrl: raw.avatar_url ?? "",
       isAdmin: raw.is_admin ?? false,
+    };
+  }
+
+  protected override mapThread(raw: GitLabDiscussion): Thread {
+    const notes = raw.notes.filter((note) => !note.system);
+    const firstNote = notes[0];
+    const resolvable = notes.find((note) => note.resolvable);
+    const position = firstNote?.position;
+    return {
+      id: raw.id,
+      isResolved: resolvable?.resolved === true,
+      isOutdated: false,
+      path: position?.new_path ?? position?.old_path ?? "",
+      line: position?.new_line ?? position?.old_line ?? null,
+      startLine:
+        position?.line_range?.start?.new_line ?? position?.line_range?.start?.old_line ?? null,
+      comments: notes.map((note) => ({
+        id: String(note.id),
+        body: note.body,
+        author: { login: note.author.username },
+        url: "",
+        createdAt: note.created_at,
+      })),
     };
   }
 
@@ -543,6 +598,179 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     try {
       const user = await cachedFetch<GitLabUser>(this.client, "/user");
       return this.mapUser(user);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  // --- Threads ---
+
+  protected override async listThreads(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListThreadOptions,
+  ): Promise<PageResult<Thread>> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const perPage = options?.perPage ?? 30;
+      const page = options?.page ?? 1;
+      const skip = (page - 1) * perPage;
+      const matched: Thread[] = [];
+      let remotePage = 1;
+      let hasMore = true;
+
+      // Scan one match past the page: with a state filter, a full page says
+      // nothing about whether any later thread still matches.
+      while (hasMore && matched.length <= skip + perPage) {
+        const response = await rawFetch<GitLabDiscussion[]>(
+          this.client,
+          `/projects/${projectId}/merge_requests/${encodePathSegment(number)}/discussions`,
+          {
+            query: {
+              page: remotePage,
+              per_page: 50,
+            },
+          },
+        );
+        const batch = response.data ?? [];
+        if (batch.length === 0) {
+          hasMore = false;
+          continue;
+        }
+        matched.push(
+          ...this.filterThreadsByState(
+            batch
+              .filter((discussion) => discussion.notes.some((note) => note.resolvable))
+              .map((discussion) => this.mapThread(discussion)),
+            options?.state,
+          ),
+        );
+        const nextPage = response.headers.get("x-next-page");
+        hasMore = nextPage !== null && nextPage !== "";
+        remotePage += 1;
+      }
+
+      const items = matched.slice(skip, skip + perPage);
+      const hasNextPage = matched.length > skip + perPage;
+      return {
+        items,
+        hasNextPage,
+        nextPage: hasNextPage ? page + 1 : undefined,
+      };
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async getThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread> {
+    try {
+      const discussion = await this.fetchDiscussion(owner, repo, number, threadId);
+      return this.mapThread(discussion);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async replyToThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+    input: ReplyThreadInput,
+  ): Promise<ThreadComment> {
+    try {
+      const url = await this.discussionUrl(owner, repo, number, threadId);
+      const note = await this.client<GitLabDiscussionNote>(`${url}/notes`, {
+        method: "POST",
+        body: { body: input.body },
+      });
+      await this.dropCachedDiscussion(url);
+      return {
+        id: String(note.id),
+        body: note.body,
+        author: { login: note.author.username },
+        url: "",
+        createdAt: note.created_at,
+      };
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async resolveThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread> {
+    return this.setDiscussionResolved(owner, repo, number, threadId, true);
+  }
+
+  protected override async unresolveThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread> {
+    return this.setDiscussionResolved(owner, repo, number, threadId, false);
+  }
+
+  /**
+   * Cache eviction must never fail a mutation the platform already accepted:
+   * a rejecting storage backend would surface as a failed reply and invite a
+   * duplicate retry.
+   */
+  private async dropCachedDiscussion(url: string): Promise<void> {
+    try {
+      await invalidateCache(this.client, url);
+    } catch (error) {
+      console.warn(`[forges] Could not invalidate cached discussion ${url}: ${String(error)}`);
+    }
+  }
+
+  private async discussionUrl(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<string> {
+    const projectId = await this.resolveProjectId(owner, repo);
+    return `/projects/${projectId}/merge_requests/${encodePathSegment(number)}/discussions/${encodePathSegment(threadId)}`;
+  }
+
+  private async fetchDiscussion(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<GitLabDiscussion> {
+    return cachedFetch<GitLabDiscussion>(
+      this.client,
+      await this.discussionUrl(owner, repo, number, threadId),
+    );
+  }
+
+  private async setDiscussionResolved(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+    resolved: boolean,
+  ): Promise<Thread> {
+    try {
+      const url = await this.discussionUrl(owner, repo, number, threadId);
+      const discussion = await this.client<GitLabDiscussion>(url, {
+        method: "PUT",
+        body: { resolved },
+      });
+      await this.dropCachedDiscussion(url);
+      return this.mapThread(discussion);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }

@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GiteaProvider } from "../src/providers/gitea.ts";
 import { Provider } from "../src/provider.ts";
+import { NotFoundError } from "../src/errors.ts";
 
 // -- Mock HTTP layer --
 
@@ -105,6 +106,21 @@ function giteaPullRequest(overrides: Record<string, unknown> = {}) {
     base: { ref: "main", label: "testowner:main" },
     merged: false,
     draft: false,
+    ...overrides,
+  };
+}
+
+function giteaReviewComment(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 11,
+    body: "Please rename this",
+    user: giteaUser(),
+    html_url: "https://gitea.com/testowner/test-repo/pulls/5#issuecomment-11",
+    created_at: "2024-01-03T00:00:00Z",
+    path: "src/main.ts",
+    position: 8,
+    original_position: 8,
+    resolver: null,
     ...overrides,
   };
 }
@@ -741,6 +757,229 @@ describe("Gitea Provider", () => {
       const result = await provider.pullRequests.get("testowner", "test-repo", 5);
       expect(result.state).toBe("closed");
       expect(result.merged).toBe(true);
+    });
+  });
+
+  describe("threads", () => {
+    it("lists each review comment as its own thread", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [{ id: 1, comments_count: 2 }],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [
+            giteaReviewComment({ id: 11 }),
+            giteaReviewComment({ id: 12, body: "Independent comment on the same line" }),
+          ],
+          headers: makeHeaders(),
+          status: 200,
+        });
+
+      const result = await provider.threads.list("testowner", "test-repo", 5);
+
+      expect(result.items).toHaveLength(2);
+      expect(result.items.map((thread) => thread.id)).toEqual(["11", "12"]);
+      expect(result.items[0]?.isOutdated).toBe(false);
+      expect(result.items[0]?.comments).toHaveLength(1);
+      expect(result.items[1]?.comments[0]?.body).toBe("Independent comment on the same line");
+    });
+
+    it("stops review pagination when a page is empty even if Link next exists", async () => {
+      let calls = 0;
+      mockedRawFetch.mockImplementation(async () => {
+        calls += 1;
+        if (calls > 3) {
+          throw new Error(`pagination looped ${calls} times`);
+        }
+        return {
+          data: [],
+          headers: makeHeaders({
+            Link: '<https://gitea.com/api/v1/repos/testowner/test-repo/pulls/5/reviews?page=2>; rel="next"',
+          }),
+          status: 200,
+        };
+      });
+
+      const result = await provider.threads.list("testowner", "test-repo", 5);
+
+      expect(calls).toBe(1);
+      expect(result.items).toEqual([]);
+    });
+
+    it("replies through the review-comment replies endpoint without scanning reviews", async () => {
+      mockClient.mockResolvedValueOnce(giteaReviewComment({ id: 13, body: "Renamed." }));
+
+      const comment = await provider.threads.reply("testowner", "test-repo", 5, "11", {
+        body: "Renamed.",
+      });
+
+      expect(mockedRawFetch).not.toHaveBeenCalled();
+      expect(mockClient).toHaveBeenLastCalledWith(
+        "/repos/testowner/test-repo/pulls/5/comments/11/replies",
+        { method: "POST", body: { body: "Renamed." } },
+      );
+      expect(comment.id).toBe("13");
+    });
+
+    it("resolves a review comment conversation with a single read-back scan", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [{ id: 1, comments_count: 1 }],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaReviewComment({ id: 11 })],
+          headers: makeHeaders(),
+          status: 200,
+        });
+      mockClient.mockResolvedValueOnce(undefined);
+
+      const thread = await provider.threads.resolve("testowner", "test-repo", 5, "11");
+
+      expect(mockClient).toHaveBeenCalledWith(
+        "/repos/testowner/test-repo/pulls/comments/11/resolve",
+        {
+          method: "POST",
+        },
+      );
+      expect(mockedRawFetch).toHaveBeenCalledTimes(2);
+      expect(thread.isResolved).toBe(true);
+    });
+
+    it("unresolves through the unresolve action", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [{ id: 1, comments_count: 1 }],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaReviewComment({ id: 11 })],
+          headers: makeHeaders(),
+          status: 200,
+        });
+      mockClient.mockResolvedValueOnce(undefined);
+
+      const thread = await provider.threads.unresolve("testowner", "test-repo", 5, "11");
+
+      expect(mockClient).toHaveBeenCalledWith(
+        "/repos/testowner/test-repo/pulls/comments/11/unresolve",
+        { method: "POST" },
+      );
+      expect(thread.isResolved).toBe(false);
+    });
+
+    it("refuses to resolve a comment that does not sit on this pull request", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [{ id: 1, comments_count: 1 }],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaReviewComment({ id: 11 })],
+          headers: makeHeaders(),
+          status: 200,
+        });
+
+      await expect(provider.threads.resolve("testowner", "test-repo", 5, "999")).rejects.toThrow(
+        NotFoundError,
+      );
+      expect(mockClient).not.toHaveBeenCalled();
+    });
+
+    it("paginates comments inside a single review", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [{ id: 1, comments_count: 2 }],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaReviewComment({ id: 11 })],
+          headers: makeHeaders({
+            Link: '<https://gitea.com/api/v1/repos/testowner/test-repo/pulls/5/reviews/1/comments?page=2>; rel="next"',
+          }),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaReviewComment({ id: 12, body: "Second page comment" })],
+          headers: makeHeaders(),
+          status: 200,
+        });
+
+      const result = await provider.threads.list("testowner", "test-repo", 5);
+
+      expect(result.items.map((thread) => thread.id)).toEqual(["11", "12"]);
+      expect(mockedRawFetch).toHaveBeenNthCalledWith(
+        2,
+        expect.anything(),
+        "/repos/testowner/test-repo/pulls/5/reviews/1/comments",
+        { query: { page: "1", limit: "50" } },
+      );
+    });
+
+    it("stops comment pagination when a page is empty even if Link next exists", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [{ id: 1, comments_count: 1 }],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValue({
+          data: [],
+          headers: makeHeaders({
+            Link: '<https://gitea.com/api/v1/repos/testowner/test-repo/pulls/5/reviews/1/comments?page=2>; rel="next"',
+          }),
+          status: 200,
+        });
+
+      const result = await provider.threads.list("testowner", "test-repo", 5);
+
+      expect(result.items).toEqual([]);
+      expect(mockedRawFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("reads the old-file line when a comment sits on the removed side", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [{ id: 1, comments_count: 1 }],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaReviewComment({ id: 11, position: 0, original_position: 8 })],
+          headers: makeHeaders(),
+          status: 200,
+        });
+
+      const result = await provider.threads.list("testowner", "test-repo", 5);
+
+      // Gitea does not expose its internal outdated flag, so it stays false.
+      expect(result.items[0]?.isOutdated).toBe(false);
+      expect(result.items[0]?.line).toBe(8);
+    });
+
+    it("leaves line null when neither side carries a line number", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [{ id: 1, comments_count: 1 }],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaReviewComment({ id: 11, position: 0, original_position: 0 })],
+          headers: makeHeaders(),
+          status: 200,
+        });
+
+      const result = await provider.threads.list("testowner", "test-repo", 5);
+
+      expect(result.items[0]?.isOutdated).toBe(false);
+      expect(result.items[0]?.line).toBeNull();
     });
   });
 });

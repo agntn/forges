@@ -64,6 +64,32 @@ const userParameters = Type.Object({
   username: Type.String({ description: "Platform username", minLength: 1 }),
 });
 const authenticatedUserParameters = Type.Object({ platform });
+const threadState = Type.Optional(
+  Type.Unsafe<"unresolved" | "resolved" | "all">({
+    type: "string",
+    enum: ["unresolved", "resolved", "all"],
+    description: "Filter by resolved state",
+  }),
+);
+const threadId = Type.String({ description: "Review thread id", minLength: 1 });
+const listThreadsParameters = Type.Object({
+  platform,
+  owner,
+  repo,
+  number,
+  page,
+  perPage,
+  state: threadState,
+});
+const threadParameters = Type.Object({ platform, owner, repo, number, threadId });
+const replyThreadParameters = Type.Object({
+  platform,
+  owner,
+  repo,
+  number,
+  threadId,
+  body: Type.String({ description: "Reply body", minLength: 1 }),
+});
 
 export default function forgesExtension(pi: ExtensionAPI): void {
   pi.registerTool({
@@ -199,6 +225,78 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     parameters: authenticatedUserParameters,
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getAuthenticatedUser(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_threads_list",
+    label: "Forges Threads",
+    description:
+      "List normalized pull-request review threads, optionally filtered by resolved state",
+    promptSnippet: "List review threads on a pull request across GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_threads_list to inspect review threads instead of dumping full PR comments.",
+    ],
+    parameters: listThreadsParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listThreads(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_threads_get",
+    label: "Forges Thread",
+    description: "Get one normalized pull-request review thread by id",
+    promptSnippet: "Get one review thread from GitHub, GitLab, or Gitea.",
+    promptGuidelines: ["Use forges_threads_get when the exact review thread id is known."],
+    parameters: threadParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getThread(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_threads_reply",
+    label: "Reply Forges Thread",
+    description:
+      "Reply inside an existing pull-request review thread; this mutates the selected Git platform",
+    promptSnippet: "Reply inside a review thread on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_threads_reply to answer inside the thread, not as a standalone pull-request comment.",
+    ],
+    parameters: replyThreadParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).replyToThread(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_threads_resolve",
+    label: "Resolve Forges Thread",
+    description:
+      "Mark a pull-request review thread as resolved; this mutates the selected Git platform",
+    promptSnippet: "Resolve a review thread on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_threads_resolve only when the user explicitly asks to resolve a thread.",
+    ],
+    parameters: threadParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).resolveThread(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_threads_unresolve",
+    label: "Unresolve Forges Thread",
+    description:
+      "Mark a pull-request review thread as unresolved; this mutates the selected Git platform",
+    promptSnippet: "Unresolve a review thread on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_threads_unresolve only when the user explicitly asks to reopen a thread.",
+    ],
+    parameters: threadParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).unresolveThread(params);
     },
   });
 }

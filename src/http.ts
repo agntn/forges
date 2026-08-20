@@ -4,6 +4,8 @@
  */
 
 import { $fetch, FetchError, type $Fetch } from "ofetch";
+import { createHash } from "node:crypto";
+import { CACHE_SCOPE } from "./cache.ts";
 import pkg from "../package.json" with { type: "json" };
 
 /**
@@ -43,7 +45,7 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
     userAgent = `forges/${pkg.version}`,
   } = config;
 
-  return $fetch.create({
+  const client = $fetch.create({
     baseURL,
     retry: 2,
     retryDelay: 1000,
@@ -68,6 +70,12 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
       }
     },
   });
+
+  // Cache storage is process-global, so tag this client with the identity its
+  // responses belong to. The token is hashed: cache keys can reach an external
+  // storage backend and must never carry the raw credential.
+  const credential = createHash("sha256").update(token).digest("hex").slice(0, 16);
+  return Object.assign(client, { [CACHE_SCOPE]: `${baseURL}#${credential}` });
 }
 
 /**

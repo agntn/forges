@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
   return {
     client,
     cachedFetch,
+    invalidateCache: vi.fn(),
     createHttpClient: vi.fn(() => client),
     rawFetch: vi.fn(),
   };
@@ -25,6 +26,7 @@ vi.mock("../src/http.ts", () => ({
 
 vi.mock("../src/cache.ts", () => ({
   cachedFetch: mocks.cachedFetch,
+  invalidateCache: mocks.invalidateCache,
 }));
 
 import { GitLabProvider } from "../src/providers/gitlab.ts";
@@ -100,6 +102,56 @@ const glUser = {
   email: "john@example.com",
   avatar_url: "https://gitlab.com/uploads/-/system/user/avatar/1234/photo.jpg",
   is_admin: false,
+};
+
+const glDiscussion = {
+  id: "6a9c1750b37d513a43987b574953fceb50b03ce7",
+  individual_note: false,
+  notes: [
+    {
+      id: 1126,
+      body: "Please extract this helper",
+      author: { username: "reviewer" },
+      created_at: "2024-03-12T09:00:00Z",
+      system: false,
+      resolvable: true,
+      resolved: false,
+      position: {
+        new_path: "src/auth.ts",
+        old_path: "src/auth.ts",
+        new_line: 42,
+        old_line: 40,
+        line_range: { start: { new_line: 40, old_line: 38 } },
+      },
+    },
+    {
+      id: 1129,
+      body: "Will do",
+      author: { username: "dev" },
+      created_at: "2024-03-12T10:00:00Z",
+      system: false,
+      resolvable: true,
+      resolved: false,
+      position: null,
+    },
+  ],
+};
+
+const glIndividualNote = {
+  id: "87805b7c09016a7058e91bdbe7b29d1f284a39e6",
+  individual_note: true,
+  notes: [
+    {
+      id: 1128,
+      body: "a single comment",
+      author: { username: "tester" },
+      created_at: "2024-03-12T11:00:00Z",
+      system: false,
+      resolvable: false,
+      resolved: false,
+      position: null,
+    },
+  ],
 };
 
 // --- Helpers ---
@@ -962,6 +1014,190 @@ describe("GitLabProvider", () => {
       await providerWithInvalidConfig.issues.get("g", "repo-one", 2);
 
       expect(mocks.client).toHaveBeenCalledTimes(5);
+    });
+  });
+
+  describe("threads", () => {
+    it("lists only resolvable merge-request discussions", async () => {
+      mockProjectResolve();
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glDiscussion, glIndividualNote],
+        headers: glHeaders(),
+      });
+
+      const result = await gl.threads.list("gitlab-org", "gitlab-foss", 33);
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/merge_requests/33/discussions",
+        { query: { page: 1, per_page: 50 } },
+      );
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        id: glDiscussion.id,
+        isResolved: false,
+        path: "src/auth.ts",
+        line: 42,
+        startLine: 40,
+      });
+      expect(result.items[0]?.comments).toHaveLength(2);
+      expect(result.hasNextPage).toBe(false);
+    });
+
+    it("walks discussion pages until a filtered page is filled", async () => {
+      mockProjectResolve();
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: [glIndividualNote],
+          headers: glHeaders({ nextPage: "2" }),
+        })
+        .mockResolvedValueOnce({
+          data: [glDiscussion],
+          headers: glHeaders(),
+        });
+
+      const result = await gl.threads.list("gitlab-org", "gitlab-foss", 33, {
+        state: "unresolved",
+        perPage: 1,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]?.id).toBe(glDiscussion.id);
+    });
+
+    it("stops when a discussion page is empty even if a next page is advertised", async () => {
+      mockProjectResolve();
+      let calls = 0;
+      mocks.rawFetch.mockImplementation(async () => {
+        calls += 1;
+        if (calls > 3) {
+          throw new Error(`pagination looped ${calls} times`);
+        }
+        return {
+          data: [],
+          headers: glHeaders({ nextPage: "2" }),
+        };
+      });
+
+      const result = await gl.threads.list("gitlab-org", "gitlab-foss", 33);
+
+      expect(calls).toBe(1);
+      expect(result.items).toEqual([]);
+      expect(result.hasNextPage).toBe(false);
+    });
+
+    it("does not advertise a next page when no later discussion matches", async () => {
+      mockProjectResolve();
+      const resolvedDiscussion = {
+        ...glDiscussion,
+        id: "resolved-1",
+        notes: glDiscussion.notes.map((note) => ({ ...note, resolved: true })),
+      };
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: [glDiscussion, resolvedDiscussion],
+          headers: glHeaders({ nextPage: "2" }),
+        })
+        .mockResolvedValueOnce({
+          data: [{ ...resolvedDiscussion, id: "resolved-2" }],
+          headers: glHeaders(),
+        });
+
+      const result = await gl.threads.list("gitlab-org", "gitlab-foss", 33, {
+        state: "unresolved",
+        perPage: 1,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
+      expect(result.items.map((thread) => thread.id)).toEqual([glDiscussion.id]);
+      expect(result.hasNextPage).toBe(false);
+      expect(result.nextPage).toBeUndefined();
+    });
+
+    it("keeps a completed reply successful when cache eviction fails", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        id: 2001,
+        body: "Done.",
+        author: { username: "dev" },
+        created_at: "2024-03-12T12:00:00Z",
+        system: false,
+      });
+      mocks.invalidateCache.mockRejectedValueOnce(new Error("storage backend down"));
+
+      const comment = await gl.threads.reply("gitlab-org", "gitlab-foss", 33, glDiscussion.id, {
+        body: "Done.",
+      });
+
+      expect(comment.id).toBe("2001");
+    });
+
+    it("gets one discussion by id through the GET cache", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce(glDiscussion);
+
+      const thread = await gl.threads.get("gitlab-org", "gitlab-foss", 33, glDiscussion.id);
+
+      expect(mocks.cachedFetch).toHaveBeenCalledWith(
+        mocks.client,
+        `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}`,
+      );
+      expect(thread.comments[0]?.body).toBe("Please extract this helper");
+    });
+
+    it("replies by posting a discussion note", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        id: 2001,
+        body: "Done.",
+        author: { username: "dev" },
+        created_at: "2024-03-12T12:00:00Z",
+        system: false,
+      });
+
+      const comment = await gl.threads.reply("gitlab-org", "gitlab-foss", 33, glDiscussion.id, {
+        body: "Done.",
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(
+        `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}/notes`,
+        { method: "POST", body: { body: "Done." } },
+      );
+      expect(mocks.invalidateCache).toHaveBeenCalledWith(
+        mocks.client,
+        `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}`,
+      );
+      expect(comment.id).toBe("2001");
+    });
+
+    it("resolves and unresolves a discussion", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        ...glDiscussion,
+        notes: glDiscussion.notes.map((note) => ({ ...note, resolved: true })),
+      });
+      mocks.client.mockResolvedValueOnce(glDiscussion);
+
+      const resolved = await gl.threads.resolve("gitlab-org", "gitlab-foss", 33, glDiscussion.id);
+      const unresolved = await gl.threads.unresolve(
+        "gitlab-org",
+        "gitlab-foss",
+        33,
+        glDiscussion.id,
+      );
+
+      expect(mocks.client).toHaveBeenCalledWith(
+        `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}`,
+        { method: "PUT", body: { resolved: true } },
+      );
+      expect(mocks.client).toHaveBeenCalledWith(
+        `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}`,
+        { method: "PUT", body: { resolved: false } },
+      );
+      expect(mocks.invalidateCache).toHaveBeenCalledTimes(2);
+      expect(resolved.isResolved).toBe(true);
+      expect(unresolved.isResolved).toBe(false);
     });
   });
 });

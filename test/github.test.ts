@@ -80,6 +80,49 @@ const ghPullRequest = {
   draft: true,
 };
 
+const ghThreadScope = {
+  number: 99,
+  repository: { name: "hello-world", owner: { login: "octocat" } },
+};
+
+const ghThreadNode = {
+  id: "PRRT_kwDOA",
+  isResolved: false,
+  isOutdated: false,
+  path: "src/index.ts",
+  line: 12,
+  startLine: 10,
+  pullRequest: ghThreadScope,
+  comments: {
+    pageInfo: { hasNextPage: false, endCursor: null },
+    nodes: [
+      {
+        databaseId: 9001,
+        fullDatabaseId: "9001",
+        body: "Please fix this",
+        url: "https://github.com/octocat/hello-world/pull/99#discussion_r9001",
+        createdAt: "2024-02-03T10:00:00Z",
+        author: { login: "reviewer" },
+      },
+    ],
+  },
+};
+
+function graphqlThreadList(nodes: unknown[], hasNextPage = false, endCursor: string | null = null) {
+  return {
+    data: {
+      repository: {
+        pullRequest: {
+          reviewThreads: {
+            pageInfo: { hasNextPage, endCursor },
+            nodes,
+          },
+        },
+      },
+    },
+  };
+}
+
 // --- Helpers ---
 
 function makeHeaders(link?: string): Headers {
@@ -605,6 +648,303 @@ describe("GitHubProvider", () => {
       const error = await gh.repos.get("x", "y").catch((e: unknown) => e);
       expect(error).toBeInstanceOf(ForgesError);
       expect((error as ForgesError).status).toBe(503);
+    });
+  });
+
+  describe("threads", () => {
+    it("lists mapped review threads from GraphQL pages", async () => {
+      mocks.client.mockResolvedValueOnce(graphqlThreadList([ghThreadNode]));
+
+      const result = await gh.threads.list("octocat", "hello-world", 99);
+
+      expect(mocks.client).toHaveBeenCalledWith("/graphql", {
+        method: "POST",
+        body: expect.objectContaining({
+          variables: expect.objectContaining({
+            owner: "octocat",
+            name: "hello-world",
+            number: 99,
+          }),
+        }),
+      });
+      expect(result.items).toEqual([
+        {
+          id: "PRRT_kwDOA",
+          isResolved: false,
+          isOutdated: false,
+          path: "src/index.ts",
+          line: 12,
+          startLine: 10,
+          comments: [
+            {
+              id: "9001",
+              body: "Please fix this",
+              author: { login: "reviewer" },
+              url: "https://github.com/octocat/hello-world/pull/99#discussion_r9001",
+              createdAt: "2024-02-03T10:00:00Z",
+            },
+          ],
+        },
+      ]);
+      expect(result.hasNextPage).toBe(false);
+    });
+
+    it("walks GraphQL cursors instead of treating one page as complete", async () => {
+      const first = { ...ghThreadNode, id: "PRRT_1" };
+      const second = { ...ghThreadNode, id: "PRRT_2", isResolved: true };
+      mocks.client
+        .mockResolvedValueOnce(graphqlThreadList([first], true, "cursor-1"))
+        .mockResolvedValueOnce(graphqlThreadList([second]));
+
+      const result = await gh.threads.list("octocat", "hello-world", 99, {
+        page: 2,
+        perPage: 1,
+      });
+
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(result.items.map((thread) => thread.id)).toEqual(["PRRT_2"]);
+      expect(result.hasNextPage).toBe(false);
+    });
+
+    it("stops when GraphQL reports another page without a cursor", async () => {
+      let calls = 0;
+      mocks.client.mockImplementation(async () => {
+        calls += 1;
+        if (calls > 3) {
+          throw new Error(`pagination looped ${calls} times`);
+        }
+        return graphqlThreadList([ghThreadNode], true, null);
+      });
+
+      const result = await gh.threads.list("octocat", "hello-world", 99, { perPage: 30 });
+
+      expect(calls).toBe(1);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]?.id).toBe("PRRT_kwDOA");
+    });
+
+    it("filters unresolved threads across GraphQL pages", async () => {
+      mocks.client.mockResolvedValueOnce(
+        graphqlThreadList([ghThreadNode, { ...ghThreadNode, id: "PRRT_done", isResolved: true }]),
+      );
+
+      const result = await gh.threads.list("octocat", "hello-world", 99, {
+        state: "unresolved",
+      });
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]?.id).toBe("PRRT_kwDOA");
+    });
+
+    it("does not advertise a next page when no later thread matches the filter", async () => {
+      const resolved = { ...ghThreadNode, id: "PRRT_done", isResolved: true };
+      mocks.client
+        .mockResolvedValueOnce(graphqlThreadList([ghThreadNode, resolved], true, "cursor-1"))
+        .mockResolvedValueOnce(graphqlThreadList([{ ...resolved, id: "PRRT_done2" }]));
+
+      const result = await gh.threads.list("octocat", "hello-world", 99, {
+        state: "unresolved",
+        perPage: 1,
+      });
+
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(result.items.map((thread) => thread.id)).toEqual(["PRRT_kwDOA"]);
+      expect(result.hasNextPage).toBe(false);
+      expect(result.nextPage).toBeUndefined();
+    });
+
+    it("advertises a next page once one more matching thread is found", async () => {
+      const second = { ...ghThreadNode, id: "PRRT_second" };
+      mocks.client.mockResolvedValueOnce(graphqlThreadList([ghThreadNode, second]));
+
+      const result = await gh.threads.list("octocat", "hello-world", 99, {
+        state: "unresolved",
+        perPage: 1,
+      });
+
+      expect(result.items.map((thread) => thread.id)).toEqual(["PRRT_kwDOA"]);
+      expect(result.hasNextPage).toBe(true);
+      expect(result.nextPage).toBe(2);
+    });
+
+    it("gets one thread by GraphQL id", async () => {
+      mocks.client.mockResolvedValueOnce({ data: { node: ghThreadNode } });
+
+      const thread = await gh.threads.get("octocat", "hello-world", 99, "PRRT_kwDOA");
+
+      expect(thread.id).toBe("PRRT_kwDOA");
+      expect(thread.comments[0]?.id).toBe("9001");
+    });
+
+    it("throws NotFoundError when the thread belongs to another pull request", async () => {
+      mocks.client.mockResolvedValueOnce({
+        data: {
+          node: {
+            ...ghThreadNode,
+            pullRequest: { ...ghThreadScope, number: 100 },
+          },
+        },
+      });
+
+      await expect(gh.threads.get("octocat", "hello-world", 99, "PRRT_kwDOA")).rejects.toThrow(
+        NotFoundError,
+      );
+    });
+
+    it("throws NotFoundError when the thread belongs to another repository", async () => {
+      mocks.client.mockResolvedValueOnce({
+        data: {
+          node: {
+            ...ghThreadNode,
+            pullRequest: {
+              ...ghThreadScope,
+              repository: { name: "other-repo", owner: { login: "octocat" } },
+            },
+          },
+        },
+      });
+
+      await expect(gh.threads.get("octocat", "hello-world", 99, "PRRT_kwDOA")).rejects.toThrow(
+        NotFoundError,
+      );
+    });
+
+    it("throws NotFoundError when GraphQL node is missing", async () => {
+      mocks.client.mockResolvedValueOnce({ data: { node: null } });
+
+      await expect(gh.threads.get("octocat", "hello-world", 99, "missing")).rejects.toThrow(
+        NotFoundError,
+      );
+    });
+
+    it("throws when GraphQL returns errors even if data is present", async () => {
+      mocks.client.mockResolvedValueOnce({
+        data: { node: ghThreadNode },
+        errors: [{ message: "Something went wrong" }],
+      });
+
+      await expect(gh.threads.get("octocat", "hello-world", 99, "PRRT_kwDOA")).rejects.toThrow(
+        "Something went wrong",
+      );
+    });
+
+    it("keeps a 64-bit comment id intact when databaseId overflows", async () => {
+      const bigId = "2305843009213693951";
+      const node = {
+        ...ghThreadNode,
+        comments: {
+          pageInfo: { hasNextPage: false, endCursor: null },
+          nodes: [
+            {
+              ...ghThreadNode.comments.nodes[0],
+              databaseId: null,
+              fullDatabaseId: bigId,
+            },
+          ],
+        },
+      };
+      mocks.client
+        .mockResolvedValueOnce({ data: { node } })
+        .mockResolvedValueOnce({ data: { node } })
+        .mockResolvedValueOnce({
+          id: 9002,
+          body: "Done.",
+          user: { login: "octocat" },
+          html_url: "https://github.com/octocat/hello-world/pull/99#discussion_r9002",
+          created_at: "2024-02-03T11:00:00Z",
+        });
+
+      const thread = await gh.threads.get("octocat", "hello-world", 99, "PRRT_kwDOA");
+      expect(thread.comments[0]?.id).toBe(bigId);
+
+      await gh.threads.reply("octocat", "hello-world", 99, "PRRT_kwDOA", { body: "Done." });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(
+        `/repos/octocat/hello-world/pulls/99/comments/${bigId}/replies`,
+        { method: "POST", body: { body: "Done." } },
+      );
+    });
+
+    it("replies through the review-comment replies REST endpoint", async () => {
+      mocks.client.mockResolvedValueOnce({ data: { node: ghThreadNode } }).mockResolvedValueOnce({
+        id: 9002,
+        body: "Done.",
+        user: { login: "octocat" },
+        html_url: "https://github.com/octocat/hello-world/pull/99#discussion_r9002",
+        created_at: "2024-02-03T11:00:00Z",
+      });
+
+      const comment = await gh.threads.reply("octocat", "hello-world", 99, "PRRT_kwDOA", {
+        body: "Done.",
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(
+        "/repos/octocat/hello-world/pulls/99/comments/9001/replies",
+        { method: "POST", body: { body: "Done." } },
+      );
+      expect(comment.id).toBe("9002");
+      expect(comment.body).toBe("Done.");
+    });
+
+    it("resolves and unresolves through GraphQL mutations", async () => {
+      mocks.client
+        .mockResolvedValueOnce({ data: { node: { pullRequest: ghThreadScope } } })
+        .mockResolvedValueOnce({
+          data: { resolveReviewThread: { thread: { ...ghThreadNode, isResolved: true } } },
+        })
+        .mockResolvedValueOnce({ data: { node: { pullRequest: ghThreadScope } } })
+        .mockResolvedValueOnce({
+          data: { unresolveReviewThread: { thread: ghThreadNode } },
+        });
+
+      const resolved = await gh.threads.resolve("octocat", "hello-world", 99, "PRRT_kwDOA");
+      const unresolved = await gh.threads.unresolve("octocat", "hello-world", 99, "PRRT_kwDOA");
+
+      expect(resolved.isResolved).toBe(true);
+      expect(unresolved.isResolved).toBe(false);
+    });
+
+    it("refuses to resolve a thread that belongs to another pull request", async () => {
+      mocks.client.mockResolvedValueOnce({
+        data: { node: { pullRequest: { ...ghThreadScope, number: 100 } } },
+      });
+
+      await expect(gh.threads.resolve("octocat", "hello-world", 99, "PRRT_kwDOA")).rejects.toThrow(
+        NotFoundError,
+      );
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports GraphQL-less hosts instead of a bare 404", async () => {
+      const gitbucket = new GitHubProvider({
+        baseURL: "https://gitbucket.example.com/api/v3",
+        token: "gb_test",
+      });
+      mocks.client.mockRejectedValueOnce(makeFetchError(404));
+
+      const error = await gitbucket.threads
+        .list("octocat", "hello-world", 99)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ForgesError);
+      expect(error).not.toBeInstanceOf(NotFoundError);
+      expect((error as ForgesError).message).toContain("GraphQL");
+      expect((error as ForgesError).message).toContain("GitBucket");
+    });
+
+    it("posts GraphQL to /api/graphql for GitHub Enterprise REST bases", async () => {
+      const enterprise = new GitHubProvider({
+        baseURL: "https://git.example.com/api/v3",
+        token: "ghp_test",
+      });
+      mocks.client.mockResolvedValueOnce(graphqlThreadList([]));
+
+      await enterprise.threads.list("octocat", "hello-world", 99);
+
+      expect(mocks.client).toHaveBeenCalledWith("https://git.example.com/api/graphql", {
+        method: "POST",
+        body: expect.any(Object),
+      });
     });
   });
 });

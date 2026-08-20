@@ -94,7 +94,7 @@ const gt = createProvider("gitea", {
 
 ## Agent extensions
 
-The package ships separate Pi and OMP extensions with tools for repositories, issues, pull requests, and users. They use the normal token detection chain. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
+The package ships separate Pi and OMP extensions with tools for repositories, issues, pull requests, users, and review threads. They use the normal token detection chain. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
 
 | Platform           | Environment variable     |
 | ------------------ | ------------------------ |
@@ -106,7 +106,7 @@ These values are read from the agent process environment and are never exposed a
 
 ## API
 
-Every provider gives you four resources. They all work the same way across platforms.
+Every provider gives you five resources with the same method shapes. Thread semantics still follow the platform: GitHub and GitLab return real multi-comment conversations, while Gitea has no parent id on review comments, so each one comes back as its own single-comment thread.
 
 **repos** - `list(owner, opts?)`, `get(owner, repo)`
 
@@ -116,11 +116,15 @@ Every provider gives you four resources. They all work the same way across platf
 
 **users** - `get(username)`, `authenticated()`
 
+**threads** - `list(owner, repo, number, opts?)`, `get(owner, repo, number, threadId)`, `reply(owner, repo, number, threadId, input)`, `resolve(owner, repo, number, threadId)`, `unresolve(owner, repo, number, threadId)`
+
 List operations accept `ListOptions`: `page`, `perPage`, and `state` (`'open' | 'closed' | 'all'`). They return `PageResult<T>` with `items`, `hasNextPage`, `nextPage`, and an optional `totalCount`.
+
+Thread list operations accept `ListThreadOptions`: `page`, `perPage`, and `state` (`'unresolved' | 'resolved' | 'all'`). GitHub review-thread list/get/resolve uses GraphQL so `isResolved` and `isOutdated` stay accurate; replies still go through the REST comment-reply endpoint. GitLab and Gitea have no equivalent flag, so `isOutdated` is always `false` there. GitBucket serves only REST v3, so thread operations against it fail with an explicit unsupported-endpoint error rather than a bare 404.
 
 ## Caching
 
-GET requests are cached automatically using [unstorage](https://unstorage.unjs.io) with an LRU driver (5 min TTL, 500 entries). Works out of the box, but you can tweak it:
+GET requests are cached automatically using [unstorage](https://unstorage.unjs.io) with an LRU driver (5 min TTL, 500 entries). Entries are scoped to the client's base URL and a hash of its token, so two providers in one process — different hosts, or different tokens on the same host — never read each other's responses. Works out of the box, but you can tweak it:
 
 ```typescript
 const github = createProvider("github", {
@@ -170,8 +174,8 @@ console.log(gitea instanceof Provider); // true
 ```
 
 `Provider` is the abstract base class for every implementation. It owns the
-four resource accessors and requires typed mapping methods for owners,
-repositories, issues, pull requests, and users. Concrete classes implement
+five resource accessors and requires typed mapping methods for owners,
+repositories, issues, pull requests, users, and review threads. Concrete classes implement
 those mappers and the platform-specific API operations.
 
 The runtime base class is also available from `@agntn/forges/provider`. The
@@ -192,12 +196,12 @@ import { fetchAllPages, paginate } from "@agntn/forges";
 
 ## What this doesn't do
 
-This is an MVP. It covers repos, issues, PRs, and users. It does not handle:
+This is an MVP. It covers repos, issues, PRs, users, and review threads. It does not handle:
 
 - File/content operations (reading files, commits, trees)
 - Webhooks
 - Branch/tag management
-- GraphQL (REST only)
+- GraphQL outside GitHub review threads
 - Admin operations
 
 These might come later. For now the scope is intentionally small.

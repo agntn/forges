@@ -9,7 +9,7 @@
 import { createHttpClient, rawFetch, type HttpClient } from "../http.ts";
 import { cachedFetch } from "../cache.ts";
 import { parseLinkHeader } from "../pagination.ts";
-import { normalizeError } from "../errors.ts";
+import { normalizeError, NotFoundError } from "../errors.ts";
 import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
 import { Provider, type ProviderRawTypes } from "../provider.ts";
 import type {
@@ -21,8 +21,12 @@ import type {
   Owner,
   PageResult,
   ListOptions,
+  ListThreadOptions,
   CreateIssueInput,
   CreatePullRequestInput,
+  ReplyThreadInput,
+  Thread,
+  ThreadComment,
 } from "../types.ts";
 
 // -- Raw Gitea API response types --
@@ -92,6 +96,28 @@ interface GiteaRawTypes extends ProviderRawTypes {
   issue: GiteaIssue;
   pullRequest: GiteaPullRequest;
   user: GiteaUser;
+  thread: GiteaReviewThread;
+}
+
+interface GiteaPullReview {
+  id: number;
+  comments_count?: number;
+}
+
+interface GiteaPullReviewComment {
+  id: number;
+  body: string;
+  user?: GiteaUser | null;
+  html_url?: string | null;
+  created_at: string;
+  path?: string | null;
+  position?: number | null;
+  original_position?: number | null;
+  resolver?: GiteaUser | null;
+}
+
+interface GiteaReviewThread {
+  comments: GiteaPullReviewComment[];
 }
 
 // -- Pagination helper --
@@ -219,6 +245,32 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       email: raw.email ?? "",
       avatarUrl: raw.avatar_url ?? "",
       isAdmin: raw.is_admin ?? false,
+    };
+  }
+
+  protected override mapThread(raw: GiteaReviewThread): Thread {
+    const first = raw.comments[0];
+    // Gitea fills exactly one side: `position` is the new-file line,
+    // `original_position` the old-file line, and the unused one serializes as 0.
+    // Its internal `Invalidated` flag is not part of the API, so an outdated
+    // comment is indistinguishable from a current one here.
+    const position = first?.position ?? 0;
+    const originalPosition = first?.original_position ?? 0;
+    const line = position > 0 ? position : originalPosition;
+    return {
+      id: first === undefined ? "" : String(first.id),
+      isResolved: raw.comments.some((comment) => comment.resolver != null),
+      isOutdated: false,
+      path: first?.path ?? "",
+      line: line > 0 ? line : null,
+      startLine: null,
+      comments: raw.comments.map((comment) => ({
+        id: String(comment.id),
+        body: comment.body,
+        author: { login: comment.user?.login ?? "" },
+        url: comment.html_url ?? "",
+        createdAt: comment.created_at,
+      })),
     };
   }
 
@@ -391,5 +443,199 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
+  }
+
+  // --- Threads ---
+
+  protected override async listThreads(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListThreadOptions,
+  ): Promise<PageResult<Thread>> {
+    try {
+      const threads = this.filterThreadsByState(
+        (await this.groupedReviewThreads(owner, repo, number)).map((thread) =>
+          this.mapThread(thread),
+        ),
+        options?.state,
+      );
+      const perPage = options?.perPage ?? 30;
+      const page = options?.page ?? 1;
+      const start = (page - 1) * perPage;
+      const items = threads.slice(start, start + perPage);
+      const hasNextPage = start + items.length < threads.length;
+      return {
+        items,
+        hasNextPage,
+        nextPage: hasNextPage ? page + 1 : undefined,
+      };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async getThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread> {
+    try {
+      return this.mapThread(await this.findReviewThread(owner, repo, number, threadId));
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  /**
+   * Gitea has no parent id on review comments, so every comment is its own
+   * thread and the thread id is that comment id. Mutations address the comment
+   * directly instead of rescanning every review on the pull request.
+   */
+  protected override async replyToThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+    input: ReplyThreadInput,
+  ): Promise<ThreadComment> {
+    try {
+      const comment = await this.client<GiteaPullReviewComment>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/comments/${encodePathSegment(threadId)}/replies`,
+        {
+          method: "POST",
+          body: { body: input.body },
+        },
+      );
+      return {
+        id: String(comment.id),
+        body: comment.body,
+        author: { login: comment.user?.login ?? "" },
+        url: comment.html_url ?? "",
+        createdAt: comment.created_at,
+      };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async resolveThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread> {
+    return this.setReviewThreadResolved(owner, repo, number, threadId, true);
+  }
+
+  protected override async unresolveThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread> {
+    return this.setReviewThreadResolved(owner, repo, number, threadId, false);
+  }
+
+  private async setReviewThreadResolved(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+    resolved: boolean,
+  ): Promise<Thread> {
+    try {
+      // Unlike the reply endpoint, resolve/unresolve is scoped only by repository
+      // and comment id, so the comment must be confirmed to sit on this pull
+      // request before it is mutated.
+      const thread = await this.findReviewThread(owner, repo, number, threadId);
+      const action = resolved ? "resolve" : "unresolve";
+      await this.client(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/comments/${encodePathSegment(threadId)}/${action}`,
+        { method: "POST" },
+      );
+      return { ...this.mapThread(thread), isResolved: resolved };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  private async findReviewThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<GiteaReviewThread> {
+    const thread = (await this.groupedReviewThreads(owner, repo, number)).find(
+      (candidate) => String(candidate.comments[0]?.id) === threadId,
+    );
+    if (!thread) {
+      throw new NotFoundError(
+        `Resource not found: thread ${threadId} on ${owner}/${repo}#${number}`,
+        PLATFORM,
+      );
+    }
+    return thread;
+  }
+
+  private async reviewComments(
+    owner: string,
+    repo: string,
+    number: number,
+    reviewId: number,
+  ): Promise<GiteaPullReviewComment[]> {
+    const comments: GiteaPullReviewComment[] = [];
+    let page = 1;
+    let hasNextPage = true;
+    while (hasNextPage) {
+      const { data, headers } = await rawFetch<GiteaPullReviewComment[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews/${encodePathSegment(reviewId)}/comments`,
+        { query: { page: String(page), limit: "50" } },
+      );
+      const batch = data ?? [];
+      if (batch.length === 0) {
+        break;
+      }
+      comments.push(...batch);
+      hasNextPage = !!parseLinkHeader(headers.get("Link")).next;
+      page += 1;
+    }
+    return comments;
+  }
+
+  private async groupedReviewThreads(
+    owner: string,
+    repo: string,
+    number: number,
+  ): Promise<GiteaReviewThread[]> {
+    const comments: GiteaPullReviewComment[] = [];
+    let page = 1;
+    let hasNextPage = true;
+    while (hasNextPage) {
+      const { data, headers } = await rawFetch<GiteaPullReview[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews`,
+        { query: { page: String(page), limit: "50" } },
+      );
+      const reviews = data ?? [];
+      if (reviews.length === 0) {
+        break;
+      }
+      for (const review of reviews) {
+        if (review.comments_count === 0) {
+          continue;
+        }
+        comments.push(...(await this.reviewComments(owner, repo, number, review.id)));
+      }
+      hasNextPage = !!parseLinkHeader(headers.get("Link")).next;
+      page += 1;
+    }
+
+    return comments
+      .slice()
+      .sort((left, right) => left.id - right.id)
+      .map((comment) => ({ comments: [comment] }));
   }
 }

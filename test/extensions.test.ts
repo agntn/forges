@@ -20,7 +20,14 @@ const mocks = vi.hoisted(() => {
   const issues = { list: vi.fn(), get: vi.fn(), create: vi.fn() };
   const pullRequests = { list: vi.fn(), get: vi.fn(), create: vi.fn() };
   const users = { get: vi.fn(), authenticated: vi.fn() };
-  const provider = { repos, issues, pullRequests, users };
+  const threads = {
+    list: vi.fn(),
+    get: vi.fn(),
+    reply: vi.fn(),
+    resolve: vi.fn(),
+    unresolve: vi.fn(),
+  };
+  const provider = { repos, issues, pullRequests, users, threads };
 
   return {
     createProvider: vi.fn(() => provider),
@@ -28,6 +35,7 @@ const mocks = vi.hoisted(() => {
     issues,
     pullRequests,
     users,
+    threads,
   };
 });
 
@@ -44,6 +52,11 @@ const toolNames = [
   "forges_pull_requests_create",
   "forges_users_get",
   "forges_users_authenticated",
+  "forges_threads_list",
+  "forges_threads_get",
+  "forges_threads_reply",
+  "forges_threads_resolve",
+  "forges_threads_unresolve",
 ];
 
 function registerPiTools(): Map<string, PiToolDefinition> {
@@ -225,6 +238,49 @@ describe("Forges Pi extension", () => {
       expect(text).toContain("bodies are omitted");
     }
   });
+
+  it("bounds model-facing review-thread list comment bodies", async () => {
+    const body = Array.from({ length: 40 }, (_, index) => `line ${index}`).join("\n");
+    mocks.threads.list.mockResolvedValue({
+      items: [
+        {
+          id: "PRRT_1",
+          isResolved: false,
+          isOutdated: false,
+          path: "src/index.ts",
+          line: 12,
+          startLine: 10,
+          comments: [
+            {
+              id: "9001",
+              body,
+              author: { login: "reviewer" },
+              url: "https://example",
+              createdAt: "2026-08-18T00:00:00Z",
+            },
+          ],
+        },
+      ],
+      hasNextPage: false,
+    });
+
+    const result = await requirePiTool(registerPiTools(), "forges_threads_list").execute(
+      "test",
+      { platform: "github", owner: "agntn", repo: "forges", number: 31 },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+    const text = result.content.find((part) => part.type === "text")?.text;
+    expect(text).toContain("truncated");
+    expect(text).toContain("line 0");
+    expect(text).not.toContain("line 20");
+    expect(mocks.threads.list).toHaveBeenCalledWith("agntn", "forges", 31, {
+      page: undefined,
+      perPage: undefined,
+      state: undefined,
+    });
+  });
 });
 
 describe("Forges OMP extension", () => {
@@ -267,6 +323,9 @@ describe("Forges OMP extension", () => {
     const mutationTools: Record<string, true> = {
       forges_issues_create: true,
       forges_pull_requests_create: true,
+      forges_threads_reply: true,
+      forges_threads_resolve: true,
+      forges_threads_unresolve: true,
     };
 
     for (const tool of tools.values()) {

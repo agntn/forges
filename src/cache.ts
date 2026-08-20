@@ -24,6 +24,21 @@ export interface CachedFetchOptions {
 }
 
 /**
+ * Key under which an HTTP client carries its cache scope.
+ *
+ * Cache storage is process-global, so entries must be separated by API origin
+ * and credential identity. Without it two clients pointed at different hosts,
+ * or at one host with different tokens, read each other's responses.
+ */
+export const CACHE_SCOPE: unique symbol = Symbol.for("forges.cacheScope");
+
+type ScopedClient = $Fetch & { [CACHE_SCOPE]?: string };
+
+function clientCacheScope(client: $Fetch): string {
+  return (client as ScopedClient)[CACHE_SCOPE] ?? "";
+}
+
+/**
  * Global cache storage instance
  */
 let globalStorage: Storage | null = null;
@@ -68,8 +83,8 @@ function getStorage(): Storage {
  * @param options Request options
  * @returns Cache key
  */
-function generateCacheKey(url: string, options?: CachedFetchOptions): string {
-  let key = `cache:${url}`;
+function generateCacheKey(scope: string, url: string, options?: CachedFetchOptions): string {
+  let key = `cache:${scope}:${url}`;
 
   // Include query parameters in cache key if present
   if (options?.query) {
@@ -148,7 +163,7 @@ export async function cachedFetch<T>(
   }
 
   const storage = getStorage();
-  const cacheKey = generateCacheKey(url, options);
+  const cacheKey = generateCacheKey(clientCacheScope(client), url, options);
 
   // Check cache first
   const cached = await storage.getItem<T>(cacheKey);
@@ -178,11 +193,16 @@ export async function clearCache(): Promise<void> {
 
 /**
  * Remove specific cache entry
+ * @param client Client whose cached response should be dropped
  * @param url Request URL
  * @param options Request options
  */
-export async function invalidateCache(url: string, options?: CachedFetchOptions): Promise<void> {
+export async function invalidateCache(
+  client: $Fetch,
+  url: string,
+  options?: CachedFetchOptions,
+): Promise<void> {
   const storage = getStorage();
-  const cacheKey = generateCacheKey(url, options);
+  const cacheKey = generateCacheKey(clientCacheScope(client), url, options);
   await storage.removeItem(cacheKey);
 }
