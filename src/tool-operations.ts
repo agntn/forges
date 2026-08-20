@@ -240,6 +240,10 @@ export interface GetThreadParams extends RepositoryParams {
 
 export type ReplyThreadParams = GetThreadParams & ReplyThreadInput;
 
+// A minified or generated comment can be one very long line, so cap both axes.
+const THREAD_SUMMARY_MAX_LINES = 12;
+const THREAD_SUMMARY_MAX_CHARS = 4000;
+
 function summarizeThreadPage(page: PageResult<Thread>): PageResult<Thread> {
   return {
     ...page,
@@ -247,7 +251,11 @@ function summarizeThreadPage(page: PageResult<Thread>): PageResult<Thread> {
       ...thread,
       comments: thread.comments.map((comment) => ({
         ...comment,
-        body: comment.body.split("\n").slice(0, 12).join("\n"),
+        body: comment.body
+          .split("\n")
+          .slice(0, THREAD_SUMMARY_MAX_LINES)
+          .join("\n")
+          .slice(0, THREAD_SUMMARY_MAX_CHARS),
       })),
     })),
   };
