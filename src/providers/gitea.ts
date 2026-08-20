@@ -546,12 +546,16 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     resolved: boolean,
   ): Promise<Thread> {
     try {
+      // Unlike the reply endpoint, resolve/unresolve is scoped only by repository
+      // and comment id, so the comment must be confirmed to sit on this pull
+      // request before it is mutated.
+      const thread = await this.findReviewThread(owner, repo, number, threadId);
       const action = resolved ? "resolve" : "unresolve";
       await this.client(
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/comments/${encodePathSegment(threadId)}/${action}`,
         { method: "POST" },
       );
-      return this.getThread(owner, repo, number, threadId);
+      return { ...this.mapThread(thread), isResolved: resolved };
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
@@ -573,6 +577,32 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       );
     }
     return thread;
+  }
+
+  private async reviewComments(
+    owner: string,
+    repo: string,
+    number: number,
+    reviewId: number,
+  ): Promise<GiteaPullReviewComment[]> {
+    const comments: GiteaPullReviewComment[] = [];
+    let page = 1;
+    let hasNextPage = true;
+    while (hasNextPage) {
+      const { data, headers } = await rawFetch<GiteaPullReviewComment[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews/${encodePathSegment(reviewId)}/comments`,
+        { query: { page: String(page), limit: "50" } },
+      );
+      const batch = data ?? [];
+      if (batch.length === 0) {
+        break;
+      }
+      comments.push(...batch);
+      hasNextPage = !!parseLinkHeader(headers.get("Link")).next;
+      page += 1;
+    }
+    return comments;
   }
 
   private async groupedReviewThreads(
@@ -597,11 +627,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         if (review.comments_count === 0) {
           continue;
         }
-        const { data: reviewComments } = await rawFetch<GiteaPullReviewComment[]>(
-          this.client,
-          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews/${encodePathSegment(review.id)}/comments`,
-        );
-        comments.push(...(reviewComments ?? []));
+        comments.push(...(await this.reviewComments(owner, repo, number, review.id)));
       }
       hasNextPage = !!parseLinkHeader(headers.get("Link")).next;
       page += 1;
