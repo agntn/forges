@@ -226,6 +226,9 @@ describe("cross-provider class consistency", () => {
       // threads: list(owner, repo, number, options?), get/reply/resolve/unresolve
       expect(p.threads.list.length).toBeGreaterThanOrEqual(3);
       expect(p.threads.get.length).toBeGreaterThanOrEqual(4);
+      expect(p.threads.reply.length).toBeGreaterThanOrEqual(5);
+      expect(p.threads.resolve.length).toBeGreaterThanOrEqual(4);
+      expect(p.threads.unresolve.length).toBeGreaterThanOrEqual(4);
     }
   });
 });
