@@ -1,4 +1,5 @@
 import { createProvider } from "./index.ts";
+import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
 import type { Provider } from "./provider.ts";
 import type {
   CreateIssueInput,
@@ -17,7 +18,7 @@ import type {
   User,
 } from "./types.ts";
 
-export type ForgesPlatform = "github" | "gitlab" | "gitea";
+export type { ForgesPlatform };
 
 const baseUrlEnvByPlatform: Record<ForgesPlatform, string> = {
   github: "FORGES_GITHUB_BASE_URL",

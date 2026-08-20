@@ -20,6 +20,9 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   const { Type } = pi.typebox;
   pi.setLabel("Forges");
 
+  // OMP validates tool parameters with its host TypeBox build, so these shapes are
+  // rebuilt here instead of imported from shared/forges-tool-schemas.ts, which the
+  // Pi extension and the MCP server share.
   const platform = Type.Union(
     [Type.Literal("github"), Type.Literal("gitlab"), Type.Literal("gitea")],
     { description: "Git hosting platform" },

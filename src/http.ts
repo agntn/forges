@@ -6,7 +6,7 @@
 import { $fetch, FetchError, type $Fetch } from "ofetch";
 import { createHash } from "node:crypto";
 import { CACHE_SCOPE } from "./cache.ts";
-import pkg from "../package.json" with { type: "json" };
+import { version } from "./version.ts";
 
 /**
  * Configuration for HTTP client
@@ -42,7 +42,7 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
     token,
     tokenHeader = "Authorization",
     tokenPrefix = "token ",
-    userAgent = `forges/${pkg.version}`,
+    userAgent = `forges/${version}`,
   } = config;
 
   const client = $fetch.create({

@@ -92,9 +92,9 @@ const gt = createProvider("gitea", {
 });
 ```
 
-## Agent extensions
+## Agent tools
 
-The package ships separate Pi and OMP extensions with tools for repositories, issues, pull requests, users, and review threads. They use the normal token detection chain. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
+The same fifteen tools — repositories, issues, pull requests, users, and review threads — are exposed over MCP and through the Pi and OMP extensions. They use the normal token detection chain. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
 
 | Platform           | Environment variable     |
 | ------------------ | ------------------------ |
@@ -102,7 +102,39 @@ The package ships separate Pi and OMP extensions with tools for repositories, is
 | GitLab             | `FORGES_GITLAB_BASE_URL` |
 | Gitea / Forgejo    | `FORGES_GITEA_BASE_URL`  |
 
-These values are read from the agent process environment and are never exposed as model-callable tool arguments.
+These values are read from the agent process environment and are never exposed as model-callable tool arguments. Neither is a token, so nothing a model says can point an operation at a host of its own choosing.
+
+### MCP server
+
+```bash
+forges mcp
+```
+
+Speaks MCP over stdio. Point a client at it:
+
+```json
+{
+  "mcpServers": {
+    "forges": { "command": "npx", "args": ["-y", "@agntn/forges", "mcp"] }
+  }
+}
+```
+
+An MCP client sees the text a tool returns and nothing else, so the text carries the whole answer as JSON. The issue and pull-request lists drop bodies outright and name the tool that reads one in full, because one page of a busy repository is otherwise large enough to crowd out the conversation that asked for it. `forges_threads_list` bounds each comment instead — twelve lines, four thousand characters — but keeps every comment of every thread on the page, so ask it for a small `perPage` on a heavily reviewed pull request.
+
+A failure names the status and, on a rate limit, the retry window; it never repeats the endpoint the request went to, so a self-hosted `FORGES_*_BASE_URL` stays out of the model's context even when the platform answers with an error.
+
+Five tools write: `forges_issues_create`, `forges_pull_requests_create`, `forges_threads_reply`, `forges_threads_resolve` and `forges_threads_unresolve`. They are advertised as writes so a client can gate them, and `forges_users_authenticated` names the account they would write as. A failed operation comes back as a tool error rather than a transport failure: an unknown repository, a rejected token, an exhausted rate limit.
+
+`createMcpServer()` is exported from `@agntn/forges/mcp` for hosts that bring their own transport.
+
+### Pi and OMP extensions
+
+```bash
+pi install npm:@agntn/forges
+```
+
+The extensions add the details the harnesses render; MCP drops them and keeps the text. All three surfaces call the executors in `src/tool-operations.ts`, so they answer identically.
 
 ## API
 

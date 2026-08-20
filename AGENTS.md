@@ -11,6 +11,7 @@ pnpm run build                  # obuild → dist/ (.mjs + .d.mts)
 pnpm typecheck                  # tsc --noEmit (strict mode)
 pnpm test                       # vitest watch mode
 pnpm test:run                   # single run (CI)
+pnpm test:packed                # load both extensions from a published-shaped layout
 pnpm release                    # test → build → changelogen → push tag
 ```
 
@@ -26,7 +27,7 @@ pnpm vitest run test/github.test.ts
 pnpm vitest run -t "should list repos"
 ```
 
-**CI order:** typecheck → build → test (see `.github/workflows/test.yml`).
+**CI order:** typecheck → build → test:packed → test (see `.github/workflows/test.yml`).
 
 ## Codebase Map
 
@@ -40,6 +41,11 @@ src/
 ├── cache.ts              # unstorage LRU cache — GET-only, lazy-initialized
 ├── errors.ts             # ForgesError hierarchy + normalizeError()
 ├── pagination.ts         # Link header + x-next-page async generator
+├── version.ts            # Package version — the one source for it in src/
+├── tool-operations.ts    # Executors behind every agent surface (MCP, Pi, OMP)
+├── mcp.ts                # createMcpServer() — 15 tools over the low-level MCP Server
+├── cli.ts                # citty entry for the `forges` bin
+├── commands/mcp.ts       # `forges mcp` — stdio transport
 ├── github.ts             # Sub-path re-export for @agntn/forges/github
 ├── gitlab.ts             # Sub-path re-export for @agntn/forges/gitlab
 ├── gitea.ts              # Sub-path re-export for @agntn/forges/gitea
@@ -48,8 +54,14 @@ src/
     ├── github.ts         # Class. Also handles GitBucket via baseURL
     ├── gitlab.ts         # Class. Project ID resolution + caching, Private-Token auth
     └── gitea.ts          # Class. limit param, null-safe fields
+packages/
+├── shared/
+│   └── forges-tool-schemas.ts   # ForgesPlatform + TypeBox parameters shared by src/mcp.ts and Pi
+├── pi/extensions/forges.ts      # Pi extension — imports the shared schemas
+└── omp/extensions/forges.ts     # OMP extension — rebuilds them with the host TypeBox
 test/
-└── *.test.ts             # 1:1 mirror of src/ + integration.test.ts (10 files, ~313 tests)
+├── *.test.ts             # 1:1 mirror of src/ + integration.test.ts (13 files, ~379 tests)
+└── eval-packed-extensions.mjs   # Loads both extensions from a published-shaped layout
 ```
 
 **Where to put new code:**
@@ -63,6 +75,8 @@ test/
 | Fix pagination       | `src/pagination.ts`                 | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab     |
 | Fix error mapping    | `src/errors.ts`                     | `normalizeError()` maps FetchError → ForgesError subtypes          |
 | Add sub-path export  | `build.config.mjs` + `package.json` | Must update both: entries array + exports map                      |
+| Add agent tool       | `src/tool-operations.ts`            | Executor first, then `src/mcp.ts` and both extensions              |
+| Change tool schema   | `packages/shared/`                  | MCP and Pi share it; OMP rebuilds it from `pi.typebox`             |
 | Debug HTTP           | `src/http.ts`                       | `rawFetch()` returns headers, `createHttpClient()` configures auth |
 | Add tests            | `test/`                             | Name must match `test/<module>.test.ts`                            |
 

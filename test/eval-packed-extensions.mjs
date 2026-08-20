@@ -3,6 +3,8 @@ import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import * as OmpTypeBox from "@oh-my-pi/omptype/typebox";
 
 const root = process.cwd();
@@ -55,6 +57,29 @@ async function assertDistributionFallback(extensionPath, api) {
   );
 }
 
+/**
+ * The MCP bundle is published too, and it is the only entry that carries the SDK
+ * and typebox, so a chunk split or a missing dependency would surface here first.
+ */
+async function assertPackedMcpServer(root) {
+  const moduleUrl = `${pathToFileURL(join(root, "dist/mcp.mjs")).href}?packed=${Date.now()}`;
+  const { createMcpServer } = await import(moduleUrl);
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const server = createMcpServer();
+  const client = new Client({ name: "packed-test", version: "1.0.0" });
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+
+  try {
+    const { tools } = await client.listTools();
+    assert.deepEqual(
+      tools.map((tool) => tool.name),
+      expectedToolNames,
+    );
+  } finally {
+    await Promise.all([client.close(), server.close()]);
+  }
+}
+
 process.env.FORGES_GITHUB_BASE_URL = "not-a-url";
 process.env.GH_TOKEN = "";
 delete process.env.GITHUB_TOKEN;
@@ -66,6 +91,9 @@ try {
     mkdir(piExtensionDirectory, { recursive: true }),
     mkdir(ompExtensionDirectory, { recursive: true }),
     cp(join(root, "dist"), join(packageRoot, "dist"), { recursive: true }),
+    // The published layout carries no src/, so the shared schemas the Pi extension
+    // imports have to come from the packaged packages/shared directory.
+    cp(join(root, "packages/shared"), join(packageRoot, "packages/shared"), { recursive: true }),
   ]);
   await Promise.all([
     cp(join(root, "packages/pi/extensions/forges.ts"), join(piExtensionDirectory, "forges.ts")),
@@ -77,6 +105,7 @@ try {
     typebox: OmpTypeBox,
     setLabel() {},
   });
+  await assertPackedMcpServer(packageRoot);
 } finally {
   for (const [key, value] of originalEnvironment) {
     if (value === undefined) delete process.env[key];
@@ -85,4 +114,6 @@ try {
   await rm(temporaryRoot, { recursive: true, force: true });
 }
 
-console.log("Packed Pi and OMP extension fallbacks loaded dist/tool-operations.mjs");
+console.log(
+  "Packed Pi and OMP extensions loaded dist/tool-operations.mjs; packed dist/mcp.mjs served 15 tools",
+);
