@@ -124,7 +124,7 @@ Thread list operations accept `ListThreadOptions`: `page`, `perPage`, and `state
 
 ## Caching
 
-GET requests are cached automatically using [unstorage](https://unstorage.unjs.io) with an LRU driver (5 min TTL, 500 entries). Works out of the box, but you can tweak it:
+GET requests are cached automatically using [unstorage](https://unstorage.unjs.io) with an LRU driver (5 min TTL, 500 entries). Entries are scoped to the client's base URL and a hash of its token, so two providers in one process — different hosts, or different tokens on the same host — never read each other's responses. Works out of the box, but you can tweak it:
 
 ```typescript
 const github = createProvider("github", {
