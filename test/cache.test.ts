@@ -5,7 +5,16 @@ import {
   cachedFetch,
   clearCache,
   invalidateCache,
+  CACHE_SCOPE,
 } from "../src/cache.ts";
+
+function scopedClient(scope: string, ...values: unknown[]) {
+  const client = vi.fn();
+  for (const value of values) {
+    client.mockResolvedValueOnce(value);
+  }
+  return Object.assign(client, { [CACHE_SCOPE]: scope });
+}
 
 describe("cachedFetch", () => {
   beforeEach(() => {
@@ -134,6 +143,46 @@ describe("clearCache", () => {
   });
 });
 
+describe("cache scoping", () => {
+  beforeEach(() => {
+    configureStorage(createCache({ max: 100, ttl: 60_000 }));
+  });
+
+  it("does not share entries between clients on different hosts", async () => {
+    const saas = scopedClient("https://gitlab.com/api/v4#aaaa", { secret: "saas" });
+    const selfHosted = scopedClient("https://git.example.com/api/v4#aaaa", { secret: "self" });
+
+    const url = "/projects/278964/merge_requests/33/discussions/abc";
+    expect(await cachedFetch(saas as any, url)).toEqual({ secret: "saas" });
+    expect(await cachedFetch(selfHosted as any, url)).toEqual({ secret: "self" });
+  });
+
+  it("does not share entries between two tokens on the same host", async () => {
+    const alice = scopedClient("https://gitlab.com/api/v4#aaaa", { login: "alice" });
+    const bob = scopedClient("https://gitlab.com/api/v4#bbbb", { login: "bob" });
+
+    expect(await cachedFetch(alice as any, "/user")).toEqual({ login: "alice" });
+    expect(await cachedFetch(bob as any, "/user")).toEqual({ login: "bob" });
+  });
+
+  it("invalidates only the calling client's entry", async () => {
+    const alice = scopedClient(
+      "https://gitlab.com/api/v4#aaaa",
+      { login: "alice" },
+      { login: "alice2" },
+    );
+    const bob = scopedClient("https://gitlab.com/api/v4#bbbb", { login: "bob" });
+
+    await cachedFetch(alice as any, "/user");
+    await cachedFetch(bob as any, "/user");
+    await invalidateCache(alice as any, "/user");
+
+    expect(await cachedFetch(alice as any, "/user")).toEqual({ login: "alice2" });
+    expect(await cachedFetch(bob as any, "/user")).toEqual({ login: "bob" });
+    expect(bob).toHaveBeenCalledOnce();
+  });
+});
+
 describe("invalidateCache", () => {
   beforeEach(() => {
     configureStorage(createCache({ max: 100, ttl: 60_000 }));
@@ -148,7 +197,7 @@ describe("invalidateCache", () => {
 
     await cachedFetch(client as any, "/repos/a");
     await cachedFetch(client as any, "/repos/b");
-    await invalidateCache("/repos/a");
+    await invalidateCache(client as any, "/repos/a");
 
     // /repos/a should be re-fetched, /repos/b should still be cached
     const a = await cachedFetch(client as any, "/repos/a");

@@ -1119,6 +1119,7 @@ describe("GitLabProvider", () => {
         { method: "POST", body: { body: "Done." } },
       );
       expect(mocks.invalidateCache).toHaveBeenCalledWith(
+        mocks.client,
         `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}`,
       );
       expect(comment.id).toBe("2001");

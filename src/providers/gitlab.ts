@@ -688,7 +688,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         method: "POST",
         body: { body: input.body },
       });
-      await invalidateCache(url);
+      await invalidateCache(this.client, url);
       return {
         id: String(note.id),
         body: note.body,
@@ -754,7 +754,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         method: "PUT",
         body: { resolved },
       });
-      await invalidateCache(url);
+      await invalidateCache(this.client, url);
       return this.mapThread(discussion);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
