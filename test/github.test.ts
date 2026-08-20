@@ -98,6 +98,7 @@ const ghThreadNode = {
     nodes: [
       {
         databaseId: 9001,
+        fullDatabaseId: "9001",
         body: "Please fix this",
         url: "https://github.com/octocat/hello-world/pull/99#discussion_r9001",
         createdAt: "2024-02-03T10:00:00Z",
@@ -824,6 +825,43 @@ describe("GitHubProvider", () => {
 
       await expect(gh.threads.get("octocat", "hello-world", 99, "PRRT_kwDOA")).rejects.toThrow(
         "Something went wrong",
+      );
+    });
+
+    it("keeps a 64-bit comment id intact when databaseId overflows", async () => {
+      const bigId = "2305843009213693951";
+      const node = {
+        ...ghThreadNode,
+        comments: {
+          pageInfo: { hasNextPage: false, endCursor: null },
+          nodes: [
+            {
+              ...ghThreadNode.comments.nodes[0],
+              databaseId: null,
+              fullDatabaseId: bigId,
+            },
+          ],
+        },
+      };
+      mocks.client
+        .mockResolvedValueOnce({ data: { node } })
+        .mockResolvedValueOnce({ data: { node } })
+        .mockResolvedValueOnce({
+          id: 9002,
+          body: "Done.",
+          user: { login: "octocat" },
+          html_url: "https://github.com/octocat/hello-world/pull/99#discussion_r9002",
+          created_at: "2024-02-03T11:00:00Z",
+        });
+
+      const thread = await gh.threads.get("octocat", "hello-world", 99, "PRRT_kwDOA");
+      expect(thread.comments[0]?.id).toBe(bigId);
+
+      await gh.threads.reply("octocat", "hello-world", 99, "PRRT_kwDOA", { body: "Done." });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(
+        `/repos/octocat/hello-world/pulls/99/comments/${bigId}/replies`,
+        { method: "POST", body: { body: "Done." } },
       );
     });
 

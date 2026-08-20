@@ -104,6 +104,7 @@ interface GitHubGraphQLPageInfo {
 
 interface GitHubGraphQLReviewComment {
   databaseId: number | null;
+  fullDatabaseId: string | number | null;
   body: string;
   url: string;
   createdAt: string;
@@ -182,7 +183,7 @@ const THREAD_FIELDS = `
   ${THREAD_SCOPE_FIELDS}
   comments(first: 100, after: $commentsAfter) {
     pageInfo { hasNextPage endCursor }
-    nodes { databaseId body url createdAt author { login } }
+    nodes { databaseId fullDatabaseId body url createdAt author { login } }
   }
 `;
 
@@ -258,6 +259,17 @@ function threadMatchesPullRequest(
     repository.name.toLowerCase() === repo.toLowerCase() &&
     repository.owner.login.toLowerCase() === owner.toLowerCase()
   );
+}
+
+/**
+ * GraphQL `Int` cannot hold the newer 64-bit comment ids, so `databaseId` comes
+ * back null for them while `fullDatabaseId` (a BigInt, serialized as a string)
+ * still carries the value. It stays a string all the way into the REST reply
+ * URL, because `Number()` would lose precision on exactly those ids.
+ */
+function reviewCommentId(comment: GitHubGraphQLReviewComment): string {
+  const id = comment.fullDatabaseId ?? comment.databaseId;
+  return id === null || id === undefined ? "" : String(id);
 }
 
 function presentGraphQLNodes<T>(nodes: Array<T | null> | null | undefined): T[] {
@@ -371,7 +383,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       line: raw.line,
       startLine: raw.startLine,
       comments: presentGraphQLNodes(raw.comments.nodes).map((comment) => ({
-        id: comment.databaseId === null ? "" : String(comment.databaseId),
+        id: reviewCommentId(comment),
         body: comment.body,
         author: { login: comment.author?.login ?? "" },
         url: comment.url,
@@ -666,7 +678,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       // comment id could point at another thread on the same pull request.
       const commentId = await this.rootCommentId(owner, repo, number, threadId);
       const data = await this.client<GitHubReviewComment>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/comments/${encodePathSegment(Number(commentId))}/replies`,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/comments/${encodePathSegment(commentId)}/replies`,
         {
           method: "POST",
           body: { body: input.body },
