@@ -500,9 +500,8 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     input: ReplyThreadInput,
   ): Promise<ThreadComment> {
     try {
-      const commentId = input.commentId ?? threadId;
       const comment = await this.client<GiteaPullReviewComment>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/comments/${encodePathSegment(commentId)}/replies`,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/comments/${encodePathSegment(threadId)}/replies`,
         {
           method: "POST",
           body: { body: input.body },

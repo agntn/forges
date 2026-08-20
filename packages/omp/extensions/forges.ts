@@ -94,7 +94,6 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     number,
     threadId,
     body: Type.String({ description: "Reply body", minLength: 1 }),
-    commentId: Type.Optional(Type.String({ description: "Comment id to reply to", minLength: 1 })),
   });
 
   pi.registerTool({

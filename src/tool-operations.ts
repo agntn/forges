@@ -304,10 +304,7 @@ export async function replyToThread(
     params.repo,
     params.number,
     params.threadId,
-    {
-      body: params.body,
-      commentId: params.commentId,
-    },
+    { body: params.body },
   );
   return result(params.platform, comment);
 }

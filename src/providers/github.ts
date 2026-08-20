@@ -660,8 +660,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     input: ReplyThreadInput,
   ): Promise<ThreadComment> {
     try {
-      const commentId =
-        input.commentId ?? (await this.rootCommentId(owner, repo, number, threadId));
+      // The reply target is always derived from the thread: a caller-supplied
+      // comment id could point at another thread on the same pull request.
+      const commentId = await this.rootCommentId(owner, repo, number, threadId);
       const data = await this.client<GitHubReviewComment>(
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/comments/${encodePathSegment(Number(commentId))}/replies`,
         {

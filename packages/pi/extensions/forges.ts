@@ -89,7 +89,6 @@ const replyThreadParameters = Type.Object({
   number,
   threadId,
   body: Type.String({ description: "Reply body", minLength: 1 }),
-  commentId: Type.Optional(Type.String({ description: "Comment id to reply to", minLength: 1 })),
 });
 
 export default function forgesExtension(pi: ExtensionAPI): void {

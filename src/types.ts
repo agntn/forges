@@ -154,7 +154,6 @@ export interface ListThreadOptions {
  */
 export interface ReplyThreadInput {
   body: string;
-  commentId?: string;
 }
 
 /**
