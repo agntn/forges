@@ -585,7 +585,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       let cursor: string | undefined;
       let hasMore = true;
 
-      while (hasMore && matched.length < skip + perPage) {
+      // Scan one match past the page: with a state filter, a full page says
+      // nothing about whether any later thread still matches.
+      while (hasMore && matched.length <= skip + perPage) {
         const data = await this.graphql<GitHubGraphQLThreadListData>(LIST_THREADS_QUERY, {
           owner,
           name: repo,
@@ -618,7 +620,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       }
 
       const items = matched.slice(skip, skip + perPage);
-      const hasNextPage = matched.length > skip + perPage || (hasMore && items.length === perPage);
+      const hasNextPage = matched.length > skip + perPage;
       return {
         items,
         hasNextPage,

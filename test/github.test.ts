@@ -735,6 +735,37 @@ describe("GitHubProvider", () => {
       expect(result.items[0]?.id).toBe("PRRT_kwDOA");
     });
 
+    it("does not advertise a next page when no later thread matches the filter", async () => {
+      const resolved = { ...ghThreadNode, id: "PRRT_done", isResolved: true };
+      mocks.client
+        .mockResolvedValueOnce(graphqlThreadList([ghThreadNode, resolved], true, "cursor-1"))
+        .mockResolvedValueOnce(graphqlThreadList([{ ...resolved, id: "PRRT_done2" }]));
+
+      const result = await gh.threads.list("octocat", "hello-world", 99, {
+        state: "unresolved",
+        perPage: 1,
+      });
+
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(result.items.map((thread) => thread.id)).toEqual(["PRRT_kwDOA"]);
+      expect(result.hasNextPage).toBe(false);
+      expect(result.nextPage).toBeUndefined();
+    });
+
+    it("advertises a next page once one more matching thread is found", async () => {
+      const second = { ...ghThreadNode, id: "PRRT_second" };
+      mocks.client.mockResolvedValueOnce(graphqlThreadList([ghThreadNode, second]));
+
+      const result = await gh.threads.list("octocat", "hello-world", 99, {
+        state: "unresolved",
+        perPage: 1,
+      });
+
+      expect(result.items.map((thread) => thread.id)).toEqual(["PRRT_kwDOA"]);
+      expect(result.hasNextPage).toBe(true);
+      expect(result.nextPage).toBe(2);
+    });
+
     it("gets one thread by GraphQL id", async () => {
       mocks.client.mockResolvedValueOnce({ data: { node: ghThreadNode } });
 

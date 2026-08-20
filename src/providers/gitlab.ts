@@ -620,7 +620,9 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       let remotePage = 1;
       let hasMore = true;
 
-      while (hasMore && matched.length < skip + perPage) {
+      // Scan one match past the page: with a state filter, a full page says
+      // nothing about whether any later thread still matches.
+      while (hasMore && matched.length <= skip + perPage) {
         const response = await rawFetch<GitLabDiscussion[]>(
           this.client,
           `/projects/${projectId}/merge_requests/${encodePathSegment(number)}/discussions`,
@@ -650,7 +652,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       }
 
       const items = matched.slice(skip, skip + perPage);
-      const hasNextPage = matched.length > skip + perPage || (hasMore && items.length === perPage);
+      const hasNextPage = matched.length > skip + perPage;
       return {
         items,
         hasNextPage,

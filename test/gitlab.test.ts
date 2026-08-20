@@ -1087,6 +1087,52 @@ describe("GitLabProvider", () => {
       expect(result.hasNextPage).toBe(false);
     });
 
+    it("does not advertise a next page when no later discussion matches", async () => {
+      mockProjectResolve();
+      const resolvedDiscussion = {
+        ...glDiscussion,
+        id: "resolved-1",
+        notes: glDiscussion.notes.map((note) => ({ ...note, resolved: true })),
+      };
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: [glDiscussion, resolvedDiscussion],
+          headers: glHeaders({ nextPage: "2" }),
+        })
+        .mockResolvedValueOnce({
+          data: [{ ...resolvedDiscussion, id: "resolved-2" }],
+          headers: glHeaders(),
+        });
+
+      const result = await gl.threads.list("gitlab-org", "gitlab-foss", 33, {
+        state: "unresolved",
+        perPage: 1,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
+      expect(result.items.map((thread) => thread.id)).toEqual([glDiscussion.id]);
+      expect(result.hasNextPage).toBe(false);
+      expect(result.nextPage).toBeUndefined();
+    });
+
+    it("keeps a completed reply successful when cache eviction fails", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        id: 2001,
+        body: "Done.",
+        author: { username: "dev" },
+        created_at: "2024-03-12T12:00:00Z",
+        system: false,
+      });
+      mocks.invalidateCache.mockRejectedValueOnce(new Error("storage backend down"));
+
+      const comment = await gl.threads.reply("gitlab-org", "gitlab-foss", 33, glDiscussion.id, {
+        body: "Done.",
+      });
+
+      expect(comment.id).toBe("2001");
+    });
+
     it("gets one discussion by id through the GET cache", async () => {
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce(glDiscussion);
