@@ -84,7 +84,9 @@ function text(content: unknown): string {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  // resetAllMocks, per AGENTS.md: it drops each test's own stub while keeping the
+  // vi.fn(impl) factory, so a rejection armed by one test cannot reach the next.
+  vi.resetAllMocks();
   vi.stubEnv("FORGES_GITHUB_BASE_URL", undefined);
   vi.stubEnv("FORGES_GITLAB_BASE_URL", undefined);
   vi.stubEnv("FORGES_GITEA_BASE_URL", undefined);
