@@ -21,6 +21,7 @@ import type {
   Thread,
   ThreadComment,
 } from "../types.ts";
+import { FetchError } from "ofetch";
 import { ForgesError, NotFoundError, normalizeError } from "../errors.ts";
 import { createHttpClient, rawFetch, type HttpClient } from "../http.ts";
 import { cachedFetch } from "../cache.ts";
@@ -114,6 +115,11 @@ interface GitHubGraphQLCommentConnection {
   nodes: Array<GitHubGraphQLReviewComment | null> | null;
 }
 
+interface GitHubGraphQLThreadScope {
+  number: number;
+  repository: { name: string; owner: { login: string } } | null;
+}
+
 interface GitHubGraphQLReviewThread {
   id: string;
   isResolved: boolean;
@@ -121,6 +127,7 @@ interface GitHubGraphQLReviewThread {
   path: string | null;
   line: number | null;
   startLine: number | null;
+  pullRequest: GitHubGraphQLThreadScope | null;
   comments: GitHubGraphQLCommentConnection;
 }
 
@@ -149,10 +156,21 @@ interface GitHubGraphQLThreadNodeData {
   node: GitHubGraphQLReviewThread | null;
 }
 
+interface GitHubGraphQLThreadScopeData {
+  node: { pullRequest: GitHubGraphQLThreadScope | null } | null;
+}
+
 interface GitHubGraphQLThreadMutationData {
   resolveReviewThread?: { thread: GitHubGraphQLReviewThread | null };
   unresolveReviewThread?: { thread: GitHubGraphQLReviewThread | null };
 }
+
+const THREAD_SCOPE_FIELDS = `
+  pullRequest {
+    number
+    repository { name owner { login } }
+  }
+`;
 
 const THREAD_FIELDS = `
   id
@@ -161,6 +179,7 @@ const THREAD_FIELDS = `
   path
   line
   startLine
+  ${THREAD_SCOPE_FIELDS}
   comments(first: 100, after: $commentsAfter) {
     pageInfo { hasNextPage endCursor }
     nodes { databaseId body url createdAt author { login } }
@@ -188,6 +207,14 @@ const GET_THREAD_QUERY = `
   }
 `;
 
+const THREAD_SCOPE_QUERY = `
+  query($id: ID!) {
+    node(id: $id) {
+      ... on PullRequestReviewThread { ${THREAD_SCOPE_FIELDS} }
+    }
+  }
+`;
+
 const RESOLVE_THREAD_MUTATION = `
   mutation($id: ID!, $commentsAfter: String) {
     resolveReviewThread(input: {threadId: $id}) {
@@ -210,6 +237,27 @@ function githubGraphqlUrl(restBaseURL: string): string {
     return `${base.slice(0, -"/api/v3".length)}/api/graphql`;
   }
   return "/graphql";
+}
+
+/**
+ * A review-thread node id is globally unique, so a stale or mismatched id would
+ * otherwise read or mutate a thread on a different pull request.
+ */
+function threadMatchesPullRequest(
+  scope: GitHubGraphQLThreadScope | null | undefined,
+  owner: string,
+  repo: string,
+  number: number,
+): boolean {
+  const repository = scope?.repository;
+  if (!repository) {
+    return false;
+  }
+  return (
+    scope.number === number &&
+    repository.name.toLowerCase() === repo.toLowerCase() &&
+    repository.owner.login.toLowerCase() === owner.toLowerCase()
+  );
 }
 
 function presentGraphQLNodes<T>(nodes: Array<T | null> | null | undefined): T[] {
@@ -592,7 +640,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         id: threadId,
         commentsAfter: null,
       });
-      if (!data.node) {
+      if (!data.node || !threadMatchesPullRequest(data.node.pullRequest, owner, repo, number)) {
         throw new NotFoundError(
           `Resource not found: thread ${threadId} on ${owner}/${repo}#${number}`,
           "github",
@@ -612,7 +660,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     input: ReplyThreadInput,
   ): Promise<ThreadComment> {
     try {
-      const commentId = input.commentId ?? (await this.rootCommentId(owner, repo, number, threadId));
+      const commentId =
+        input.commentId ?? (await this.rootCommentId(owner, repo, number, threadId));
       const data = await this.client<GitHubReviewComment>(
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/comments/${encodePathSegment(Number(commentId))}/replies`,
         {
@@ -673,6 +722,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     field: "resolveReviewThread" | "unresolveReviewThread",
   ): Promise<Thread> {
     try {
+      await this.assertThreadScope(owner, repo, number, threadId);
       const data = await this.graphql<GitHubGraphQLThreadMutationData>(query, {
         id: threadId,
         commentsAfter: null,
@@ -687,6 +737,23 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       return this.mapThread(await this.completeThreadComments(thread));
     } catch (error) {
       throw normalizeError(error, "github");
+    }
+  }
+
+  private async assertThreadScope(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<void> {
+    const data = await this.graphql<GitHubGraphQLThreadScopeData>(THREAD_SCOPE_QUERY, {
+      id: threadId,
+    });
+    if (!threadMatchesPullRequest(data.node?.pullRequest, owner, repo, number)) {
+      throw new NotFoundError(
+        `Resource not found: thread ${threadId} on ${owner}/${repo}#${number}`,
+        "github",
+      );
     }
   }
 
@@ -738,10 +805,25 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   }
 
   private async graphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-    const response = await this.client<GitHubGraphQLResponse<T>>(githubGraphqlUrl(this.restBaseURL), {
-      method: "POST",
-      body: { query, variables },
-    });
+    const url = githubGraphqlUrl(this.restBaseURL);
+    let response: GitHubGraphQLResponse<T>;
+    try {
+      response = await this.client<GitHubGraphQLResponse<T>>(url, {
+        method: "POST",
+        body: { query, variables },
+      });
+    } catch (error) {
+      // GitBucket serves GitHub REST v3 but no GraphQL, so the endpoint is absent.
+      if (error instanceof FetchError && (error.status === 404 || error.status === 405)) {
+        throw new ForgesError(
+          `Review threads need the GitHub GraphQL API, which ${url} does not serve. REST-only hosts such as GitBucket cannot use thread operations.`,
+          error.status,
+          "github",
+          error,
+        );
+      }
+      throw error;
+    }
     const firstError = response.errors?.[0];
     if (firstError) {
       if (firstError.type === "NOT_FOUND") {
