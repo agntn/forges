@@ -9,7 +9,7 @@
 import { createHttpClient, rawFetch, type HttpClient } from "../http.ts";
 import { cachedFetch } from "../cache.ts";
 import { parseLinkHeader } from "../pagination.ts";
-import { ForgesError, normalizeError, NotFoundError } from "../errors.ts";
+import { normalizeError, NotFoundError } from "../errors.ts";
 import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
 import { Provider, type ProviderRawTypes } from "../provider.ts";
 import type {
@@ -250,12 +250,18 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
 
   protected override mapThread(raw: GiteaReviewThread): Thread {
     const first = raw.comments[0];
+    // Gitea serializes an absent diff position as 0, and keeps the pre-rewrite
+    // location in original_position once the diff moved past the comment.
+    const position = first?.position ?? 0;
+    const originalPosition = first?.original_position ?? 0;
+    const isOutdated = position <= 0 && originalPosition > 0;
+    const line = isOutdated ? originalPosition : position;
     return {
       id: first === undefined ? "" : String(first.id),
       isResolved: raw.comments.some((comment) => comment.resolver != null),
-      isOutdated: false,
+      isOutdated,
       path: first?.path ?? "",
-      line: first?.position ?? first?.original_position ?? null,
+      line: line > 0 ? line : null,
       startLine: null,
       comments: raw.comments.map((comment) => ({
         id: String(comment.id),
@@ -448,7 +454,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<PageResult<Thread>> {
     try {
       const threads = this.filterThreadsByState(
-        (await this.groupedReviewThreads(owner, repo, number)).map((thread) => this.mapThread(thread)),
+        (await this.groupedReviewThreads(owner, repo, number)).map((thread) =>
+          this.mapThread(thread),
+        ),
         options?.state,
       );
       const perPage = options?.perPage ?? 30;
@@ -479,6 +487,11 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     }
   }
 
+  /**
+   * Gitea has no parent id on review comments, so every comment is its own
+   * thread and the thread id is that comment id. Mutations address the comment
+   * directly instead of rescanning every review on the pull request.
+   */
   protected override async replyToThread(
     owner: string,
     repo: string,
@@ -487,16 +500,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     input: ReplyThreadInput,
   ): Promise<ThreadComment> {
     try {
-      const commentId = input.commentId ?? (await this.findReviewThread(owner, repo, number, threadId)).comments[0]?.id;
-      if (commentId === undefined) {
-        throw new ForgesError(
-          `Review thread ${threadId} has no comment id to reply to`,
-          undefined,
-          PLATFORM,
-        );
-      }
+      const commentId = input.commentId ?? threadId;
       const comment = await this.client<GiteaPullReviewComment>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/comments/${encodePathSegment(Number(commentId))}/replies`,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/comments/${encodePathSegment(commentId)}/replies`,
         {
           method: "POST",
           body: { body: input.body },
@@ -540,18 +546,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     resolved: boolean,
   ): Promise<Thread> {
     try {
-      const thread = await this.findReviewThread(owner, repo, number, threadId);
-      const commentId = thread.comments[0]?.id;
-      if (commentId === undefined) {
-        throw new ForgesError(
-          `Review thread ${threadId} has no comment id to ${resolved ? "resolve" : "unresolve"}`,
-          undefined,
-          PLATFORM,
-        );
-      }
       const action = resolved ? "resolve" : "unresolve";
       await this.client(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/comments/${encodePathSegment(commentId)}/${action}`,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/comments/${encodePathSegment(threadId)}/${action}`,
         { method: "POST" },
       );
       return this.getThread(owner, repo, number, threadId);
