@@ -120,7 +120,7 @@ Every provider gives you five resources with the same method shapes. Thread sema
 
 List operations accept `ListOptions`: `page`, `perPage`, and `state` (`'open' | 'closed' | 'all'`). They return `PageResult<T>` with `items`, `hasNextPage`, `nextPage`, and an optional `totalCount`.
 
-Thread list operations accept `ListThreadOptions`: `page`, `perPage`, and `state` (`'unresolved' | 'resolved' | 'all'`). GitHub review-thread list/get/resolve uses GraphQL so `isResolved` and `isOutdated` stay accurate; replies still go through the REST comment-reply endpoint. GitBucket serves only REST v3, so thread operations against it fail with an explicit unsupported-endpoint error rather than a bare 404.
+Thread list operations accept `ListThreadOptions`: `page`, `perPage`, and `state` (`'unresolved' | 'resolved' | 'all'`). GitHub review-thread list/get/resolve uses GraphQL so `isResolved` and `isOutdated` stay accurate; replies still go through the REST comment-reply endpoint. GitLab and Gitea have no equivalent flag, so `isOutdated` is always `false` there. GitBucket serves only REST v3, so thread operations against it fail with an explicit unsupported-endpoint error rather than a bare 404.
 
 ## Caching
 

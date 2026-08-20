@@ -250,16 +250,17 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
 
   protected override mapThread(raw: GiteaReviewThread): Thread {
     const first = raw.comments[0];
-    // Gitea serializes an absent diff position as 0, and keeps the pre-rewrite
-    // location in original_position once the diff moved past the comment.
+    // Gitea fills exactly one side: `position` is the new-file line,
+    // `original_position` the old-file line, and the unused one serializes as 0.
+    // Its internal `Invalidated` flag is not part of the API, so an outdated
+    // comment is indistinguishable from a current one here.
     const position = first?.position ?? 0;
     const originalPosition = first?.original_position ?? 0;
-    const isOutdated = position <= 0 && originalPosition > 0;
-    const line = isOutdated ? originalPosition : position;
+    const line = position > 0 ? position : originalPosition;
     return {
       id: first === undefined ? "" : String(first.id),
       isResolved: raw.comments.some((comment) => comment.resolver != null),
-      isOutdated,
+      isOutdated: false,
       path: first?.path ?? "",
       line: line > 0 ? line : null,
       startLine: null,

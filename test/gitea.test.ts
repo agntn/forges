@@ -943,7 +943,7 @@ describe("Gitea Provider", () => {
       expect(mockedRawFetch).toHaveBeenCalledTimes(2);
     });
 
-    it("marks a comment outdated and keeps its original diff position", async () => {
+    it("reads the old-file line when a comment sits on the removed side", async () => {
       mockedRawFetch
         .mockResolvedValueOnce({
           data: [{ id: 1, comments_count: 1 }],
@@ -958,11 +958,12 @@ describe("Gitea Provider", () => {
 
       const result = await provider.threads.list("testowner", "test-repo", 5);
 
-      expect(result.items[0]?.isOutdated).toBe(true);
+      // Gitea does not expose its internal outdated flag, so it stays false.
+      expect(result.items[0]?.isOutdated).toBe(false);
       expect(result.items[0]?.line).toBe(8);
     });
 
-    it("leaves line null when neither diff position survives", async () => {
+    it("leaves line null when neither side carries a line number", async () => {
       mockedRawFetch
         .mockResolvedValueOnce({
           data: [{ id: 1, comments_count: 1 }],
