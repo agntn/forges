@@ -9,6 +9,7 @@
     "gitea",
     "github",
     "gitlab",
+    "mcp",
     "omp-extension",
     "pi-package",
     "provider",
@@ -22,8 +23,12 @@
     "type": "git",
     "url": "git+https://github.com/agntn/forges.git"
   },
+  "bin": {
+    "forges": "./dist/cli.mjs"
+  },
   "files": [
     "dist",
+    "packages/shared",
     "packages/pi/extensions",
     "packages/omp/extensions"
   ],
@@ -35,6 +40,10 @@
     ".": {
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
+    },
+    "./mcp": {
+      "types": "./dist/mcp.d.mts",
+      "import": "./dist/mcp.mjs"
     },
     "./github": {
       "types": "./dist/github.d.mts",
@@ -73,6 +82,8 @@
     "release": "pnpm test:run && pnpm build && changelogen --release --push"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "citty": "^0.2.2",
     "ofetch": "^1.3.4",
     "typebox": "1.3.14",
     "unstorage": "^1.10.2"

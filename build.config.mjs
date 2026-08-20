@@ -10,6 +10,8 @@ export default defineBuildConfig({
       type: "bundle",
       input: [
         "./src/index.ts",
+        "./src/cli.ts",
+        "./src/mcp.ts",
         "./src/github.ts",
         "./src/gitlab.ts",
         "./src/gitea.ts",

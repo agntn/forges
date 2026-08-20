@@ -2,9 +2,21 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
 
 import type * as ForgesTools from "../../../dist/tool-operations.d.mts";
+import {
+  authenticatedUserParameters,
+  createIssueParameters,
+  createPullRequestParameters,
+  listRepositoriesParameters,
+  listRepositoryItemsParameters,
+  listThreadsParameters,
+  replyThreadParameters,
+  repositoryItemParameters,
+  repositoryParameters,
+  threadParameters,
+  userParameters,
+} from "../../shared/forges-tool-schemas.ts";
 
 const sourceModuleUrl = new URL("../../../src/tool-operations.ts", import.meta.url);
 const distributionModuleUrl = new URL("../../../dist/tool-operations.mjs", import.meta.url);
@@ -16,80 +28,6 @@ function loadToolOperations(): Promise<typeof ForgesTools> {
   ) as Promise<typeof ForgesTools>;
   return toolOperationsPromise;
 }
-
-const platform = Type.Unsafe<ForgesTools.ForgesPlatform>({
-  type: "string",
-  enum: ["github", "gitlab", "gitea"],
-  description: "Git hosting platform",
-});
-const owner = Type.String({ description: "Repository owner or organization", minLength: 1 });
-const repo = Type.String({ description: "Repository name", minLength: 1 });
-const page = Type.Optional(Type.Integer({ description: "Page number", minimum: 1 }));
-const perPage = Type.Optional(
-  Type.Integer({ description: "Results per page", minimum: 1, maximum: 100 }),
-);
-const state = Type.Optional(
-  Type.Unsafe<"open" | "closed" | "all">({
-    type: "string",
-    enum: ["open", "closed", "all"],
-    description: "Filter by state",
-  }),
-);
-const number = Type.Integer({ description: "Issue or pull-request number", minimum: 1 });
-
-const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
-const repositoryParameters = Type.Object({ platform, owner, repo });
-const listRepositoryItemsParameters = Type.Object({ platform, owner, repo, page, perPage, state });
-const repositoryItemParameters = Type.Object({ platform, owner, repo, number });
-const createIssueParameters = Type.Object({
-  platform,
-  owner,
-  repo,
-  title: Type.String({ description: "Issue title", minLength: 1 }),
-  body: Type.String({ description: "Issue body" }),
-  labels: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-});
-const createPullRequestParameters = Type.Object({
-  platform,
-  owner,
-  repo,
-  title: Type.String({ description: "Pull-request title", minLength: 1 }),
-  body: Type.String({ description: "Pull-request body" }),
-  sourceBranch: Type.String({ description: "Source branch", minLength: 1 }),
-  targetBranch: Type.String({ description: "Target branch", minLength: 1 }),
-  draft: Type.Optional(Type.Boolean({ description: "Create as a draft pull request" })),
-});
-const userParameters = Type.Object({
-  platform,
-  username: Type.String({ description: "Platform username", minLength: 1 }),
-});
-const authenticatedUserParameters = Type.Object({ platform });
-const threadState = Type.Optional(
-  Type.Unsafe<"unresolved" | "resolved" | "all">({
-    type: "string",
-    enum: ["unresolved", "resolved", "all"],
-    description: "Filter by resolved state",
-  }),
-);
-const threadId = Type.String({ description: "Review thread id", minLength: 1 });
-const listThreadsParameters = Type.Object({
-  platform,
-  owner,
-  repo,
-  number,
-  page,
-  perPage,
-  state: threadState,
-});
-const threadParameters = Type.Object({ platform, owner, repo, number, threadId });
-const replyThreadParameters = Type.Object({
-  platform,
-  owner,
-  repo,
-  number,
-  threadId,
-  body: Type.String({ description: "Reply body", minLength: 1 }),
-});
 
 export default function forgesExtension(pi: ExtensionAPI): void {
   pi.registerTool({

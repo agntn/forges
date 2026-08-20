@@ -66,6 +66,9 @@ try {
     mkdir(piExtensionDirectory, { recursive: true }),
     mkdir(ompExtensionDirectory, { recursive: true }),
     cp(join(root, "dist"), join(packageRoot, "dist"), { recursive: true }),
+    // The published layout carries no src/, so the shared schemas the Pi extension
+    // imports have to come from the packaged packages/shared directory.
+    cp(join(root, "packages/shared"), join(packageRoot, "packages/shared"), { recursive: true }),
   ]);
   await Promise.all([
     cp(join(root, "packages/pi/extensions/forges.ts"), join(piExtensionDirectory, "forges.ts")),
