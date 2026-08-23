@@ -704,11 +704,11 @@ describe("GitLabProvider", () => {
       });
     });
 
-    it("falls back to public_email when email is absent", async () => {
+    it("falls back to public_email when email is hidden as an empty string", async () => {
       mocks.client.mockResolvedValueOnce([glUserSearchHit]);
       mocks.client.mockResolvedValueOnce({
         ...glUser,
-        email: null,
+        email: "",
         public_email: "jane@example.com",
       });
 

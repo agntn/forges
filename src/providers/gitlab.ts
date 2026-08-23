@@ -291,7 +291,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       id: String(raw.id),
       login: raw.username,
       name: raw.name,
-      email: raw.email ?? raw.public_email ?? "",
+      email: raw.email || raw.public_email || "",
       avatarUrl: raw.avatar_url ?? "",
       isAdmin: raw.is_admin ?? false,
       bio: raw.bio ?? "",
