@@ -110,6 +110,28 @@ export interface CreatePullRequestInput {
 }
 
 /**
+ * One comment in an issue or pull-request discussion
+ */
+export interface Comment {
+  id: string;
+  body: string;
+  author: {
+    login: string;
+  };
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * List operation options for discussion comments
+ */
+export interface ListCommentOptions {
+  page?: number;
+  perPage?: number;
+}
+
+/**
  * Review-thread state filter
  */
 export type ThreadState = "unresolved" | "resolved" | "all";
@@ -188,6 +210,12 @@ export interface IssueResource {
   list(owner: string, repo: string, options?: ListOptions): Promise<PageResult<Issue>>;
   get(owner: string, repo: string, number: number): Promise<Issue>;
   create(owner: string, repo: string, input: CreateIssueInput): Promise<Issue>;
+  listComments(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListCommentOptions,
+  ): Promise<PageResult<Comment>>;
 }
 
 /**
@@ -197,6 +225,12 @@ export interface PullRequestResource {
   list(owner: string, repo: string, options?: ListOptions): Promise<PageResult<PullRequest>>;
   get(owner: string, repo: string, number: number): Promise<PullRequest>;
   create(owner: string, repo: string, input: CreatePullRequestInput): Promise<PullRequest>;
+  listComments(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListCommentOptions,
+  ): Promise<PageResult<Comment>>;
 }
 
 /**

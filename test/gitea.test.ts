@@ -125,6 +125,18 @@ function giteaReviewComment(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function giteaComment(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 21,
+    body: "Same here on 1.22",
+    user: giteaUser(),
+    html_url: "https://gitea.com/testowner/test-repo/issues/1#issuecomment-21",
+    created_at: "2024-01-04T00:00:00Z",
+    updated_at: "2024-01-04T01:00:00Z",
+    ...overrides,
+  };
+}
+
 function makeHeaders(extra: Record<string, string> = {}): Headers {
   return new Headers(extra);
 }
@@ -551,6 +563,99 @@ describe("Gitea Provider", () => {
           }),
         }),
       );
+    });
+  });
+
+  // --- comments ---
+
+  describe("issues.listComments", () => {
+    it("cuts the requested page locally because the route ignores paging", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [giteaComment(), giteaComment({ id: 22 }), giteaComment({ id: 23 })],
+        headers: makeHeaders(),
+        status: 200,
+      });
+
+      const result = await provider.issues.listComments("testowner", "test-repo", 1, {
+        perPage: 2,
+      });
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        mockClient,
+        "/repos/testowner/test-repo/issues/1/comments",
+        { query: { page: "1", limit: "50" } },
+      );
+      expect(result.items.map((comment) => comment.id)).toEqual(["21", "22"]);
+      expect(result.items[0]).toMatchObject({
+        body: "Same here on 1.22",
+        author: { login: "testuser" },
+        url: "https://gitea.com/testowner/test-repo/issues/1#issuecomment-21",
+        createdAt: "2024-01-04T00:00:00Z",
+        updatedAt: "2024-01-04T01:00:00Z",
+      });
+      expect(result.hasNextPage).toBe(true);
+      expect(result.nextPage).toBe(2);
+    });
+
+    it("serves a later page from the same response", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [giteaComment(), giteaComment({ id: 22 }), giteaComment({ id: 23 })],
+        headers: makeHeaders(),
+        status: 200,
+      });
+
+      const result = await provider.issues.listComments("testowner", "test-repo", 1, {
+        page: 2,
+        perPage: 2,
+      });
+
+      expect(result.items.map((comment) => comment.id)).toEqual(["23"]);
+      expect(result.hasNextPage).toBe(false);
+      expect(result.nextPage).toBeUndefined();
+    });
+
+    it("follows the Link header and restores oldest-first order across batches", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [giteaComment()],
+          headers: makeHeaders({
+            Link: linkHeader(
+              2,
+              50,
+              "https://gitea.com/api/v1/repos/testowner/test-repo/issues/1/comments",
+            ),
+          }),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaComment({ id: 20 })],
+          headers: makeHeaders(),
+          status: 200,
+        });
+
+      const result = await provider.issues.listComments("testowner", "test-repo", 1);
+
+      expect(mockedRawFetch).toHaveBeenCalledTimes(2);
+      expect(result.items.map((comment) => comment.id)).toEqual(["20", "21"]);
+    });
+  });
+
+  describe("pullRequests.listComments", () => {
+    it("reads the shared issue-comments route", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [giteaComment()],
+        headers: makeHeaders(),
+        status: 200,
+      });
+
+      const result = await provider.pullRequests.listComments("testowner", "test-repo", 5);
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        mockClient,
+        "/repos/testowner/test-repo/issues/5/comments",
+        { query: { page: "1", limit: "50" } },
+      );
+      expect(result.items).toHaveLength(1);
     });
   });
 

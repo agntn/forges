@@ -21,7 +21,9 @@ import type {
   Owner,
   PageResult,
   ListOptions,
+  ListCommentOptions,
   ListThreadOptions,
+  Comment,
   CreateIssueInput,
   CreatePullRequestInput,
   ReplyThreadInput,
@@ -90,6 +92,15 @@ interface GiteaPullRequest {
   draft?: boolean;
 }
 
+interface GiteaComment {
+  id: number;
+  body?: string | null;
+  user?: GiteaUser | null;
+  html_url?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface GiteaRawTypes extends ProviderRawTypes {
   owner: GiteaOwner;
   repository: GiteaRepository;
@@ -97,6 +108,7 @@ interface GiteaRawTypes extends ProviderRawTypes {
   pullRequest: GiteaPullRequest;
   user: GiteaUser;
   thread: GiteaReviewThread;
+  comment: GiteaComment;
 }
 
 interface GiteaPullReview {
@@ -245,6 +257,17 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       email: raw.email ?? "",
       avatarUrl: raw.avatar_url ?? "",
       isAdmin: raw.is_admin ?? false,
+    };
+  }
+
+  protected override mapComment(raw: GiteaComment): Comment {
+    return {
+      id: String(raw.id),
+      body: raw.body ?? "",
+      author: { login: raw.user?.login ?? "" },
+      url: raw.html_url ?? "",
+      createdAt: raw.created_at,
+      updatedAt: raw.updated_at,
     };
   }
 
@@ -425,6 +448,66 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
+  }
+
+  // --- Comments ---
+
+  /**
+   * The issue-comments route ignores page and limit and answers with the whole
+   * discussion, so the requested page is cut locally after an id sort that
+   * pins the documented oldest-first order. The paging params still go out and
+   * the Link header is still read, which keeps a host that does paginate this
+   * route correct too.
+   */
+  protected override async listIssueComments(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListCommentOptions,
+  ): Promise<PageResult<Comment>> {
+    try {
+      const comments: GiteaComment[] = [];
+      let remotePage = 1;
+      let hasMore = true;
+      while (hasMore) {
+        const { data, headers } = await rawFetch<GiteaComment[]>(
+          this.client,
+          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}/comments`,
+          { query: { page: String(remotePage), limit: "50" } },
+        );
+        const batch = data ?? [];
+        if (batch.length === 0) {
+          break;
+        }
+        comments.push(...batch);
+        hasMore = !!parseLinkHeader(headers.get("Link")).next;
+        remotePage += 1;
+      }
+      comments.sort((left, right) => left.id - right.id);
+
+      const perPage = options?.perPage ?? 30;
+      const page = options?.page ?? 1;
+      const start = (page - 1) * perPage;
+      const items = comments.slice(start, start + perPage).map((raw) => this.mapComment(raw));
+      const hasNextPage = start + items.length < comments.length;
+      return {
+        items,
+        hasNextPage,
+        nextPage: hasNextPage ? page + 1 : undefined,
+      };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  /** Gitea indexes pull requests as issues, so their discussion shares this route. */
+  protected override async listPullRequestComments(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListCommentOptions,
+  ): Promise<PageResult<Comment>> {
+    return this.listIssueComments(owner, repo, number, options);
   }
 
   protected override async getUser(username: string): Promise<User> {

@@ -8,6 +8,7 @@ import {
   authenticatedUserParameters,
   createIssueParameters,
   createPullRequestParameters,
+  listCommentsParameters,
   listRepositoriesParameters,
   listRepositoryItemsParameters,
   listThreadsParameters,
@@ -85,6 +86,20 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_issues_comments",
+    label: "Forges Issue Comments",
+    description: "List the discussion comments under one issue, oldest first",
+    promptSnippet: "Read the discussion under an issue on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_issues_comments to read an issue's discussion instead of scraping the web UI.",
+    ],
+    parameters: listCommentsParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listIssueComments(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_issues_create",
     label: "Create Forges Issue",
     description: "Create an issue in a repository; this mutates the selected Git platform",
@@ -121,6 +136,20 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     parameters: repositoryItemParameters,
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getPullRequest(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_comments",
+    label: "Forges Pull Request Comments",
+    description: "List the conversation comments under one pull request, oldest first",
+    promptSnippet: "Read the conversation under a pull request on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_pull_requests_comments for the pull-request conversation; review threads come from forges_threads_list.",
+    ],
+    parameters: listCommentsParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listPullRequestComments(params);
     },
   });
 

@@ -13,7 +13,9 @@ import type {
   Owner,
   PageResult,
   ListOptions,
+  ListCommentOptions,
   ListThreadOptions,
+  Comment,
   CreateIssueInput,
   CreatePullRequestInput,
   IssueState,
@@ -80,6 +82,15 @@ interface GitHubPullRequest extends GitHubIssue {
   draft: boolean;
 }
 
+interface GitHubComment {
+  id: number;
+  body: string | null;
+  user: { login: string } | null;
+  html_url: string;
+  created_at: string;
+  updated_at: string;
+}
+
 interface GitHubRawTypes extends ProviderRawTypes {
   owner: GitHubOwner;
   repository: GitHubRepo;
@@ -87,6 +98,7 @@ interface GitHubRawTypes extends ProviderRawTypes {
   pullRequest: GitHubPullRequest;
   user: GitHubUser;
   thread: GitHubGraphQLReviewThread;
+  comment: GitHubComment;
 }
 
 interface GitHubReviewComment {
@@ -374,6 +386,17 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     };
   }
 
+  protected override mapComment(raw: GitHubComment): Comment {
+    return {
+      id: String(raw.id),
+      body: raw.body ?? "",
+      author: { login: raw.user?.login ?? "" },
+      url: raw.html_url,
+      createdAt: raw.created_at,
+      updatedAt: raw.updated_at,
+    };
+  }
+
   protected override mapThread(raw: GitHubGraphQLReviewThread): Thread {
     return {
       id: raw.id,
@@ -556,6 +579,41 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     } catch (error) {
       throw normalizeError(error, "github");
     }
+  }
+
+  // --- Comments ---
+
+  protected override async listIssueComments(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListCommentOptions,
+  ): Promise<PageResult<Comment>> {
+    try {
+      const query: Record<string, string> = {};
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+
+      const { data, headers } = await rawFetch<GitHubComment[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}/comments`,
+        { query },
+      );
+
+      return buildPageResult(data ?? [], headers, (raw) => this.mapComment(raw));
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /** GitHub serves pull-request discussion comments from the issues endpoint. */
+  protected override async listPullRequestComments(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListCommentOptions,
+  ): Promise<PageResult<Comment>> {
+    return this.listIssueComments(owner, repo, number, options);
   }
 
   // --- Users ---

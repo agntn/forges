@@ -3,10 +3,12 @@
  */
 
 import type {
+  Comment,
   CreateIssueInput,
   CreatePullRequestInput,
   Issue,
   IssueResource,
+  ListCommentOptions,
   ListOptions,
   ListThreadOptions,
   Owner,
@@ -37,6 +39,7 @@ export interface ProviderRawTypes {
   pullRequest: unknown;
   user: unknown;
   thread: unknown;
+  comment: unknown;
 }
 
 /**
@@ -61,11 +64,15 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       list: (owner, repo, options) => this.listIssues(owner, repo, options),
       get: (owner, repo, number) => this.getIssue(owner, repo, number),
       create: (owner, repo, input) => this.createIssue(owner, repo, input),
+      listComments: (owner, repo, number, options) =>
+        this.listIssueComments(owner, repo, number, options),
     };
     this.pullRequests = {
       list: (owner, repo, options) => this.listPullRequests(owner, repo, options),
       get: (owner, repo, number) => this.getPullRequest(owner, repo, number),
       create: (owner, repo, input) => this.createPullRequest(owner, repo, input),
+      listComments: (owner, repo, number, options) =>
+        this.listPullRequestComments(owner, repo, number, options),
     };
     this.users = {
       get: (username) => this.getUser(username),
@@ -88,6 +95,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   protected abstract mapPullRequest(raw: Raw["pullRequest"]): PullRequest;
   protected abstract mapUser(raw: Raw["user"]): User;
   protected abstract mapThread(raw: Raw["thread"]): Thread;
+  protected abstract mapComment(raw: Raw["comment"]): Comment;
 
   protected abstract listRepos(
     owner: string,
@@ -120,6 +128,18 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     repo: string,
     input: CreatePullRequestInput,
   ): Promise<PullRequest>;
+  protected abstract listIssueComments(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListCommentOptions,
+  ): Promise<PageResult<Comment>>;
+  protected abstract listPullRequestComments(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListCommentOptions,
+  ): Promise<PageResult<Comment>>;
   protected abstract getUser(username: string): Promise<User>;
   protected abstract getAuthenticatedUser(): Promise<User>;
   protected abstract listThreads(

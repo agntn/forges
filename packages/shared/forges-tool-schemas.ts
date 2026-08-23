@@ -59,6 +59,7 @@ export const listRepositoryItemsParameters = Type.Object({
   state,
 });
 export const repositoryItemParameters = Type.Object({ platform, owner, repo, number });
+export const listCommentsParameters = Type.Object({ platform, owner, repo, number, page, perPage });
 export const createIssueParameters = Type.Object({
   platform,
   owner,

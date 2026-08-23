@@ -80,6 +80,15 @@ const ghPullRequest = {
   draft: true,
 };
 
+const ghComment = {
+  id: 3001,
+  body: "Reproduced on 1.2.3 as well",
+  user: { login: "commenter" },
+  html_url: "https://github.com/octocat/hello-world/issues/42#issuecomment-3001",
+  created_at: "2024-01-17T09:00:00Z",
+  updated_at: "2024-01-17T09:30:00Z",
+};
+
 const ghThreadScope = {
   number: 99,
   repository: { name: "hello-world", owner: { login: "octocat" } },
@@ -376,6 +385,51 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("issues.listComments", () => {
+    it("returns mapped comments with pagination", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [ghComment],
+        headers: makeHeaders(
+          '<https://api.github.com/repos/octocat/hello-world/issues/42/comments?page=3>; rel="next"',
+        ),
+      });
+
+      const result = await gh.issues.listComments("octocat", "hello-world", 42, {
+        page: 2,
+        perPage: 1,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/octocat/hello-world/issues/42/comments",
+        { query: { page: "2", per_page: "1" } },
+      );
+      expect(result.items).toEqual([
+        {
+          id: "3001",
+          body: "Reproduced on 1.2.3 as well",
+          author: { login: "commenter" },
+          url: "https://github.com/octocat/hello-world/issues/42#issuecomment-3001",
+          createdAt: "2024-01-17T09:00:00Z",
+          updatedAt: "2024-01-17T09:30:00Z",
+        },
+      ]);
+      expect(result.hasNextPage).toBe(true);
+      expect(result.nextPage).toBe(3);
+    });
+
+    it("maps a ghost author and missing body to empty strings", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [{ ...ghComment, body: null, user: null }],
+        headers: makeHeaders(),
+      });
+
+      const result = await gh.issues.listComments("octocat", "hello-world", 42);
+
+      expect(result.items[0]).toMatchObject({ body: "", author: { login: "" } });
+    });
+  });
+
   // --- Pull Requests ---
 
   describe("pullRequests.list", () => {
@@ -434,6 +488,25 @@ describe("GitHubProvider", () => {
           draft: true,
         },
       });
+    });
+  });
+
+  describe("pullRequests.listComments", () => {
+    it("reads the issue-comments endpoint, which carries the PR discussion", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [ghComment],
+        headers: makeHeaders(),
+      });
+
+      const result = await gh.pullRequests.listComments("octocat", "hello-world", 99);
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/octocat/hello-world/issues/99/comments",
+        { query: {} },
+      );
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].id).toBe("3001");
     });
   });
 

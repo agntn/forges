@@ -21,7 +21,9 @@ import type {
   Owner,
   PageResult,
   ListOptions,
+  ListCommentOptions,
   ListThreadOptions,
+  Comment,
   CreateIssueInput,
   CreatePullRequestInput,
   IssueState,
@@ -96,6 +98,17 @@ interface GitLabUser {
   is_admin?: boolean;
 }
 
+interface GitLabNote {
+  id: number;
+  body: string;
+  author: {
+    username: string;
+  };
+  created_at: string;
+  updated_at: string;
+  system: boolean;
+}
+
 interface GitLabRawTypes extends ProviderRawTypes {
   owner: GitLabProject;
   repository: GitLabProject;
@@ -103,6 +116,7 @@ interface GitLabRawTypes extends ProviderRawTypes {
   pullRequest: GitLabMergeRequest;
   user: GitLabUser;
   thread: GitLabDiscussion;
+  comment: GitLabNote;
 }
 
 interface GitLabDiscussionPosition {
@@ -293,6 +307,17 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         url: "",
         createdAt: note.created_at,
       })),
+    };
+  }
+
+  protected override mapComment(raw: GitLabNote): Comment {
+    return {
+      id: String(raw.id),
+      body: raw.body,
+      author: { login: raw.author.username },
+      url: "",
+      createdAt: raw.created_at,
+      updatedAt: raw.updated_at,
     };
   }
 
@@ -570,6 +595,67 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         body,
       });
       return this.mapPullRequest(mr);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  // --- Comments ---
+
+  protected override async listIssueComments(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListCommentOptions,
+  ): Promise<PageResult<Comment>> {
+    return this.listNotes(owner, repo, "issues", number, options);
+  }
+
+  protected override async listPullRequestComments(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListCommentOptions,
+  ): Promise<PageResult<Comment>> {
+    return this.listNotes(owner, repo, "merge_requests", number, options);
+  }
+
+  /**
+   * GitLab lists notes newest first by default while GitHub and Gitea list
+   * discussion comments oldest first, so the ascending sort is pinned in the
+   * query. System notes record label and state churn, not discussion, and are
+   * dropped; a short page whose hasNextPage is true just means keep paging.
+   * That filtering is also why totalCount is withheld: x-total counts the
+   * system notes too, so it does not describe the returned items.
+   */
+  private async listNotes(
+    owner: string,
+    repo: string,
+    resource: "issues" | "merge_requests",
+    number: number,
+    options?: ListCommentOptions,
+  ): Promise<PageResult<Comment>> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const response = await rawFetch<GitLabNote[]>(
+        this.client,
+        `/projects/${projectId}/${resource}/${encodePathSegment(number)}/notes`,
+        {
+          query: {
+            page: options?.page ?? 1,
+            per_page: options?.perPage ?? 30,
+            order_by: "created_at",
+            sort: "asc",
+          },
+        },
+      );
+
+      const notes = (response.data ?? []).filter((note) => !note.system);
+      const page = this.parsePagination(
+        notes.map((raw) => this.mapComment(raw)),
+        response.headers,
+      );
+      return { ...page, totalCount: undefined };
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }
