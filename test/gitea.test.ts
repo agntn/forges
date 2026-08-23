@@ -738,6 +738,19 @@ describe("Gitea Provider", () => {
       expect(result.description).toBe("");
     });
 
+    it("handles null profile fields on user", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaUser({ description: null, location: null, website: null, html_url: null }),
+      );
+
+      const result = await provider.users.get("testuser");
+
+      expect(result.bio).toBe("");
+      expect(result.location).toBe("");
+      expect(result.website).toBe("");
+      expect(result.url).toBe("");
+    });
+
     it("handles null default_branch on repository", async () => {
       mockClient.mockResolvedValueOnce(giteaRepo({ default_branch: null }));
 
