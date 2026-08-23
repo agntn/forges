@@ -638,6 +638,30 @@ describe("Gitea Provider", () => {
       expect(mockedRawFetch).toHaveBeenCalledTimes(2);
       expect(result.items.map((comment) => comment.id)).toEqual(["20", "21"]);
     });
+
+    it("stops walking remote pages once the requested slice is full", async () => {
+      const commentsBase = "https://gitea.com/api/v1/repos/testowner/test-repo/issues/1/comments";
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [giteaComment()],
+          headers: makeHeaders({ Link: linkHeader(2, 50, commentsBase) }),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaComment({ id: 22 })],
+          headers: makeHeaders({ Link: linkHeader(3, 50, commentsBase) }),
+          status: 200,
+        });
+
+      const result = await provider.issues.listComments("testowner", "test-repo", 1, {
+        perPage: 1,
+      });
+
+      expect(mockedRawFetch).toHaveBeenCalledTimes(2);
+      expect(result.items.map((comment) => comment.id)).toEqual(["21"]);
+      expect(result.hasNextPage).toBe(true);
+      expect(result.nextPage).toBe(2);
+    });
   });
 
   describe("pullRequests.listComments", () => {

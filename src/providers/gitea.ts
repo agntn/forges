@@ -456,8 +456,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
    * The issue-comments route ignores page and limit and answers with the whole
    * discussion, so the requested page is cut locally after an id sort that
    * pins the documented oldest-first order. The paging params still go out and
-   * the Link header is still read, which keeps a host that does paginate this
-   * route correct too.
+   * the Link header is still read, so a host that does paginate this route
+   * stays correct and is only walked one comment past the requested slice
+   * instead of to the end; a pending next link then answers hasNextPage.
    */
   protected override async listIssueComments(
     owner: string,
@@ -466,10 +467,13 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     options?: ListCommentOptions,
   ): Promise<PageResult<Comment>> {
     try {
+      const perPage = options?.perPage ?? 30;
+      const page = options?.page ?? 1;
+      const start = (page - 1) * perPage;
       const comments: GiteaComment[] = [];
       let remotePage = 1;
       let hasMore = true;
-      while (hasMore) {
+      while (hasMore && comments.length <= start + perPage) {
         const { data, headers } = await rawFetch<GiteaComment[]>(
           this.client,
           `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}/comments`,
@@ -477,6 +481,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         );
         const batch = data ?? [];
         if (batch.length === 0) {
+          hasMore = false;
           break;
         }
         comments.push(...batch);
@@ -485,11 +490,8 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       }
       comments.sort((left, right) => left.id - right.id);
 
-      const perPage = options?.perPage ?? 30;
-      const page = options?.page ?? 1;
-      const start = (page - 1) * perPage;
       const items = comments.slice(start, start + perPage).map((raw) => this.mapComment(raw));
-      const hasNextPage = start + items.length < comments.length;
+      const hasNextPage = hasMore || start + items.length < comments.length;
       return {
         items,
         hasNextPage,
