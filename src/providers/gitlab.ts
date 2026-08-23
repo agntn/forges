@@ -100,6 +100,7 @@ interface GitLabUser {
 
 interface GitLabNote {
   id: number;
+  type: string | null;
   body: string;
   author: {
     username: string;
@@ -623,10 +624,13 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   /**
    * GitLab lists notes newest first by default while GitHub and Gitea list
    * discussion comments oldest first, so the ascending sort is pinned in the
-   * query. System notes record label and state churn, not discussion, and are
-   * dropped; a short page whose hasNextPage is true just means keep paging.
-   * That filtering is also why totalCount is withheld: x-total counts the
-   * system notes too, so it does not describe the returned items.
+   * query. Two note kinds are dropped: system notes record label and state
+   * churn rather than discussion, and DiffNotes are inline code-review
+   * comments that belong to the thread surface, which GitHub's issue-comments
+   * endpoint never mixes in either. A short page whose hasNextPage is true
+   * therefore just means keep paging. That filtering is also why totalCount is
+   * withheld: x-total counts the dropped notes too, so it does not describe
+   * the returned items.
    */
   private async listNotes(
     owner: string,
@@ -650,7 +654,9 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         },
       );
 
-      const notes = (response.data ?? []).filter((note) => !note.system);
+      const notes = (response.data ?? []).filter(
+        (note) => !note.system && note.type !== "DiffNote",
+      );
       const page = this.parsePagination(
         notes.map((raw) => this.mapComment(raw)),
         response.headers,

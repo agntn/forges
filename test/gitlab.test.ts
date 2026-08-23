@@ -156,6 +156,7 @@ const glIndividualNote = {
 
 const glNote = {
   id: 2201,
+  type: null,
   body: "Hit the same thing on 16.9",
   author: { username: "commenter" },
   created_at: "2024-03-13T08:00:00Z",
@@ -165,11 +166,22 @@ const glNote = {
 
 const glSystemNote = {
   id: 2202,
+  type: null,
   body: "changed the description",
   author: { username: "maintainer" },
   created_at: "2024-03-13T09:00:00Z",
   updated_at: "2024-03-13T09:00:00Z",
   system: true,
+};
+
+const glDiffNote = {
+  id: 2203,
+  type: "DiffNote",
+  body: "This helper belongs in utils",
+  author: { username: "reviewer" },
+  created_at: "2024-03-13T10:00:00Z",
+  updated_at: "2024-03-13T10:00:00Z",
+  system: false,
 };
 
 // --- Helpers ---
@@ -608,10 +620,10 @@ describe("GitLabProvider", () => {
   });
 
   describe("pullRequests.listComments", () => {
-    it("fetches merge-request notes by iid", async () => {
+    it("fetches merge-request notes by iid and keeps diff notes out", async () => {
       mockProjectResolve(278964);
       mocks.rawFetch.mockResolvedValueOnce({
-        data: [glNote],
+        data: [glNote, glDiffNote],
         headers: glHeaders(),
       });
 
@@ -632,7 +644,7 @@ describe("GitLabProvider", () => {
           },
         },
       );
-      expect(result.items).toHaveLength(1);
+      expect(result.items.map((comment) => comment.id)).toEqual(["2201"]);
       expect(result.hasNextPage).toBe(false);
     });
   });
