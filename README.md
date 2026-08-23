@@ -94,7 +94,7 @@ const gt = createProvider("gitea", {
 
 ## Agent tools
 
-The same fifteen tools — repositories, issues, pull requests, users, and review threads — are exposed over MCP and through the Pi and OMP extensions. They use the normal token detection chain. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
+The same seventeen tools — repositories, issues, pull requests, users, discussion comments, and review threads — are exposed over MCP and through the Pi and OMP extensions. They use the normal token detection chain. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
 
 | Platform           | Environment variable     |
 | ------------------ | ------------------------ |
@@ -120,7 +120,7 @@ Speaks MCP over stdio. Point a client at it:
 }
 ```
 
-An MCP client sees the text a tool returns and nothing else, so the text carries the whole answer as JSON. The issue and pull-request lists drop bodies outright and name the tool that reads one in full, because one page of a busy repository is otherwise large enough to crowd out the conversation that asked for it. `forges_threads_list` bounds each comment instead — twelve lines, four thousand characters — but keeps every comment of every thread on the page, so ask it for a small `perPage` on a heavily reviewed pull request.
+An MCP client sees the text a tool returns and nothing else, so the text carries the whole answer as JSON. The issue and pull-request lists drop bodies outright and name the tool that reads one in full, because one page of a busy repository is otherwise large enough to crowd out the conversation that asked for it. `forges_threads_list` bounds each comment instead — twelve lines, four thousand characters — but keeps every comment of every thread on the page, so ask it for a small `perPage` on a heavily reviewed pull request. `forges_issues_comments` and `forges_pull_requests_comments` return the discussion oldest first with full bodies; they are the detail read, so a small `perPage` is the volume control there too.
 
 A failure names the status and, on a rate limit, the retry window; it never repeats the endpoint the request went to, so a self-hosted `FORGES_*_BASE_URL` stays out of the model's context even when the platform answers with an error.
 
@@ -142,15 +142,17 @@ Every provider gives you five resources with the same method shapes. Thread sema
 
 **repos** - `list(owner, opts?)`, `get(owner, repo)`
 
-**issues** - `list(owner, repo, opts?)`, `get(owner, repo, number)`, `create(owner, repo, input)`
+**issues** - `list(owner, repo, opts?)`, `get(owner, repo, number)`, `create(owner, repo, input)`, `listComments(owner, repo, number, opts?)`
 
-**pullRequests** - `list(owner, repo, opts?)`, `get(owner, repo, number)`, `create(owner, repo, input)`
+**pullRequests** - `list(owner, repo, opts?)`, `get(owner, repo, number)`, `create(owner, repo, input)`, `listComments(owner, repo, number, opts?)`
 
 **users** - `get(username)`, `authenticated()`
 
 **threads** - `list(owner, repo, number, opts?)`, `get(owner, repo, number, threadId)`, `reply(owner, repo, number, threadId, input)`, `resolve(owner, repo, number, threadId)`, `unresolve(owner, repo, number, threadId)`
 
 List operations accept `ListOptions`: `page`, `perPage`, and `state` (`'open' | 'closed' | 'all'`). They return `PageResult<T>` with `items`, `hasNextPage`, `nextPage`, and an optional `totalCount`.
+
+`listComments` reads the discussion under an issue or pull request oldest first and accepts `ListCommentOptions`: `page` and `perPage`. On GitHub and Gitea the two variants read the same endpoint, because both platforms index pull requests as issues. GitLab notes are fetched with an explicit ascending sort, and both its system notes about label and state churn and its inline DiffNotes, which belong to the thread surface, are dropped, so a short page whose `hasNextPage` is true means keep paging. Gitea answers with the whole discussion in one response, so the requested page is cut locally.
 
 Thread list operations accept `ListThreadOptions`: `page`, `perPage`, and `state` (`'unresolved' | 'resolved' | 'all'`). GitHub review-thread list/get/resolve uses GraphQL so `isResolved` and `isOutdated` stay accurate; replies still go through the REST comment-reply endpoint. GitLab and Gitea have no equivalent flag, so `isOutdated` is always `false` there. GitBucket serves only REST v3, so thread operations against it fail with an explicit unsupported-endpoint error rather than a bare 404.
 

@@ -168,6 +168,7 @@ describe("cross-provider class consistency", () => {
       expect(typeof p.issues.list).toBe("function");
       expect(typeof p.issues.get).toBe("function");
       expect(typeof p.issues.create).toBe("function");
+      expect(typeof p.issues.listComments).toBe("function");
     }
   });
 
@@ -178,6 +179,7 @@ describe("cross-provider class consistency", () => {
       expect(typeof p.pullRequests.list).toBe("function");
       expect(typeof p.pullRequests.get).toBe("function");
       expect(typeof p.pullRequests.create).toBe("function");
+      expect(typeof p.pullRequests.listComments).toBe("function");
     }
   });
 
@@ -214,11 +216,13 @@ describe("cross-provider class consistency", () => {
       expect(p.issues.list.length).toBeGreaterThanOrEqual(2);
       expect(p.issues.get.length).toBeGreaterThanOrEqual(3);
       expect(p.issues.create.length).toBeGreaterThanOrEqual(3);
+      expect(p.issues.listComments.length).toBeGreaterThanOrEqual(3);
 
       // pullRequests: same as issues
       expect(p.pullRequests.list.length).toBeGreaterThanOrEqual(2);
       expect(p.pullRequests.get.length).toBeGreaterThanOrEqual(3);
       expect(p.pullRequests.create.length).toBeGreaterThanOrEqual(3);
+      expect(p.pullRequests.listComments.length).toBeGreaterThanOrEqual(3);
 
       // users: get(username), authenticated()
       expect(p.users.get.length).toBeGreaterThanOrEqual(1);

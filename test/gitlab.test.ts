@@ -154,6 +154,46 @@ const glIndividualNote = {
   ],
 };
 
+const glNote = {
+  id: 2201,
+  type: null,
+  body: "Hit the same thing on 16.9",
+  author: { username: "commenter" },
+  created_at: "2024-03-13T08:00:00Z",
+  updated_at: "2024-03-13T08:15:00Z",
+  system: false,
+};
+
+const glSystemNote = {
+  id: 2202,
+  type: null,
+  body: "changed the description",
+  author: { username: "maintainer" },
+  created_at: "2024-03-13T09:00:00Z",
+  updated_at: "2024-03-13T09:00:00Z",
+  system: true,
+};
+
+const glDiffNote = {
+  id: 2203,
+  type: "DiffNote",
+  body: "This helper belongs in utils",
+  author: { username: "reviewer" },
+  created_at: "2024-03-13T10:00:00Z",
+  updated_at: "2024-03-13T10:00:00Z",
+  system: false,
+};
+
+const glLegacyDiffNote = {
+  id: 2204,
+  type: "LegacyDiffNote",
+  body: "old inline comment",
+  author: { username: "reviewer" },
+  created_at: "2024-03-13T11:00:00Z",
+  updated_at: "2024-03-13T11:00:00Z",
+  system: false,
+};
+
 // --- Helpers ---
 
 function glHeaders(opts: { nextPage?: string; total?: string } = {}): Headers {
@@ -449,6 +489,40 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("issues.listComments", () => {
+    it("fetches issue notes oldest first and drops system notes", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glNote, glSystemNote],
+        headers: glHeaders({ nextPage: "2", total: "5" }),
+      });
+
+      const result = await gl.issues.listComments("gitlab-org", "gitlab-foss", 7);
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/projects/278964/issues/7/notes", {
+        query: {
+          page: 1,
+          per_page: 30,
+          order_by: "created_at",
+          sort: "asc",
+        },
+      });
+      expect(result.items).toEqual([
+        {
+          id: "2201",
+          body: "Hit the same thing on 16.9",
+          author: { login: "commenter" },
+          url: "",
+          createdAt: "2024-03-13T08:00:00Z",
+          updatedAt: "2024-03-13T08:15:00Z",
+        },
+      ]);
+      expect(result.hasNextPage).toBe(true);
+      expect(result.nextPage).toBe(2);
+      expect(result.totalCount).toBeUndefined();
+    });
+  });
+
   // --- Merge Requests → Pull Requests ---
 
   describe("pullRequests.list", () => {
@@ -552,6 +626,36 @@ describe("GitLabProvider", () => {
       const callArgs = calls[calls.length - 1];
       const body = callArgs[1].body;
       expect(body).not.toHaveProperty("draft");
+    });
+  });
+
+  describe("pullRequests.listComments", () => {
+    it("fetches merge-request notes by iid and keeps diff notes out", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glNote, glDiffNote, glLegacyDiffNote],
+        headers: glHeaders(),
+      });
+
+      const result = await gl.pullRequests.listComments("gitlab-org", "gitlab-foss", 8, {
+        page: 2,
+        perPage: 10,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/merge_requests/8/notes",
+        {
+          query: {
+            page: 2,
+            per_page: 10,
+            order_by: "created_at",
+            sort: "asc",
+          },
+        },
+      );
+      expect(result.items.map((comment) => comment.id)).toEqual(["2201"]);
+      expect(result.hasNextPage).toBe(false);
     });
   });
 

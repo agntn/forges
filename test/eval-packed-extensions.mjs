@@ -17,9 +17,11 @@ const expectedToolNames = [
   "forges_repos_get",
   "forges_issues_list",
   "forges_issues_get",
+  "forges_issues_comments",
   "forges_issues_create",
   "forges_pull_requests_list",
   "forges_pull_requests_get",
+  "forges_pull_requests_comments",
   "forges_pull_requests_create",
   "forges_users_get",
   "forges_users_authenticated",
@@ -115,5 +117,5 @@ try {
 }
 
 console.log(
-  "Packed Pi and OMP extensions loaded dist/tool-operations.mjs; packed dist/mcp.mjs served 15 tools",
+  `Packed Pi and OMP extensions loaded dist/tool-operations.mjs; packed dist/mcp.mjs served ${expectedToolNames.length} tools`,
 );

@@ -43,7 +43,7 @@ src/
 ├── pagination.ts         # Link header + x-next-page async generator
 ├── version.ts            # Package version — the one source for it in src/
 ├── tool-operations.ts    # Executors behind every agent surface (MCP, Pi, OMP)
-├── mcp.ts                # createMcpServer() — 15 tools over the low-level MCP Server
+├── mcp.ts                # createMcpServer() — 17 tools over the low-level MCP Server
 ├── cli.ts                # citty entry for the `forges` bin
 ├── commands/mcp.ts       # `forges mcp` — stdio transport
 ├── github.ts             # Sub-path re-export for @agntn/forges/github
@@ -60,7 +60,7 @@ packages/
 ├── pi/extensions/forges.ts      # Pi extension — imports the shared schemas
 └── omp/extensions/forges.ts     # OMP extension — rebuilds them with the host TypeBox
 test/
-├── *.test.ts             # 1:1 mirror of src/ + integration.test.ts (13 files, ~379 tests)
+├── *.test.ts             # 1:1 mirror of src/ + integration.test.ts (13 files, ~390 tests)
 └── eval-packed-extensions.mjs   # Loads both extensions from a published-shaped layout
 ```
 

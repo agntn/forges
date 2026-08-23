@@ -12,6 +12,7 @@ import {
   authenticatedUserParameters,
   createIssueParameters,
   createPullRequestParameters,
+  listCommentsParameters,
   listRepositoriesParameters,
   listRepositoryItemsParameters,
   listThreadsParameters,
@@ -30,7 +31,9 @@ import {
   getRepository,
   getThread,
   getUser,
+  listIssueComments,
   listIssues,
+  listPullRequestComments,
   listPullRequests,
   listRepositories,
   listThreads,
@@ -127,6 +130,15 @@ const tools: ToolDefinition[] = [
     execute: getIssue,
   }),
   defineTool({
+    name: "forges_issues_comments",
+    title: "List Issue Comments",
+    description:
+      "List the discussion comments under one issue, oldest first, with full bodies. Ask for a small perPage on a busy issue and follow hasNextPage. GitLab system notes about label and state churn are dropped, so a short page whose hasNextPage is true means keep paging, not that the discussion ended.",
+    inputSchema: listCommentsParameters,
+    annotations: readAnnotations,
+    execute: listIssueComments,
+  }),
+  defineTool({
     name: "forges_issues_create",
     title: "Create Issue",
     description:
@@ -152,6 +164,15 @@ const tools: ToolDefinition[] = [
     inputSchema: repositoryItemParameters,
     annotations: readAnnotations,
     execute: getPullRequest,
+  }),
+  defineTool({
+    name: "forges_pull_requests_comments",
+    title: "List Pull Request Comments",
+    description:
+      "List the conversation comments under one pull request, oldest first: the discussion, not the code-review threads that forges_threads_list reads. Full bodies, so bound the volume with perPage and follow hasNextPage.",
+    inputSchema: listCommentsParameters,
+    annotations: readAnnotations,
+    execute: listPullRequestComments,
   }),
   defineTool({
     name: "forges_pull_requests_create",

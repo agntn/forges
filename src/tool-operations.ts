@@ -2,10 +2,12 @@ import { createProvider } from "./index.ts";
 import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
 import type { Provider } from "./provider.ts";
 import type {
+  Comment,
   CreateIssueInput,
   CreatePullRequestInput,
   Issue,
   IssueState,
+  ListCommentOptions,
   ListOptions,
   ListThreadOptions,
   PageResult,
@@ -63,6 +65,12 @@ export interface GetRepositoryItemParams extends RepositoryParams {
 export type CreateIssueParams = RepositoryParams & CreateIssueInput;
 
 export type CreatePullRequestParams = RepositoryParams & CreatePullRequestInput;
+
+export interface ListCommentsParams extends RepositoryParams {
+  number: number;
+  page?: number;
+  perPage?: number;
+}
 
 export interface GetUserParams extends PlatformParams {
   username: string;
@@ -158,6 +166,25 @@ export async function getIssue(params: GetRepositoryItemParams): Promise<ForgesT
   return result(params.platform, issue);
 }
 
+function commentListOptions(params: ListCommentsParams): ListCommentOptions {
+  return {
+    page: params.page,
+    perPage: params.perPage,
+  };
+}
+
+export async function listIssueComments(
+  params: ListCommentsParams,
+): Promise<ForgesToolResult<PageResult<Comment>>> {
+  const comments = await createConfiguredProvider(params.platform).issues.listComments(
+    params.owner,
+    params.repo,
+    params.number,
+    commentListOptions(params),
+  );
+  return result(params.platform, comments);
+}
+
 export async function createIssue(params: CreateIssueParams): Promise<ForgesToolResult<Issue>> {
   const issue = await createConfiguredProvider(params.platform).issues.create(
     params.owner,
@@ -196,6 +223,18 @@ export async function getPullRequest(
     params.number,
   );
   return result(params.platform, pullRequest);
+}
+
+export async function listPullRequestComments(
+  params: ListCommentsParams,
+): Promise<ForgesToolResult<PageResult<Comment>>> {
+  const comments = await createConfiguredProvider(params.platform).pullRequests.listComments(
+    params.owner,
+    params.repo,
+    params.number,
+    commentListOptions(params),
+  );
+  return result(params.platform, comments);
 }
 
 export async function createPullRequest(
