@@ -89,7 +89,7 @@ test/
 - Use `import type` for type-only imports
 - Node builtins use `node:` prefix: `node:child_process`, `node:fs`
 - TypeScript uses NodeNext resolution with `allowImportingTsExtensions` and `noEmit`; obuild owns JavaScript and declaration emission
-- The OMP extension must keep both dynamic imports literal (`import("../../../src/tool-operations.ts")` with a `.catch` fallback to `dist`). An `import(url.href)` built from a runtime value loses `ofetch` resolution in the compiled OMP binary. Pi may keep the existsSync form.
+- The OMP extension must keep both dynamic imports literal: `existsSync(src)` chooses `import("../../../src/tool-operations.ts")` or `import("../../../dist/tool-operations.mjs")`. Never `import(url.href)`.
 
 ### TypeScript
 
