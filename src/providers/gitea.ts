@@ -40,6 +40,13 @@ interface GiteaUser {
   email?: string | null;
   avatar_url?: string | null;
   is_admin?: boolean;
+  description?: string | null;
+  location?: string | null;
+  website?: string | null;
+  followers_count?: number;
+  following_count?: number;
+  created?: string;
+  html_url?: string | null;
 }
 
 interface GiteaOwner {
@@ -249,6 +256,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     };
   }
 
+  /**
+   * Gitea has no company field on its user, so `company` is always empty.
+   */
   protected override mapUser(raw: GiteaUser): User {
     return {
       id: String(raw.id),
@@ -257,6 +267,14 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       email: raw.email ?? "",
       avatarUrl: raw.avatar_url ?? "",
       isAdmin: raw.is_admin ?? false,
+      bio: raw.description ?? "",
+      company: "",
+      location: raw.location ?? "",
+      website: raw.website ?? "",
+      followers: raw.followers_count ?? 0,
+      following: raw.following_count ?? 0,
+      createdAt: raw.created ?? "",
+      url: raw.html_url ?? "",
     };
   }
 

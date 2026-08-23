@@ -49,6 +49,10 @@ interface GitHubRepo {
   owner: GitHubOwner;
 }
 
+/**
+ * The profile fields are optional because GitBucket's GitHub-compatible
+ * payload omits them.
+ */
 interface GitHubUser {
   id: number;
   login: string;
@@ -56,6 +60,14 @@ interface GitHubUser {
   email: string | null;
   avatar_url: string;
   site_admin: boolean;
+  bio?: string | null;
+  company?: string | null;
+  location?: string | null;
+  blog?: string | null;
+  followers?: number;
+  following?: number;
+  created_at?: string;
+  html_url?: string;
 }
 
 interface GitHubLabel {
@@ -383,6 +395,14 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       email: raw.email ?? "",
       avatarUrl: raw.avatar_url,
       isAdmin: raw.site_admin,
+      bio: raw.bio ?? "",
+      company: raw.company ?? "",
+      location: raw.location ?? "",
+      website: raw.blog ?? "",
+      followers: raw.followers ?? 0,
+      following: raw.following ?? 0,
+      createdAt: raw.created_at ?? "",
+      url: raw.html_url ?? "",
     };
   }
 

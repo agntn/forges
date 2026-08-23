@@ -13,6 +13,14 @@ export interface User {
   email: string;
   avatarUrl: string;
   isAdmin: boolean;
+  bio: string;
+  company: string;
+  location: string;
+  website: string;
+  followers: number;
+  following: number;
+  createdAt: string;
+  url: string;
 }
 
 /**

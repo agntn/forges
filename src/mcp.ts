@@ -187,7 +187,7 @@ const tools: ToolDefinition[] = [
     name: "forges_users_get",
     title: "Get User",
     description:
-      "Get one normalized user profile by username: display name, email, avatar URL, admin flag, and platform id.",
+      "Get one normalized user profile by username: display name, bio, company, location, website, follower counts, account creation date, profile URL, email, avatar URL, admin flag, and platform id.",
     inputSchema: userParameters,
     annotations: readAnnotations,
     execute: getUser,
