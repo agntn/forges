@@ -184,6 +184,16 @@ const glDiffNote = {
   system: false,
 };
 
+const glLegacyDiffNote = {
+  id: 2204,
+  type: "LegacyDiffNote",
+  body: "old inline comment",
+  author: { username: "reviewer" },
+  created_at: "2024-03-13T11:00:00Z",
+  updated_at: "2024-03-13T11:00:00Z",
+  system: false,
+};
+
 // --- Helpers ---
 
 function glHeaders(opts: { nextPage?: string; total?: string } = {}): Headers {
@@ -623,7 +633,7 @@ describe("GitLabProvider", () => {
     it("fetches merge-request notes by iid and keeps diff notes out", async () => {
       mockProjectResolve(278964);
       mocks.rawFetch.mockResolvedValueOnce({
-        data: [glNote, glDiffNote],
+        data: [glNote, glDiffNote, glLegacyDiffNote],
         headers: glHeaders(),
       });
 
