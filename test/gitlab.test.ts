@@ -102,6 +102,22 @@ const glUser = {
   email: "john@example.com",
   avatar_url: "https://gitlab.com/uploads/-/system/user/avatar/1234/photo.jpg",
   is_admin: false,
+  bio: "Backend developer",
+  organization: "Acme",
+  location: "Berlin",
+  website_url: "https://johndoe.dev",
+  followers: 5,
+  following: 3,
+  created_at: "2012-05-23T08:00:58Z",
+  web_url: "https://gitlab.com/johndoe",
+};
+
+const glUserSearchHit = {
+  id: glUser.id,
+  username: glUser.username,
+  name: glUser.name,
+  avatar_url: glUser.avatar_url,
+  web_url: glUser.web_url,
 };
 
 const glDiscussion = {
@@ -662,20 +678,43 @@ describe("GitLabProvider", () => {
   // --- Users ---
 
   describe("users.get", () => {
-    it("searches by username and returns first result", async () => {
-      mocks.client.mockResolvedValueOnce([glUser]);
+    it("resolves the username to an id and reads the full profile", async () => {
+      mocks.client.mockResolvedValueOnce([glUserSearchHit]);
+      mocks.client.mockResolvedValueOnce(glUser);
 
       const user = await gl.users.get("johndoe");
 
       expect(mocks.client).toHaveBeenCalledWith("/users", {
         query: { username: "johndoe" },
       });
+      expect(mocks.client).toHaveBeenCalledWith(`/users/${glUser.id}`);
       expect(user).toMatchObject({
         id: "1234",
         login: "johndoe",
         name: "John Doe",
         email: "john@example.com",
+        bio: "Backend developer",
+        company: "Acme",
+        location: "Berlin",
+        website: "https://johndoe.dev",
+        followers: 5,
+        following: 3,
+        createdAt: "2012-05-23T08:00:58Z",
+        url: "https://gitlab.com/johndoe",
       });
+    });
+
+    it("falls back to public_email when email is hidden as an empty string", async () => {
+      mocks.client.mockResolvedValueOnce([glUserSearchHit]);
+      mocks.client.mockResolvedValueOnce({
+        ...glUser,
+        email: "",
+        public_email: "jane@example.com",
+      });
+
+      const user = await gl.users.get("johndoe");
+
+      expect(user.email).toBe("jane@example.com");
     });
 
     it("throws when user search returns empty", async () => {

@@ -93,9 +93,18 @@ interface GitLabUser {
   id: number;
   username: string;
   name: string;
-  email: string;
+  email?: string | null;
+  public_email?: string | null;
   avatar_url: string | null;
   is_admin?: boolean;
+  bio?: string | null;
+  organization?: string | null;
+  location?: string | null;
+  website_url?: string | null;
+  followers?: number;
+  following?: number;
+  created_at?: string;
+  web_url?: string;
 }
 
 interface GitLabNote {
@@ -282,9 +291,17 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       id: String(raw.id),
       login: raw.username,
       name: raw.name,
-      email: raw.email ?? "",
+      email: raw.email || raw.public_email || "",
       avatarUrl: raw.avatar_url ?? "",
       isAdmin: raw.is_admin ?? false,
+      bio: raw.bio ?? "",
+      company: raw.organization ?? "",
+      location: raw.location ?? "",
+      website: raw.website_url ?? "",
+      followers: raw.followers ?? 0,
+      following: raw.following ?? 0,
+      createdAt: raw.created_at ?? "",
+      url: raw.web_url ?? "",
     };
   }
 
@@ -671,18 +688,21 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   // --- Users ---
 
+  /**
+   * GitLab has no direct /users/:username endpoint and the username search
+   * returns only a basic subset of fields, so the lookup resolves the id
+   * first and then reads the full profile.
+   */
   protected override async getUser(username: string): Promise<User> {
     try {
-      // GitLab doesn't have a direct /users/:username endpoint.
-      // Instead, search by username and take the first result.
       const users = await cachedFetch<GitLabUser[]>(this.client, "/users", { query: { username } });
-      const user = users[0];
+      const match = users[0];
 
-      if (user === undefined) {
+      if (match === undefined) {
         throw new NotFoundError(`User not found: ${username}`, "gitlab");
       }
 
-      return this.mapUser(user);
+      return this.mapUser(await cachedFetch<GitLabUser>(this.client, `/users/${match.id}`));
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }

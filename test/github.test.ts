@@ -50,6 +50,14 @@ const ghUser = {
   email: "octocat@github.com",
   avatar_url: "https://avatars.githubusercontent.com/u/583231?v=4",
   site_admin: false,
+  bio: "How people build software.",
+  company: "@github",
+  location: "San Francisco",
+  blog: "https://github.blog",
+  followers: 23753,
+  following: 9,
+  created_at: "2011-01-25T18:44:36Z",
+  html_url: "https://github.com/octocat",
 };
 
 const ghIssue = {
@@ -526,6 +534,38 @@ describe("GitHubProvider", () => {
         email: "octocat@github.com",
         avatarUrl: "https://avatars.githubusercontent.com/u/583231?v=4",
         isAdmin: false,
+        bio: "How people build software.",
+        company: "@github",
+        location: "San Francisco",
+        website: "https://github.blog",
+        followers: 23753,
+        following: 9,
+        createdAt: "2011-01-25T18:44:36Z",
+        url: "https://github.com/octocat",
+      });
+    });
+
+    it("defaults profile fields when the payload lacks them, like GitBucket", async () => {
+      mocks.cachedFetch.mockResolvedValueOnce({
+        id: 1,
+        login: "root",
+        name: null,
+        email: null,
+        avatar_url: "https://gitbucket.example/root/_avatar",
+        site_admin: true,
+      });
+
+      const user = await gh.users.get("root");
+
+      expect(user).toMatchObject({
+        bio: "",
+        company: "",
+        location: "",
+        website: "",
+        followers: 0,
+        following: 0,
+        createdAt: "",
+        url: "",
       });
     });
   });

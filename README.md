@@ -154,6 +154,8 @@ List operations accept `ListOptions`: `page`, `perPage`, and `state` (`'open' | 
 
 `listComments` reads the discussion under an issue or pull request oldest first and accepts `ListCommentOptions`: `page` and `perPage`. On GitHub and Gitea the two variants read the same endpoint, because both platforms index pull requests as issues. GitLab notes are fetched with an explicit ascending sort, and both its system notes about label and state churn and its inline DiffNotes, which belong to the thread surface, are dropped, so a short page whose `hasNextPage` is true means keep paging. Gitea answers with the whole discussion in one response, so the requested page is cut locally.
 
+User lookups return the whole profile: bio, company, location, website, follower counts, the account creation date and the profile URL. On GitLab that takes two requests, because the username search returns only a bare stub; `get` resolves the id from it and then reads the full profile. Anything a platform does not expose comes back as an empty string or a zero count, like `company` on Gitea.
+
 Thread list operations accept `ListThreadOptions`: `page`, `perPage`, and `state` (`'unresolved' | 'resolved' | 'all'`). GitHub review-thread list/get/resolve uses GraphQL so `isResolved` and `isOutdated` stay accurate; replies still go through the REST comment-reply endpoint. GitLab and Gitea have no equivalent flag, so `isOutdated` is always `false` there. GitBucket serves only REST v3, so thread operations against it fail with an explicit unsupported-endpoint error rather than a bare 404.
 
 ## Caching

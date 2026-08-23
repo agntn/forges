@@ -49,6 +49,13 @@ function giteaUser(overrides: Record<string, unknown> = {}) {
     email: "test@example.com",
     avatar_url: "https://gitea.com/avatars/42",
     is_admin: false,
+    description: "Just testing",
+    location: "Warsaw",
+    website: "https://testuser.dev",
+    followers_count: 2,
+    following_count: 1,
+    created: "2020-01-01T00:00:00Z",
+    html_url: "https://gitea.com/testuser",
     ...overrides,
   };
 }
@@ -698,6 +705,14 @@ describe("Gitea Provider", () => {
         email: "test@example.com",
         avatarUrl: "https://gitea.com/avatars/42",
         isAdmin: false,
+        bio: "Just testing",
+        company: "",
+        location: "Warsaw",
+        website: "https://testuser.dev",
+        followers: 2,
+        following: 1,
+        createdAt: "2020-01-01T00:00:00Z",
+        url: "https://gitea.com/testuser",
       });
     });
   });
@@ -721,6 +736,19 @@ describe("Gitea Provider", () => {
 
       const result = await provider.repos.get("testowner", "test-repo");
       expect(result.description).toBe("");
+    });
+
+    it("handles null profile fields on user", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaUser({ description: null, location: null, website: null, html_url: null }),
+      );
+
+      const result = await provider.users.get("testuser");
+
+      expect(result.bio).toBe("");
+      expect(result.location).toBe("");
+      expect(result.website).toBe("");
+      expect(result.url).toBe("");
     });
 
     it("handles null default_branch on repository", async () => {
