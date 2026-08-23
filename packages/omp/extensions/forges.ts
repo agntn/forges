@@ -5,14 +5,24 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
 import type * as ForgesTools from "../../../dist/tool-operations.d.mts";
 
-const sourceModuleUrl = new URL("../../../src/tool-operations.ts", import.meta.url);
-const distributionModuleUrl = new URL("../../../dist/tool-operations.mjs", import.meta.url);
+const sourceModulePath = fileURLToPath(
+  new URL("../../../src/tool-operations.ts", import.meta.url),
+);
 let toolOperationsPromise: Promise<typeof ForgesTools> | undefined;
 
+/**
+ * Load current source in development and fall back to the built package in distributions.
+ *
+ * Both specifiers stay literal: OMP rewrites bare dependencies only for imports
+ * it can see statically. existsSync chooses the branch; it does not build a URL
+ * for a single import().
+ */
 function loadToolOperations(): Promise<typeof ForgesTools> {
-  toolOperationsPromise ??= import(
-    existsSync(fileURLToPath(sourceModuleUrl)) ? sourceModuleUrl.href : distributionModuleUrl.href
-  ) as Promise<typeof ForgesTools>;
+  toolOperationsPromise ??= (
+    existsSync(sourceModulePath)
+      ? (import("../../../src/tool-operations.ts") as unknown as Promise<typeof ForgesTools>)
+      : (import("../../../dist/tool-operations.mjs") as Promise<typeof ForgesTools>)
+  );
   return toolOperationsPromise;
 }
 
