@@ -56,9 +56,11 @@ function configuredProvider(platform: ForgesPlatform): Provider {
 /**
  * Drop the pinned providers so the next call resolves credentials again.
  *
- * A host that changed the local login on purpose calls this to pick the new one up
- * without a restart. Nothing re-resolves on its own, because a silent re-resolve is
- * the drift the pin exists to stop.
+ * Only code that already holds this module reaches it, so the extensions and the
+ * tests; the package export map does not carry it and the MCP server exposes no tool
+ * for it, which leaves a restart as the way to move a running server to another
+ * login. Nothing re-resolves on its own, because a silent re-resolve is the drift the
+ * pin exists to stop.
  */
 export function resetPinnedProviders(): void {
   pinnedProviders.clear();
