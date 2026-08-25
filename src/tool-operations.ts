@@ -28,9 +28,40 @@ const baseUrlEnvByPlatform: Record<ForgesPlatform, string> = {
   gitea: "FORGES_GITEA_BASE_URL",
 };
 
-function createConfiguredProvider(platform: ForgesPlatform): Provider {
+/**
+ * Providers already built in this process, keyed by platform and endpoint.
+ *
+ * `createProvider` resolves a credential on every call, and the `gh`, `glab` and
+ * config-file steps of that chain read state any other process can change. Building
+ * a provider per operation therefore lets an authenticated-user check name one
+ * account and the write right after it land under another. Holding the instance
+ * settles the credential on the first call for an endpoint and keeps every later
+ * call on it, which is what the authenticated-user tool promises.
+ */
+const pinnedProviders = new Map<string, Provider>();
+
+function configuredProvider(platform: ForgesPlatform): Provider {
   const baseURL = process.env[baseUrlEnvByPlatform[platform]];
-  return createProvider(platform, baseURL === undefined ? undefined : { baseURL });
+  const key = baseURL === undefined ? platform : `${platform} ${baseURL}`;
+
+  let provider = pinnedProviders.get(key);
+  if (!provider) {
+    provider = createProvider(platform, baseURL === undefined ? undefined : { baseURL });
+    pinnedProviders.set(key, provider);
+  }
+
+  return provider;
+}
+
+/**
+ * Drop the pinned providers so the next call resolves credentials again.
+ *
+ * A host that changed the local login on purpose calls this to pick the new one up
+ * without a restart. Nothing re-resolves on its own, because a silent re-resolve is
+ * the drift the pin exists to stop.
+ */
+export function resetPinnedProviders(): void {
+  pinnedProviders.clear();
 }
 
 export interface PlatformParams {
@@ -151,7 +182,7 @@ function listOptions(params: {
 export async function listRepositories(
   params: ListRepositoriesParams,
 ): Promise<ForgesToolResult<PageResult<Repository>>> {
-  const repositories = await createConfiguredProvider(params.platform).repos.list(
+  const repositories = await configuredProvider(params.platform).repos.list(
     params.owner,
     listOptions(params),
   );
@@ -161,17 +192,14 @@ export async function listRepositories(
 export async function getRepository(
   params: GetRepositoryParams,
 ): Promise<ForgesToolResult<Repository>> {
-  const repository = await createConfiguredProvider(params.platform).repos.get(
-    params.owner,
-    params.repo,
-  );
+  const repository = await configuredProvider(params.platform).repos.get(params.owner, params.repo);
   return result(params.platform, repository);
 }
 
 export async function listIssues(
   params: ListRepositoryItemsParams,
 ): Promise<ForgesToolResult<PageResult<Issue>>> {
-  const issues = await createConfiguredProvider(params.platform).issues.list(
+  const issues = await configuredProvider(params.platform).issues.list(
     params.owner,
     params.repo,
     listOptions(params),
@@ -185,7 +213,7 @@ export async function listIssues(
 }
 
 export async function getIssue(params: GetRepositoryItemParams): Promise<ForgesToolResult<Issue>> {
-  const issue = await createConfiguredProvider(params.platform).issues.get(
+  const issue = await configuredProvider(params.platform).issues.get(
     params.owner,
     params.repo,
     params.number,
@@ -203,7 +231,7 @@ function commentListOptions(params: ListCommentsParams): ListCommentOptions {
 export async function listIssueComments(
   params: ListCommentsParams,
 ): Promise<ForgesToolResult<PageResult<Comment>>> {
-  const comments = await createConfiguredProvider(params.platform).issues.listComments(
+  const comments = await configuredProvider(params.platform).issues.listComments(
     params.owner,
     params.repo,
     params.number,
@@ -220,7 +248,7 @@ export async function listIssueComments(
 export async function getIssueComment(
   params: GetCommentParams,
 ): Promise<ForgesToolResult<Comment>> {
-  const comment = await createConfiguredProvider(params.platform).issues.getComment(
+  const comment = await configuredProvider(params.platform).issues.getComment(
     params.owner,
     params.repo,
     params.number,
@@ -230,22 +258,18 @@ export async function getIssueComment(
 }
 
 export async function createIssue(params: CreateIssueParams): Promise<ForgesToolResult<Issue>> {
-  const issue = await createConfiguredProvider(params.platform).issues.create(
-    params.owner,
-    params.repo,
-    {
-      title: params.title,
-      body: params.body,
-      labels: params.labels,
-    },
-  );
+  const issue = await configuredProvider(params.platform).issues.create(params.owner, params.repo, {
+    title: params.title,
+    body: params.body,
+    labels: params.labels,
+  });
   return result(params.platform, issue);
 }
 
 export async function listPullRequests(
   params: ListRepositoryItemsParams,
 ): Promise<ForgesToolResult<PageResult<PullRequest>>> {
-  const pullRequests = await createConfiguredProvider(params.platform).pullRequests.list(
+  const pullRequests = await configuredProvider(params.platform).pullRequests.list(
     params.owner,
     params.repo,
     listOptions(params),
@@ -261,7 +285,7 @@ export async function listPullRequests(
 export async function getPullRequest(
   params: GetRepositoryItemParams,
 ): Promise<ForgesToolResult<PullRequest>> {
-  const pullRequest = await createConfiguredProvider(params.platform).pullRequests.get(
+  const pullRequest = await configuredProvider(params.platform).pullRequests.get(
     params.owner,
     params.repo,
     params.number,
@@ -272,7 +296,7 @@ export async function getPullRequest(
 export async function listPullRequestComments(
   params: ListCommentsParams,
 ): Promise<ForgesToolResult<PageResult<Comment>>> {
-  const comments = await createConfiguredProvider(params.platform).pullRequests.listComments(
+  const comments = await configuredProvider(params.platform).pullRequests.listComments(
     params.owner,
     params.repo,
     params.number,
@@ -289,7 +313,7 @@ export async function listPullRequestComments(
 export async function getPullRequestComment(
   params: GetCommentParams,
 ): Promise<ForgesToolResult<Comment>> {
-  const comment = await createConfiguredProvider(params.platform).pullRequests.getComment(
+  const comment = await configuredProvider(params.platform).pullRequests.getComment(
     params.owner,
     params.repo,
     params.number,
@@ -301,7 +325,7 @@ export async function getPullRequestComment(
 export async function createPullRequest(
   params: CreatePullRequestParams,
 ): Promise<ForgesToolResult<PullRequest>> {
-  const pullRequest = await createConfiguredProvider(params.platform).pullRequests.create(
+  const pullRequest = await configuredProvider(params.platform).pullRequests.create(
     params.owner,
     params.repo,
     {
@@ -316,14 +340,14 @@ export async function createPullRequest(
 }
 
 export async function getUser(params: GetUserParams): Promise<ForgesToolResult<User>> {
-  const user = await createConfiguredProvider(params.platform).users.get(params.username);
+  const user = await configuredProvider(params.platform).users.get(params.username);
   return result(params.platform, user);
 }
 
 export async function getAuthenticatedUser(
   params: PlatformParams,
 ): Promise<ForgesToolResult<User>> {
-  const user = await createConfiguredProvider(params.platform).users.authenticated();
+  const user = await configuredProvider(params.platform).users.authenticated();
   return result(params.platform, user);
 }
 
@@ -365,7 +389,7 @@ function threadListOptions(params: ListThreadsParams): ListThreadOptions {
 export async function listThreads(
   params: ListThreadsParams,
 ): Promise<ForgesToolResult<PageResult<Thread>>> {
-  const threads = await createConfiguredProvider(params.platform).threads.list(
+  const threads = await configuredProvider(params.platform).threads.list(
     params.owner,
     params.repo,
     params.number,
@@ -380,7 +404,7 @@ export async function listThreads(
 }
 
 export async function getThread(params: GetThreadParams): Promise<ForgesToolResult<Thread>> {
-  const thread = await createConfiguredProvider(params.platform).threads.get(
+  const thread = await configuredProvider(params.platform).threads.get(
     params.owner,
     params.repo,
     params.number,
@@ -392,7 +416,7 @@ export async function getThread(params: GetThreadParams): Promise<ForgesToolResu
 export async function replyToThread(
   params: ReplyThreadParams,
 ): Promise<ForgesToolResult<ThreadComment>> {
-  const comment = await createConfiguredProvider(params.platform).threads.reply(
+  const comment = await configuredProvider(params.platform).threads.reply(
     params.owner,
     params.repo,
     params.number,
@@ -403,7 +427,7 @@ export async function replyToThread(
 }
 
 export async function resolveThread(params: GetThreadParams): Promise<ForgesToolResult<Thread>> {
-  const thread = await createConfiguredProvider(params.platform).threads.resolve(
+  const thread = await configuredProvider(params.platform).threads.resolve(
     params.owner,
     params.repo,
     params.number,
@@ -413,7 +437,7 @@ export async function resolveThread(params: GetThreadParams): Promise<ForgesTool
 }
 
 export async function unresolveThread(params: GetThreadParams): Promise<ForgesToolResult<Thread>> {
-  const thread = await createConfiguredProvider(params.platform).threads.unresolve(
+  const thread = await configuredProvider(params.platform).threads.unresolve(
     params.owner,
     params.repo,
     params.number,

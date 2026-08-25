@@ -124,7 +124,7 @@ An MCP client sees the text a tool returns and nothing else, so the text carries
 
 A failure names the status and, on a rate limit, the retry window; it never repeats the endpoint the request went to, so a self-hosted `FORGES_*_BASE_URL` stays out of the model's context even when the platform answers with an error.
 
-Five tools write: `forges_issues_create`, `forges_pull_requests_create`, `forges_threads_reply`, `forges_threads_resolve` and `forges_threads_unresolve`. They are advertised as writes so a client can gate them, and `forges_users_authenticated` names the account they would write as. A failed operation comes back as a tool error rather than a transport failure: an unknown repository, a rejected token, an exhausted rate limit.
+Five tools write: `forges_issues_create`, `forges_pull_requests_create`, `forges_threads_reply`, `forges_threads_resolve` and `forges_threads_unresolve`. They are advertised as writes so a client can gate them, and `forges_users_authenticated` names the account they would write as. The credential is resolved once per platform and endpoint and then held, so a login switched in the CLI underneath a running server reaches it only after a restart. A failed operation comes back as a tool error rather than a transport failure: an unknown repository, a rejected token, an exhausted rate limit.
 
 `createMcpServer()` is exported from `@agntn/forges/mcp` for hosts that bring their own transport.
 
