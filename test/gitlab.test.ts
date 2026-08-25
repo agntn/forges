@@ -549,6 +549,15 @@ describe("GitLabProvider", () => {
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/issues/7/notes/2201");
       expect(comment).toMatchObject({ id: "2201", body: "Hit the same thing on 16.9" });
     });
+
+    it("answers 404 for a note the list would drop", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glSystemNote);
+
+      await expect(gl.issues.getComment("gitlab-org", "gitlab-foss", 7, "2301")).rejects.toThrow(
+        NotFoundError,
+      );
+    });
   });
 
   // --- Merge Requests → Pull Requests ---

@@ -673,9 +673,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         },
       );
 
-      const notes = (response.data ?? []).filter(
-        (note) => !note.system && note.type !== "DiffNote" && note.type !== "LegacyDiffNote",
-      );
+      const notes = (response.data ?? []).filter((note) => this.isDiscussionNote(note));
       const page = this.parsePagination(
         notes.map((raw) => this.mapComment(raw)),
         response.headers,
@@ -704,9 +702,16 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     return this.getNote(owner, repo, "merge_requests", number, commentId);
   }
 
+  /** System notes and diff notes are not discussion, so both list and get drop them. */
+  private isDiscussionNote(note: GitLabNote): boolean {
+    return !note.system && note.type !== "DiffNote" && note.type !== "LegacyDiffNote";
+  }
+
   /**
    * GitLab scopes a note to its issue or merge request, so unlike GitHub and
-   * Gitea the number is part of the request here.
+   * Gitea the number is part of the request here. Every note kind shares that
+   * id space, so a note the list would drop answers 404 instead of passing as
+   * a discussion comment.
    */
   private async getNote(
     owner: string,
@@ -721,6 +726,9 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         this.client,
         `/projects/${projectId}/${resource}/${encodePathSegment(number)}/notes/${encodePathSegment(commentId)}`,
       );
+      if (!this.isDiscussionNote(note)) {
+        throw new NotFoundError(`Comment not found: ${commentId}`, "gitlab");
+      }
       return this.mapComment(note);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
