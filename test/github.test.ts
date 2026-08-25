@@ -499,6 +499,14 @@ describe("GitHubProvider", () => {
         NotFoundError,
       );
     });
+
+    it("skips the association check when the payload omits issue_url", async () => {
+      mocks.cachedFetch.mockResolvedValueOnce({ ...ghComment, issue_url: undefined });
+
+      const comment = await gh.issues.getComment("octocat", "hello-world", 7, "3001");
+
+      expect(comment.id).toBe("3001");
+    });
   });
 
   describe("pullRequests.getComment", () => {

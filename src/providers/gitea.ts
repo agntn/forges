@@ -536,7 +536,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
    * Gitea keys discussion comments by id alone, so the endpoint cannot scope
    * the read. The comment names its issue or pull request by URL and issues
    * share the index space with pulls, so either one matching the requested
-   * number passes; anything else answers 404 like it does on GitLab.
+   * number passes; anything else answers 404 like it does on GitLab. A
+   * payload carrying neither URL skips the check, because rejecting it would
+   * fail every read against a server that omits the association.
    */
   protected override async getIssueComment(
     owner: string,

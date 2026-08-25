@@ -104,7 +104,7 @@ interface GitHubComment {
   body: string | null;
   user: { login: string } | null;
   html_url: string;
-  issue_url: string;
+  issue_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -667,7 +667,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
    * GitHub keys discussion comments by id alone, so the endpoint cannot scope
    * the read. The returned issue_url is checked against the requested number
    * instead, so a comment from another issue answers 404 like it does on
-   * GitLab.
+   * GitLab. A payload without issue_url, which GitBucket may serve, skips the
+   * check rather than failing reads that worked before.
    */
   protected override async getIssueComment(
     owner: string,
@@ -680,7 +681,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         this.client,
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/comments/${encodePathSegment(commentId)}`,
       );
-      if (!data.issue_url.endsWith(`/issues/${number}`)) {
+      if (data.issue_url && !data.issue_url.endsWith(`/issues/${number}`)) {
         throw new NotFoundError(`Comment not found: ${commentId}`, "github");
       }
       return this.mapComment(data);

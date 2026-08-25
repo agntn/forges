@@ -725,6 +725,19 @@ describe("Gitea Provider", () => {
       expect(mockClient).toHaveBeenLastCalledWith("/repos/testowner/test-repo/issues/comments/21");
       expect(comment.id).toBe("21");
     });
+
+    it("answers 404 when the comment belongs to another pull request", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaComment({
+          issue_url: "",
+          pull_request_url: "https://gitea.com/testowner/test-repo/pulls/5",
+        }),
+      );
+
+      await expect(
+        provider.pullRequests.getComment("testowner", "test-repo", 9, "21"),
+      ).rejects.toThrow(NotFoundError);
+    });
   });
 
   // --- users ---
