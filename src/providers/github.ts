@@ -442,6 +442,11 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   // --- Repos ---
 
+  /**
+   * /users/{owner}/repos answers for organizations too, but only with their
+   * public repositories, so the organization route has to go first. It
+   * returns 404 for regular users, which selects the user route.
+   */
   protected override async listRepos(
     owner: string,
     options?: ListOptions,
@@ -451,9 +456,6 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       if (options?.page) query.page = String(options.page);
       if (options?.perPage) query.per_page = String(options.perPage);
 
-      // /users/{owner}/repos answers for organizations too, but only with
-      // their public repositories, so the organization route has to go first.
-      // It returns 404 for regular users, which selects the user route.
       let response: RawFetchResult<GitHubRepo[]>;
       try {
         response = await rawFetch<GitHubRepo[]>(
