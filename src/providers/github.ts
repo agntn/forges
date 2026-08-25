@@ -25,7 +25,12 @@ import type {
 } from "../types.ts";
 import { FetchError } from "ofetch";
 import { ForgesError, NotFoundError, normalizeError } from "../errors.ts";
-import { createHttpClient, rawFetch, type HttpClient } from "../http.ts";
+import {
+  createHttpClient,
+  rawFetch,
+  type HttpClient,
+  type RawFetchResult,
+} from "../http.ts";
 import { cachedFetch } from "../cache.ts";
 import { parseLinkHeader } from "../pagination.ts";
 import { encodePathSegment } from "./base-url.ts";
@@ -437,6 +442,11 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   // --- Repos ---
 
+  /**
+   * /users/{owner}/repos answers for organizations too, but only with their
+   * public repositories, so the organization route has to go first. It
+   * returns 404 for regular users, which selects the user route.
+   */
   protected override async listRepos(
     owner: string,
     options?: ListOptions,
@@ -446,13 +456,29 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       if (options?.page) query.page = String(options.page);
       if (options?.perPage) query.per_page = String(options.perPage);
 
-      const { data, headers } = await rawFetch<GitHubRepo[]>(
-        this.client,
-        `/users/${encodePathSegment(owner)}/repos`,
-        { query },
-      );
+      let response: RawFetchResult<GitHubRepo[]>;
+      try {
+        response = await rawFetch<GitHubRepo[]>(
+          this.client,
+          `/orgs/${encodePathSegment(owner)}/repos`,
+          { query },
+        );
+      } catch (error) {
+        const normalized = normalizeError(error, "github");
+        if (normalized.status !== 404) {
+          throw normalized;
+        }
 
-      return buildPageResult(data ?? [], headers, (raw) => this.mapRepository(raw));
+        response = await rawFetch<GitHubRepo[]>(
+          this.client,
+          `/users/${encodePathSegment(owner)}/repos`,
+          { query },
+        );
+      }
+
+      return buildPageResult(response.data ?? [], response.headers, (raw) =>
+        this.mapRepository(raw),
+      );
     } catch (error) {
       throw normalizeError(error, "github");
     }

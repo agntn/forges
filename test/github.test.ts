@@ -195,7 +195,7 @@ describe("GitHubProvider", () => {
   // --- Repos ---
 
   describe("repos.list", () => {
-    it("returns mapped repositories", async () => {
+    it("returns mapped repositories from the organization route", async () => {
       mocks.rawFetch.mockResolvedValueOnce({
         data: [ghRepo],
         headers: makeHeaders(),
@@ -203,6 +203,10 @@ describe("GitHubProvider", () => {
 
       const result = await gh.repos.list("octocat");
 
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/orgs/octocat/repos", {
+        query: {},
+      });
       expect(result.items).toHaveLength(1);
       expect(result.items[0]).toMatchObject({
         id: "12345",
@@ -219,15 +223,51 @@ describe("GitHubProvider", () => {
       });
     });
 
-    it("forwards pagination options as query params", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [],
-        headers: makeHeaders(),
+    it("falls back to the user route when the owner is not an organization", async () => {
+      mocks.rawFetch
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce({ data: [ghRepo], headers: makeHeaders() });
+
+      const result = await gh.repos.list("octocat");
+
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, "/orgs/octocat/repos", {
+        query: {},
       });
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/users/octocat/repos", {
+        query: {},
+      });
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({ id: "12345", name: "hello-world" });
+    });
+
+    it("reports not found when both routes 404", async () => {
+      mocks.rawFetch
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(gh.repos.list("ghost")).rejects.toThrow(NotFoundError);
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("re-throws non-404 organization route errors without falling back", async () => {
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(500));
+
+      await expect(gh.repos.list("octocat")).rejects.toThrow(ForgesError);
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("forwards pagination options to both routes", async () => {
+      mocks.rawFetch
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce({ data: [], headers: makeHeaders() });
 
       await gh.repos.list("octocat", { page: 3, perPage: 50 });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/users/octocat/repos", {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, "/orgs/octocat/repos", {
+        query: { page: "3", per_page: "50" },
+      });
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/users/octocat/repos", {
         query: { page: "3", per_page: "50" },
       });
     });
