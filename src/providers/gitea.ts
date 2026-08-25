@@ -104,6 +104,8 @@ interface GiteaComment {
   body?: string | null;
   user?: GiteaUser | null;
   html_url?: string | null;
+  issue_url?: string | null;
+  pull_request_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -530,20 +532,34 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     return this.listIssueComments(owner, repo, number, options);
   }
 
-  /** Gitea keys discussion comments by id alone, so the number stays unused. */
+  /**
+   * Gitea keys discussion comments by id alone, so the endpoint cannot scope
+   * the read. The comment names its issue or pull request by URL and issues
+   * share the index space with pulls, so either one matching the requested
+   * number passes; anything else answers 404 like it does on GitLab. A
+   * payload carrying neither URL skips the check, because rejecting it would
+   * fail every read against a server that omits the association.
+   */
   protected override async getIssueComment(
     owner: string,
     repo: string,
-    _number: number,
+    number: number,
     commentId: string,
   ): Promise<Comment> {
     try {
-      return this.mapComment(
-        await cachedFetch<GiteaComment>(
-          this.client,
-          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/comments/${encodePathSegment(commentId)}`,
-        ),
+      const data = await cachedFetch<GiteaComment>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/comments/${encodePathSegment(commentId)}`,
       );
+      const association = data.issue_url || data.pull_request_url;
+      if (
+        association &&
+        !association.endsWith(`/issues/${number}`) &&
+        !association.endsWith(`/pulls/${number}`)
+      ) {
+        throw new NotFoundError(`Comment not found: ${commentId}`, PLATFORM);
+      }
+      return this.mapComment(data);
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
