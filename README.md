@@ -120,7 +120,7 @@ Speaks MCP over stdio. Point a client at it:
 }
 ```
 
-An MCP client sees the text a tool returns and nothing else, so the text carries the whole answer as JSON. The issue and pull-request lists drop bodies outright and name the tool that reads one in full, because one page of a busy repository is otherwise large enough to crowd out the conversation that asked for it. `forges_threads_list` bounds each comment instead — twelve lines, four thousand characters — but keeps every comment of every thread on the page, so ask it for a small `perPage` on a heavily reviewed pull request. `forges_issues_comments` and `forges_pull_requests_comments` return the discussion oldest first with full bodies; they are the detail read, so a small `perPage` is the volume control there too.
+An MCP client sees the text a tool returns and nothing else, so the text carries the whole answer as JSON. The issue and pull-request lists drop bodies outright and name the tool that reads one in full, because one page of a busy repository is otherwise large enough to crowd out the conversation that asked for it. `forges_threads_list` bounds each comment instead - twelve lines, four thousand characters - but keeps every comment of every thread on the page, so ask it for a small `perPage` on a heavily reviewed pull request. `forges_issues_comments` and `forges_pull_requests_comments` carry the same per-comment bound, and their `_get` variants read a single comment whole.
 
 A failure names the status and, on a rate limit, the retry window; it never repeats the endpoint the request went to, so a self-hosted `FORGES_*_BASE_URL` stays out of the model's context even when the platform answers with an error.
 

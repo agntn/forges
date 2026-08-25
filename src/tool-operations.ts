@@ -114,6 +114,28 @@ function summarizeIssuePage<T extends Issue>(page: PageResult<T>): PageResult<Om
   };
 }
 
+/** A minified or generated comment can be one very long line, so cap both axes. */
+const COMMENT_SUMMARY_MAX_LINES = 12;
+const COMMENT_SUMMARY_MAX_CHARS = 4000;
+
+function summarizeCommentBody(body: string): string {
+  return body
+    .split("\n")
+    .slice(0, COMMENT_SUMMARY_MAX_LINES)
+    .join("\n")
+    .slice(0, COMMENT_SUMMARY_MAX_CHARS);
+}
+
+function summarizeCommentPage(page: PageResult<Comment>): PageResult<Comment> {
+  return {
+    ...page,
+    items: page.items.map((comment) => ({
+      ...comment,
+      body: summarizeCommentBody(comment.body),
+    })),
+  };
+}
+
 function listOptions(params: {
   page?: number;
   perPage?: number;
@@ -187,7 +209,12 @@ export async function listIssueComments(
     params.number,
     commentListOptions(params),
   );
-  return result(params.platform, comments);
+  return result(
+    params.platform,
+    comments,
+    summarizeCommentPage(comments),
+    "Comment bodies are truncated in list output; use forges_issues_comments_get to read one in full.",
+  );
 }
 
 export async function getIssueComment(
@@ -251,7 +278,12 @@ export async function listPullRequestComments(
     params.number,
     commentListOptions(params),
   );
-  return result(params.platform, comments);
+  return result(
+    params.platform,
+    comments,
+    summarizeCommentPage(comments),
+    "Comment bodies are truncated in list output; use forges_pull_requests_comments_get to read one in full.",
+  );
 }
 
 export async function getPullRequestComment(
@@ -309,10 +341,6 @@ export interface GetThreadParams extends RepositoryParams {
 
 export type ReplyThreadParams = GetThreadParams & ReplyThreadInput;
 
-// A minified or generated comment can be one very long line, so cap both axes.
-const THREAD_SUMMARY_MAX_LINES = 12;
-const THREAD_SUMMARY_MAX_CHARS = 4000;
-
 function summarizeThreadPage(page: PageResult<Thread>): PageResult<Thread> {
   return {
     ...page,
@@ -320,11 +348,7 @@ function summarizeThreadPage(page: PageResult<Thread>): PageResult<Thread> {
       ...thread,
       comments: thread.comments.map((comment) => ({
         ...comment,
-        body: comment.body
-          .split("\n")
-          .slice(0, THREAD_SUMMARY_MAX_LINES)
-          .join("\n")
-          .slice(0, THREAD_SUMMARY_MAX_CHARS),
+        body: summarizeCommentBody(comment.body),
       })),
     })),
   };

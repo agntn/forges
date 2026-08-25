@@ -17,8 +17,8 @@ import forgesPiExtension from "../packages/pi/extensions/forges.ts";
 
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
-  const issues = { list: vi.fn(), get: vi.fn(), create: vi.fn() };
-  const pullRequests = { list: vi.fn(), get: vi.fn(), create: vi.fn() };
+  const issues = { list: vi.fn(), get: vi.fn(), create: vi.fn(), listComments: vi.fn() };
+  const pullRequests = { list: vi.fn(), get: vi.fn(), create: vi.fn(), listComments: vi.fn() };
   const users = { get: vi.fn(), authenticated: vi.fn() };
   const threads = {
     list: vi.fn(),
@@ -284,6 +284,41 @@ describe("Forges Pi extension", () => {
       perPage: undefined,
       state: undefined,
     });
+  });
+
+  it("bounds model-facing discussion comment bodies and names the full read", async () => {
+    const body = Array.from({ length: 40 }, (_, index) => `line ${index}`).join("\n");
+    const page = {
+      items: [
+        {
+          id: "3001",
+          body,
+          author: { login: "commenter" },
+          url: "https://example",
+          createdAt: "2026-08-25T00:00:00Z",
+          updatedAt: "2026-08-25T00:00:00Z",
+        },
+      ],
+      hasNextPage: false,
+    };
+    mocks.issues.listComments.mockResolvedValue(page);
+    mocks.pullRequests.listComments.mockResolvedValue(page);
+
+    const tools = registerPiTools();
+    for (const name of ["forges_issues_comments", "forges_pull_requests_comments"]) {
+      const result = await requirePiTool(tools, name).execute(
+        "test",
+        { platform: "github", owner: "agntn", repo: "forges", number: 37 },
+        undefined,
+        undefined,
+        unusedPiContext,
+      );
+      const text = result.content.find((part) => part.type === "text")?.text;
+      expect(text).toContain("truncated");
+      expect(text).toContain(`${name}_get`);
+      expect(text).toContain("line 0");
+      expect(text).not.toContain("line 20");
+    }
   });
 });
 
