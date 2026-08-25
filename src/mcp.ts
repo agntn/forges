@@ -136,7 +136,7 @@ const tools: ToolDefinition[] = [
     name: "forges_issues_comments",
     title: "List Issue Comments",
     description:
-      "List the discussion comments under one issue, oldest first. Comment bodies are truncated here; read one whole with forges_issues_comments_get. GitLab system notes about label and state churn are dropped, so a short page whose hasNextPage is true means keep paging, not that the discussion ended.",
+      "List the discussion comments under one issue, oldest first. Comment bodies are truncated here; read one whole with forges_issues_comments_get. Ask for a small perPage on a busy issue and follow hasNextPage. GitLab system notes about label and state churn are dropped, so a short page whose hasNextPage is true means keep paging, not that the discussion ended.",
     inputSchema: listCommentsParameters,
     annotations: readAnnotations,
     execute: listIssueComments,
@@ -181,7 +181,7 @@ const tools: ToolDefinition[] = [
     name: "forges_pull_requests_comments",
     title: "List Pull Request Comments",
     description:
-      "List the conversation comments under one pull request, oldest first: the discussion, not the code-review threads that forges_threads_list reads. Comment bodies are truncated here; read one whole with forges_pull_requests_comments_get.",
+      "List the conversation comments under one pull request, oldest first: the discussion, not the code-review threads that forges_threads_list reads. Comment bodies are truncated here; read one whole with forges_pull_requests_comments_get, and bound the volume with perPage and hasNextPage.",
     inputSchema: listCommentsParameters,
     annotations: readAnnotations,
     execute: listPullRequestComments,
