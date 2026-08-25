@@ -14,6 +14,7 @@ import { Value } from "typebox/value";
 
 import forgesOmpExtension from "../packages/omp/extensions/forges.ts";
 import forgesPiExtension from "../packages/pi/extensions/forges.ts";
+import { resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
@@ -113,6 +114,7 @@ const unusedOmpContext = {} as OmpExtensionContext;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetPinnedProviders();
   vi.stubEnv("FORGES_GITHUB_BASE_URL", undefined);
   vi.stubEnv("FORGES_GITLAB_BASE_URL", undefined);
   vi.stubEnv("FORGES_GITEA_BASE_URL", undefined);

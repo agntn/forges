@@ -60,7 +60,7 @@ packages/
 ├── pi/extensions/forges.ts      # Pi extension — imports the shared schemas
 └── omp/extensions/forges.ts     # OMP extension — rebuilds them with the host TypeBox
 test/
-├── *.test.ts             # 1:1 mirror of src/ + integration.test.ts (13 files, ~390 tests)
+├── *.test.ts             # 1:1 mirror of src/ + integration.test.ts (14 files, ~410 tests)
 └── eval-packed-extensions.mjs   # Loads both extensions from a published-shaped layout
 ```
 

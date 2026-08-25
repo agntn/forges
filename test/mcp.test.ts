@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NotFoundError, RateLimitError } from "../src/errors.ts";
 import { createMcpServer } from "../src/mcp.ts";
+import { resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
@@ -91,6 +92,9 @@ beforeEach(() => {
   // resetAllMocks, per AGENTS.md: it drops each test's own stub while keeping the
   // vi.fn(impl) factory, so a rejection armed by one test cannot reach the next.
   vi.resetAllMocks();
+  // The provider is pinned per platform for the process, so one case's pin would
+  // otherwise decide whether the next one resolves a credential at all.
+  resetPinnedProviders();
   vi.stubEnv("FORGES_GITHUB_BASE_URL", undefined);
   vi.stubEnv("FORGES_GITLAB_BASE_URL", undefined);
   vi.stubEnv("FORGES_GITEA_BASE_URL", undefined);

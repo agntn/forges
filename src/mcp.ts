@@ -217,7 +217,7 @@ const tools: ToolDefinition[] = [
     name: "forges_users_authenticated",
     title: "Get Authenticated User",
     description:
-      "Get the profile of the account the locally detected credentials belong to. Call this before writing anything, because every write lands under that account and the server never takes a token as an argument.",
+      "Get the profile of the account the locally detected credentials belong to. Call this before writing anything, because every write lands under that account and the server never takes a token as an argument. The credential is pinned the first time this server uses it, so a CLI login switched underneath a running server does not move later writes to another account.",
     inputSchema: authenticatedUserParameters,
     annotations: readAnnotations,
     execute: getAuthenticatedUser,
