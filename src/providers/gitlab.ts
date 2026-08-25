@@ -686,6 +686,47 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     }
   }
 
+  protected override async getIssueComment(
+    owner: string,
+    repo: string,
+    number: number,
+    commentId: string,
+  ): Promise<Comment> {
+    return this.getNote(owner, repo, "issues", number, commentId);
+  }
+
+  protected override async getPullRequestComment(
+    owner: string,
+    repo: string,
+    number: number,
+    commentId: string,
+  ): Promise<Comment> {
+    return this.getNote(owner, repo, "merge_requests", number, commentId);
+  }
+
+  /**
+   * GitLab scopes a note to its issue or merge request, so unlike GitHub and
+   * Gitea the number is part of the request here.
+   */
+  private async getNote(
+    owner: string,
+    repo: string,
+    resource: "issues" | "merge_requests",
+    number: number,
+    commentId: string,
+  ): Promise<Comment> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const note = await cachedFetch<GitLabNote>(
+        this.client,
+        `/projects/${projectId}/${resource}/${encodePathSegment(number)}/notes/${encodePathSegment(commentId)}`,
+      );
+      return this.mapComment(note);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
   // --- Users ---
 
   /**

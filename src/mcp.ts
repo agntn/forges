@@ -10,6 +10,7 @@ import { Value } from "typebox/value";
 import { ForgesError, RateLimitError } from "./errors.ts";
 import {
   authenticatedUserParameters,
+  commentParameters,
   createIssueParameters,
   createPullRequestParameters,
   listCommentsParameters,
@@ -27,7 +28,9 @@ import {
   createPullRequest,
   getAuthenticatedUser,
   getIssue,
+  getIssueComment,
   getPullRequest,
+  getPullRequestComment,
   getRepository,
   getThread,
   getUser,
@@ -139,6 +142,15 @@ const tools: ToolDefinition[] = [
     execute: listIssueComments,
   }),
   defineTool({
+    name: "forges_issues_comments_get",
+    title: "Get Issue Comment",
+    description:
+      "Get one discussion comment under an issue, with its full body. The id is the one forges_issues_comments returned for it.",
+    inputSchema: commentParameters,
+    annotations: readAnnotations,
+    execute: getIssueComment,
+  }),
+  defineTool({
     name: "forges_issues_create",
     title: "Create Issue",
     description:
@@ -173,6 +185,15 @@ const tools: ToolDefinition[] = [
     inputSchema: listCommentsParameters,
     annotations: readAnnotations,
     execute: listPullRequestComments,
+  }),
+  defineTool({
+    name: "forges_pull_requests_comments_get",
+    title: "Get Pull Request Comment",
+    description:
+      "Get one conversation comment under a pull request, with its full body. The id is the one forges_pull_requests_comments returned; review-thread comments come back whole from forges_threads_get instead.",
+    inputSchema: commentParameters,
+    annotations: readAnnotations,
+    execute: getPullRequestComment,
   }),
   defineTool({
     name: "forges_pull_requests_create",

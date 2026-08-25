@@ -94,7 +94,7 @@ const gt = createProvider("gitea", {
 
 ## Agent tools
 
-The same seventeen tools — repositories, issues, pull requests, users, discussion comments, and review threads — are exposed over MCP and through the Pi and OMP extensions. They use the normal token detection chain. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
+The same nineteen tools - repositories, issues, pull requests, users, discussion comments, and review threads - are exposed over MCP and through the Pi and OMP extensions. They use the normal token detection chain. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
 
 | Platform           | Environment variable     |
 | ------------------ | ------------------------ |

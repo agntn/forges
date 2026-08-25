@@ -530,6 +530,35 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     return this.listIssueComments(owner, repo, number, options);
   }
 
+  /** Gitea keys discussion comments by id alone, so the number stays unused. */
+  protected override async getIssueComment(
+    owner: string,
+    repo: string,
+    _number: number,
+    commentId: string,
+  ): Promise<Comment> {
+    try {
+      return this.mapComment(
+        await cachedFetch<GiteaComment>(
+          this.client,
+          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/comments/${encodePathSegment(commentId)}`,
+        ),
+      );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  /** Pull-request discussion comments live on the issues endpoint too. */
+  protected override async getPullRequestComment(
+    owner: string,
+    repo: string,
+    number: number,
+    commentId: string,
+  ): Promise<Comment> {
+    return this.getIssueComment(owner, repo, number, commentId);
+  }
+
   protected override async getUser(username: string): Promise<User> {
     try {
       return this.mapUser(

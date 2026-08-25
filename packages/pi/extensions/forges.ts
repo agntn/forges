@@ -6,6 +6,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type * as ForgesTools from "../../../dist/tool-operations.d.mts";
 import {
   authenticatedUserParameters,
+  commentParameters,
   createIssueParameters,
   createPullRequestParameters,
   listCommentsParameters,
@@ -100,6 +101,20 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_issues_comments_get",
+    label: "Forges Issue Comment",
+    description: "Get one discussion comment under an issue, with its full body",
+    promptSnippet: "Read one issue comment in full on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_issues_comments_get with an id from forges_issues_comments when the truncated body is not enough.",
+    ],
+    parameters: commentParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getIssueComment(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_issues_create",
     label: "Create Forges Issue",
     description: "Create an issue in a repository; this mutates the selected Git platform",
@@ -150,6 +165,20 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     parameters: listCommentsParameters,
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequestComments(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_comments_get",
+    label: "Forges Pull Request Comment",
+    description: "Get one conversation comment under a pull request, with its full body",
+    promptSnippet: "Read one pull-request conversation comment in full on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_pull_requests_comments_get with an id from forges_pull_requests_comments; review threads still come back whole from forges_threads_get.",
+    ],
+    parameters: commentParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getPullRequestComment(params);
     },
   });
 

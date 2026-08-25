@@ -690,6 +690,28 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("issues.getComment", () => {
+    it("reads one comment by id, without the issue number", async () => {
+      mockClient.mockResolvedValueOnce(giteaComment());
+
+      const comment = await provider.issues.getComment("testowner", "test-repo", 1, "21");
+
+      expect(mockClient).toHaveBeenLastCalledWith("/repos/testowner/test-repo/issues/comments/21");
+      expect(comment).toMatchObject({ id: "21", body: "Same here on 1.22" });
+    });
+  });
+
+  describe("pullRequests.getComment", () => {
+    it("reads the shared issue-comments route", async () => {
+      mockClient.mockResolvedValueOnce(giteaComment());
+
+      const comment = await provider.pullRequests.getComment("testowner", "test-repo", 5, "21");
+
+      expect(mockClient).toHaveBeenLastCalledWith("/repos/testowner/test-repo/issues/comments/21");
+      expect(comment.id).toBe("21");
+    });
+  });
+
   // --- users ---
 
   describe("users.get", () => {

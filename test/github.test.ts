@@ -478,6 +478,34 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("issues.getComment", () => {
+    it("reads one comment by id, without the issue number", async () => {
+      mocks.cachedFetch.mockResolvedValueOnce(ghComment);
+
+      const comment = await gh.issues.getComment("octocat", "hello-world", 42, "3001");
+
+      expect(mocks.cachedFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/octocat/hello-world/issues/comments/3001",
+      );
+      expect(comment).toMatchObject({ id: "3001", body: "Reproduced on 1.2.3 as well" });
+    });
+  });
+
+  describe("pullRequests.getComment", () => {
+    it("reads the issue-comments endpoint, which carries the PR discussion", async () => {
+      mocks.cachedFetch.mockResolvedValueOnce(ghComment);
+
+      const comment = await gh.pullRequests.getComment("octocat", "hello-world", 99, "3001");
+
+      expect(mocks.cachedFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/octocat/hello-world/issues/comments/3001",
+      );
+      expect(comment.id).toBe("3001");
+    });
+  });
+
   // --- Pull Requests ---
 
   describe("pullRequests.list", () => {

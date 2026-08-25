@@ -72,6 +72,11 @@ export interface ListCommentsParams extends RepositoryParams {
   perPage?: number;
 }
 
+export interface GetCommentParams extends RepositoryParams {
+  number: number;
+  commentId: string;
+}
+
 export interface GetUserParams extends PlatformParams {
   username: string;
 }
@@ -185,6 +190,18 @@ export async function listIssueComments(
   return result(params.platform, comments);
 }
 
+export async function getIssueComment(
+  params: GetCommentParams,
+): Promise<ForgesToolResult<Comment>> {
+  const comment = await createConfiguredProvider(params.platform).issues.getComment(
+    params.owner,
+    params.repo,
+    params.number,
+    params.commentId,
+  );
+  return result(params.platform, comment);
+}
+
 export async function createIssue(params: CreateIssueParams): Promise<ForgesToolResult<Issue>> {
   const issue = await createConfiguredProvider(params.platform).issues.create(
     params.owner,
@@ -235,6 +252,18 @@ export async function listPullRequestComments(
     commentListOptions(params),
   );
   return result(params.platform, comments);
+}
+
+export async function getPullRequestComment(
+  params: GetCommentParams,
+): Promise<ForgesToolResult<Comment>> {
+  const comment = await createConfiguredProvider(params.platform).pullRequests.getComment(
+    params.owner,
+    params.repo,
+    params.number,
+    params.commentId,
+  );
+  return result(params.platform, comment);
 }
 
 export async function createPullRequest(

@@ -539,6 +539,18 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("issues.getComment", () => {
+    it("reads one note scoped to its issue", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glNote);
+
+      const comment = await gl.issues.getComment("gitlab-org", "gitlab-foss", 7, "2201");
+
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/issues/7/notes/2201");
+      expect(comment).toMatchObject({ id: "2201", body: "Hit the same thing on 16.9" });
+    });
+  });
+
   // --- Merge Requests → Pull Requests ---
 
   describe("pullRequests.list", () => {
@@ -672,6 +684,18 @@ describe("GitLabProvider", () => {
       );
       expect(result.items.map((comment) => comment.id)).toEqual(["2201"]);
       expect(result.hasNextPage).toBe(false);
+    });
+  });
+
+  describe("pullRequests.getComment", () => {
+    it("reads one note scoped to its merge request", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glNote);
+
+      const comment = await gl.pullRequests.getComment("gitlab-org", "gitlab-foss", 8, "2201");
+
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/merge_requests/8/notes/2201");
+      expect(comment.id).toBe("2201");
     });
   });
 

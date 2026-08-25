@@ -224,6 +224,7 @@ export interface IssueResource {
     number: number,
     options?: ListCommentOptions,
   ): Promise<PageResult<Comment>>;
+  getComment(owner: string, repo: string, number: number, commentId: string): Promise<Comment>;
 }
 
 /**
@@ -239,6 +240,7 @@ export interface PullRequestResource {
     number: number,
     options?: ListCommentOptions,
   ): Promise<PageResult<Comment>>;
+  getComment(owner: string, repo: string, number: number, commentId: string): Promise<Comment>;
 }
 
 /**
