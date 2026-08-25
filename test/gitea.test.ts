@@ -138,6 +138,8 @@ function giteaComment(overrides: Record<string, unknown> = {}) {
     body: "Same here on 1.22",
     user: giteaUser(),
     html_url: "https://gitea.com/testowner/test-repo/issues/1#issuecomment-21",
+    issue_url: "https://gitea.com/testowner/test-repo/issues/1",
+    pull_request_url: "",
     created_at: "2024-01-04T00:00:00Z",
     updated_at: "2024-01-04T01:00:00Z",
     ...overrides,
@@ -699,11 +701,24 @@ describe("Gitea Provider", () => {
       expect(mockClient).toHaveBeenLastCalledWith("/repos/testowner/test-repo/issues/comments/21");
       expect(comment).toMatchObject({ id: "21", body: "Same here on 1.22" });
     });
+
+    it("answers 404 when the comment belongs to another issue", async () => {
+      mockClient.mockResolvedValueOnce(giteaComment());
+
+      await expect(provider.issues.getComment("testowner", "test-repo", 9, "21")).rejects.toThrow(
+        NotFoundError,
+      );
+    });
   });
 
   describe("pullRequests.getComment", () => {
     it("reads the shared issue-comments route", async () => {
-      mockClient.mockResolvedValueOnce(giteaComment());
+      mockClient.mockResolvedValueOnce(
+        giteaComment({
+          issue_url: "",
+          pull_request_url: "https://gitea.com/testowner/test-repo/pulls/5",
+        }),
+      );
 
       const comment = await provider.pullRequests.getComment("testowner", "test-repo", 5, "21");
 

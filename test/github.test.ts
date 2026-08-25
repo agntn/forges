@@ -93,6 +93,7 @@ const ghComment = {
   body: "Reproduced on 1.2.3 as well",
   user: { login: "commenter" },
   html_url: "https://github.com/octocat/hello-world/issues/42#issuecomment-3001",
+  issue_url: "https://api.github.com/repos/octocat/hello-world/issues/42",
   created_at: "2024-01-17T09:00:00Z",
   updated_at: "2024-01-17T09:30:00Z",
 };
@@ -490,11 +491,22 @@ describe("GitHubProvider", () => {
       );
       expect(comment).toMatchObject({ id: "3001", body: "Reproduced on 1.2.3 as well" });
     });
+
+    it("answers 404 when the comment belongs to another issue", async () => {
+      mocks.cachedFetch.mockResolvedValueOnce(ghComment);
+
+      await expect(gh.issues.getComment("octocat", "hello-world", 7, "3001")).rejects.toThrow(
+        NotFoundError,
+      );
+    });
   });
 
   describe("pullRequests.getComment", () => {
     it("reads the issue-comments endpoint, which carries the PR discussion", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce(ghComment);
+      mocks.cachedFetch.mockResolvedValueOnce({
+        ...ghComment,
+        issue_url: "https://api.github.com/repos/octocat/hello-world/issues/99",
+      });
 
       const comment = await gh.pullRequests.getComment("octocat", "hello-world", 99, "3001");
 
