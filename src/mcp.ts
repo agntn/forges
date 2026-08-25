@@ -10,6 +10,7 @@ import { Value } from "typebox/value";
 import { ForgesError, RateLimitError } from "./errors.ts";
 import {
   authenticatedUserParameters,
+  commentParameters,
   createIssueParameters,
   createPullRequestParameters,
   listCommentsParameters,
@@ -27,7 +28,9 @@ import {
   createPullRequest,
   getAuthenticatedUser,
   getIssue,
+  getIssueComment,
   getPullRequest,
+  getPullRequestComment,
   getRepository,
   getThread,
   getUser,
@@ -133,10 +136,19 @@ const tools: ToolDefinition[] = [
     name: "forges_issues_comments",
     title: "List Issue Comments",
     description:
-      "List the discussion comments under one issue, oldest first, with full bodies. Ask for a small perPage on a busy issue and follow hasNextPage. GitLab system notes about label and state churn are dropped, so a short page whose hasNextPage is true means keep paging, not that the discussion ended.",
+      "List the discussion comments under one issue, oldest first. Comment bodies are truncated here; read one whole with forges_issues_comments_get. Ask for a small perPage on a busy issue and follow hasNextPage. GitLab system notes about label and state churn are dropped, so a short page whose hasNextPage is true means keep paging, not that the discussion ended.",
     inputSchema: listCommentsParameters,
     annotations: readAnnotations,
     execute: listIssueComments,
+  }),
+  defineTool({
+    name: "forges_issues_comments_get",
+    title: "Get Issue Comment",
+    description:
+      "Get one discussion comment under an issue, with its full body. The id is the one forges_issues_comments returned for it.",
+    inputSchema: commentParameters,
+    annotations: readAnnotations,
+    execute: getIssueComment,
   }),
   defineTool({
     name: "forges_issues_create",
@@ -169,10 +181,19 @@ const tools: ToolDefinition[] = [
     name: "forges_pull_requests_comments",
     title: "List Pull Request Comments",
     description:
-      "List the conversation comments under one pull request, oldest first: the discussion, not the code-review threads that forges_threads_list reads. Full bodies, so bound the volume with perPage and follow hasNextPage.",
+      "List the conversation comments under one pull request, oldest first: the discussion, not the code-review threads that forges_threads_list reads. Comment bodies are truncated here; read one whole with forges_pull_requests_comments_get, and bound the volume with perPage and hasNextPage.",
     inputSchema: listCommentsParameters,
     annotations: readAnnotations,
     execute: listPullRequestComments,
+  }),
+  defineTool({
+    name: "forges_pull_requests_comments_get",
+    title: "Get Pull Request Comment",
+    description:
+      "Get one conversation comment under a pull request, with its full body. The id is the one forges_pull_requests_comments returned; review-thread comments come back whole from forges_threads_get instead.",
+    inputSchema: commentParameters,
+    annotations: readAnnotations,
+    execute: getPullRequestComment,
   }),
   defineTool({
     name: "forges_pull_requests_create",

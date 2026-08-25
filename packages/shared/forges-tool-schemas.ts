@@ -47,6 +47,7 @@ const threadState = Type.Optional(
   }),
 );
 const threadId = Type.String({ description: "Review thread id", minLength: 1 });
+const commentId = Type.String({ description: "Discussion comment id", minLength: 1 });
 
 export const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
 export const repositoryParameters = Type.Object({ platform, owner, repo });
@@ -60,6 +61,7 @@ export const listRepositoryItemsParameters = Type.Object({
 });
 export const repositoryItemParameters = Type.Object({ platform, owner, repo, number });
 export const listCommentsParameters = Type.Object({ platform, owner, repo, number, page, perPage });
+export const commentParameters = Type.Object({ platform, owner, repo, number, commentId });
 export const createIssueParameters = Type.Object({
   platform,
   owner,

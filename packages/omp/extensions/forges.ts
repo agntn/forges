@@ -62,6 +62,8 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   });
   const repositoryItemParameters = Type.Object({ platform, owner, repo, number });
   const listCommentsParameters = Type.Object({ platform, owner, repo, number, page, perPage });
+  const commentId = Type.String({ description: "Discussion comment id", minLength: 1 });
+  const commentParameters = Type.Object({ platform, owner, repo, number, commentId });
   const createIssueParameters = Type.Object({
     platform,
     owner,
@@ -166,6 +168,17 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_issues_comments_get",
+    label: "Forges Issue Comment",
+    description: "Get one discussion comment under an issue, with its full body",
+    parameters: commentParameters,
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getIssueComment(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_issues_create",
     label: "Create Forges Issue",
     description: "Create an issue in a repository; this mutates the selected Git platform",
@@ -206,6 +219,17 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequestComments(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_comments_get",
+    label: "Forges Pull Request Comment",
+    description: "Get one conversation comment under a pull request, with its full body",
+    parameters: commentParameters,
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getPullRequestComment(params);
     },
   });
 

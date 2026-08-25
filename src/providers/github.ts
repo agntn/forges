@@ -662,6 +662,34 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     return this.listIssueComments(owner, repo, number, options);
   }
 
+  /** GitHub keys discussion comments by id alone, so the number stays unused. */
+  protected override async getIssueComment(
+    owner: string,
+    repo: string,
+    _number: number,
+    commentId: string,
+  ): Promise<Comment> {
+    try {
+      const data = await cachedFetch<GitHubComment>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/comments/${encodePathSegment(commentId)}`,
+      );
+      return this.mapComment(data);
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /** Pull-request discussion comments live on the issues endpoint too. */
+  protected override async getPullRequestComment(
+    owner: string,
+    repo: string,
+    number: number,
+    commentId: string,
+  ): Promise<Comment> {
+    return this.getIssueComment(owner, repo, number, commentId);
+  }
+
   // --- Users ---
 
   protected override async getUser(username: string): Promise<User> {

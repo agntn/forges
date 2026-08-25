@@ -66,6 +66,8 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       create: (owner, repo, input) => this.createIssue(owner, repo, input),
       listComments: (owner, repo, number, options) =>
         this.listIssueComments(owner, repo, number, options),
+      getComment: (owner, repo, number, commentId) =>
+        this.getIssueComment(owner, repo, number, commentId),
     };
     this.pullRequests = {
       list: (owner, repo, options) => this.listPullRequests(owner, repo, options),
@@ -73,6 +75,8 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       create: (owner, repo, input) => this.createPullRequest(owner, repo, input),
       listComments: (owner, repo, number, options) =>
         this.listPullRequestComments(owner, repo, number, options),
+      getComment: (owner, repo, number, commentId) =>
+        this.getPullRequestComment(owner, repo, number, commentId),
     };
     this.users = {
       get: (username) => this.getUser(username),
@@ -140,6 +144,18 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     number: number,
     options?: ListCommentOptions,
   ): Promise<PageResult<Comment>>;
+  protected abstract getIssueComment(
+    owner: string,
+    repo: string,
+    number: number,
+    commentId: string,
+  ): Promise<Comment>;
+  protected abstract getPullRequestComment(
+    owner: string,
+    repo: string,
+    number: number,
+    commentId: string,
+  ): Promise<Comment>;
   protected abstract getUser(username: string): Promise<User>;
   protected abstract getAuthenticatedUser(): Promise<User>;
   protected abstract listThreads(
