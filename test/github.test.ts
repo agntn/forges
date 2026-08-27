@@ -68,6 +68,7 @@ const ghIssue = {
   state: "open",
   labels: [{ name: "bug" }, { name: "priority:high" }],
   user: { login: "reporter" },
+  assignees: [{ login: "triager" }],
   created_at: "2024-01-15T10:00:00Z",
   updated_at: "2024-01-16T12:00:00Z",
   html_url: "https://github.com/octocat/hello-world/issues/42",
@@ -81,6 +82,7 @@ const ghPullRequest = {
   state: "open",
   labels: [{ name: "enhancement" }],
   user: { login: "contributor" },
+  assignees: [{ login: "maintainer" }],
   created_at: "2024-02-01T08:00:00Z",
   updated_at: "2024-02-02T09:00:00Z",
   html_url: "https://github.com/octocat/hello-world/pull/99",
@@ -349,6 +351,7 @@ describe("GitHubProvider", () => {
         state: "open",
         labels: ["bug", "priority:high"],
         author: { login: "reporter" },
+        assignees: [{ login: "triager" }],
         createdAt: "2024-01-15T10:00:00Z",
         updatedAt: "2024-01-16T12:00:00Z",
         url: "https://github.com/octocat/hello-world/issues/42",
@@ -402,6 +405,7 @@ describe("GitHubProvider", () => {
       );
       expect(issue.number).toBe(42);
       expect(issue.author.login).toBe("reporter");
+      expect(issue.assignees).toEqual([{ login: "triager" }]);
       expect(issue.url).toBe("https://github.com/octocat/hello-world/issues/42");
     });
 
@@ -442,6 +446,7 @@ describe("GitHubProvider", () => {
         body: { title: "New bug", body: "Details here", labels: ["bug"] },
       });
       expect(issue.number).toBe(43);
+      expect(issue.assignees).toEqual([{ login: "triager" }]);
       expect(issue.url).toBe("https://github.com/octocat/hello-world/issues/43");
     });
   });
@@ -554,6 +559,7 @@ describe("GitHubProvider", () => {
         id: "2001",
         number: 99,
         title: "Add dark mode",
+        assignees: [{ login: "maintainer" }],
         sourceBranch: "feature/dark-mode",
         targetBranch: "main",
         merged: false,
@@ -598,6 +604,7 @@ describe("GitHubProvider", () => {
       expect(pr.sourceBranch).toBe("feature/dark-mode");
       expect(pr.targetBranch).toBe("main");
       expect(pr.draft).toBe(true);
+      expect(pr.assignees).toEqual([{ login: "maintainer" }]);
       expect(pr.mergeCommitSha).toBe("0549abd44267f5eb5c6e219fb9ab43b7129aa470");
       expect(pr.url).toBe("https://github.com/octocat/hello-world/pull/99");
     });
@@ -633,6 +640,7 @@ describe("GitHubProvider", () => {
           draft: true,
         },
       });
+      expect(pr.assignees).toEqual([{ login: "maintainer" }]);
       expect(pr.url).toBe("https://github.com/octocat/hello-world/pull/99");
     });
   });

@@ -64,6 +64,7 @@ export interface Issue {
   author: {
     login: string;
   };
+  assignees: Array<{ login: string }>;
   createdAt: string;
   updatedAt: string;
   url: string;

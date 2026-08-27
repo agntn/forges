@@ -67,6 +67,7 @@ interface GitLabIssue {
   author: {
     username: string;
   };
+  assignees?: Array<{ username: string }>;
   created_at: string;
   updated_at: string;
   web_url: string;
@@ -82,6 +83,7 @@ interface GitLabMergeRequest {
   author: {
     username: string;
   };
+  assignees?: Array<{ username: string }>;
   created_at: string;
   updated_at: string;
   web_url: string;
@@ -266,6 +268,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       state: this.mapGitLabState(raw.state),
       labels: raw.labels,
       author: { login: raw.author.username },
+      assignees: (raw.assignees ?? []).map(({ username }) => ({ login: username })),
       createdAt: raw.created_at,
       updatedAt: raw.updated_at,
       url: raw.web_url,
@@ -282,6 +285,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       state: this.mapGitLabState(raw.state),
       labels: raw.labels,
       author: { login: raw.author.username },
+      assignees: (raw.assignees ?? []).map(({ username }) => ({ login: username })),
       createdAt: raw.created_at,
       updatedAt: raw.updated_at,
       url: raw.web_url,
