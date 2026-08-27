@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AuthenticationError } from "../src/errors.ts";
 import {
   createIssue,
   getAuthenticatedUser,
@@ -14,41 +15,59 @@ const mocks = vi.hoisted(() => {
    * two tool calls without the server noticing.
    */
   const localLogin = { current: "aeitwoen" };
+  const credentialToken = { current: "test-token" as string | null };
+  const anonymousWrites = { current: 0 };
 
-  const createProvider = vi.fn((_platform: string, _config?: { baseURL?: string }) => {
-    const login = localLogin.current;
-
-    return {
-      repos: {
-        list: vi.fn(),
-        get: vi.fn(async (owner: string, repo: string) => ({
-          id: "1",
-          name: repo,
-          fullName: `${owner}/${repo}`,
-          owner: { login },
-          private: false,
-          defaultBranch: "main",
-        })),
-      },
-      issues: {
-        create: vi.fn(async (_owner: string, _repo: string, input: { title: string }) => ({
-          id: "7",
-          number: 7,
-          title: input.title,
-          state: "open",
-          author: { login },
-        })),
-      },
-      users: {
-        authenticated: vi.fn(async () => ({ id: "1", login })),
-      },
-    };
+  const resolveToken = vi.fn(() => {
+    const token = credentialToken.current;
+    return token === null ? null : { token, source: "env" as const };
   });
 
-  return { localLogin, createProvider };
+  const createProvider = vi.fn(
+    (_platform: string, config?: { baseURL?: string; token?: string }) => {
+      const anonymous = config?.token === "";
+      const login = anonymous ? "anonymous" : localLogin.current;
+
+      return {
+        repos: {
+          list: vi.fn(),
+          get: vi.fn(async (owner: string, repo: string) => ({
+            id: "1",
+            name: repo,
+            fullName: `${owner}/${repo}`,
+            owner: { login },
+            private: false,
+            defaultBranch: "main",
+          })),
+        },
+        issues: {
+          create: vi.fn(async (_owner: string, _repo: string, input: { title: string }) => {
+            if (anonymous) {
+              anonymousWrites.current += 1;
+            }
+            return {
+              id: "7",
+              number: 7,
+              title: input.title,
+              state: "open",
+              author: { login },
+            };
+          }),
+        },
+        users: {
+          authenticated: vi.fn(async () => ({ id: "1", login })),
+        },
+      };
+    },
+  );
+
+  return { localLogin, credentialToken, anonymousWrites, resolveToken, createProvider };
 });
 
-vi.mock("../src/index.ts", () => ({ createProvider: mocks.createProvider }));
+vi.mock("../src/index.ts", () => ({
+  createProvider: mocks.createProvider,
+  resolveToken: mocks.resolveToken,
+}));
 
 const issueParams = {
   platform: "github",
@@ -61,6 +80,9 @@ const issueParams = {
 beforeEach(() => {
   resetPinnedProviders();
   mocks.localLogin.current = "aeitwoen";
+  mocks.credentialToken.current = "test-token";
+  mocks.anonymousWrites.current = 0;
+  mocks.resolveToken.mockClear();
   mocks.createProvider.mockClear();
   vi.stubEnv("FORGES_GITHUB_BASE_URL", undefined);
   vi.stubEnv("FORGES_GITEA_BASE_URL", undefined);
@@ -83,6 +105,39 @@ describe("configured provider", () => {
     expect(mocks.createProvider).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps a credential found by a public read pinned for a later write", async () => {
+    await getRepository({ platform: "github", owner: "agntn", repo: "forges" });
+    mocks.localLogin.current = "oritwoen";
+
+    const created = await createIssue(issueParams);
+
+    expect(created.details.result.author.login).toBe("aeitwoen");
+    expect(mocks.createProvider).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to anonymous public reads without making writes anonymous", async () => {
+    mocks.credentialToken.current = null;
+
+    const repository = await getRepository({ platform: "github", owner: "agntn", repo: "forges" });
+
+    expect(repository.details.result.owner.login).toBe("anonymous");
+    await expect(getAuthenticatedUser({ platform: "github" })).rejects.toThrow(AuthenticationError);
+    await expect(createIssue(issueParams)).rejects.toThrow(AuthenticationError);
+    expect(mocks.anonymousWrites.current).toBe(0);
+  });
+
+  it("treats an explicitly empty detected token as anonymous", async () => {
+    mocks.credentialToken.current = "";
+
+    const repository = await getRepository({ platform: "github", owner: "agntn", repo: "forges" });
+
+    expect(repository.details.result.owner.login).toBe("anonymous");
+    await expect(createIssue(issueParams)).rejects.toThrow(
+      "Set GITHUB_TOKEN or log in with `gh auth login`.",
+    );
+    expect(mocks.anonymousWrites.current).toBe(0);
+  });
+
   it("resolves separately for each platform and endpoint", async () => {
     await getRepository({ platform: "github", owner: "agntn", repo: "forges" });
     await getRepository({ platform: "gitea", owner: "agntn", repo: "forges" });
@@ -92,11 +147,17 @@ describe("configured provider", () => {
     vi.stubEnv("FORGES_GITEA_BASE_URL", "");
     await getRepository({ platform: "gitea", owner: "agntn", repo: "forges" });
 
-    expect(mocks.createProvider.mock.calls).toEqual([
-      ["github", undefined],
-      ["gitea", undefined],
+    expect(mocks.resolveToken.mock.calls).toEqual([
+      ["github", { baseURL: undefined }],
+      ["gitea", { baseURL: undefined }],
       ["gitea", { baseURL: "https://gitea.example.com/api/v1" }],
       ["gitea", { baseURL: "" }],
+    ]);
+    expect(mocks.createProvider.mock.calls).toEqual([
+      ["github", { token: "test-token" }],
+      ["gitea", { token: "test-token" }],
+      ["gitea", { baseURL: "https://gitea.example.com/api/v1", token: "test-token" }],
+      ["gitea", { baseURL: "", token: "test-token" }],
     ]);
   });
 

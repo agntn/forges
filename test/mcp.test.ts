@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => {
   const provider = { repos, issues, pullRequests, users, threads };
 
   return {
+    resolveToken: vi.fn(() => ({ token: "test-token", source: "env" as const })),
     createProvider: vi.fn(() => provider),
     repos,
     issues,
@@ -30,7 +31,10 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../src/index.ts", () => ({ createProvider: mocks.createProvider }));
+vi.mock("../src/index.ts", () => ({
+  resolveToken: mocks.resolveToken,
+  createProvider: mocks.createProvider,
+}));
 
 const toolNames = [
   "forges_repos_list",
@@ -151,7 +155,7 @@ describe("forges MCP server", () => {
       arguments: { platform: "github", owner: "agntn", repo: "forges" },
     });
 
-    expect(mocks.createProvider).toHaveBeenCalledWith("github", undefined);
+    expect(mocks.createProvider).toHaveBeenCalledWith("github", { token: "test-token" });
     expect(mocks.repos.get).toHaveBeenCalledWith("agntn", "forges");
     expect(response.isError).not.toBe(true);
     expect(JSON.parse(text(response.content))).toEqual({
@@ -174,6 +178,7 @@ describe("forges MCP server", () => {
 
     expect(mocks.createProvider).toHaveBeenCalledWith("gitea", {
       baseURL: "https://gitea.example.com/api/v1",
+      token: "test-token",
     });
   });
 
