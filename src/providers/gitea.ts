@@ -79,6 +79,7 @@ interface GiteaIssue {
   state: string;
   labels?: GiteaLabel[] | null;
   user: GiteaUser;
+  assignees?: GiteaUser[] | null;
   created_at: string;
   updated_at: string;
   html_url?: string | null;
@@ -92,6 +93,7 @@ interface GiteaPullRequest {
   state: string;
   labels?: GiteaLabel[] | null;
   user: GiteaUser;
+  assignees?: GiteaUser[] | null;
   created_at: string;
   updated_at: string;
   html_url?: string | null;
@@ -238,6 +240,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       state: raw.state === "open" ? "open" : "closed",
       labels: raw.labels?.map((label) => label.name) ?? [],
       author: { login: raw.user.login },
+      assignees: raw.assignees?.map(({ login }) => ({ login })) ?? [],
       createdAt: raw.created_at,
       updatedAt: raw.updated_at,
       url: raw.html_url ?? "",
@@ -254,6 +257,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       state: raw.state === "open" ? "open" : "closed",
       labels: raw.labels?.map((label) => label.name) ?? [],
       author: { login: raw.user.login },
+      assignees: raw.assignees?.map(({ login }) => ({ login })) ?? [],
       createdAt: raw.created_at,
       updatedAt: raw.updated_at,
       url: raw.html_url ?? "",

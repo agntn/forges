@@ -67,6 +67,7 @@ const glIssue = {
   state: "opened",
   labels: ["bug", "critical"],
   author: { username: "tester" },
+  assignees: [{ username: "triager" }],
   created_at: "2024-03-01T09:00:00Z",
   updated_at: "2024-03-02T11:00:00Z",
   web_url: "https://gitlab.com/gitlab-org/gitlab-foss/-/issues/15",
@@ -80,6 +81,7 @@ const glMergeRequest = {
   state: "opened",
   labels: ["refactor"],
   author: { username: "dev" },
+  assignees: [{ username: "maintainer" }],
   created_at: "2024-03-10T14:00:00Z",
   updated_at: "2024-03-11T16:00:00Z",
   web_url: "https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/33",
@@ -455,6 +457,7 @@ describe("GitLabProvider", () => {
         expect.any(Object),
       );
       expect(result.items).toHaveLength(1);
+      expect(result.items[0]?.assignees).toEqual([{ login: "triager" }]);
       expect(result.items[0]?.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/issues/15");
     });
 
@@ -486,6 +489,7 @@ describe("GitLabProvider", () => {
 
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/issues/15");
       expect(issue.number).toBe(15);
+      expect(issue.assignees).toEqual([{ login: "triager" }]);
       expect(issue.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/issues/15");
     });
   });
@@ -509,6 +513,7 @@ describe("GitLabProvider", () => {
           labels: "bug,urgent",
         },
       });
+      expect(issue.assignees).toEqual([{ login: "triager" }]);
       expect(issue.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/issues/15");
     });
   });
@@ -589,6 +594,7 @@ describe("GitLabProvider", () => {
         id: "7001",
         number: 33,
         title: "Refactor auth module",
+        assignees: [{ login: "maintainer" }],
         sourceBranch: "refactor/auth",
         targetBranch: "main",
         merged: false,
@@ -608,6 +614,7 @@ describe("GitLabProvider", () => {
 
       expect(pr.merged).toBe(true);
       expect(pr.state).toBe("closed");
+      expect(pr.assignees).toEqual([{ login: "maintainer" }]);
       expect(pr.mergeCommitSha).toBe("cd9bbd8a3e8af73864ca3c7704211309fae8ce0e");
       expect(pr.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/34");
     });
@@ -634,6 +641,7 @@ describe("GitLabProvider", () => {
           target_branch: "main",
         }),
       });
+      expect(pr.assignees).toEqual([{ login: "maintainer" }]);
       expect(pr.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/33");
     });
 

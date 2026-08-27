@@ -82,6 +82,7 @@ interface GitHubIssue {
   state: string;
   labels: GitHubLabel[];
   user: { login: string };
+  assignees?: Array<{ login: string }>;
   created_at: string;
   updated_at: string;
   html_url: string;
@@ -376,6 +377,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       state: raw.state as IssueState,
       labels: raw.labels.map((label) => label.name),
       author: { login: raw.user.login },
+      assignees: (raw.assignees ?? []).map(({ login }) => ({ login })),
       createdAt: raw.created_at,
       updatedAt: raw.updated_at,
       url: raw.html_url,

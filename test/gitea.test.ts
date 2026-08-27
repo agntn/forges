@@ -92,6 +92,7 @@ function giteaIssue(overrides: Record<string, unknown> = {}) {
     state: "open",
     labels: [{ id: 1, name: "bug" }],
     user: giteaUser(),
+    assignees: [giteaUser({ login: "triager" })],
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-02T00:00:00Z",
     html_url: "https://gitea.com/testowner/test-repo/issues/1",
@@ -108,6 +109,7 @@ function giteaPullRequest(overrides: Record<string, unknown> = {}) {
     state: "open",
     labels: [{ id: 2, name: "enhancement" }],
     user: giteaUser(),
+    assignees: [giteaUser({ login: "maintainer" })],
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-02T00:00:00Z",
     html_url: "https://gitea.com/testowner/test-repo/pulls/5",
@@ -368,6 +370,7 @@ describe("Gitea Provider", () => {
         state: "open",
         labels: ["bug"],
         author: { login: "testuser" },
+        assignees: [{ login: "triager" }],
         createdAt: "2024-01-01T00:00:00Z",
         updatedAt: "2024-01-02T00:00:00Z",
         url: "https://gitea.com/testowner/test-repo/issues/1",
@@ -418,6 +421,7 @@ describe("Gitea Provider", () => {
       expect(result.state).toBe("open");
       expect(result.labels).toEqual(["bug"]);
       expect(result.author.login).toBe("testuser");
+      expect(result.assignees).toEqual([{ login: "triager" }]);
       expect(result.url).toBe("https://gitea.com/testowner/test-repo/issues/1");
     });
   });
@@ -441,6 +445,7 @@ describe("Gitea Provider", () => {
       expect(result.id).toBe("201");
       expect(result.number).toBe(2);
       expect(result.title).toBe("New issue");
+      expect(result.assignees).toEqual([{ login: "triager" }]);
       expect(result.url).toBe("https://gitea.com/testowner/test-repo/issues/2");
       expect(mockClient).toHaveBeenCalledWith(
         "/repos/testowner/test-repo/issues",
@@ -497,6 +502,7 @@ describe("Gitea Provider", () => {
         state: "open",
         labels: ["enhancement"],
         author: { login: "testuser" },
+        assignees: [{ login: "maintainer" }],
         createdAt: "2024-01-01T00:00:00Z",
         updatedAt: "2024-01-02T00:00:00Z",
         url: "https://gitea.com/testowner/test-repo/pulls/5",
@@ -541,6 +547,7 @@ describe("Gitea Provider", () => {
       expect(result.targetBranch).toBe("main");
       expect(result.merged).toBe(true);
       expect(result.draft).toBe(false);
+      expect(result.assignees).toEqual([{ login: "maintainer" }]);
       expect(result.mergeCommitSha).toBe("dfe89dfb6bf22dcbd2a6203bef8aa262e65ea085");
       expect(result.url).toBe("https://gitea.com/testowner/test-repo/pulls/5");
     });
@@ -563,6 +570,7 @@ describe("Gitea Provider", () => {
       });
 
       expect(result.id).toBe("301");
+      expect(result.assignees).toEqual([{ login: "maintainer" }]);
       expect(result.url).toBe("https://gitea.com/testowner/test-repo/pulls/6");
       expect(mockClient).toHaveBeenCalledWith(
         "/repos/testowner/test-repo/pulls",
@@ -855,12 +863,13 @@ describe("Gitea Provider", () => {
       expect(result.owner.avatarUrl).toBe("");
     });
 
-    it("handles null body and html_url on issue", async () => {
-      mockClient.mockResolvedValueOnce(giteaIssue({ body: null, html_url: null }));
+    it("handles null body, html_url, and assignees on issue", async () => {
+      mockClient.mockResolvedValueOnce(giteaIssue({ body: null, html_url: null, assignees: null }));
 
       const result = await provider.issues.get("testowner", "test-repo", 1);
       expect(result.body).toBe("");
       expect(result.url).toBe("");
+      expect(result.assignees).toEqual([]);
     });
 
     it("handles null labels on issue", async () => {
@@ -915,6 +924,7 @@ describe("Gitea Provider", () => {
       mockClient.mockResolvedValueOnce(
         giteaPullRequest({
           html_url: null,
+          assignees: null,
           merged: undefined,
           draft: undefined,
         }),
@@ -922,6 +932,7 @@ describe("Gitea Provider", () => {
 
       const result = await provider.pullRequests.get("testowner", "test-repo", 5);
       expect(result.url).toBe("");
+      expect(result.assignees).toEqual([]);
       expect(result.merged).toBe(false);
       expect(result.draft).toBe(false);
     });
