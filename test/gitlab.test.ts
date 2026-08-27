@@ -87,6 +87,7 @@ const glMergeRequest = {
   target_branch: "main",
   merged_at: null,
   draft: false,
+  merge_commit_sha: "not-a-landed-commit",
 };
 
 const glMergedMR = {
@@ -95,6 +96,7 @@ const glMergedMR = {
   iid: 34,
   state: "merged",
   merged_at: "2024-03-12T10:00:00Z",
+  merge_commit_sha: "cd9bbd8a3e8af73864ca3c7704211309fae8ce0e",
   web_url: "https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/34",
 };
 
@@ -591,6 +593,7 @@ describe("GitLabProvider", () => {
         targetBranch: "main",
         merged: false,
         draft: false,
+        mergeCommitSha: "",
         url: "https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/33",
       });
     });
@@ -605,6 +608,7 @@ describe("GitLabProvider", () => {
 
       expect(pr.merged).toBe(true);
       expect(pr.state).toBe("closed");
+      expect(pr.mergeCommitSha).toBe("cd9bbd8a3e8af73864ca3c7704211309fae8ce0e");
       expect(pr.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/34");
     });
   });

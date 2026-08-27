@@ -89,6 +89,7 @@ interface GitLabMergeRequest {
   target_branch: string;
   merged_at: string | null;
   draft: boolean;
+  merge_commit_sha: string | null;
 }
 
 interface GitLabUser {
@@ -272,6 +273,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   }
 
   protected override mapPullRequest(raw: GitLabMergeRequest): PullRequest {
+    const merged = raw.merged_at !== null;
     return {
       id: String(raw.id),
       number: raw.iid,
@@ -285,8 +287,9 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       url: raw.web_url,
       sourceBranch: raw.source_branch,
       targetBranch: raw.target_branch,
-      merged: raw.merged_at !== null,
+      merged,
       draft: raw.draft,
+      mergeCommitSha: merged ? (raw.merge_commit_sha ?? "") : "",
     };
   }
 

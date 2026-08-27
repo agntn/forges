@@ -77,6 +77,7 @@ export interface PullRequest extends Issue {
   targetBranch: string;
   merged: boolean;
   draft: boolean;
+  mergeCommitSha: string;
 }
 
 /**

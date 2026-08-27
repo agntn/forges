@@ -87,7 +87,9 @@ const ghPullRequest = {
   head: { ref: "feature/dark-mode" },
   base: { ref: "main" },
   merged: false,
+  merged_at: null,
   draft: true,
+  merge_commit_sha: "1e2367db3db90761dcd1dfa353898d8368f2262d",
 };
 
 const ghComment = {
@@ -556,21 +558,56 @@ describe("GitHubProvider", () => {
         targetBranch: "main",
         merged: false,
         draft: true,
+        mergeCommitSha: "",
         url: "https://github.com/octocat/hello-world/pull/99",
+      });
+    });
+
+    it("maps merged list payloads that omit the merged boolean", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          {
+            ...ghPullRequest,
+            merged: undefined,
+            merged_at: "2026-08-27T20:34:31Z",
+            merge_commit_sha: "850662f475b8c2db88f57f9c3e6901f2e1418c8f",
+          },
+        ],
+        headers: makeHeaders(),
+      });
+
+      const result = await gh.pullRequests.list("octocat", "hello-world");
+
+      expect(result.items[0]).toMatchObject({
+        merged: true,
+        mergeCommitSha: "850662f475b8c2db88f57f9c3e6901f2e1418c8f",
       });
     });
   });
 
   describe("pullRequests.get", () => {
-    it("returns single mapped pull request", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce(ghPullRequest);
+    it("returns the merge commit SHA for a merged pull request", async () => {
+      mocks.cachedFetch.mockResolvedValueOnce({
+        ...ghPullRequest,
+        merged: true,
+        merge_commit_sha: "0549abd44267f5eb5c6e219fb9ab43b7129aa470",
+      });
 
       const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
 
       expect(pr.sourceBranch).toBe("feature/dark-mode");
       expect(pr.targetBranch).toBe("main");
       expect(pr.draft).toBe(true);
+      expect(pr.mergeCommitSha).toBe("0549abd44267f5eb5c6e219fb9ab43b7129aa470");
       expect(pr.url).toBe("https://github.com/octocat/hello-world/pull/99");
+    });
+
+    it("leaves mergeCommitSha empty when an older payload omits it", async () => {
+      mocks.cachedFetch.mockResolvedValueOnce({ ...ghPullRequest, merge_commit_sha: undefined });
+
+      const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
+
+      expect(pr.mergeCommitSha).toBe("");
     });
   });
 
