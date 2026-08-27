@@ -5,9 +5,7 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
 import type * as ForgesTools from "../../../dist/tool-operations.d.mts";
 
-const sourceModulePath = fileURLToPath(
-  new URL("../../../src/tool-operations.ts", import.meta.url),
-);
+const sourceModulePath = fileURLToPath(new URL("../../../src/tool-operations.ts", import.meta.url));
 let toolOperationsPromise: Promise<typeof ForgesTools> | undefined;
 
 /**
@@ -18,11 +16,9 @@ let toolOperationsPromise: Promise<typeof ForgesTools> | undefined;
  * for a single import().
  */
 function loadToolOperations(): Promise<typeof ForgesTools> {
-  toolOperationsPromise ??= (
-    existsSync(sourceModulePath)
-      ? (import("../../../src/tool-operations.ts") as unknown as Promise<typeof ForgesTools>)
-      : (import("../../../dist/tool-operations.mjs") as Promise<typeof ForgesTools>)
-  );
+  toolOperationsPromise ??= existsSync(sourceModulePath)
+    ? (import("../../../src/tool-operations.ts") as unknown as Promise<typeof ForgesTools>)
+    : (import("../../../dist/tool-operations.mjs") as Promise<typeof ForgesTools>);
   return toolOperationsPromise;
 }
 

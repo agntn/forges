@@ -172,7 +172,8 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     name: "forges_pull_requests_comments_get",
     label: "Forges Pull Request Comment",
     description: "Get one conversation comment under a pull request, with its full body",
-    promptSnippet: "Read one pull-request conversation comment in full on GitHub, GitLab, or Gitea.",
+    promptSnippet:
+      "Read one pull-request conversation comment in full on GitHub, GitLab, or Gitea.",
     promptGuidelines: [
       "Use forges_pull_requests_comments_get with an id from forges_pull_requests_comments; review threads still come back whole from forges_threads_get.",
     ],

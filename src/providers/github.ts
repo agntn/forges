@@ -25,12 +25,7 @@ import type {
 } from "../types.ts";
 import { FetchError } from "ofetch";
 import { ForgesError, NotFoundError, normalizeError } from "../errors.ts";
-import {
-  createHttpClient,
-  rawFetch,
-  type HttpClient,
-  type RawFetchResult,
-} from "../http.ts";
+import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
 import { cachedFetch } from "../cache.ts";
 import { parseLinkHeader } from "../pagination.ts";
 import { encodePathSegment } from "./base-url.ts";
