@@ -69,6 +69,7 @@ interface GitLabIssue {
   };
   created_at: string;
   updated_at: string;
+  web_url: string;
 }
 
 interface GitLabMergeRequest {
@@ -83,6 +84,7 @@ interface GitLabMergeRequest {
   };
   created_at: string;
   updated_at: string;
+  web_url: string;
   source_branch: string;
   target_branch: string;
   merged_at: string | null;
@@ -265,6 +267,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       author: { login: raw.author.username },
       createdAt: raw.created_at,
       updatedAt: raw.updated_at,
+      url: raw.web_url,
     };
   }
 
@@ -279,6 +282,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       author: { login: raw.author.username },
       createdAt: raw.created_at,
       updatedAt: raw.updated_at,
+      url: raw.web_url,
       sourceBranch: raw.source_branch,
       targetBranch: raw.target_branch,
       merged: raw.merged_at !== null,

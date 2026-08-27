@@ -66,6 +66,7 @@ export interface Issue {
   };
   createdAt: string;
   updatedAt: string;
+  url: string;
 }
 
 /**

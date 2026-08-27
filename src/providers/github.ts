@@ -89,6 +89,7 @@ interface GitHubIssue {
   user: { login: string };
   created_at: string;
   updated_at: string;
+  html_url: string;
   pull_request?: unknown;
 }
 
@@ -380,6 +381,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       author: { login: raw.user.login },
       createdAt: raw.created_at,
       updatedAt: raw.updated_at,
+      url: raw.html_url,
     };
   }
 
