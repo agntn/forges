@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => {
   const provider = { repos, issues, pullRequests, users, threads };
 
   return {
+    resolveToken: vi.fn(() => ({ token: "test-token", source: "env" as const })),
     createProvider: vi.fn(() => provider),
     repos,
     issues,
@@ -40,7 +41,10 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../src/index.ts", () => ({ createProvider: mocks.createProvider }));
+vi.mock("../src/index.ts", () => ({
+  resolveToken: mocks.resolveToken,
+  createProvider: mocks.createProvider,
+}));
 
 const toolNames = [
   "forges_repos_list",
@@ -165,7 +169,7 @@ describe("Forges Pi extension", () => {
       unusedPiContext,
     );
 
-    expect(mocks.createProvider).toHaveBeenCalledWith("github", undefined);
+    expect(mocks.createProvider).toHaveBeenCalledWith("github", { token: "test-token" });
     expect(mocks.repos.list).toHaveBeenCalledWith("agntn", {
       page: 2,
       perPage: 25,
@@ -195,7 +199,10 @@ describe("Forges Pi extension", () => {
         unusedPiContext,
       );
 
-      expect(mocks.createProvider).toHaveBeenCalledWith(platform, { baseURL });
+      expect(mocks.createProvider).toHaveBeenCalledWith(platform, {
+        baseURL,
+        token: "test-token",
+      });
       expect(JSON.stringify(tool.parameters)).not.toMatch(/baseURL/u);
     },
   );
@@ -407,7 +414,7 @@ describe("Forges OMP extension", () => {
       unusedOmpContext,
     );
 
-    expect(mocks.createProvider).toHaveBeenCalledWith("gitlab", undefined);
+    expect(mocks.createProvider).toHaveBeenCalledWith("gitlab", { token: "test-token" });
     expect(mocks.issues.create).toHaveBeenCalledWith("agntn", "forges", {
       title: "Bug",
       body: "Details",

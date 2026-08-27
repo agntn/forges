@@ -94,7 +94,7 @@ const gt = createProvider("gitea", {
 
 ## Agent tools
 
-The same nineteen tools - repositories, issues, pull requests, users, discussion comments, and review threads - are exposed over MCP and through the Pi and OMP extensions. They use the normal token detection chain. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
+The same nineteen tools - repositories, issues, pull requests, users, discussion comments, and review threads - are exposed over MCP and through the Pi and OMP extensions. Read tools use the normal token detection chain, then fall back to anonymous access when no credential exists. Writes and `forges_users_authenticated` still require a credential. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
 
 | Platform           | Environment variable     |
 | ------------------ | ------------------------ |
@@ -124,7 +124,7 @@ An MCP client sees the text a tool returns and nothing else, so the text carries
 
 A failure names the status and, on a rate limit, the retry window; it never repeats the endpoint the request went to, so a self-hosted `FORGES_*_BASE_URL` stays out of the model's context even when the platform answers with an error.
 
-Five tools write: `forges_issues_create`, `forges_pull_requests_create`, `forges_threads_reply`, `forges_threads_resolve` and `forges_threads_unresolve`. They are advertised as writes so a client can gate them, and `forges_users_authenticated` names the account they would write as. The credential is resolved once per platform and endpoint and then held, so a login switched in the CLI underneath a running server reaches it only after a restart. A failed operation comes back as a tool error rather than a transport failure: an unknown repository, a rejected token, an exhausted rate limit.
+Five tools write: `forges_issues_create`, `forges_pull_requests_create`, `forges_threads_reply`, `forges_threads_resolve` and `forges_threads_unresolve`. They are advertised as writes so a client can gate them, and `forges_users_authenticated` names the account they would write as. Once resolved, that credential is held per platform and endpoint, so a login switched in the CLI underneath a running server reaches it only after a restart. Anonymous read providers stay separate and cannot be reused for a write. A failed operation comes back as a tool error rather than a transport failure: an unknown repository, a rejected token, an exhausted rate limit.
 
 `createMcpServer()` is exported from `@agntn/forges/mcp` for hosts that bring their own transport.
 

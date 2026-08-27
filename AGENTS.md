@@ -135,6 +135,7 @@ Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 ### Key rules
 
 - **Token check:** use `!== undefined` not falsy check. Empty string is intentional (allow unauthenticated).
+- **Agent auth boundary:** read executors may fall back to an isolated empty-token provider; writes and `users.authenticated` must use the credentialed provider map.
 - **List vs Get:** list operations use `rawFetch` (need headers for pagination), get operations use `cachedFetch`.
 - **No raw error throws** — always `throw normalizeError(error, platform)`.
 - **No cache for mutations** — `cachedFetch` rejects non-GET automatically.
