@@ -91,8 +91,10 @@ interface GitHubIssue {
 interface GitHubPullRequest extends GitHubIssue {
   head: { ref: string };
   base: { ref: string };
-  merged: boolean;
+  merged?: boolean;
+  merged_at?: string | null;
   draft: boolean;
+  merge_commit_sha?: string | null;
 }
 
 interface GitHubComment {
@@ -381,12 +383,14 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   }
 
   protected override mapPullRequest(raw: GitHubPullRequest): PullRequest {
+    const merged = raw.merged ?? raw.merged_at != null;
     return {
       ...this.mapIssue(raw),
       sourceBranch: raw.head.ref,
       targetBranch: raw.base.ref,
-      merged: raw.merged,
+      merged,
       draft: raw.draft,
+      mergeCommitSha: merged ? (raw.merge_commit_sha ?? "") : "",
     };
   }
 

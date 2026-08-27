@@ -172,7 +172,7 @@ const tools: ToolDefinition[] = [
     name: "forges_pull_requests_get",
     title: "Get Pull Request",
     description:
-      "Get one pull request, a GitLab merge request, by number: body, source and target branch, and the draft and merged flags.",
+      "Get one pull request, called a merge request on GitLab, by number: body, branches, draft and merged state, and the landed merge commit SHA.",
     inputSchema: repositoryItemParameters,
     annotations: readAnnotations,
     execute: getPullRequest,

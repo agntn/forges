@@ -115,6 +115,7 @@ function giteaPullRequest(overrides: Record<string, unknown> = {}) {
     base: { ref: "main", label: "testowner:main" },
     merged: false,
     draft: false,
+    merge_commit_sha: "not-a-landed-commit",
     ...overrides,
   };
 }
@@ -503,6 +504,7 @@ describe("Gitea Provider", () => {
         targetBranch: "main",
         merged: false,
         draft: false,
+        mergeCommitSha: "",
       });
     });
 
@@ -524,16 +526,22 @@ describe("Gitea Provider", () => {
   });
 
   describe("pullRequests.get", () => {
-    it("returns a mapped pull request", async () => {
-      mockClient.mockResolvedValueOnce(giteaPullRequest());
+    it("returns the merge commit SHA for a merged pull request", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaPullRequest({
+          merged: true,
+          merge_commit_sha: "dfe89dfb6bf22dcbd2a6203bef8aa262e65ea085",
+        }),
+      );
 
       const result = await provider.pullRequests.get("testowner", "test-repo", 5);
 
       expect(result.id).toBe("300");
       expect(result.sourceBranch).toBe("feature-branch");
       expect(result.targetBranch).toBe("main");
-      expect(result.merged).toBe(false);
+      expect(result.merged).toBe(true);
       expect(result.draft).toBe(false);
+      expect(result.mergeCommitSha).toBe("dfe89dfb6bf22dcbd2a6203bef8aa262e65ea085");
       expect(result.url).toBe("https://gitea.com/testowner/test-repo/pulls/5");
     });
   });

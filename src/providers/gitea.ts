@@ -99,6 +99,7 @@ interface GiteaPullRequest {
   base?: { ref?: string | null; label?: string | null } | null;
   merged?: boolean;
   draft?: boolean;
+  merge_commit_sha?: string | null;
 }
 
 interface GiteaComment {
@@ -244,6 +245,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   }
 
   protected override mapPullRequest(raw: GiteaPullRequest): PullRequest {
+    const merged = raw.merged ?? false;
     return {
       id: String(raw.id),
       number: raw.number,
@@ -257,8 +259,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       url: raw.html_url ?? "",
       sourceBranch: raw.head?.ref ?? "",
       targetBranch: raw.base?.ref ?? "",
-      merged: raw.merged ?? false,
+      merged,
       draft: raw.draft ?? false,
+      mergeCommitSha: merged ? (raw.merge_commit_sha ?? "") : "",
     };
   }
 
