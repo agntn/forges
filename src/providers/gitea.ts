@@ -81,6 +81,7 @@ interface GiteaIssue {
   user: GiteaUser;
   created_at: string;
   updated_at: string;
+  html_url?: string | null;
 }
 
 interface GiteaPullRequest {
@@ -93,6 +94,7 @@ interface GiteaPullRequest {
   user: GiteaUser;
   created_at: string;
   updated_at: string;
+  html_url?: string | null;
   head?: { ref?: string | null; label?: string | null } | null;
   base?: { ref?: string | null; label?: string | null } | null;
   merged?: boolean;
@@ -237,6 +239,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       author: { login: raw.user.login },
       createdAt: raw.created_at,
       updatedAt: raw.updated_at,
+      url: raw.html_url ?? "",
     };
   }
 
@@ -251,6 +254,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       author: { login: raw.user.login },
       createdAt: raw.created_at,
       updatedAt: raw.updated_at,
+      url: raw.html_url ?? "",
       sourceBranch: raw.head?.ref ?? "",
       targetBranch: raw.base?.ref ?? "",
       merged: raw.merged ?? false,

@@ -69,6 +69,7 @@ const glIssue = {
   author: { username: "tester" },
   created_at: "2024-03-01T09:00:00Z",
   updated_at: "2024-03-02T11:00:00Z",
+  web_url: "https://gitlab.com/gitlab-org/gitlab-foss/-/issues/15",
 };
 
 const glMergeRequest = {
@@ -81,6 +82,7 @@ const glMergeRequest = {
   author: { username: "dev" },
   created_at: "2024-03-10T14:00:00Z",
   updated_at: "2024-03-11T16:00:00Z",
+  web_url: "https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/33",
   source_branch: "refactor/auth",
   target_branch: "main",
   merged_at: null,
@@ -93,6 +95,7 @@ const glMergedMR = {
   iid: 34,
   state: "merged",
   merged_at: "2024-03-12T10:00:00Z",
+  web_url: "https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/34",
 };
 
 const glUser = {
@@ -450,6 +453,7 @@ describe("GitLabProvider", () => {
         expect.any(Object),
       );
       expect(result.items).toHaveLength(1);
+      expect(result.items[0]?.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/issues/15");
     });
 
     it("converts open state filter to opened for GitLab API", async () => {
@@ -480,6 +484,7 @@ describe("GitLabProvider", () => {
 
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/issues/15");
       expect(issue.number).toBe(15);
+      expect(issue.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/issues/15");
     });
   });
 
@@ -488,7 +493,7 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glIssue);
 
-      await gl.issues.create("gitlab-org", "gitlab-foss", {
+      const issue = await gl.issues.create("gitlab-org", "gitlab-foss", {
         title: "New issue",
         body: "Description here",
         labels: ["bug", "urgent"],
@@ -502,6 +507,7 @@ describe("GitLabProvider", () => {
           labels: "bug,urgent",
         },
       });
+      expect(issue.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/issues/15");
     });
   });
 
@@ -585,6 +591,7 @@ describe("GitLabProvider", () => {
         targetBranch: "main",
         merged: false,
         draft: false,
+        url: "https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/33",
       });
     });
   });
@@ -598,6 +605,7 @@ describe("GitLabProvider", () => {
 
       expect(pr.merged).toBe(true);
       expect(pr.state).toBe("closed");
+      expect(pr.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/34");
     });
   });
 
@@ -606,7 +614,7 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glMergeRequest);
 
-      await gl.pullRequests.create("gitlab-org", "gitlab-foss", {
+      const pr = await gl.pullRequests.create("gitlab-org", "gitlab-foss", {
         title: "New MR",
         body: "Description",
         sourceBranch: "feature/x",
@@ -622,6 +630,7 @@ describe("GitLabProvider", () => {
           target_branch: "main",
         }),
       });
+      expect(pr.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/33");
     });
 
     it("passes draft flag when set to true", async () => {

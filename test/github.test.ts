@@ -70,6 +70,7 @@ const ghIssue = {
   user: { login: "reporter" },
   created_at: "2024-01-15T10:00:00Z",
   updated_at: "2024-01-16T12:00:00Z",
+  html_url: "https://github.com/octocat/hello-world/issues/42",
 };
 
 const ghPullRequest = {
@@ -82,6 +83,7 @@ const ghPullRequest = {
   user: { login: "contributor" },
   created_at: "2024-02-01T08:00:00Z",
   updated_at: "2024-02-02T09:00:00Z",
+  html_url: "https://github.com/octocat/hello-world/pull/99",
   head: { ref: "feature/dark-mode" },
   base: { ref: "main" },
   merged: false,
@@ -347,6 +349,7 @@ describe("GitHubProvider", () => {
         author: { login: "reporter" },
         createdAt: "2024-01-15T10:00:00Z",
         updatedAt: "2024-01-16T12:00:00Z",
+        url: "https://github.com/octocat/hello-world/issues/42",
       });
     });
 
@@ -397,6 +400,7 @@ describe("GitHubProvider", () => {
       );
       expect(issue.number).toBe(42);
       expect(issue.author.login).toBe("reporter");
+      expect(issue.url).toBe("https://github.com/octocat/hello-world/issues/42");
     });
 
     it.each([
@@ -417,7 +421,12 @@ describe("GitHubProvider", () => {
 
   describe("issues.create", () => {
     it("sends POST with correct body", async () => {
-      const created = { ...ghIssue, id: 1002, number: 43 };
+      const created = {
+        ...ghIssue,
+        id: 1002,
+        number: 43,
+        html_url: "https://github.com/octocat/hello-world/issues/43",
+      };
       mocks.client.mockResolvedValueOnce(created);
 
       const issue = await gh.issues.create("octocat", "hello-world", {
@@ -431,6 +440,7 @@ describe("GitHubProvider", () => {
         body: { title: "New bug", body: "Details here", labels: ["bug"] },
       });
       expect(issue.number).toBe(43);
+      expect(issue.url).toBe("https://github.com/octocat/hello-world/issues/43");
     });
   });
 
@@ -546,6 +556,7 @@ describe("GitHubProvider", () => {
         targetBranch: "main",
         merged: false,
         draft: true,
+        url: "https://github.com/octocat/hello-world/pull/99",
       });
     });
   });
@@ -559,6 +570,7 @@ describe("GitHubProvider", () => {
       expect(pr.sourceBranch).toBe("feature/dark-mode");
       expect(pr.targetBranch).toBe("main");
       expect(pr.draft).toBe(true);
+      expect(pr.url).toBe("https://github.com/octocat/hello-world/pull/99");
     });
   });
 
@@ -566,7 +578,7 @@ describe("GitHubProvider", () => {
     it("maps sourceBranch/targetBranch to head/base", async () => {
       mocks.client.mockResolvedValueOnce(ghPullRequest);
 
-      await gh.pullRequests.create("octocat", "hello-world", {
+      const pr = await gh.pullRequests.create("octocat", "hello-world", {
         title: "Add dark mode",
         body: "Implements it",
         sourceBranch: "feature/dark-mode",
@@ -584,6 +596,7 @@ describe("GitHubProvider", () => {
           draft: true,
         },
       });
+      expect(pr.url).toBe("https://github.com/octocat/hello-world/pull/99");
     });
   });
 
