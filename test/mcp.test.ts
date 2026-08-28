@@ -51,6 +51,7 @@ const toolNames = [
   "forges_pull_requests_create",
   "forges_users_get",
   "forges_users_authenticated",
+  "forges_auth_reload",
   "forges_threads_list",
   "forges_threads_get",
   "forges_threads_reply",
@@ -61,6 +62,7 @@ const toolNames = [
 const writingTools = new Set([
   "forges_issues_create",
   "forges_pull_requests_create",
+  "forges_auth_reload",
   "forges_threads_reply",
   "forges_threads_resolve",
   "forges_threads_unresolve",
@@ -130,6 +132,9 @@ describe("forges MCP server", () => {
     expect(
       response.tools.find((tool) => tool.name === "forges_threads_resolve")?.annotations,
     ).toMatchObject({ idempotentHint: true });
+    expect(
+      response.tools.find((tool) => tool.name === "forges_auth_reload")?.annotations,
+    ).toMatchObject({ readOnlyHint: false, idempotentHint: false });
   });
 
   it("exposes only supported platforms and no credential or endpoint parameters", async () => {
@@ -164,6 +169,25 @@ describe("forges MCP server", () => {
     });
     // Details never reach an MCP client, so the unbounded payload stays out of the result.
     expect(response.structuredContent).toBeUndefined();
+  });
+
+  it("reloads the pinned credential and returns the authenticated profile", async () => {
+    const user = { id: "1", login: "aeitwoen" };
+    mocks.users.authenticated.mockResolvedValue(user);
+    const client = await connectTestClient();
+
+    await client.callTool({
+      name: "forges_users_authenticated",
+      arguments: { platform: "github" },
+    });
+    const response = await client.callTool({
+      name: "forges_auth_reload",
+      arguments: { platform: "github" },
+    });
+
+    expect(mocks.resolveToken).toHaveBeenCalledTimes(2);
+    expect(mocks.createProvider).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: user });
   });
 
   it("reads the self-hosted endpoint from the server environment, not from a tool argument", async () => {

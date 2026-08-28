@@ -34,6 +34,26 @@ const baseUrlEnvByPlatform: Record<ForgesPlatform, string> = {
 const pinnedProviders = new Map<string, Provider>();
 /** Anonymous providers are isolated because no write may reuse one. */
 const anonymousReadProviders = new Map<string, Provider>();
+const credentialOperationTails = new Map<ForgesPlatform, Promise<void>>();
+
+/** Keep reloads and hosted writes ordered around one platform's pinned identity. */
+async function withCredentialOperation<T>(
+  platform: ForgesPlatform,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previous = credentialOperationTails.get(platform) ?? Promise.resolve();
+  const next = Promise.withResolvers<void>();
+  const tail = previous.then(() => next.promise);
+  credentialOperationTails.set(platform, tail);
+  await previous;
+
+  try {
+    return await operation();
+  } finally {
+    next.resolve();
+    if (credentialOperationTails.get(platform) === tail) credentialOperationTails.delete(platform);
+  }
+}
 
 function providerKey(platform: ForgesPlatform): string {
   const baseURL = process.env[baseUrlEnvByPlatform[platform]];
@@ -100,10 +120,19 @@ function readProvider(platform: ForgesPlatform): Provider {
   return provider;
 }
 
-/** Drop every pinned provider so the next call resolves its access level again. */
-export function resetPinnedProviders(): void {
-  pinnedProviders.clear();
-  anonymousReadProviders.clear();
+/** Drop pinned providers so the next matching call resolves its local credential again. */
+export function resetPinnedProviders(platform?: ForgesPlatform): void {
+  if (platform === undefined) {
+    pinnedProviders.clear();
+    anonymousReadProviders.clear();
+    return;
+  }
+
+  for (const providers of [pinnedProviders, anonymousReadProviders]) {
+    for (const key of providers.keys()) {
+      if (key === platform || key.startsWith(`${platform} `)) providers.delete(key);
+    }
+  }
 }
 
 export interface PlatformParams {
@@ -303,17 +332,19 @@ export async function getIssueComment(
 
 export async function createIssue(params: CreateIssueParams): Promise<ForgesToolResult<Issue>> {
   assertAssignees(params.assignees, params.platform);
-  const issue = await authenticatedProvider(params.platform).issues.create(
-    params.owner,
-    params.repo,
-    {
-      title: params.title,
-      body: params.body,
-      labels: params.labels,
-      assignees: params.assignees,
-    },
-  );
-  return result(params.platform, issue, assignmentNote(params.assignees, issue.assignees));
+  return withCredentialOperation(params.platform, async () => {
+    const issue = await authenticatedProvider(params.platform).issues.create(
+      params.owner,
+      params.repo,
+      {
+        title: params.title,
+        body: params.body,
+        labels: params.labels,
+        assignees: params.assignees,
+      },
+    );
+    return result(params.platform, issue, assignmentNote(params.assignees, issue.assignees));
+  });
 }
 
 export async function listPullRequests(
@@ -374,23 +405,25 @@ export async function createPullRequest(
   params: CreatePullRequestParams,
 ): Promise<ForgesToolResult<PullRequest>> {
   assertAssignees(params.assignees, params.platform);
-  const pullRequest = await authenticatedProvider(params.platform).pullRequests.create(
-    params.owner,
-    params.repo,
-    {
-      title: params.title,
-      body: params.body,
-      sourceBranch: params.sourceBranch,
-      targetBranch: params.targetBranch,
-      draft: params.draft,
-      assignees: params.assignees,
-    },
-  );
-  return result(
-    params.platform,
-    pullRequest,
-    assignmentNote(params.assignees, pullRequest.assignees),
-  );
+  return withCredentialOperation(params.platform, async () => {
+    const pullRequest = await authenticatedProvider(params.platform).pullRequests.create(
+      params.owner,
+      params.repo,
+      {
+        title: params.title,
+        body: params.body,
+        sourceBranch: params.sourceBranch,
+        targetBranch: params.targetBranch,
+        draft: params.draft,
+        assignees: params.assignees,
+      },
+    );
+    return result(
+      params.platform,
+      pullRequest,
+      assignmentNote(params.assignees, pullRequest.assignees),
+    );
+  });
 }
 
 export async function getUser(params: GetUserParams): Promise<ForgesToolResult<User>> {
@@ -398,11 +431,22 @@ export async function getUser(params: GetUserParams): Promise<ForgesToolResult<U
   return result(params.platform, user);
 }
 
-export async function getAuthenticatedUser(
-  params: PlatformParams,
-): Promise<ForgesToolResult<User>> {
-  const user = await authenticatedProvider(params.platform).users.authenticated();
-  return result(params.platform, user);
+function authenticatedUserResult(platform: ForgesPlatform): Promise<ForgesToolResult<User>> {
+  return authenticatedProvider(platform)
+    .users.authenticated()
+    .then((user) => result(platform, user));
+}
+
+export function getAuthenticatedUser(params: PlatformParams): Promise<ForgesToolResult<User>> {
+  return withCredentialOperation(params.platform, () => authenticatedUserResult(params.platform));
+}
+
+/** Replace one platform's pinned credential and return the newly authenticated account. */
+export function reloadAuthentication(params: PlatformParams): Promise<ForgesToolResult<User>> {
+  return withCredentialOperation(params.platform, () => {
+    resetPinnedProviders(params.platform);
+    return authenticatedUserResult(params.platform);
+  });
 }
 
 export interface ListThreadsParams extends RepositoryParams {
@@ -466,35 +510,39 @@ export async function getThread(params: GetThreadParams): Promise<ForgesToolResu
   return result(params.platform, thread);
 }
 
-export async function replyToThread(
-  params: ReplyThreadParams,
-): Promise<ForgesToolResult<ThreadComment>> {
-  const comment = await authenticatedProvider(params.platform).threads.reply(
-    params.owner,
-    params.repo,
-    params.number,
-    params.threadId,
-    { body: params.body },
-  );
-  return result(params.platform, comment);
+export function replyToThread(params: ReplyThreadParams): Promise<ForgesToolResult<ThreadComment>> {
+  return withCredentialOperation(params.platform, async () => {
+    const comment = await authenticatedProvider(params.platform).threads.reply(
+      params.owner,
+      params.repo,
+      params.number,
+      params.threadId,
+      { body: params.body },
+    );
+    return result(params.platform, comment);
+  });
 }
 
-export async function resolveThread(params: GetThreadParams): Promise<ForgesToolResult<Thread>> {
-  const thread = await authenticatedProvider(params.platform).threads.resolve(
-    params.owner,
-    params.repo,
-    params.number,
-    params.threadId,
-  );
-  return result(params.platform, thread);
+export function resolveThread(params: GetThreadParams): Promise<ForgesToolResult<Thread>> {
+  return withCredentialOperation(params.platform, async () => {
+    const thread = await authenticatedProvider(params.platform).threads.resolve(
+      params.owner,
+      params.repo,
+      params.number,
+      params.threadId,
+    );
+    return result(params.platform, thread);
+  });
 }
 
-export async function unresolveThread(params: GetThreadParams): Promise<ForgesToolResult<Thread>> {
-  const thread = await authenticatedProvider(params.platform).threads.unresolve(
-    params.owner,
-    params.repo,
-    params.number,
-    params.threadId,
-  );
-  return result(params.platform, thread);
+export function unresolveThread(params: GetThreadParams): Promise<ForgesToolResult<Thread>> {
+  return withCredentialOperation(params.platform, async () => {
+    const thread = await authenticatedProvider(params.platform).threads.unresolve(
+      params.owner,
+      params.repo,
+      params.number,
+      params.threadId,
+    );
+    return result(params.platform, thread);
+  });
 }

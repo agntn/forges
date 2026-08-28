@@ -5,6 +5,7 @@ import {
   createIssue,
   getAuthenticatedUser,
   getRepository,
+  reloadAuthentication,
   resetPinnedProviders,
 } from "../src/tool-operations.ts";
 
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => {
   const localLogin = { current: "aeitwoen" };
   const credentialToken = { current: "test-token" as string | null };
   const anonymousWrites = { current: 0 };
+  const issueCreateGate = { current: undefined as Promise<void> | undefined };
 
   const resolveToken = vi.fn(() => {
     const token = credentialToken.current;
@@ -45,6 +47,7 @@ const mocks = vi.hoisted(() => {
             if (anonymous) {
               anonymousWrites.current += 1;
             }
+            await issueCreateGate.current;
             return {
               id: "7",
               number: 7,
@@ -61,7 +64,14 @@ const mocks = vi.hoisted(() => {
     },
   );
 
-  return { localLogin, credentialToken, anonymousWrites, resolveToken, createProvider };
+  return {
+    localLogin,
+    credentialToken,
+    anonymousWrites,
+    issueCreateGate,
+    resolveToken,
+    createProvider,
+  };
 });
 
 vi.mock("../src/index.ts", () => ({
@@ -82,6 +92,7 @@ beforeEach(() => {
   mocks.localLogin.current = "aeitwoen";
   mocks.credentialToken.current = "test-token";
   mocks.anonymousWrites.current = 0;
+  mocks.issueCreateGate.current = undefined;
   mocks.resolveToken.mockClear();
   mocks.createProvider.mockClear();
   vi.stubEnv("FORGES_GITHUB_BASE_URL", undefined);
@@ -202,5 +213,42 @@ describe("configured provider", () => {
 
     expect(before.details.result.login).toBe("aeitwoen");
     expect(after.details.result.login).toBe("oritwoen");
+  });
+
+  it("can refresh one platform without dropping another platform's pin", async () => {
+    await getAuthenticatedUser({ platform: "github" });
+    await getAuthenticatedUser({ platform: "gitea" });
+    mocks.localLogin.current = "oritwoen";
+
+    const refreshed = await reloadAuthentication({ platform: "github" });
+
+    const untouched = await getAuthenticatedUser({ platform: "gitea" });
+    expect(refreshed.details.result.login).toBe("oritwoen");
+    expect(untouched.details.result.login).toBe("aeitwoen");
+  });
+
+  it("rejects reload when the replacement credential is missing", async () => {
+    await getAuthenticatedUser({ platform: "github" });
+    mocks.credentialToken.current = null;
+
+    await expect(reloadAuthentication({ platform: "github" })).rejects.toThrow(AuthenticationError);
+    await expect(createIssue(issueParams)).rejects.toThrow(AuthenticationError);
+  });
+
+  it("waits for an in-flight write before replacing its platform credential", async () => {
+    const writeGate = Promise.withResolvers<void>();
+    mocks.issueCreateGate.current = writeGate.promise;
+    const write = createIssue(issueParams);
+    await vi.waitFor(() => expect(mocks.createProvider).toHaveBeenCalledTimes(1));
+    mocks.localLogin.current = "oritwoen";
+
+    const reload = reloadAuthentication({ platform: "github" });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(mocks.createProvider).toHaveBeenCalledTimes(1);
+
+    writeGate.resolve();
+    await write;
+    const reloaded = await reload;
+    expect(reloaded.details.result.login).toBe("oritwoen");
   });
 });

@@ -227,6 +227,20 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_auth_reload",
+    label: "Reload Forges Authentication",
+    description: "Replace one platform's pinned local credential and return its authenticated user",
+    promptSnippet: "Reload a Git platform credential after an intentional local account switch.",
+    promptGuidelines: [
+      "Use forges_auth_reload only after the user intentionally changes trusted local authentication.",
+    ],
+    parameters: authenticatedUserParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).reloadAuthentication(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_threads_list",
     label: "Forges Threads",
     description:

@@ -40,6 +40,7 @@ import {
   listPullRequests,
   listRepositories,
   listThreads,
+  reloadAuthentication,
   replyToThread,
   resolveThread,
   unresolveThread,
@@ -82,6 +83,13 @@ const readAnnotations: Tool["annotations"] = {
 };
 /** Creating an issue, a pull request, or a reply twice leaves two of them behind. */
 const createAnnotations: Tool["annotations"] = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: true,
+};
+/** A repeated reload can adopt a different local account, so clients must not retry it blindly. */
+const credentialStateAnnotations: Tool["annotations"] = {
   readOnlyHint: false,
   destructiveHint: false,
   idempotentHint: false,
@@ -217,10 +225,19 @@ const tools: ToolDefinition[] = [
     name: "forges_users_authenticated",
     title: "Get Authenticated User",
     description:
-      "Get the profile of the account the locally detected credentials belong to. Call this before writing anything, because every write lands under that account and the server never takes a token as an argument. The credential is pinned the first time this server uses it, so a CLI login switched underneath a running server does not move later writes to another account.",
+      "Get the profile of the account the locally detected credentials belong to. Call this before writing anything, because every write lands under that account and the server never takes a token as an argument. The credential stays pinned until forges_auth_reload explicitly replaces it.",
     inputSchema: authenticatedUserParameters,
     annotations: readAnnotations,
     execute: getAuthenticatedUser,
+  }),
+  defineTool({
+    name: "forges_auth_reload",
+    title: "Reload Authentication",
+    description:
+      "Replace the local credential pinned for one platform, then return the newly authenticated profile. This changes server state but writes nothing to the Git host.",
+    inputSchema: authenticatedUserParameters,
+    annotations: credentialStateAnnotations,
+    execute: reloadAuthentication,
   }),
   defineTool({
     name: "forges_threads_list",
