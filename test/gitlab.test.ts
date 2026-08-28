@@ -578,6 +578,20 @@ describe("GitLabProvider", () => {
       expect(comment).toMatchObject({ id: "2201", body: "Hit the same thing on 16.9" });
     });
 
+    it("reads the current comment body on every call", async () => {
+      const edited = { ...glNote, body: "Edited after the first read" };
+      mockProjectResolve(278964);
+      mocks.cachedFetch.mockResolvedValue(glNote);
+      mocks.client.mockResolvedValueOnce(glNote).mockResolvedValueOnce(edited);
+
+      await gl.issues.getComment("gitlab-org", "gitlab-foss", 7, "2201");
+      const comment = await gl.issues.getComment("gitlab-org", "gitlab-foss", 7, "2201");
+
+      expect(comment.body).toBe("Edited after the first read");
+      expect(mocks.client).toHaveBeenCalledTimes(3);
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
+    });
+
     it("answers 404 for a note the list would drop", async () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glSystemNote);
@@ -789,6 +803,25 @@ describe("GitLabProvider", () => {
       });
     });
 
+    it("reads the current profile on every call", async () => {
+      const edited = { ...glUser, name: "Jane Doe" };
+      mocks.cachedFetch.mockImplementation((_client, url) =>
+        Promise.resolve(url === "/users" ? [glUserSearchHit] : glUser),
+      );
+      mocks.client
+        .mockResolvedValueOnce([glUserSearchHit])
+        .mockResolvedValueOnce(glUser)
+        .mockResolvedValueOnce([glUserSearchHit])
+        .mockResolvedValueOnce(edited);
+
+      await gl.users.get("johndoe");
+      const user = await gl.users.get("johndoe");
+
+      expect(user.name).toBe("Jane Doe");
+      expect(mocks.client).toHaveBeenCalledTimes(4);
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
+    });
+
     it("falls back to public_email when email is hidden as an empty string", async () => {
       mocks.client.mockResolvedValueOnce([glUserSearchHit]);
       mocks.client.mockResolvedValueOnce({
@@ -826,6 +859,19 @@ describe("GitLabProvider", () => {
 
       expect(mocks.client).toHaveBeenCalledWith("/user");
       expect(user.login).toBe("johndoe");
+    });
+
+    it("reads the current authenticated identity on every call", async () => {
+      const switched = { ...glUser, id: 5678, username: "janedoe" };
+      mocks.cachedFetch.mockResolvedValue(glUser);
+      mocks.client.mockResolvedValueOnce(glUser).mockResolvedValueOnce(switched);
+
+      await gl.users.authenticated();
+      const user = await gl.users.authenticated();
+
+      expect(user.login).toBe("janedoe");
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
     });
   });
 

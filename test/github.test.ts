@@ -509,19 +509,29 @@ describe("GitHubProvider", () => {
 
   describe("issues.getComment", () => {
     it("reads one comment by id, without the issue number", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce(ghComment);
+      mocks.client.mockResolvedValueOnce(ghComment);
 
       const comment = await gh.issues.getComment("octocat", "hello-world", 42, "3001");
 
-      expect(mocks.cachedFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/octocat/hello-world/issues/comments/3001",
-      );
+      expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/comments/3001");
       expect(comment).toMatchObject({ id: "3001", body: "Reproduced on 1.2.3 as well" });
     });
 
+    it("reads the current comment body on every call", async () => {
+      const edited = { ...ghComment, body: "Edited after the first read" };
+      mocks.cachedFetch.mockResolvedValue(ghComment);
+      mocks.client.mockResolvedValueOnce(ghComment).mockResolvedValueOnce(edited);
+
+      await gh.issues.getComment("octocat", "hello-world", 42, "3001");
+      const comment = await gh.issues.getComment("octocat", "hello-world", 42, "3001");
+
+      expect(comment.body).toBe("Edited after the first read");
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
+    });
+
     it("answers 404 when the comment belongs to another issue", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce(ghComment);
+      mocks.client.mockResolvedValueOnce(ghComment);
 
       await expect(gh.issues.getComment("octocat", "hello-world", 7, "3001")).rejects.toThrow(
         NotFoundError,
@@ -529,7 +539,7 @@ describe("GitHubProvider", () => {
     });
 
     it("skips the association check when the payload omits issue_url", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce({ ...ghComment, issue_url: undefined });
+      mocks.client.mockResolvedValueOnce({ ...ghComment, issue_url: undefined });
 
       const comment = await gh.issues.getComment("octocat", "hello-world", 7, "3001");
 
@@ -539,17 +549,14 @@ describe("GitHubProvider", () => {
 
   describe("pullRequests.getComment", () => {
     it("reads the issue-comments endpoint, which carries the PR discussion", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce({
+      mocks.client.mockResolvedValueOnce({
         ...ghComment,
         issue_url: "https://api.github.com/repos/octocat/hello-world/issues/99",
       });
 
       const comment = await gh.pullRequests.getComment("octocat", "hello-world", 99, "3001");
 
-      expect(mocks.cachedFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/octocat/hello-world/issues/comments/3001",
-      );
+      expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/comments/3001");
       expect(comment.id).toBe("3001");
     });
   });
@@ -699,11 +706,11 @@ describe("GitHubProvider", () => {
 
   describe("users.get", () => {
     it("returns mapped user", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce(ghUser);
+      mocks.client.mockResolvedValueOnce(ghUser);
 
       const user = await gh.users.get("octocat");
 
-      expect(mocks.cachedFetch).toHaveBeenCalledWith(mocks.client, "/users/octocat");
+      expect(mocks.client).toHaveBeenCalledWith("/users/octocat");
       expect(user).toMatchObject({
         id: "583231",
         login: "octocat",
@@ -722,8 +729,21 @@ describe("GitHubProvider", () => {
       });
     });
 
+    it("reads the current profile on every call", async () => {
+      const edited = { ...ghUser, name: "Edited Octocat" };
+      mocks.cachedFetch.mockResolvedValue(ghUser);
+      mocks.client.mockResolvedValueOnce(ghUser).mockResolvedValueOnce(edited);
+
+      await gh.users.get("octocat");
+      const user = await gh.users.get("octocat");
+
+      expect(user.name).toBe("Edited Octocat");
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
+    });
+
     it("defaults profile fields when the payload lacks them, like GitBucket", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce({
+      mocks.client.mockResolvedValueOnce({
         id: 1,
         login: "root",
         name: null,
@@ -749,12 +769,25 @@ describe("GitHubProvider", () => {
 
   describe("users.authenticated", () => {
     it("fetches /user endpoint", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce({ ...ghUser, site_admin: true });
+      mocks.client.mockResolvedValueOnce({ ...ghUser, site_admin: true });
 
       const user = await gh.users.authenticated();
 
-      expect(mocks.cachedFetch).toHaveBeenCalledWith(mocks.client, "/user");
+      expect(mocks.client).toHaveBeenCalledWith("/user");
       expect(user.isAdmin).toBe(true);
+    });
+
+    it("reads the current authenticated identity on every call", async () => {
+      const switched = { ...ghUser, id: 2, login: "monalisa" };
+      mocks.cachedFetch.mockResolvedValue(ghUser);
+      mocks.client.mockResolvedValueOnce(ghUser).mockResolvedValueOnce(switched);
+
+      await gh.users.authenticated();
+      const user = await gh.users.authenticated();
+
+      expect(user.login).toBe("monalisa");
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
     });
   });
 
@@ -798,7 +831,7 @@ describe("GitHubProvider", () => {
     });
 
     it("maps site_admin → isAdmin", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce({
+      mocks.client.mockResolvedValueOnce({
         ...ghUser,
         site_admin: true,
       });
@@ -915,7 +948,7 @@ describe("GitHubProvider", () => {
     });
 
     it("throws AuthenticationError on 401", async () => {
-      mocks.cachedFetch.mockRejectedValueOnce(makeFetchError(401));
+      mocks.client.mockRejectedValueOnce(makeFetchError(401));
       await expect(gh.users.authenticated()).rejects.toThrow(AuthenticationError);
     });
 

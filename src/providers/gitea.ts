@@ -556,8 +556,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     commentId: string,
   ): Promise<Comment> {
     try {
-      const data = await cachedFetch<GiteaComment>(
-        this.client,
+      const data = await this.client<GiteaComment>(
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/comments/${encodePathSegment(commentId)}`,
       );
       const association = data.issue_url || data.pull_request_url;
@@ -586,9 +585,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
 
   protected override async getUser(username: string): Promise<User> {
     try {
-      return this.mapUser(
-        await cachedFetch<GiteaUser>(this.client, `/users/${encodePathSegment(username)}`),
-      );
+      return this.mapUser(await this.client<GiteaUser>(`/users/${encodePathSegment(username)}`));
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
@@ -596,7 +593,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
 
   protected override async getAuthenticatedUser(): Promise<User> {
     try {
-      return this.mapUser(await cachedFetch<GiteaUser>(this.client, "/user"));
+      return this.mapUser(await this.client<GiteaUser>("/user"));
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }

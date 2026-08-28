@@ -778,6 +778,19 @@ describe("Gitea Provider", () => {
       expect(comment).toMatchObject({ id: "21", body: "Same here on 1.22" });
     });
 
+    it("reads the current comment body on every call", async () => {
+      const edited = giteaComment({ body: "Edited after the first read" });
+      mockedCachedFetch.mockResolvedValue(giteaComment());
+      mockClient.mockResolvedValueOnce(giteaComment()).mockResolvedValueOnce(edited);
+
+      await provider.issues.getComment("testowner", "test-repo", 1, "21");
+      const comment = await provider.issues.getComment("testowner", "test-repo", 1, "21");
+
+      expect(comment.body).toBe("Edited after the first read");
+      expect(mockClient).toHaveBeenCalledTimes(2);
+      expect(mockedCachedFetch).not.toHaveBeenCalled();
+    });
+
     it("answers 404 when the comment belongs to another issue", async () => {
       mockClient.mockResolvedValueOnce(giteaComment());
 
@@ -841,6 +854,19 @@ describe("Gitea Provider", () => {
         url: "https://gitea.com/testuser",
       });
     });
+
+    it("reads the current profile on every call", async () => {
+      const edited = giteaUser({ full_name: "Edited User" });
+      mockedCachedFetch.mockResolvedValue(giteaUser());
+      mockClient.mockResolvedValueOnce(giteaUser()).mockResolvedValueOnce(edited);
+
+      await provider.users.get("testuser");
+      const user = await provider.users.get("testuser");
+
+      expect(user.name).toBe("Edited User");
+      expect(mockClient).toHaveBeenCalledTimes(2);
+      expect(mockedCachedFetch).not.toHaveBeenCalled();
+    });
   });
 
   describe("users.authenticated", () => {
@@ -851,6 +877,19 @@ describe("Gitea Provider", () => {
 
       expect(result.isAdmin).toBe(true);
       expect(mockClient).toHaveBeenCalledWith("/user");
+    });
+
+    it("reads the current authenticated identity on every call", async () => {
+      const switched = giteaUser({ id: 43, login: "anotheruser" });
+      mockedCachedFetch.mockResolvedValue(giteaUser());
+      mockClient.mockResolvedValueOnce(giteaUser()).mockResolvedValueOnce(switched);
+
+      await provider.users.authenticated();
+      const user = await provider.users.authenticated();
+
+      expect(user.login).toBe("anotheruser");
+      expect(mockClient).toHaveBeenCalledTimes(2);
+      expect(mockedCachedFetch).not.toHaveBeenCalled();
     });
   });
 

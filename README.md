@@ -160,7 +160,7 @@ Thread list operations accept `ListThreadOptions`: `page`, `perPage`, and `state
 
 ## Caching
 
-Stable GET resources are cached automatically using [unstorage](https://unstorage.unjs.io) with an LRU driver (5 min TTL, 500 entries). Issue and pull request item reads skip the cache because their state can change between verification calls. Entries are scoped to the client's base URL and a hash of its token, so two providers in one process, with different hosts or tokens, never read each other's responses. Works out of the box, but you can tweak it:
+Stable GET resources are cached automatically using [unstorage](https://unstorage.unjs.io) with an LRU driver (5 min TTL, 500 entries). Issue, pull request, discussion comment, and user item reads skip the cache because their state can change between verification calls. Entries are scoped to the client's base URL and a hash of its token, so two providers in one process, with different hosts or tokens, never read each other's responses. Works out of the box, but you can tweak it:
 
 ```typescript
 const github = createProvider("github", {
