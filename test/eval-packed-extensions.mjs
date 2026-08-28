@@ -22,6 +22,7 @@ const expectedToolNames = [
   "forges_issues_comments_get",
   "forges_issues_create",
   "forges_pull_requests_list",
+  "forges_pull_requests_search",
   "forges_pull_requests_get",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",

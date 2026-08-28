@@ -62,12 +62,12 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     perPage,
     state,
   });
-  const searchRepositoryIssuesParameters = Type.Object({
+  const searchRepositoryItemsParameters = Type.Object({
     platform,
     owner,
     repo,
     query: Type.String({
-      description: "Issue search query in the selected provider's syntax",
+      description: "Search query in the selected provider's syntax",
       minLength: 1,
     }),
     page,
@@ -166,7 +166,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     name: "forges_issues_search",
     label: "Search Forges Issues",
     description: "Search repository issues with the selected platform's query syntax",
-    parameters: searchRepositoryIssuesParameters,
+    parameters: searchRepositoryItemsParameters,
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).searchIssues(params);
@@ -225,6 +225,17 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequests(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_search",
+    label: "Search Forges Pull Requests",
+    description: "Search repository pull requests with the selected platform's query syntax",
+    parameters: searchRepositoryItemsParameters,
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).searchPullRequests(params);
     },
   });
 

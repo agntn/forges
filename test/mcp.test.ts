@@ -9,7 +9,7 @@ import { resetPinnedProviders } from "../src/tool-operations.ts";
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
   const issues = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
-  const pullRequests = { list: vi.fn(), get: vi.fn(), create: vi.fn() };
+  const pullRequests = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
   const users = { get: vi.fn(), authenticated: vi.fn() };
   const threads = {
     list: vi.fn(),
@@ -46,6 +46,7 @@ const toolNames = [
   "forges_issues_comments_get",
   "forges_issues_create",
   "forges_pull_requests_list",
+  "forges_pull_requests_search",
   "forges_pull_requests_get",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
@@ -281,6 +282,54 @@ describe("forges MCP server", () => {
     expect(JSON.parse(answer)).toMatchObject({
       note: "Issue bodies are omitted from search output; use forges_issues_get to read one body.",
       result: { items: [{ number: 46 }], incomplete: false },
+    });
+  });
+
+  it("searches pull requests through the shared operation", async () => {
+    mocks.pullRequests.search.mockResolvedValue({
+      items: [
+        {
+          id: "82",
+          number: 82,
+          title: "Search repository issues",
+          body: "large body",
+          state: "closed",
+          labels: [],
+          author: { login: "aeitwoen" },
+          assignees: [{ login: "aeitwoen" }],
+          createdAt: "2026-08-28T18:17:14Z",
+          updatedAt: "2026-08-28T18:18:58Z",
+          url: "https://github.com/agntn/forges/pull/82",
+          merged: true,
+          draft: false,
+        },
+      ],
+      incomplete: false,
+      hasNextPage: false,
+    });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_search",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        query: "issue search",
+        state: "closed",
+      },
+    });
+
+    expect(mocks.pullRequests.search).toHaveBeenCalledWith("agntn", "forges", "issue search", {
+      page: undefined,
+      perPage: undefined,
+      state: "closed",
+    });
+    const answer = text(response.content);
+    expect(answer).not.toContain("large body");
+    expect(JSON.parse(answer)).toMatchObject({
+      note: "Pull-request bodies and revision details are omitted from search output; use forges_pull_requests_get to read one in full.",
+      result: { items: [{ number: 82, merged: true }], incomplete: false },
     });
   });
 

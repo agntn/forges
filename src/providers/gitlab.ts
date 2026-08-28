@@ -18,6 +18,7 @@ import type {
   RepositoryPermission,
   Issue,
   PullRequest,
+  PullRequestSearchItem,
   User,
   Owner,
   PageResult,
@@ -319,8 +320,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     };
   }
 
-  protected override mapPullRequest(raw: GitLabMergeRequest): PullRequest {
-    const merged = raw.merged_at !== null;
+  private mapPullRequestSearchItem(raw: GitLabMergeRequest): PullRequestSearchItem {
     return {
       id: String(raw.id),
       number: raw.iid,
@@ -333,11 +333,18 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       createdAt: raw.created_at,
       updatedAt: raw.updated_at,
       url: raw.web_url,
+      merged: raw.merged_at !== null,
+      draft: raw.draft,
+    };
+  }
+
+  protected override mapPullRequest(raw: GitLabMergeRequest): PullRequest {
+    const searchItem = this.mapPullRequestSearchItem(raw);
+    return {
+      ...searchItem,
       sourceBranch: raw.source_branch,
       targetBranch: raw.target_branch,
-      merged,
-      draft: raw.draft,
-      mergeCommitSha: merged ? (raw.merge_commit_sha ?? "") : "",
+      mergeCommitSha: searchItem.merged ? (raw.merge_commit_sha ?? "") : "",
       headSha: raw.sha ?? "",
       mergeable:
         raw.merge_status === "can_be_merged"
@@ -681,6 +688,40 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
       const prs = (response.data ?? []).map((raw) => this.mapPullRequest(raw));
       return this.parsePagination(prs, response.headers);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async searchPullRequests(
+    owner: string,
+    repo: string,
+    search: string,
+    options?: ListOptions,
+  ): Promise<SearchPageResult<PullRequestSearchItem>> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const query: Record<string, string | number> = {
+        search,
+        page: options?.page ?? 1,
+        per_page: options?.perPage ?? 30,
+      };
+
+      const stateFilter = this.mapStateFilter(options?.state);
+      if (stateFilter) query.state = stateFilter;
+
+      const response = await rawFetch<GitLabMergeRequest[]>(
+        this.client,
+        `/projects/${projectId}/merge_requests`,
+        { query },
+      );
+      return {
+        ...this.parsePagination(
+          (response.data ?? []).map((raw) => this.mapPullRequestSearchItem(raw)),
+          response.headers,
+        ),
+        incomplete: false,
+      };
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }

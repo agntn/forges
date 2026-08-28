@@ -14,6 +14,7 @@ import type {
   ListThreadOptions,
   PageResult,
   PullRequest,
+  PullRequestSearchItem,
   ReplyThreadInput,
   Repository,
   SearchPageResult,
@@ -161,9 +162,12 @@ export interface ListRepositoryItemsParams extends RepositoryParams {
   state?: IssueState | "all";
 }
 
-export interface SearchRepositoryIssuesParams extends ListRepositoryItemsParams {
+export interface SearchRepositoryItemsParams extends ListRepositoryItemsParams {
   query: string;
 }
+
+export type SearchRepositoryIssuesParams = SearchRepositoryItemsParams;
+export type SearchRepositoryPullRequestsParams = SearchRepositoryItemsParams;
 
 export interface GetRepositoryItemParams extends RepositoryParams {
   number: number;
@@ -384,6 +388,22 @@ export async function listPullRequests(
     params.platform,
     summarizeIssuePage(pullRequests),
     "Pull-request bodies are omitted from list output; use forges_pull_requests_get to read one body.",
+  );
+}
+
+export async function searchPullRequests(
+  params: SearchRepositoryPullRequestsParams,
+): Promise<ForgesToolResult<SearchPageResult<Omit<PullRequestSearchItem, "body">>>> {
+  const pullRequests = await readProvider(params.platform).pullRequests.search(
+    params.owner,
+    params.repo,
+    params.query,
+    listOptions(params),
+  );
+  return result(
+    params.platform,
+    summarizeIssuePage(pullRequests),
+    "Pull-request bodies and revision details are omitted from search output; use forges_pull_requests_get to read one in full.",
   );
 }
 

@@ -661,6 +661,55 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("pullRequests.search", () => {
+    it("searches repository pull requests without fetching each result", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [
+          giteaIssue({
+            state: "closed",
+            html_url: "https://gitea.com/testowner/test-repo/pulls/1",
+            pull_request: { merged: true, draft: true },
+          }),
+        ],
+        headers: makeHeaders({
+          Link: '<https://gitea.com/api/v1/repos/testowner/test-repo/issues?q=runner&page=3>; rel="next"',
+        }),
+        status: 200,
+      });
+
+      const result = await provider.pullRequests.search(
+        "testowner",
+        "test-repo",
+        "runner timeout",
+        { state: "closed", page: 2, perPage: 1 },
+      );
+
+      expect(mockedRawFetch).toHaveBeenCalledTimes(1);
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        expect.anything(),
+        "/repos/testowner/test-repo/issues",
+        {
+          query: {
+            q: "runner timeout",
+            state: "closed",
+            type: "pulls",
+            page: "2",
+            limit: "1",
+          },
+        },
+      );
+      expect(mockClient).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        items: [{ number: 1, merged: true, draft: true }],
+        incomplete: false,
+        hasNextPage: true,
+        nextPage: 3,
+      });
+      expect(result.items[0]).not.toHaveProperty("sourceBranch");
+      expect(result.items[0]).not.toHaveProperty("headSha");
+    });
+  });
+
   describe("pullRequests.get", () => {
     it("returns the merge commit SHA for a merged pull request", async () => {
       mockClient.mockResolvedValueOnce(

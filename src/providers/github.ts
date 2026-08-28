@@ -9,6 +9,7 @@ import type {
   Repository,
   Issue,
   PullRequest,
+  PullRequestSearchItem,
   User,
   Owner,
   PageResult,
@@ -89,6 +90,10 @@ interface GitHubLabel {
   name: string;
 }
 
+interface GitHubPullRequestSearchMetadata {
+  merged_at?: string | null;
+}
+
 interface GitHubIssue {
   id: number;
   number: number;
@@ -102,7 +107,8 @@ interface GitHubIssue {
   updated_at: string;
   html_url: string;
   repository_url?: string;
-  pull_request?: unknown;
+  pull_request?: GitHubPullRequestSearchMetadata;
+  draft?: boolean;
 }
 
 interface GitHubIssueSearchResponse {
@@ -410,10 +416,18 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     };
   }
 
+  private mapPullRequestSearchItem(raw: GitHubIssue): PullRequestSearchItem {
+    return {
+      ...this.mapIssue(raw),
+      merged: raw.pull_request?.merged_at != null,
+      draft: raw.draft ?? false,
+    };
+  }
+
   protected override mapPullRequest(raw: GitHubPullRequest): PullRequest {
     const merged = raw.merged ?? raw.merged_at != null;
     return {
-      ...this.mapIssue(raw),
+      ...this.mapPullRequestSearchItem(raw),
       sourceBranch: raw.head.ref,
       targetBranch: raw.base.ref,
       merged,
@@ -661,6 +675,58 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       );
 
       return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequest(raw));
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async searchPullRequests(
+    owner: string,
+    repo: string,
+    searchQuery: string,
+    options?: ListOptions,
+  ): Promise<SearchPageResult<PullRequestSearchItem>> {
+    try {
+      const encodedOwner = encodePathSegment(owner);
+      const encodedRepo = encodePathSegment(repo);
+      const qualifiers = [`repo:${owner}/${repo}`, "is:pr"];
+      if (options?.state && options.state !== "all") qualifiers.push(`is:${options.state}`);
+
+      const query: Record<string, string> = {
+        q: `${searchQuery} ${qualifiers.join(" ")}`,
+      };
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+
+      const { data, headers } = await rawFetch<GitHubIssueSearchResponse>(
+        this.client,
+        "/search/issues",
+        { query },
+      );
+      const expectedRepositoryPath = `/repos/${encodedOwner}/${encodedRepo}`.toLowerCase();
+      const rawPullRequests = data?.items ?? [];
+      const scopedPullRequests = rawPullRequests.filter((pullRequest) => {
+        if (pullRequest.pull_request === undefined) return false;
+        if (options?.state && options.state !== "all" && pullRequest.state !== options.state)
+          return false;
+        if (!pullRequest.repository_url) return false;
+        try {
+          return new URL(pullRequest.repository_url).pathname
+            .toLowerCase()
+            .endsWith(expectedRepositoryPath);
+        } catch {
+          return false;
+        }
+      });
+
+      return {
+        ...buildPageResult(scopedPullRequests, headers, (raw) =>
+          this.mapPullRequestSearchItem(raw),
+        ),
+        incomplete:
+          (data?.incomplete_results ?? false) ||
+          scopedPullRequests.length !== rawPullRequests.length,
+      };
     } catch (error) {
       throw normalizeError(error, "github");
     }

@@ -17,6 +17,7 @@ import type {
   Repository,
   Issue,
   PullRequest,
+  PullRequestSearchItem,
   User,
   Owner,
   PageResult,
@@ -96,6 +97,10 @@ interface GiteaIssue {
   created_at: string;
   updated_at: string;
   html_url?: string | null;
+  pull_request?: {
+    merged?: boolean;
+    draft?: boolean;
+  } | null;
 }
 
 interface GiteaPullRequest {
@@ -266,20 +271,21 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     };
   }
 
+  private mapPullRequestSearchItem(raw: GiteaIssue): PullRequestSearchItem {
+    return {
+      ...this.mapIssue(raw),
+      merged: raw.pull_request?.merged ?? false,
+      draft: raw.pull_request?.draft ?? false,
+    };
+  }
+
   protected override mapPullRequest(raw: GiteaPullRequest): PullRequest {
     const merged = raw.merged ?? false;
     return {
-      id: String(raw.id),
-      number: raw.number,
-      title: raw.title,
-      body: raw.body ?? "",
-      state: raw.state === "open" ? "open" : "closed",
-      labels: raw.labels?.map((label) => label.name) ?? [],
-      author: { login: raw.user.login },
-      assignees: raw.assignees?.map(({ login }) => ({ login })) ?? [],
-      createdAt: raw.created_at,
-      updatedAt: raw.updated_at,
-      url: raw.html_url ?? "",
+      ...this.mapPullRequestSearchItem({
+        ...raw,
+        pull_request: { merged, draft: raw.draft },
+      }),
       sourceBranch: raw.head?.ref ?? "",
       targetBranch: raw.base?.ref ?? "",
       merged,
@@ -477,6 +483,30 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         { query },
       );
       return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequest(raw));
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async searchPullRequests(
+    owner: string,
+    repo: string,
+    searchQuery: string,
+    options?: ListOptions,
+  ): Promise<SearchPageResult<PullRequestSearchItem>> {
+    try {
+      const query = buildListQuery(options);
+      query.q = searchQuery;
+      query.type = "pulls";
+      const { data, headers } = await rawFetch<GiteaIssue[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`,
+        { query },
+      );
+      return {
+        ...buildPageResult(data ?? [], headers, (raw) => this.mapPullRequestSearchItem(raw)),
+        incomplete: false,
+      };
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }

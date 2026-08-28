@@ -20,7 +20,7 @@ import {
   replyThreadParameters,
   repositoryItemParameters,
   repositoryParameters,
-  searchRepositoryIssuesParameters,
+  searchRepositoryItemsParameters,
   threadParameters,
   userParameters,
 } from "../packages/shared/forges-tool-schemas.ts";
@@ -44,6 +44,7 @@ import {
   reloadAuthentication,
   replyToThread,
   searchIssues,
+  searchPullRequests,
   resolveThread,
   unresolveThread,
   type ForgesToolResult,
@@ -138,7 +139,7 @@ const tools: ToolDefinition[] = [
     title: "Search Issues",
     description:
       "Search issues inside one repository with the selected platform's query syntax, optionally filtered by state. Bodies are omitted; read one result with forges_issues_get. Results are paged, and incomplete says whether the search is known to be partial.",
-    inputSchema: searchRepositoryIssuesParameters,
+    inputSchema: searchRepositoryItemsParameters,
     annotations: readAnnotations,
     execute: searchIssues,
   }),
@@ -186,6 +187,15 @@ const tools: ToolDefinition[] = [
     inputSchema: listRepositoryItemsParameters,
     annotations: readAnnotations,
     execute: listPullRequests,
+  }),
+  defineTool({
+    name: "forges_pull_requests_search",
+    title: "Search Pull Requests",
+    description:
+      "Search pull requests inside one repository with the selected platform's query syntax, optionally filtered by state. Bodies and revision details are omitted; read one result with forges_pull_requests_get. Results are paged, and incomplete says whether the search is known to be partial.",
+    inputSchema: searchRepositoryItemsParameters,
+    annotations: readAnnotations,
+    execute: searchPullRequests,
   }),
   defineTool({
     name: "forges_pull_requests_get",

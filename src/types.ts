@@ -84,14 +84,16 @@ export interface Issue {
   url: string;
 }
 
-/**
- * Pull request information
- */
-export interface PullRequest extends Issue {
-  sourceBranch: string;
-  targetBranch: string;
+/** Pull-request fields available directly from every provider's search response. */
+export interface PullRequestSearchItem extends Issue {
   merged: boolean;
   draft: boolean;
+}
+
+/** Pull request information. */
+export interface PullRequest extends PullRequestSearchItem {
+  sourceBranch: string;
+  targetBranch: string;
   mergeCommitSha: string;
   headSha: string;
   mergeable: boolean | null;
@@ -267,6 +269,12 @@ export interface IssueResource {
  */
 export interface PullRequestResource {
   list(owner: string, repo: string, options?: ListOptions): Promise<PageResult<PullRequest>>;
+  search(
+    owner: string,
+    repo: string,
+    query: string,
+    options?: ListOptions,
+  ): Promise<SearchPageResult<PullRequestSearchItem>>;
   get(owner: string, repo: string, number: number): Promise<PullRequest>;
   create(owner: string, repo: string, input: CreatePullRequestInput): Promise<PullRequest>;
   listComments(

@@ -25,7 +25,13 @@ const mocks = vi.hoisted(() => {
     create: vi.fn(),
     listComments: vi.fn(),
   };
-  const pullRequests = { list: vi.fn(), get: vi.fn(), create: vi.fn(), listComments: vi.fn() };
+  const pullRequests = {
+    list: vi.fn(),
+    search: vi.fn(),
+    get: vi.fn(),
+    create: vi.fn(),
+    listComments: vi.fn(),
+  };
   const users = { get: vi.fn(), authenticated: vi.fn() };
   const threads = {
     list: vi.fn(),
@@ -62,6 +68,7 @@ const toolNames = [
   "forges_issues_comments_get",
   "forges_issues_create",
   "forges_pull_requests_list",
+  "forges_pull_requests_search",
   "forges_pull_requests_get",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
@@ -132,6 +139,11 @@ beforeEach(() => {
   vi.stubEnv("FORGES_GITEA_BASE_URL", undefined);
   mocks.repos.list.mockResolvedValue({ items: [], hasNextPage: false });
   mocks.issues.search.mockResolvedValue({ items: [], incomplete: false, hasNextPage: false });
+  mocks.pullRequests.search.mockResolvedValue({
+    items: [],
+    incomplete: false,
+    hasNextPage: false,
+  });
   mocks.issues.create.mockResolvedValue({
     id: "42",
     number: 42,
@@ -210,6 +222,36 @@ describe("Forges Pi extension", () => {
     );
 
     expect(mocks.issues.search).toHaveBeenCalledWith("agntn", "forges", "credential", {
+      page: 2,
+      perPage: 10,
+      state: "closed",
+    });
+    expect(result.details.result).toEqual({
+      items: [],
+      incomplete: false,
+      hasNextPage: false,
+    });
+  });
+
+  it("executes pull-request search through the shared provider operation", async () => {
+    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_search");
+    const result = await tool.execute(
+      "test",
+      {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        query: "credential",
+        state: "closed",
+        page: 2,
+        perPage: 10,
+      },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+
+    expect(mocks.pullRequests.search).toHaveBeenCalledWith("agntn", "forges", "credential", {
       page: 2,
       perPage: 10,
       state: "closed",
