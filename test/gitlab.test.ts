@@ -562,6 +562,38 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("issues.search", () => {
+    it("searches project issues with text, state, and pagination", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glIssue],
+        headers: glHeaders({ nextPage: "3", total: "7" }),
+      });
+
+      const result = await gl.issues.search("gitlab-org", "gitlab-foss", "runner timeout", {
+        state: "open",
+        page: 2,
+        perPage: 1,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/projects/278964/issues", {
+        query: {
+          search: "runner timeout",
+          state: "opened",
+          page: 2,
+          per_page: 1,
+        },
+      });
+      expect(result).toMatchObject({
+        items: [expect.objectContaining({ number: 15 })],
+        incomplete: false,
+        totalCount: 7,
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+  });
+
   describe("issues.get", () => {
     it("uses iid for project-scoped lookup", async () => {
       mockProjectResolve(278964);

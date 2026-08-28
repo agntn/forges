@@ -137,6 +137,14 @@ describe("createProvider factory", () => {
     expect(createProvider("gitlab", baseConfig)).toBeInstanceOf(Provider);
     expect(createProvider("gitea", baseConfig)).toBeInstanceOf(Provider);
   });
+
+  it("keeps a default search fallback for custom providers", async () => {
+    const fallback: unknown = Reflect.get(Provider.prototype, "searchIssues");
+    expect(typeof fallback).toBe("function");
+    if (typeof fallback !== "function") throw new Error("searchIssues fallback is missing");
+
+    await expect(fallback()).rejects.toThrow("Issue search is not supported by this provider");
+  });
 });
 
 // --- Cross-provider class consistency ---
@@ -166,6 +174,7 @@ describe("cross-provider class consistency", () => {
       const p = providers[platform];
       expect(p.issues).toBeDefined();
       expect(typeof p.issues.list).toBe("function");
+      expect(typeof p.issues.search).toBe("function");
       expect(typeof p.issues.get).toBe("function");
       expect(typeof p.issues.create).toBe("function");
       expect(typeof p.issues.listComments).toBe("function");
@@ -214,8 +223,8 @@ describe("cross-provider class consistency", () => {
       expect(p.repos.list.length).toBeGreaterThanOrEqual(1);
       expect(p.repos.get.length).toBeGreaterThanOrEqual(2);
 
-      // issues: list(owner, repo, options?), get(owner, repo, number), create(owner, repo, input)
       expect(p.issues.list.length).toBeGreaterThanOrEqual(2);
+      expect(p.issues.search.length).toBeGreaterThanOrEqual(3);
       expect(p.issues.get.length).toBeGreaterThanOrEqual(3);
       expect(p.issues.create.length).toBeGreaterThanOrEqual(3);
       expect(p.issues.listComments.length).toBeGreaterThanOrEqual(3);

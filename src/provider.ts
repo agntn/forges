@@ -3,6 +3,7 @@
  */
 
 import { assertAssignees } from "./assignees.ts";
+import { ForgesError } from "./errors.ts";
 import type {
   Comment,
   CreateIssueInput,
@@ -19,6 +20,7 @@ import type {
   ReplyThreadInput,
   Repository,
   RepositoryResource,
+  SearchPageResult,
   Thread,
   ThreadComment,
   ThreadResource,
@@ -63,6 +65,12 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.issues = {
       list: (owner, repo, options) => this.listIssues(owner, repo, options),
+      search: async (owner, repo, query, options) => {
+        if (query.trim() === "") {
+          throw new ForgesError("Issue search query must not be empty", 400);
+        }
+        return this.searchIssues(owner, repo, query, options);
+      },
       get: (owner, repo, number) => this.getIssue(owner, repo, number),
       create: async (owner, repo, input) => {
         assertAssignees(input.assignees);
@@ -118,6 +126,14 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     repo: string,
     options?: ListOptions,
   ): Promise<PageResult<Issue>>;
+  protected searchIssues(
+    _owner: string,
+    _repo: string,
+    _query: string,
+    _options?: ListOptions,
+  ): Promise<SearchPageResult<Issue>> {
+    return Promise.reject(new ForgesError("Issue search is not supported by this provider", 501));
+  }
   protected abstract getIssue(owner: string, repo: string, number: number): Promise<Issue>;
   protected abstract createIssue(
     owner: string,

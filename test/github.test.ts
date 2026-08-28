@@ -456,6 +456,103 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("issues.search", () => {
+    it("searches one repository with provider query syntax, state, and pagination", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: {
+          items: [
+            {
+              ...ghIssue,
+              state: "closed",
+              user: null,
+              repository_url: "https://github.example/api/v3/repos/OctoCat/Hello-World",
+            },
+          ],
+          total_count: 1,
+          incomplete_results: true,
+        },
+        headers: makeHeaders('<https://api.github.com/search/issues?q=bug&page=3>; rel="next"'),
+      });
+
+      const result = await gh.issues.search("octocat", "hello-world", 'label:"help wanted"', {
+        state: "closed",
+        page: 2,
+        perPage: 1,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/search/issues", {
+        query: {
+          q: 'label:"help wanted" repo:octocat/hello-world is:issue is:closed',
+          page: "2",
+          per_page: "1",
+        },
+      });
+      expect(result).toMatchObject({
+        items: [
+          expect.objectContaining({
+            number: 42,
+            title: "Found a bug",
+            author: { login: "" },
+          }),
+        ],
+        incomplete: true,
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+
+    it("marks mixed results partial and keeps only the requested repository, kind, and state", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: {
+          items: [
+            {
+              ...ghIssue,
+              repository_url: "https://api.github.com/repos/octocat/hello-world",
+            },
+            {
+              ...ghIssue,
+              state: "closed",
+              pull_request: { url: "https://api.github.com/repos/octocat/hello-world/pulls/42" },
+              repository_url: "https://api.github.com/repos/octocat/hello-world",
+            },
+            {
+              ...ghIssue,
+              state: "closed",
+              repository_url: "https://api.github.com/repos/octocat/other-repo",
+            },
+            {
+              ...ghIssue,
+              id: 1002,
+              number: 43,
+              state: "closed",
+              repository_url: "https://api.github.com/repos/octocat/hello-world",
+            },
+          ],
+          total_count: 4,
+          incomplete_results: false,
+        },
+        headers: makeHeaders(),
+      });
+
+      const result = await gh.issues.search(
+        "octocat",
+        "hello-world",
+        "repo:octocat/other-repo OR is:open OR bug",
+        { state: "closed" },
+      );
+
+      expect(result.items.map((issue) => issue.number)).toEqual([43]);
+      expect(result.incomplete).toBe(true);
+    });
+
+    it("rejects a blank query before transport", async () => {
+      await expect(gh.issues.search("octocat", "hello-world", "   ")).rejects.toThrow(
+        "Issue search query must not be empty",
+      );
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    });
+  });
+
   describe("issues.get", () => {
     it("returns single mapped issue", async () => {
       mocks.client.mockResolvedValueOnce(ghIssue);

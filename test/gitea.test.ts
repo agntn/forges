@@ -480,6 +480,44 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("issues.search", () => {
+    it("searches repository issues with text, state, and pagination", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [giteaIssue()],
+        headers: makeHeaders({
+          Link: '<https://gitea.com/api/v1/repos/testowner/test-repo/issues?q=runner&page=3>; rel="next"',
+        }),
+        status: 200,
+      });
+
+      const result = await provider.issues.search("testowner", "test-repo", "runner timeout", {
+        state: "closed",
+        page: 2,
+        perPage: 1,
+      });
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        expect.anything(),
+        "/repos/testowner/test-repo/issues",
+        {
+          query: {
+            q: "runner timeout",
+            state: "closed",
+            type: "issues",
+            page: "2",
+            limit: "1",
+          },
+        },
+      );
+      expect(result).toMatchObject({
+        items: [expect.objectContaining({ number: 1 })],
+        incomplete: false,
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+  });
+
   describe("issues.get", () => {
     it("returns a mapped issue", async () => {
       mockClient.mockResolvedValueOnce(giteaIssue());

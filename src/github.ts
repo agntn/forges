@@ -18,6 +18,7 @@ export type {
   ThreadComment,
   Thread,
   PageResult,
+  SearchPageResult,
   ListOptions,
   ListCommentOptions,
   ListThreadOptions,

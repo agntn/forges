@@ -142,7 +142,7 @@ Every provider gives you five resources with the same method shapes. Thread sema
 
 **repos** - `list(owner, opts?)`, `get(owner, repo)`
 
-**issues** - `list(owner, repo, opts?)`, `get(owner, repo, number)`, `create(owner, repo, input)`, `listComments(owner, repo, number, opts?)`
+**issues** - `list(owner, repo, opts?)`, `search(owner, repo, query, opts?)`, `get(owner, repo, number)`, `create(owner, repo, input)`, `listComments(owner, repo, number, opts?)`
 
 **pullRequests** - `list(owner, repo, opts?)`, `get(owner, repo, number)`, `create(owner, repo, input)`, `listComments(owner, repo, number, opts?)`
 
@@ -150,7 +150,7 @@ Every provider gives you five resources with the same method shapes. Thread sema
 
 **threads** - `list(owner, repo, number, opts?)`, `get(owner, repo, number, threadId)`, `reply(owner, repo, number, threadId, input)`, `resolve(owner, repo, number, threadId)`, `unresolve(owner, repo, number, threadId)`
 
-List operations accept `ListOptions`: `page`, `perPage`, and `state` (`'open' | 'closed' | 'all'`). They return `PageResult<T>` with `items`, `hasNextPage`, `nextPage`, and an optional `totalCount`.
+Issue and pull request lists accept `ListOptions`: `page`, `perPage`, and `state` (`'open' | 'closed' | 'all'`); repository lists use its pagination fields. Lists return `PageResult<T>` with `items`, `hasNextPage`, `nextPage`, and an optional `totalCount`. Issue search accepts the same options and returns those fields plus `incomplete`, which is true when the result is known to be partial. Its query keeps the selected platform's syntax: GitHub qualifiers work on GitHub, while GitLab and Gitea treat it as text.
 
 `listComments` reads the discussion under an issue or pull request oldest first and accepts `ListCommentOptions`: `page` and `perPage`. On GitHub and Gitea the two variants read the same endpoint, because both platforms index pull requests as issues. GitLab notes are fetched with an explicit ascending sort, and both its system notes about label and state churn and its inline DiffNotes, which belong to the thread surface, are dropped, so a short page whose `hasNextPage` is true means keep paging. Gitea answers with the whole discussion in one response, so the requested page is cut locally.
 

@@ -12,6 +12,7 @@ import type {
   User,
   Owner,
   PageResult,
+  SearchPageResult,
   ListOptions,
   ListCommentOptions,
   ListThreadOptions,
@@ -95,12 +96,18 @@ interface GitHubIssue {
   body: string | null;
   state: string;
   labels: GitHubLabel[];
-  user: { login: string };
-  assignees?: Array<{ login: string }>;
+  user: { login: string } | null;
+  assignees?: Array<{ login: string }> | null;
   created_at: string;
   updated_at: string;
   html_url: string;
+  repository_url?: string;
   pull_request?: unknown;
+}
+
+interface GitHubIssueSearchResponse {
+  items: GitHubIssue[];
+  incomplete_results: boolean;
 }
 
 interface GitHubPullRequest extends GitHubIssue {
@@ -395,7 +402,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       body: raw.body ?? "",
       state: raw.state as IssueState,
       labels: raw.labels.map((label) => label.name),
-      author: { login: raw.user.login },
+      author: { login: raw.user?.login ?? "" },
       assignees: (raw.assignees ?? []).map(({ login }) => ({ login })),
       createdAt: raw.created_at,
       updatedAt: raw.updated_at,
@@ -542,6 +549,54 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
       const issuesOnly = (data ?? []).filter((issue) => issue.pull_request === undefined);
       return buildPageResult(issuesOnly, headers, (raw) => this.mapIssue(raw));
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async searchIssues(
+    owner: string,
+    repo: string,
+    searchQuery: string,
+    options?: ListOptions,
+  ): Promise<SearchPageResult<Issue>> {
+    try {
+      const encodedOwner = encodePathSegment(owner);
+      const encodedRepo = encodePathSegment(repo);
+      const qualifiers = [`repo:${owner}/${repo}`, "is:issue"];
+      if (options?.state && options.state !== "all") qualifiers.push(`is:${options.state}`);
+
+      const query: Record<string, string> = {
+        q: `${searchQuery} ${qualifiers.join(" ")}`,
+      };
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+
+      const { data, headers } = await rawFetch<GitHubIssueSearchResponse>(
+        this.client,
+        "/search/issues",
+        { query },
+      );
+      const expectedRepositoryPath = `/repos/${encodedOwner}/${encodedRepo}`.toLowerCase();
+      const rawIssues = data?.items ?? [];
+      const scopedIssues = rawIssues.filter((issue) => {
+        if (issue.pull_request !== undefined) return false;
+        if (options?.state && options.state !== "all" && issue.state !== options.state)
+          return false;
+        if (!issue.repository_url) return false;
+        try {
+          return new URL(issue.repository_url).pathname
+            .toLowerCase()
+            .endsWith(expectedRepositoryPath);
+        } catch {
+          return false;
+        }
+      });
+
+      return {
+        ...buildPageResult(scopedIssues, headers, (raw) => this.mapIssue(raw)),
+        incomplete: (data?.incomplete_results ?? false) || scopedIssues.length !== rawIssues.length,
+      };
     } catch (error) {
       throw normalizeError(error, "github");
     }

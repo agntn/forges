@@ -16,6 +16,7 @@ import type {
   PullRequest,
   ReplyThreadInput,
   Repository,
+  SearchPageResult,
   Thread,
   ThreadComment,
   ThreadState,
@@ -160,6 +161,10 @@ export interface ListRepositoryItemsParams extends RepositoryParams {
   state?: IssueState | "all";
 }
 
+export interface SearchRepositoryIssuesParams extends ListRepositoryItemsParams {
+  query: string;
+}
+
 export interface GetRepositoryItemParams extends RepositoryParams {
   number: number;
 }
@@ -213,6 +218,10 @@ function assignmentNote(
   return `Creation succeeded, but requested assignees are missing: ${missing.join(", ")}. Do not retry the create call; the result is the created object.`;
 }
 
+function summarizeIssuePage<T extends Issue>(
+  page: SearchPageResult<T>,
+): SearchPageResult<Omit<T, "body">>;
+function summarizeIssuePage<T extends Issue>(page: PageResult<T>): PageResult<Omit<T, "body">>;
 function summarizeIssuePage<T extends Issue>(page: PageResult<T>): PageResult<Omit<T, "body">> {
   return {
     ...page,
@@ -283,6 +292,22 @@ export async function listIssues(
     params.platform,
     summarizeIssuePage(issues),
     "Issue bodies are omitted from list output; use forges_issues_get to read one body.",
+  );
+}
+
+export async function searchIssues(
+  params: SearchRepositoryIssuesParams,
+): Promise<ForgesToolResult<SearchPageResult<Omit<Issue, "body">>>> {
+  const issues = await readProvider(params.platform).issues.search(
+    params.owner,
+    params.repo,
+    params.query,
+    listOptions(params),
+  );
+  return result(
+    params.platform,
+    summarizeIssuePage(issues),
+    "Issue bodies are omitted from search output; use forges_issues_get to read one body.",
   );
 }
 
