@@ -7,6 +7,8 @@ export { GitLabProvider } from "./providers/gitlab.ts";
 export type {
   User,
   Owner,
+  RepositoryParent,
+  RepositoryPermission,
   Repository,
   IssueState,
   Issue,

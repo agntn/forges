@@ -31,6 +31,15 @@ export interface Owner {
   avatarUrl: string;
 }
 
+/** A repository's immediate upstream when it is a fork. */
+export interface RepositoryParent {
+  fullName: string;
+  url: string;
+}
+
+/** The authenticated viewer's highest repository role, or `null` when the API omits it. */
+export type RepositoryPermission = "none" | "read" | "triage" | "write" | "maintain" | "admin";
+
 /**
  * Repository information
  */
@@ -43,6 +52,11 @@ export interface Repository {
   defaultBranch: string;
   url: string;
   cloneUrl: string;
+  isFork: boolean;
+  /** Null when the repository has no upstream or the platform hides it. */
+  parent: RepositoryParent | null;
+  /** Null when the platform omits access metadata for the current viewer. */
+  viewerPermission: RepositoryPermission | null;
   owner: Owner;
 }
 

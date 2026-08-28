@@ -102,7 +102,7 @@ The same nineteen tools - repositories, issues, pull requests, users, discussion
 | GitLab             | `FORGES_GITLAB_BASE_URL` |
 | Gitea / Forgejo    | `FORGES_GITEA_BASE_URL`  |
 
-These values are read from the agent process environment and are never exposed as model-callable tool arguments. Neither is a token, so nothing a model says can point an operation at a host of its own choosing.
+These values come from the agent process environment and never become tool arguments a model can set. Tokens stay local too, so a model cannot redirect an operation to another host. `forges_repos_get` includes fork state, its immediate parent, and the viewer's highest repository role. A `null` `viewerPermission` means the platform omitted access metadata, not that the viewer has no access.
 
 ### MCP server
 

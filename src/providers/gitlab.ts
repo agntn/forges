@@ -15,6 +15,7 @@ import { Provider, type ProviderRawTypes } from "../provider.ts";
 import type {
   ProviderConfig,
   Repository,
+  RepositoryPermission,
   Issue,
   PullRequest,
   User,
@@ -38,6 +39,15 @@ import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
 
 // GitLab API response types (internal)
 
+interface GitLabProjectParent {
+  path_with_namespace: string;
+  web_url: string;
+}
+
+interface GitLabProjectAccess {
+  access_level: number;
+}
+
 interface GitLabProject {
   id: number;
   name: string;
@@ -55,6 +65,12 @@ interface GitLabProject {
     username: string;
     avatar_url: string | null;
   };
+  forked_from_project?: GitLabProjectParent | null;
+  mr_default_target_self?: boolean;
+  permissions?: {
+    project_access: GitLabProjectAccess | null;
+    group_access: GitLabProjectAccess | null;
+  } | null;
 }
 
 interface GitLabIssue {
@@ -195,6 +211,22 @@ function normalizePositiveInteger(value: number | undefined, fallback: number): 
   return Math.floor(value);
 }
 
+function mapGitLabPermission(
+  permissions: GitLabProject["permissions"],
+): RepositoryPermission | null {
+  if (permissions === undefined || permissions === null) return null;
+  const accessLevel = Math.max(
+    permissions.project_access?.access_level ?? 0,
+    permissions.group_access?.access_level ?? 0,
+  );
+  if (accessLevel >= 50) return "admin";
+  if (accessLevel >= 40) return "maintain";
+  if (accessLevel >= 30) return "write";
+  if (accessLevel >= 20) return "read";
+  if (accessLevel >= 10) return "triage";
+  return "none";
+}
+
 /**
  * GitLab provider — implements the unified Provider base class for GitLab API v4.
  *
@@ -254,6 +286,14 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       defaultBranch: raw.default_branch ?? "main",
       url: raw.web_url,
       cloneUrl: raw.http_url_to_repo,
+      isFork: raw.forked_from_project != null || raw.mr_default_target_self !== undefined,
+      parent: raw.forked_from_project
+        ? {
+            fullName: raw.forked_from_project.path_with_namespace,
+            url: raw.forked_from_project.web_url,
+          }
+        : null,
+      viewerPermission: mapGitLabPermission(raw.permissions),
       owner: this.mapOwner(raw),
     };
   }
@@ -507,7 +547,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   protected override async getRepo(owner: string, repo: string): Promise<Repository> {
     try {
       const encoded = encodeProjectPath(owner, repo);
-      const project = await cachedFetch<GitLabProject>(this.client, `/projects/${encoded}`);
+      const project = await this.client<GitLabProject>(`/projects/${encoded}`);
       // Cache project ID while we have it
       this.setCachedProjectId(`${owner}/${repo}`, project.id);
       return this.mapRepository(project);

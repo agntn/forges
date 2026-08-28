@@ -47,6 +47,11 @@ const glProject = {
     avatar_url: "https://gitlab.com/uploads/-/system/group/avatar/9970/logo.png",
   },
   owner: undefined as { username: string; avatar_url: string | null } | undefined,
+  forked_from_project: null,
+  permissions: {
+    project_access: null,
+    group_access: { access_level: 20 },
+  },
 };
 
 const glProjectWithOwner = {
@@ -428,6 +433,80 @@ describe("GitLabProvider", () => {
 
       expect(repo.fullName).toBe("gitlab-org/gitlab-foss");
       expect(repo.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss");
+      expect(repo.isFork).toBe(false);
+      expect(repo.parent).toBeNull();
+      expect(repo.viewerPermission).toBe("read");
+    });
+
+    it("maps a fork parent and the highest inherited access level", async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...glProject,
+        forked_from_project: {
+          path_with_namespace: "upstream/gitlab-foss",
+          web_url: "https://gitlab.com/upstream/gitlab-foss",
+        },
+        permissions: {
+          project_access: { access_level: 30 },
+          group_access: { access_level: 40 },
+        },
+      });
+
+      const repo = await gl.repos.get("gitlab-org", "gitlab-foss");
+
+      expect(repo).toMatchObject({
+        isFork: true,
+        parent: {
+          fullName: "upstream/gitlab-foss",
+          url: "https://gitlab.com/upstream/gitlab-foss",
+        },
+        viewerPermission: "maintain",
+      });
+    });
+
+    it("keeps fork state when the upstream project is hidden", async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...glProject,
+        forked_from_project: undefined,
+        mr_default_target_self: false,
+      });
+
+      const repo = await gl.repos.get("gitlab-org", "gitlab-foss");
+
+      expect(repo.isFork).toBe(true);
+      expect(repo.parent).toBeNull();
+    });
+
+    it("distinguishes no membership from unavailable permission metadata", async () => {
+      mocks.client
+        .mockResolvedValueOnce({
+          ...glProject,
+          permissions: { project_access: null, group_access: null },
+        })
+        .mockResolvedValueOnce({ ...glProject, permissions: undefined });
+
+      const noMembership = await gl.repos.get("gitlab-org", "gitlab-foss");
+      const unavailable = await gl.repos.get("gitlab-org", "gitlab-foss");
+
+      expect(noMembership.viewerPermission).toBe("none");
+      expect(unavailable.viewerPermission).toBeNull();
+    });
+
+    it("reads current viewer permission on every call", async () => {
+      mocks.cachedFetch.mockResolvedValue(glProject);
+      mocks.client.mockResolvedValueOnce(glProject).mockResolvedValueOnce({
+        ...glProject,
+        permissions: {
+          project_access: { access_level: 30 },
+          group_access: null,
+        },
+      });
+
+      await gl.repos.get("gitlab-org", "gitlab-foss");
+      const repository = await gl.repos.get("gitlab-org", "gitlab-foss");
+
+      expect(repository.viewerPermission).toBe("write");
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
     });
 
     it("uses owner when present, falls back to namespace", async () => {

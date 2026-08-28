@@ -7,11 +7,11 @@
  */
 
 import { createHttpClient, rawFetch, type HttpClient } from "../http.ts";
-import { cachedFetch } from "../cache.ts";
 import { parseLinkHeader } from "../pagination.ts";
 import { normalizeError, NotFoundError } from "../errors.ts";
 import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
 import { Provider, type ProviderRawTypes } from "../provider.ts";
+import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import type {
   ProviderConfig,
   Repository,
@@ -54,6 +54,11 @@ interface GiteaOwner {
   avatar_url?: string | null;
 }
 
+interface GiteaRepositoryParent {
+  full_name: string;
+  html_url?: string | null;
+}
+
 interface GiteaRepository {
   id: number;
   name: string;
@@ -63,6 +68,13 @@ interface GiteaRepository {
   default_branch?: string | null;
   html_url?: string | null;
   clone_url?: string | null;
+  fork: boolean;
+  parent?: GiteaRepositoryParent | null;
+  permissions?: {
+    admin?: boolean;
+    push?: boolean;
+    pull?: boolean;
+  } | null;
   owner: GiteaOwner;
 }
 
@@ -228,6 +240,11 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       defaultBranch: raw.default_branch ?? "main",
       url: raw.html_url ?? "",
       cloneUrl: raw.clone_url ?? "",
+      isFork: raw.fork,
+      parent: raw.parent
+        ? { fullName: raw.parent.full_name, url: raw.parent.html_url ?? "" }
+        : null,
+      viewerPermission: mapBooleanRepositoryPermission(raw.permissions),
       owner: this.mapOwner(raw.owner),
     };
   }
@@ -352,8 +369,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   protected override async getRepo(owner: string, repo: string): Promise<Repository> {
     try {
       return this.mapRepository(
-        await cachedFetch<GiteaRepository>(
-          this.client,
+        await this.client<GiteaRepository>(
           `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
         ),
       );

@@ -7,6 +7,8 @@ export { GiteaProvider } from "./providers/gitea.ts";
 export type {
   User,
   Owner,
+  RepositoryParent,
+  RepositoryPermission,
   Repository,
   IssueState,
   Issue,

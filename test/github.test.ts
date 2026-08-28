@@ -37,6 +37,15 @@ const ghRepo = {
   default_branch: "main",
   html_url: "https://github.com/octocat/hello-world",
   clone_url: "https://github.com/octocat/hello-world.git",
+  fork: false,
+  parent: null,
+  permissions: {
+    admin: false,
+    maintain: false,
+    push: false,
+    triage: false,
+    pull: true,
+  },
   owner: {
     login: "octocat",
     avatar_url: "https://avatars.githubusercontent.com/u/1?v=4",
@@ -293,24 +302,76 @@ describe("GitHubProvider", () => {
   });
 
   describe("repos.get", () => {
-    it("returns mapped repository via cached fetch", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce(ghRepo);
+    it("returns a mapped repository", async () => {
+      mocks.client.mockResolvedValueOnce(ghRepo);
 
       const repo = await gh.repos.get("octocat", "hello-world");
 
-      expect(mocks.cachedFetch).toHaveBeenCalledWith(mocks.client, "/repos/octocat/hello-world");
+      expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world");
       expect(repo.fullName).toBe("octocat/hello-world");
+      expect(repo.isFork).toBe(false);
+      expect(repo.parent).toBeNull();
+      expect(repo.viewerPermission).toBe("read");
+    });
+
+    it("maps a fork parent and the highest viewer permission", async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...ghRepo,
+        fork: true,
+        parent: {
+          full_name: "upstream/hello-world",
+          html_url: "https://github.com/upstream/hello-world",
+        },
+        permissions: {
+          admin: false,
+          maintain: true,
+          push: true,
+          triage: true,
+          pull: true,
+        },
+      });
+
+      const repo = await gh.repos.get("octocat", "hello-world");
+
+      expect(repo).toMatchObject({
+        isFork: true,
+        parent: {
+          fullName: "upstream/hello-world",
+          url: "https://github.com/upstream/hello-world",
+        },
+        viewerPermission: "maintain",
+      });
+    });
+
+    it("keeps omitted viewer permissions unknown", async () => {
+      mocks.client.mockResolvedValueOnce({ ...ghRepo, permissions: undefined });
+
+      const repo = await gh.repos.get("octocat", "hello-world");
+
+      expect(repo.viewerPermission).toBeNull();
+    });
+
+    it("reads current viewer permission on every call", async () => {
+      mocks.cachedFetch.mockResolvedValue(ghRepo);
+      mocks.client.mockResolvedValueOnce(ghRepo).mockResolvedValueOnce({
+        ...ghRepo,
+        permissions: { ...ghRepo.permissions, admin: true },
+      });
+
+      await gh.repos.get("octocat", "hello-world");
+      const repository = await gh.repos.get("octocat", "hello-world");
+
+      expect(repository.viewerPermission).toBe("admin");
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
     });
 
     it("encodes repository path segments before transport", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce(ghRepo);
+      mocks.client.mockResolvedValueOnce(ghRepo);
 
       await gh.repos.get("octo cat", "hello#world");
 
-      expect(mocks.cachedFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/octo%20cat/hello%23world",
-      );
+      expect(mocks.client).toHaveBeenCalledWith("/repos/octo%20cat/hello%23world");
     });
 
     it.each([
@@ -329,7 +390,7 @@ describe("GitHubProvider", () => {
       await expect(gh.repos.get(segment, "hello-world")).rejects.toThrow(
         "Invalid API path segment",
       );
-      expect(mocks.cachedFetch).not.toHaveBeenCalled();
+      expect(mocks.client).not.toHaveBeenCalled();
     });
   });
 
@@ -866,7 +927,7 @@ describe("GitHubProvider", () => {
 
   describe("field mapping (snake_case → camelCase)", () => {
     it("maps full_name → fullName", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce({
+      mocks.client.mockResolvedValueOnce({
         ...ghRepo,
         full_name: "org/my-repo",
       });
@@ -875,13 +936,13 @@ describe("GitHubProvider", () => {
     });
 
     it("maps avatar_url → avatarUrl", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce(ghRepo);
+      mocks.client.mockResolvedValueOnce(ghRepo);
       const repo = await gh.repos.get("o", "r");
       expect(repo.owner.avatarUrl).toBe("https://avatars.githubusercontent.com/u/1?v=4");
     });
 
     it("maps default_branch → defaultBranch", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce({
+      mocks.client.mockResolvedValueOnce({
         ...ghRepo,
         default_branch: "develop",
       });
@@ -890,13 +951,13 @@ describe("GitHubProvider", () => {
     });
 
     it("maps html_url → url", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce(ghRepo);
+      mocks.client.mockResolvedValueOnce(ghRepo);
       const repo = await gh.repos.get("o", "r");
       expect(repo.url).toBe("https://github.com/octocat/hello-world");
     });
 
     it("maps clone_url → cloneUrl", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce(ghRepo);
+      mocks.client.mockResolvedValueOnce(ghRepo);
       const repo = await gh.repos.get("o", "r");
       expect(repo.cloneUrl).toBe("https://github.com/octocat/hello-world.git");
     });
@@ -938,13 +999,13 @@ describe("GitHubProvider", () => {
     });
 
     it("converts numeric id to string", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce({ ...ghRepo, id: 99999 });
+      mocks.client.mockResolvedValueOnce({ ...ghRepo, id: 99999 });
       const repo = await gh.repos.get("o", "r");
       expect(repo.id).toBe("99999");
     });
 
     it("defaults null description to empty string", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce({
+      mocks.client.mockResolvedValueOnce({
         ...ghRepo,
         description: null,
       });
@@ -1014,7 +1075,7 @@ describe("GitHubProvider", () => {
 
   describe("error handling", () => {
     it("throws NotFoundError on 404", async () => {
-      mocks.cachedFetch.mockRejectedValueOnce(makeFetchError(404));
+      mocks.client.mockRejectedValueOnce(makeFetchError(404));
       await expect(gh.repos.get("x", "nonexistent")).rejects.toThrow(NotFoundError);
     });
 
@@ -1029,7 +1090,7 @@ describe("GitHubProvider", () => {
     });
 
     it("sets platform to github on errors", async () => {
-      mocks.cachedFetch.mockRejectedValueOnce(makeFetchError(500));
+      mocks.client.mockRejectedValueOnce(makeFetchError(500));
 
       const error = await gh.repos.get("x", "y").catch((e: unknown) => e);
       expect(error).toBeInstanceOf(ForgesError);
@@ -1037,7 +1098,7 @@ describe("GitHubProvider", () => {
     });
 
     it("preserves status code on generic errors", async () => {
-      mocks.cachedFetch.mockRejectedValueOnce(makeFetchError(503));
+      mocks.client.mockRejectedValueOnce(makeFetchError(503));
 
       const error = await gh.repos.get("x", "y").catch((e: unknown) => e);
       expect(error).toBeInstanceOf(ForgesError);
