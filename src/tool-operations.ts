@@ -1,4 +1,5 @@
 import { createProvider, resolveToken } from "./index.ts";
+import { assertAssignees } from "./assignees.ts";
 import { AuthenticationError } from "./errors.ts";
 import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
 import type { Provider } from "./provider.ts";
@@ -172,6 +173,17 @@ function result<T>(platform: ForgesPlatform, value: T, note?: string): ForgesToo
   };
 }
 
+function assignmentNote(
+  requested: string[] | undefined,
+  actual: Array<{ login: string }>,
+): string | undefined {
+  if (!requested?.length) return undefined;
+  const assigned = new Set(actual.map(({ login }) => login.toLowerCase()));
+  const missing = requested.filter((login) => !assigned.has(login.toLowerCase()));
+  if (missing.length === 0) return undefined;
+  return `Creation succeeded, but requested assignees are missing: ${missing.join(", ")}. Do not retry the create call; the result is the created object.`;
+}
+
 function summarizeIssuePage<T extends Issue>(page: PageResult<T>): PageResult<Omit<T, "body">> {
   return {
     ...page,
@@ -290,6 +302,7 @@ export async function getIssueComment(
 }
 
 export async function createIssue(params: CreateIssueParams): Promise<ForgesToolResult<Issue>> {
+  assertAssignees(params.assignees, params.platform);
   const issue = await authenticatedProvider(params.platform).issues.create(
     params.owner,
     params.repo,
@@ -297,9 +310,10 @@ export async function createIssue(params: CreateIssueParams): Promise<ForgesTool
       title: params.title,
       body: params.body,
       labels: params.labels,
+      assignees: params.assignees,
     },
   );
-  return result(params.platform, issue);
+  return result(params.platform, issue, assignmentNote(params.assignees, issue.assignees));
 }
 
 export async function listPullRequests(
@@ -359,6 +373,7 @@ export async function getPullRequestComment(
 export async function createPullRequest(
   params: CreatePullRequestParams,
 ): Promise<ForgesToolResult<PullRequest>> {
+  assertAssignees(params.assignees, params.platform);
   const pullRequest = await authenticatedProvider(params.platform).pullRequests.create(
     params.owner,
     params.repo,
@@ -368,9 +383,14 @@ export async function createPullRequest(
       sourceBranch: params.sourceBranch,
       targetBranch: params.targetBranch,
       draft: params.draft,
+      assignees: params.assignees,
     },
   );
-  return result(params.platform, pullRequest);
+  return result(
+    params.platform,
+    pullRequest,
+    assignmentNote(params.assignees, pullRequest.assignees),
+  );
 }
 
 export async function getUser(params: GetUserParams): Promise<ForgesToolResult<User>> {

@@ -555,6 +555,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
             title: input.title,
             body: input.body,
             labels: input.labels,
+            assignees: input.assignees,
           },
         },
       );
@@ -623,7 +624,19 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
           },
         },
       );
-      return this.mapPullRequest(data);
+      if (!input.assignees?.length) {
+        return this.mapPullRequest(data);
+      }
+
+      try {
+        const assigned = await this.client<GitHubIssue>(
+          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(data.number)}/assignees`,
+          { method: "POST", body: { assignees: input.assignees } },
+        );
+        return this.mapPullRequest({ ...data, assignees: assigned.assignees });
+      } catch {
+        return this.mapPullRequest(data);
+      }
     } catch (error) {
       throw normalizeError(error, "github");
     }

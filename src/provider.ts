@@ -2,6 +2,7 @@
  * Runtime contract shared by all git provider implementations.
  */
 
+import { assertAssignees } from "./assignees.ts";
 import type {
   Comment,
   CreateIssueInput,
@@ -63,7 +64,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     this.issues = {
       list: (owner, repo, options) => this.listIssues(owner, repo, options),
       get: (owner, repo, number) => this.getIssue(owner, repo, number),
-      create: (owner, repo, input) => this.createIssue(owner, repo, input),
+      create: async (owner, repo, input) => {
+        assertAssignees(input.assignees);
+        return this.createIssue(owner, repo, input);
+      },
       listComments: (owner, repo, number, options) =>
         this.listIssueComments(owner, repo, number, options),
       getComment: (owner, repo, number, commentId) =>
@@ -72,7 +76,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     this.pullRequests = {
       list: (owner, repo, options) => this.listPullRequests(owner, repo, options),
       get: (owner, repo, number) => this.getPullRequest(owner, repo, number),
-      create: (owner, repo, input) => this.createPullRequest(owner, repo, input),
+      create: async (owner, repo, input) => {
+        assertAssignees(input.assignees);
+        return this.createPullRequest(owner, repo, input);
+      },
       listComments: (owner, repo, number, options) =>
         this.listPullRequestComments(owner, repo, number, options),
       getComment: (owner, repo, number, commentId) =>

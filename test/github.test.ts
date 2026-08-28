@@ -450,15 +450,33 @@ describe("GitHubProvider", () => {
         title: "New bug",
         body: "Details here",
         labels: ["bug"],
+        assignees: ["triager"],
       });
 
       expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues", {
         method: "POST",
-        body: { title: "New bug", body: "Details here", labels: ["bug"] },
+        body: {
+          title: "New bug",
+          body: "Details here",
+          labels: ["bug"],
+          assignees: ["triager"],
+        },
       });
       expect(issue.number).toBe(43);
       expect(issue.assignees).toEqual([{ login: "triager" }]);
       expect(issue.url).toBe("https://github.com/octocat/hello-world/issues/43");
+    });
+
+    it("rejects more than ten assignees before transport", async () => {
+      await expect(
+        gh.issues.create("octocat", "hello-world", {
+          title: "New bug",
+          body: "Details here",
+          assignees: Array.from({ length: 11 }, (_, index) => `user-${index}`),
+        }),
+      ).rejects.toThrow("Assignees must be an array of at most 10 non-empty logins");
+
+      expect(mocks.client).not.toHaveBeenCalled();
     });
   });
 
@@ -657,8 +675,10 @@ describe("GitHubProvider", () => {
   });
 
   describe("pullRequests.create", () => {
-    it("maps sourceBranch/targetBranch to head/base", async () => {
-      mocks.client.mockResolvedValueOnce(ghPullRequest);
+    it("maps branches and assigns the created pull request", async () => {
+      mocks.client
+        .mockResolvedValueOnce({ ...ghPullRequest, assignees: [] })
+        .mockResolvedValueOnce({ ...ghIssue, assignees: [{ login: "maintainer" }] });
 
       const pr = await gh.pullRequests.create("octocat", "hello-world", {
         title: "Add dark mode",
@@ -666,9 +686,10 @@ describe("GitHubProvider", () => {
         sourceBranch: "feature/dark-mode",
         targetBranch: "main",
         draft: true,
+        assignees: ["maintainer"],
       });
 
-      expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/pulls", {
+      expect(mocks.client).toHaveBeenNthCalledWith(1, "/repos/octocat/hello-world/pulls", {
         method: "POST",
         body: {
           title: "Add dark mode",
@@ -678,8 +699,31 @@ describe("GitHubProvider", () => {
           draft: true,
         },
       });
+      expect(mocks.client).toHaveBeenNthCalledWith(
+        2,
+        "/repos/octocat/hello-world/issues/99/assignees",
+        { method: "POST", body: { assignees: ["maintainer"] } },
+      );
       expect(pr.assignees).toEqual([{ login: "maintainer" }]);
       expect(pr.url).toBe("https://github.com/octocat/hello-world/pull/99");
+    });
+
+    it("returns the created pull request when assignment fails", async () => {
+      mocks.client
+        .mockResolvedValueOnce({ ...ghPullRequest, assignees: [] })
+        .mockRejectedValueOnce(makeFetchError(403));
+
+      const pr = await gh.pullRequests.create("octocat", "hello-world", {
+        title: "Add dark mode",
+        body: "Implements it",
+        sourceBranch: "feature/dark-mode",
+        targetBranch: "main",
+        assignees: ["maintainer"],
+      });
+
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(pr.number).toBe(99);
+      expect(pr.assignees).toEqual([]);
     });
   });
 

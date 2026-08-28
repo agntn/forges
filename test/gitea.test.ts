@@ -462,6 +462,7 @@ describe("Gitea Provider", () => {
       const result = await provider.issues.create("testowner", "test-repo", {
         title: "New issue",
         body: "Issue body",
+        assignees: ["triager"],
       });
 
       expect(result.id).toBe("201");
@@ -473,7 +474,11 @@ describe("Gitea Provider", () => {
         "/repos/testowner/test-repo/issues",
         expect.objectContaining({
           method: "POST",
-          body: expect.objectContaining({ title: "New issue", body: "Issue body" }),
+          body: expect.objectContaining({
+            title: "New issue",
+            body: "Issue body",
+            assignees: ["triager"],
+          }),
         }),
       );
     });
@@ -607,6 +612,7 @@ describe("Gitea Provider", () => {
         body: "PR body",
         sourceBranch: "feature",
         targetBranch: "main",
+        assignees: ["maintainer"],
       });
 
       expect(result.id).toBe("301");
@@ -620,6 +626,7 @@ describe("Gitea Provider", () => {
             title: "New PR",
             head: "feature",
             base: "main",
+            assignees: ["maintainer"],
           }),
         }),
       );

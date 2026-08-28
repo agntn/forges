@@ -131,6 +131,7 @@ beforeEach(() => {
     state: "open",
     labels: ["bug"],
     author: { login: "oritwoen" },
+    assignees: [{ login: "triager" }],
     createdAt: "2026-08-18T00:00:00Z",
     updatedAt: "2026-08-18T00:00:00Z",
   });
@@ -355,18 +356,25 @@ describe("Forges OMP extension", () => {
       expect(ompSchema.toJsonSchema(), `${name} schema`).toEqual(piSchema);
     }
 
-    const invalidNestedLabel = {
+    const invalidNestedAssignee = {
       platform: "github",
       owner: "agntn",
       repo: "forges",
       title: "Bug",
       body: "Details",
-      labels: [""],
+      assignees: [""],
     };
     const piCreate = requirePiTool(piTools, "forges_issues_create");
     const ompCreate = requireOmpTool(ompTools, "forges_issues_create");
-    expect(Value.Check(piCreate.parameters, invalidNestedLabel)).toBe(false);
-    expect(ompAccepts(ompCreate, invalidNestedLabel)).toBe(false);
+    expect(Value.Check(piCreate.parameters, invalidNestedAssignee)).toBe(false);
+    expect(ompAccepts(ompCreate, invalidNestedAssignee)).toBe(false);
+
+    const tooManyAssignees = {
+      ...invalidNestedAssignee,
+      assignees: Array.from({ length: 11 }, (_, index) => `user-${index}`),
+    };
+    expect(Value.Check(piCreate.parameters, tooManyAssignees)).toBe(false);
+    expect(ompAccepts(ompCreate, tooManyAssignees)).toBe(false);
   });
 
   it("marks read operations read-only and mutations as writes", () => {
@@ -411,6 +419,7 @@ describe("Forges OMP extension", () => {
         title: "Bug",
         body: "Details",
         labels: ["bug"],
+        assignees: ["triager"],
       },
       undefined,
       undefined,
@@ -422,6 +431,7 @@ describe("Forges OMP extension", () => {
       title: "Bug",
       body: "Details",
       labels: ["bug"],
+      assignees: ["triager"],
     });
     expect(result.details).toMatchObject({ platform: "gitlab", result: { number: 42 } });
   });

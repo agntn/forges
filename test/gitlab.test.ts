@@ -510,22 +510,29 @@ describe("GitLabProvider", () => {
   });
 
   describe("issues.create", () => {
-    it("maps body → description and joins labels with comma", async () => {
+    it("maps body, labels, and a single assignee", async () => {
       mockProjectResolve(278964);
-      mocks.client.mockResolvedValueOnce(glIssue);
+      mocks.client
+        .mockResolvedValueOnce([{ ...glUserSearchHit, id: 9, username: "triager" }])
+        .mockResolvedValueOnce(glIssue);
 
       const issue = await gl.issues.create("gitlab-org", "gitlab-foss", {
         title: "New issue",
         body: "Description here",
         labels: ["bug", "urgent"],
+        assignees: ["triager"],
       });
 
+      expect(mocks.client).toHaveBeenNthCalledWith(2, "/users", {
+        query: { username: "triager" },
+      });
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/issues", {
         method: "POST",
         body: {
           title: "New issue",
           description: "Description here",
           labels: "bug,urgent",
+          assignee_id: 9,
         },
       });
       expect(issue.assignees).toEqual([{ login: "triager" }]);
@@ -666,15 +673,19 @@ describe("GitLabProvider", () => {
   });
 
   describe("pullRequests.create", () => {
-    it("maps to GitLab merge_request API fields", async () => {
+    it("maps fields and multiple assignees to the GitLab API", async () => {
       mockProjectResolve(278964);
-      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      mocks.client
+        .mockResolvedValueOnce([{ ...glUserSearchHit, id: 9, username: "maintainer" }])
+        .mockResolvedValueOnce([{ ...glUserSearchHit, id: 10, username: "reviewer" }])
+        .mockResolvedValueOnce(glMergeRequest);
 
       const pr = await gl.pullRequests.create("gitlab-org", "gitlab-foss", {
         title: "New MR",
         body: "Description",
         sourceBranch: "feature/x",
         targetBranch: "main",
+        assignees: ["maintainer", "reviewer"],
       });
 
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/merge_requests", {
@@ -684,6 +695,7 @@ describe("GitLabProvider", () => {
           description: "Description",
           source_branch: "feature/x",
           target_branch: "main",
+          assignee_ids: [9, 10],
         }),
       });
       expect(pr.assignees).toEqual([{ login: "maintainer" }]);
