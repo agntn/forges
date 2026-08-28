@@ -43,7 +43,7 @@ src/
 ├── pagination.ts         # Link header + x-next-page async generator
 ├── version.ts            # Package version — the one source for it in src/
 ├── tool-operations.ts    # Executors behind every agent surface (MCP, Pi, OMP)
-├── mcp.ts                # createMcpServer() - 20 tools over the low-level MCP Server
+├── mcp.ts                # createMcpServer() - 21 tools over the low-level MCP Server
 ├── cli.ts                # citty entry for the `forges` bin
 ├── commands/mcp.ts       # `forges mcp` — stdio transport
 ├── github.ts             # Sub-path re-export for @agntn/forges/github

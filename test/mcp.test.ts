@@ -8,7 +8,7 @@ import { resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
-  const issues = { list: vi.fn(), get: vi.fn(), create: vi.fn() };
+  const issues = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
   const pullRequests = { list: vi.fn(), get: vi.fn(), create: vi.fn() };
   const users = { get: vi.fn(), authenticated: vi.fn() };
   const threads = {
@@ -40,6 +40,7 @@ const toolNames = [
   "forges_repos_list",
   "forges_repos_get",
   "forges_issues_list",
+  "forges_issues_search",
   "forges_issues_get",
   "forges_issues_comments",
   "forges_issues_comments_get",
@@ -234,6 +235,52 @@ describe("forges MCP server", () => {
     expect(JSON.parse(answer)).toMatchObject({
       note: "Issue bodies are omitted from list output; use forges_issues_get to read one body.",
       result: { items: [{ number: 1, title: "Bug" }] },
+    });
+  });
+
+  it("searches issues through the shared operation", async () => {
+    mocks.issues.search.mockResolvedValue({
+      items: [
+        {
+          id: "46",
+          number: 46,
+          title: "Add repository issue search",
+          body: "large body",
+          state: "open",
+          labels: ["enhancement"],
+          author: { login: "aeitwoen" },
+          assignees: [],
+          createdAt: "2026-08-27T00:00:00Z",
+          updatedAt: "2026-08-27T00:00:00Z",
+          url: "https://github.com/agntn/forges/issues/46",
+        },
+      ],
+      incomplete: false,
+      hasNextPage: false,
+    });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_issues_search",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        query: "issue search",
+        state: "open",
+      },
+    });
+
+    expect(mocks.issues.search).toHaveBeenCalledWith("agntn", "forges", "issue search", {
+      page: undefined,
+      perPage: undefined,
+      state: "open",
+    });
+    const answer = text(response.content);
+    expect(answer).not.toContain("large body");
+    expect(JSON.parse(answer)).toMatchObject({
+      note: "Issue bodies are omitted from search output; use forges_issues_get to read one body.",
+      result: { items: [{ number: 46 }], incomplete: false },
     });
   });
 

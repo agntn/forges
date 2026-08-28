@@ -18,7 +18,13 @@ import { resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
-  const issues = { list: vi.fn(), get: vi.fn(), create: vi.fn(), listComments: vi.fn() };
+  const issues = {
+    list: vi.fn(),
+    search: vi.fn(),
+    get: vi.fn(),
+    create: vi.fn(),
+    listComments: vi.fn(),
+  };
   const pullRequests = { list: vi.fn(), get: vi.fn(), create: vi.fn(), listComments: vi.fn() };
   const users = { get: vi.fn(), authenticated: vi.fn() };
   const threads = {
@@ -50,6 +56,7 @@ const toolNames = [
   "forges_repos_list",
   "forges_repos_get",
   "forges_issues_list",
+  "forges_issues_search",
   "forges_issues_get",
   "forges_issues_comments",
   "forges_issues_comments_get",
@@ -124,6 +131,7 @@ beforeEach(() => {
   vi.stubEnv("FORGES_GITLAB_BASE_URL", undefined);
   vi.stubEnv("FORGES_GITEA_BASE_URL", undefined);
   mocks.repos.list.mockResolvedValue({ items: [], hasNextPage: false });
+  mocks.issues.search.mockResolvedValue({ items: [], incomplete: false, hasNextPage: false });
   mocks.issues.create.mockResolvedValue({
     id: "42",
     number: 42,
@@ -180,6 +188,36 @@ describe("Forges Pi extension", () => {
     expect(result.details).toEqual({
       platform: "github",
       result: { items: [], hasNextPage: false },
+    });
+  });
+
+  it("executes issue search through the shared provider operation", async () => {
+    const tool = requirePiTool(registerPiTools(), "forges_issues_search");
+    const result = await tool.execute(
+      "test",
+      {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        query: "credential",
+        state: "closed",
+        page: 2,
+        perPage: 10,
+      },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+
+    expect(mocks.issues.search).toHaveBeenCalledWith("agntn", "forges", "credential", {
+      page: 2,
+      perPage: 10,
+      state: "closed",
+    });
+    expect(result.details.result).toEqual({
+      items: [],
+      incomplete: false,
+      hasNextPage: false,
     });
   });
 

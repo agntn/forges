@@ -108,6 +108,11 @@ export interface PageResult<T> {
   nextPage?: number;
 }
 
+/** Paginated search results, including whether the response is known to be partial. */
+export interface SearchPageResult<T> extends PageResult<T> {
+  incomplete: boolean;
+}
+
 /**
  * List operation options
  */
@@ -240,6 +245,12 @@ export interface RepositoryResource {
  */
 export interface IssueResource {
   list(owner: string, repo: string, options?: ListOptions): Promise<PageResult<Issue>>;
+  search(
+    owner: string,
+    repo: string,
+    query: string,
+    options?: ListOptions,
+  ): Promise<SearchPageResult<Issue>>;
   get(owner: string, repo: string, number: number): Promise<Issue>;
   create(owner: string, repo: string, input: CreateIssueInput): Promise<Issue>;
   listComments(

@@ -20,6 +20,7 @@ import type {
   User,
   Owner,
   PageResult,
+  SearchPageResult,
   ListOptions,
   ListCommentOptions,
   ListThreadOptions,
@@ -392,6 +393,30 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         { query },
       );
       return buildPageResult(data ?? [], headers, (raw) => this.mapIssue(raw));
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async searchIssues(
+    owner: string,
+    repo: string,
+    searchQuery: string,
+    options?: ListOptions,
+  ): Promise<SearchPageResult<Issue>> {
+    try {
+      const query = buildListQuery(options);
+      query.q = searchQuery;
+      query.type = "issues";
+      const { data, headers } = await rawFetch<GiteaIssue[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`,
+        { query },
+      );
+      return {
+        ...buildPageResult(data ?? [], headers, (raw) => this.mapIssue(raw)),
+        incomplete: false,
+      };
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }

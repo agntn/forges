@@ -62,6 +62,18 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     perPage,
     state,
   });
+  const searchRepositoryIssuesParameters = Type.Object({
+    platform,
+    owner,
+    repo,
+    query: Type.String({
+      description: "Issue search query in the selected provider's syntax",
+      minLength: 1,
+    }),
+    page,
+    perPage,
+    state,
+  });
   const repositoryItemParameters = Type.Object({ platform, owner, repo, number });
   const listCommentsParameters = Type.Object({ platform, owner, repo, number, page, perPage });
   const commentId = Type.String({ description: "Discussion comment id", minLength: 1 });
@@ -147,6 +159,17 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listIssues(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_issues_search",
+    label: "Search Forges Issues",
+    description: "Search repository issues with the selected platform's query syntax",
+    parameters: searchRepositoryIssuesParameters,
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).searchIssues(params);
     },
   });
 

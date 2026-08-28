@@ -16,6 +16,7 @@ const expectedToolNames = [
   "forges_repos_list",
   "forges_repos_get",
   "forges_issues_list",
+  "forges_issues_search",
   "forges_issues_get",
   "forges_issues_comments",
   "forges_issues_comments_get",

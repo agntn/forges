@@ -21,6 +21,7 @@ import type {
   User,
   Owner,
   PageResult,
+  SearchPageResult,
   ListOptions,
   ListCommentOptions,
   ListThreadOptions,
@@ -581,6 +582,38 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
       const issues = (response.data ?? []).map((raw) => this.mapIssue(raw));
       return this.parsePagination(issues, response.headers);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async searchIssues(
+    owner: string,
+    repo: string,
+    search: string,
+    options?: ListOptions,
+  ): Promise<SearchPageResult<Issue>> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const query: Record<string, string | number> = {
+        search,
+        page: options?.page ?? 1,
+        per_page: options?.perPage ?? 30,
+      };
+
+      const stateFilter = this.mapStateFilter(options?.state);
+      if (stateFilter) query.state = stateFilter;
+
+      const response = await rawFetch<GitLabIssue[]>(this.client, `/projects/${projectId}/issues`, {
+        query,
+      });
+      return {
+        ...this.parsePagination(
+          (response.data ?? []).map((raw) => this.mapIssue(raw)),
+          response.headers,
+        ),
+        incomplete: false,
+      };
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }
