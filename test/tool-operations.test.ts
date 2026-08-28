@@ -126,6 +126,26 @@ describe("configured provider", () => {
     expect(mocks.anonymousWrites.current).toBe(0);
   });
 
+  it("replaces an anonymous read provider when credentials appear", async () => {
+    mocks.credentialToken.current = null;
+    const anonymous = await getRepository({
+      platform: "github",
+      owner: "agntn",
+      repo: "forges",
+    });
+    mocks.credentialToken.current = "test-token";
+
+    const authenticated = await getRepository({
+      platform: "github",
+      owner: "agntn",
+      repo: "forges",
+    });
+
+    expect(anonymous.details.result.owner.login).toBe("anonymous");
+    expect(authenticated.details.result.owner.login).toBe("aeitwoen");
+    expect(mocks.createProvider).toHaveBeenCalledTimes(2);
+  });
+
   it("treats an explicitly empty detected token as anonymous", async () => {
     mocks.credentialToken.current = "";
 

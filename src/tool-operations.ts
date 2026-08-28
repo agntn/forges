@@ -83,15 +83,18 @@ function readProvider(platform: ForgesPlatform): Provider {
   const authenticated = pinnedProviders.get(key);
   if (authenticated) return authenticated;
 
-  const anonymous = anonymousReadProviders.get(key);
-  if (anonymous) return anonymous;
-
   const token = configuredToken(platform);
-  const provider = createConfiguredProvider(platform, token);
-  if (token === "") {
-    anonymousReadProviders.set(key, provider);
-  } else {
+  if (token !== "") {
+    const provider = createConfiguredProvider(platform, token);
+    anonymousReadProviders.delete(key);
     pinnedProviders.set(key, provider);
+    return provider;
+  }
+
+  let provider = anonymousReadProviders.get(key);
+  if (!provider) {
+    provider = createConfiguredProvider(platform, token);
+    anonymousReadProviders.set(key, provider);
   }
   return provider;
 }
