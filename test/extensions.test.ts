@@ -61,6 +61,7 @@ const toolNames = [
   "forges_pull_requests_create",
   "forges_users_get",
   "forges_users_authenticated",
+  "forges_auth_reload",
   "forges_threads_list",
   "forges_threads_get",
   "forges_threads_reply",
@@ -180,6 +181,30 @@ describe("Forges Pi extension", () => {
       platform: "github",
       result: { items: [], hasNextPage: false },
     });
+  });
+
+  it("reloads authentication through the shared operation", async () => {
+    const user = { id: "1", login: "aeitwoen" };
+    mocks.users.authenticated.mockResolvedValue(user);
+    const tools = registerPiTools();
+
+    await requirePiTool(tools, "forges_users_authenticated").execute(
+      "test",
+      { platform: "github" },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+    const result = await requirePiTool(tools, "forges_auth_reload").execute(
+      "test",
+      { platform: "github" },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+
+    expect(mocks.createProvider).toHaveBeenCalledTimes(2);
+    expect(result.details.result).toEqual(user);
   });
 
   it.each([
@@ -382,6 +407,7 @@ describe("Forges OMP extension", () => {
     const mutationTools: Record<string, true> = {
       forges_issues_create: true,
       forges_pull_requests_create: true,
+      forges_auth_reload: true,
       forges_threads_reply: true,
       forges_threads_resolve: true,
       forges_threads_unresolve: true,
