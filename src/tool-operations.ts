@@ -160,16 +160,9 @@ export interface ForgesToolResult<T> {
   details: ForgesToolDetails<T>;
 }
 
-function result<T>(
-  platform: ForgesPlatform,
-  value: T,
-  modelValue: unknown = value,
-  note?: string,
-): ForgesToolResult<T> {
+function result<T>(platform: ForgesPlatform, value: T, note?: string): ForgesToolResult<T> {
   const details = { platform, result: value };
-  const modelDetails = note
-    ? { platform, result: modelValue, note }
-    : { platform, result: modelValue };
+  const modelDetails = note ? { ...details, note } : details;
   return {
     content: [{ type: "text", text: JSON.stringify(modelDetails, null, 2) }],
     details,
@@ -236,7 +229,7 @@ export async function getRepository(
 
 export async function listIssues(
   params: ListRepositoryItemsParams,
-): Promise<ForgesToolResult<PageResult<Issue>>> {
+): Promise<ForgesToolResult<PageResult<Omit<Issue, "body">>>> {
   const issues = await readProvider(params.platform).issues.list(
     params.owner,
     params.repo,
@@ -244,7 +237,6 @@ export async function listIssues(
   );
   return result(
     params.platform,
-    issues,
     summarizeIssuePage(issues),
     "Issue bodies are omitted from list output; use forges_issues_get to read one body.",
   );
@@ -277,7 +269,6 @@ export async function listIssueComments(
   );
   return result(
     params.platform,
-    comments,
     summarizeCommentPage(comments),
     "Comment bodies are truncated in list output; use forges_issues_comments_get to read one in full.",
   );
@@ -310,7 +301,7 @@ export async function createIssue(params: CreateIssueParams): Promise<ForgesTool
 
 export async function listPullRequests(
   params: ListRepositoryItemsParams,
-): Promise<ForgesToolResult<PageResult<PullRequest>>> {
+): Promise<ForgesToolResult<PageResult<Omit<PullRequest, "body">>>> {
   const pullRequests = await readProvider(params.platform).pullRequests.list(
     params.owner,
     params.repo,
@@ -318,7 +309,6 @@ export async function listPullRequests(
   );
   return result(
     params.platform,
-    pullRequests,
     summarizeIssuePage(pullRequests),
     "Pull-request bodies are omitted from list output; use forges_pull_requests_get to read one body.",
   );
@@ -346,7 +336,6 @@ export async function listPullRequestComments(
   );
   return result(
     params.platform,
-    comments,
     summarizeCommentPage(comments),
     "Comment bodies are truncated in list output; use forges_pull_requests_comments_get to read one in full.",
   );
@@ -439,7 +428,6 @@ export async function listThreads(
   );
   return result(
     params.platform,
-    threads,
     summarizeThreadPage(threads),
     "Comment bodies are truncated in list output; use forges_threads_get to read one full thread.",
   );

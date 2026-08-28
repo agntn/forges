@@ -249,6 +249,7 @@ describe("Forges Pi extension", () => {
       const text = result.content.find((part) => part.type === "text")?.text;
       expect(text?.length).toBeLessThan(100_000);
       expect(text).toContain("bodies are omitted");
+      expect(JSON.stringify(result.details)).not.toContain(body);
     }
   });
 
@@ -288,6 +289,7 @@ describe("Forges Pi extension", () => {
     expect(text).toContain("truncated");
     expect(text).toContain("line 0");
     expect(text).not.toContain("line 20");
+    expect(JSON.stringify(result.details)).not.toContain("line 20");
     expect(mocks.threads.list).toHaveBeenCalledWith("agntn", "forges", 31, {
       page: undefined,
       perPage: undefined,
@@ -327,6 +329,7 @@ describe("Forges Pi extension", () => {
       expect(text).toContain(`${name}_get`);
       expect(text).toContain("line 0");
       expect(text).not.toContain("line 20");
+      expect(JSON.stringify(result.details)).not.toContain("line 20");
     }
   });
 });
