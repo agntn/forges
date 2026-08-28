@@ -532,8 +532,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     issueNumber: number,
   ): Promise<Issue> {
     try {
-      const data = await cachedFetch<GitHubIssue>(
-        this.client,
+      const data = await this.client<GitHubIssue>(
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(issueNumber)}`,
       );
       return this.mapIssue(data);
@@ -596,8 +595,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     prNumber: number,
   ): Promise<PullRequest> {
     try {
-      const data = await cachedFetch<GitHubPullRequest>(
-        this.client,
+      const data = await this.client<GitHubPullRequest>(
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(prNumber)}`,
       );
       return this.mapPullRequest(data);

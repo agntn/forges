@@ -34,10 +34,12 @@ vi.mock("../src/cache.ts", () => ({
 // Import mocked modules to control them
 import { rawFetch } from "../src/http.ts";
 import { createHttpClient } from "../src/http.ts";
+import { cachedFetch } from "../src/cache.ts";
 import { FetchError } from "ofetch";
 
 const mockedRawFetch = vi.mocked(rawFetch);
 const mockedCreateHttpClient = vi.mocked(createHttpClient);
+const mockedCachedFetch = vi.mocked(cachedFetch);
 
 // -- Gitea API fixture data --
 
@@ -170,6 +172,12 @@ describe("Gitea Provider", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockClient.mockReset();
+    mockClient.mockResolvedValue({});
+    mockedCachedFetch.mockReset();
+    mockedCachedFetch.mockImplementation(async (client, url, options) =>
+      options ? client(url, options) : client(url),
+    );
     provider = new GiteaProvider({ token: "test-token" });
   });
 
@@ -424,6 +432,20 @@ describe("Gitea Provider", () => {
       expect(result.assignees).toEqual([{ login: "triager" }]);
       expect(result.url).toBe("https://gitea.com/testowner/test-repo/issues/1");
     });
+
+    it("reads current state on every call", async () => {
+      const closed = giteaIssue({ state: "closed", updated_at: "2024-01-03T00:00:00Z" });
+      mockedCachedFetch.mockResolvedValue(giteaIssue());
+      mockClient.mockResolvedValueOnce(giteaIssue()).mockResolvedValueOnce(closed);
+
+      await provider.issues.get("testowner", "test-repo", 1);
+      const issue = await provider.issues.get("testowner", "test-repo", 1);
+
+      expect(issue.state).toBe("closed");
+      expect(issue.updatedAt).toBe("2024-01-03T00:00:00Z");
+      expect(mockClient).toHaveBeenCalledTimes(2);
+      expect(mockedCachedFetch).not.toHaveBeenCalled();
+    });
   });
 
   describe("issues.create", () => {
@@ -550,6 +572,24 @@ describe("Gitea Provider", () => {
       expect(result.assignees).toEqual([{ login: "maintainer" }]);
       expect(result.mergeCommitSha).toBe("dfe89dfb6bf22dcbd2a6203bef8aa262e65ea085");
       expect(result.url).toBe("https://gitea.com/testowner/test-repo/pulls/5");
+    });
+
+    it("reads current state on every call", async () => {
+      const merged = giteaPullRequest({
+        state: "closed",
+        merged: true,
+        merge_commit_sha: "dfe89dfb6bf22dcbd2a6203bef8aa262e65ea085",
+      });
+      mockedCachedFetch.mockResolvedValue(giteaPullRequest());
+      mockClient.mockResolvedValueOnce(giteaPullRequest()).mockResolvedValueOnce(merged);
+
+      await provider.pullRequests.get("testowner", "test-repo", 5);
+      const pr = await provider.pullRequests.get("testowner", "test-repo", 5);
+
+      expect(pr.merged).toBe(true);
+      expect(pr.mergeCommitSha).toBe("dfe89dfb6bf22dcbd2a6203bef8aa262e65ea085");
+      expect(mockClient).toHaveBeenCalledTimes(2);
+      expect(mockedCachedFetch).not.toHaveBeenCalled();
     });
   });
 

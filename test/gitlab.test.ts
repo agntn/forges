@@ -492,6 +492,21 @@ describe("GitLabProvider", () => {
       expect(issue.assignees).toEqual([{ login: "triager" }]);
       expect(issue.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/issues/15");
     });
+
+    it("reads current state on every call", async () => {
+      const closed = { ...glIssue, state: "closed", updated_at: "2024-03-03T11:00:00Z" };
+      mockProjectResolve(278964);
+      mocks.cachedFetch.mockResolvedValue(glIssue);
+      mocks.client.mockResolvedValueOnce(glIssue).mockResolvedValueOnce(closed);
+
+      await gl.issues.get("gitlab-org", "gitlab-foss", 15);
+      const issue = await gl.issues.get("gitlab-org", "gitlab-foss", 15);
+
+      expect(issue.state).toBe("closed");
+      expect(issue.updatedAt).toBe("2024-03-03T11:00:00Z");
+      expect(mocks.client).toHaveBeenCalledTimes(3);
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
+    });
   });
 
   describe("issues.create", () => {
@@ -617,6 +632,22 @@ describe("GitLabProvider", () => {
       expect(pr.assignees).toEqual([{ login: "maintainer" }]);
       expect(pr.mergeCommitSha).toBe("cd9bbd8a3e8af73864ca3c7704211309fae8ce0e");
       expect(pr.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/34");
+    });
+
+    it("reads current state on every call", async () => {
+      mockProjectResolve(278964);
+      mocks.cachedFetch.mockResolvedValue(glMergeRequest);
+      mocks.client
+        .mockResolvedValueOnce(glMergeRequest)
+        .mockResolvedValueOnce({ ...glMergedMR, iid: 33 });
+
+      await gl.pullRequests.get("gitlab-org", "gitlab-foss", 33);
+      const pr = await gl.pullRequests.get("gitlab-org", "gitlab-foss", 33);
+
+      expect(pr.merged).toBe(true);
+      expect(pr.mergeCommitSha).toBe("cd9bbd8a3e8af73864ca3c7704211309fae8ce0e");
+      expect(mocks.client).toHaveBeenCalledTimes(3);
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
     });
   });
 
