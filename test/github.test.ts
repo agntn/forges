@@ -395,18 +395,29 @@ describe("GitHubProvider", () => {
 
   describe("issues.get", () => {
     it("returns single mapped issue", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce(ghIssue);
+      mocks.client.mockResolvedValueOnce(ghIssue);
 
       const issue = await gh.issues.get("octocat", "hello-world", 42);
 
-      expect(mocks.cachedFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/octocat/hello-world/issues/42",
-      );
+      expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/42");
       expect(issue.number).toBe(42);
       expect(issue.author.login).toBe("reporter");
       expect(issue.assignees).toEqual([{ login: "triager" }]);
       expect(issue.url).toBe("https://github.com/octocat/hello-world/issues/42");
+    });
+
+    it("reads current state on every call", async () => {
+      const closed = { ...ghIssue, state: "closed", updated_at: "2024-01-17T12:00:00Z" };
+      mocks.cachedFetch.mockResolvedValue(ghIssue);
+      mocks.client.mockResolvedValueOnce(ghIssue).mockResolvedValueOnce(closed);
+
+      await gh.issues.get("octocat", "hello-world", 42);
+      const issue = await gh.issues.get("octocat", "hello-world", 42);
+
+      expect(issue.state).toBe("closed");
+      expect(issue.updatedAt).toBe("2024-01-17T12:00:00Z");
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -421,7 +432,7 @@ describe("GitHubProvider", () => {
       await expect(gh.issues.get("octocat", "hello-world", number)).rejects.toThrow(
         "Invalid API path segment",
       );
-      expect(mocks.cachedFetch).not.toHaveBeenCalled();
+      expect(mocks.client).not.toHaveBeenCalled();
     });
   });
 
@@ -593,7 +604,7 @@ describe("GitHubProvider", () => {
 
   describe("pullRequests.get", () => {
     it("returns the merge commit SHA for a merged pull request", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce({
+      mocks.client.mockResolvedValueOnce({
         ...ghPullRequest,
         merged: true,
         merge_commit_sha: "0549abd44267f5eb5c6e219fb9ab43b7129aa470",
@@ -609,8 +620,28 @@ describe("GitHubProvider", () => {
       expect(pr.url).toBe("https://github.com/octocat/hello-world/pull/99");
     });
 
+    it("reads current state on every call", async () => {
+      const merged = {
+        ...ghPullRequest,
+        state: "closed",
+        merged: true,
+        merged_at: "2024-02-03T09:00:00Z",
+        merge_commit_sha: "0549abd44267f5eb5c6e219fb9ab43b7129aa470",
+      };
+      mocks.cachedFetch.mockResolvedValue(ghPullRequest);
+      mocks.client.mockResolvedValueOnce(ghPullRequest).mockResolvedValueOnce(merged);
+
+      await gh.pullRequests.get("octocat", "hello-world", 99);
+      const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
+
+      expect(pr.merged).toBe(true);
+      expect(pr.mergeCommitSha).toBe("0549abd44267f5eb5c6e219fb9ab43b7129aa470");
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
+    });
+
     it("leaves mergeCommitSha empty when an older payload omits it", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce({ ...ghPullRequest, merge_commit_sha: undefined });
+      mocks.client.mockResolvedValueOnce({ ...ghPullRequest, merge_commit_sha: undefined });
 
       const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
 
@@ -776,14 +807,14 @@ describe("GitHubProvider", () => {
     });
 
     it("maps created_at → createdAt and updated_at → updatedAt", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce(ghIssue);
+      mocks.client.mockResolvedValueOnce(ghIssue);
       const issue = await gh.issues.get("o", "r", 42);
       expect(issue.createdAt).toBe("2024-01-15T10:00:00Z");
       expect(issue.updatedAt).toBe("2024-01-16T12:00:00Z");
     });
 
     it("maps user.login → author.login", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce({
+      mocks.client.mockResolvedValueOnce({
         ...ghIssue,
         user: { login: "specific-user" },
       });
@@ -792,7 +823,7 @@ describe("GitHubProvider", () => {
     });
 
     it("maps head.ref → sourceBranch and base.ref → targetBranch", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce({
+      mocks.client.mockResolvedValueOnce({
         ...ghPullRequest,
         head: { ref: "fix/typo" },
         base: { ref: "develop" },
@@ -818,7 +849,7 @@ describe("GitHubProvider", () => {
     });
 
     it("defaults null body to empty string", async () => {
-      mocks.cachedFetch.mockResolvedValueOnce({ ...ghIssue, body: null });
+      mocks.client.mockResolvedValueOnce({ ...ghIssue, body: null });
       const issue = await gh.issues.get("o", "r", 1);
       expect(issue.body).toBe("");
     });

@@ -521,8 +521,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   protected override async getIssue(owner: string, repo: string, iid: number): Promise<Issue> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const issue = await cachedFetch<GitLabIssue>(
-        this.client,
+      const issue = await this.client<GitLabIssue>(
         `/projects/${projectId}/issues/${encodePathSegment(iid)}`,
       );
       return this.mapIssue(issue);
@@ -591,8 +590,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   ): Promise<PullRequest> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const mr = await cachedFetch<GitLabMergeRequest>(
-        this.client,
+      const mr = await this.client<GitLabMergeRequest>(
         `/projects/${projectId}/merge_requests/${encodePathSegment(iid)}`,
       );
       return this.mapPullRequest(mr);

@@ -380,8 +380,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   protected override async getIssue(owner: string, repo: string, number: number): Promise<Issue> {
     try {
       return this.mapIssue(
-        await cachedFetch<GiteaIssue>(
-          this.client,
+        await this.client<GiteaIssue>(
           `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}`,
         ),
       );
@@ -442,8 +441,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<PullRequest> {
     try {
       return this.mapPullRequest(
-        await cachedFetch<GiteaPullRequest>(
-          this.client,
+        await this.client<GiteaPullRequest>(
           `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}`,
         ),
       );
