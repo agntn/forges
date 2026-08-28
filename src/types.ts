@@ -107,6 +107,8 @@ export interface CreateIssueInput {
   title: string;
   body: string;
   labels?: string[];
+  /** Assignee logins. GitLab Free accepts only one. */
+  assignees?: string[];
 }
 
 /**
@@ -118,6 +120,8 @@ export interface CreatePullRequestInput {
   sourceBranch: string;
   targetBranch: string;
   draft?: boolean;
+  /** Assignee logins. GitLab Free accepts only one. */
+  assignees?: string[];
 }
 
 /**

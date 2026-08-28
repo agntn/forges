@@ -355,6 +355,23 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     return state === "open" ? "opened" : state;
   }
 
+  private async resolveAssigneeFields(assignees?: string[]): Promise<Record<string, unknown>> {
+    if (!assignees?.length) return {};
+
+    const ids = await Promise.all(
+      assignees.map(async (username) => {
+        const users = await this.client<GitLabUser[]>("/users", { query: { username } });
+        const match = users.find((user) => user.username.toLowerCase() === username.toLowerCase());
+        if (!match) throw new NotFoundError(`User not found: ${username}`, "gitlab");
+        return match.id;
+      }),
+    );
+    const onlyAssignee = ids[0];
+    return ids.length === 1 && onlyAssignee !== undefined
+      ? { assignee_id: onlyAssignee }
+      : { assignee_ids: ids };
+  }
+
   private getCachedProjectId(key: string): number | undefined {
     const entry = this.projectIdCache.get(key);
     if (!entry) {
@@ -537,12 +554,14 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   ): Promise<Issue> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
+      const assigneeFields = await this.resolveAssigneeFields(input.assignees);
       const issue = await this.client<GitLabIssue>(`/projects/${projectId}/issues`, {
         method: "POST",
         body: {
           title: input.title,
           description: input.body,
           labels: input.labels?.join(","),
+          ...assigneeFields,
         },
       });
       return this.mapIssue(issue);
@@ -616,6 +635,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       if (input.draft !== undefined) {
         body.draft = input.draft;
       }
+      Object.assign(body, await this.resolveAssigneeFields(input.assignees));
 
       const mr = await this.client<GitLabMergeRequest>(`/projects/${projectId}/merge_requests`, {
         method: "POST",

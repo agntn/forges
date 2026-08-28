@@ -115,6 +115,18 @@ describe("configured provider", () => {
     expect(mocks.createProvider).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects too many assignees before resolving credentials", async () => {
+    await expect(
+      createIssue({
+        ...issueParams,
+        assignees: Array.from({ length: 11 }, (_, index) => `user-${index}`),
+      }),
+    ).rejects.toThrow("Assignees must be an array of at most 10 non-empty logins");
+
+    expect(mocks.resolveToken).not.toHaveBeenCalled();
+    expect(mocks.createProvider).not.toHaveBeenCalled();
+  });
+
   it("falls back to anonymous public reads without making writes anonymous", async () => {
     mocks.credentialToken.current = null;
 

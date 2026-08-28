@@ -45,6 +45,12 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     }),
   );
   const number = Type.Integer({ description: "Issue or pull-request number", minimum: 1 });
+  const assignees = Type.Optional(
+    Type.Array(Type.String({ minLength: 1 }), {
+      description: "Assignee logins. GitLab Free accepts only one.",
+      maxItems: 10,
+    }),
+  );
 
   const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
   const repositoryParameters = Type.Object({ platform, owner, repo });
@@ -67,6 +73,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     title: Type.String({ description: "Issue title", minLength: 1 }),
     body: Type.String({ description: "Issue body" }),
     labels: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+    assignees,
   });
   const createPullRequestParameters = Type.Object({
     platform,
@@ -77,6 +84,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     sourceBranch: Type.String({ description: "Source branch", minLength: 1 }),
     targetBranch: Type.String({ description: "Target branch", minLength: 1 }),
     draft: Type.Optional(Type.Boolean({ description: "Create as a draft pull request" })),
+    assignees,
   });
   const userParameters = Type.Object({
     platform,

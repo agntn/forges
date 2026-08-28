@@ -214,7 +214,14 @@ describe("forges MCP server", () => {
   });
 
   it("creates an issue through the shared operation", async () => {
-    const issue = { id: "42", number: 42, title: "Bug", body: "Details", state: "open" };
+    const issue = {
+      id: "42",
+      number: 42,
+      title: "Bug",
+      body: "Details",
+      state: "open",
+      assignees: [{ login: "triager" }],
+    };
     mocks.issues.create.mockResolvedValue(issue);
     const client = await connectTestClient();
 
@@ -227,6 +234,7 @@ describe("forges MCP server", () => {
         title: "Bug",
         body: "Details",
         labels: ["bug"],
+        assignees: ["triager"],
       },
     });
 
@@ -234,8 +242,40 @@ describe("forges MCP server", () => {
       title: "Bug",
       body: "Details",
       labels: ["bug"],
+      assignees: ["triager"],
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "gitlab", result: issue });
+  });
+
+  it("returns the created object when requested assignees are missing", async () => {
+    const issue = {
+      id: "42",
+      number: 42,
+      title: "Bug",
+      body: "Details",
+      state: "open",
+      assignees: [],
+    };
+    mocks.issues.create.mockResolvedValue(issue);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_issues_create",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        title: "Bug",
+        body: "Details",
+        assignees: ["triager"],
+      },
+    });
+
+    expect(JSON.parse(text(response.content))).toEqual({
+      platform: "github",
+      result: issue,
+      note: "Creation succeeded, but requested assignees are missing: triager. Do not retry the create call; the result is the created object.",
+    });
   });
 
   it("reports a failed operation as a tool error instead of a transport failure", async () => {

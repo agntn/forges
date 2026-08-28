@@ -399,6 +399,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         title: input.title,
         body: input.body,
       };
+      if (input.assignees?.length) {
+        body.assignees = input.assignees;
+      }
       if (input.labels?.length) {
         body.labels = input.labels;
       }
@@ -462,6 +465,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         head: input.sourceBranch,
         base: input.targetBranch,
       };
+      if (input.assignees?.length) {
+        body.assignees = input.assignees;
+      }
       if (input.draft !== undefined) {
         body.draft = input.draft;
       }

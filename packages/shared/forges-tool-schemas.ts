@@ -48,6 +48,12 @@ const threadState = Type.Optional(
 );
 const threadId = Type.String({ description: "Review thread id", minLength: 1 });
 const commentId = Type.String({ description: "Discussion comment id", minLength: 1 });
+const assignees = Type.Optional(
+  Type.Array(Type.String({ minLength: 1 }), {
+    description: "Assignee logins. GitLab Free accepts only one.",
+    maxItems: 10,
+  }),
+);
 
 export const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
 export const repositoryParameters = Type.Object({ platform, owner, repo });
@@ -69,6 +75,7 @@ export const createIssueParameters = Type.Object({
   title: Type.String({ description: "Issue title", minLength: 1 }),
   body: Type.String({ description: "Issue body" }),
   labels: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+  assignees,
 });
 export const createPullRequestParameters = Type.Object({
   platform,
@@ -79,6 +86,7 @@ export const createPullRequestParameters = Type.Object({
   sourceBranch: Type.String({ description: "Source branch", minLength: 1 }),
   targetBranch: Type.String({ description: "Target branch", minLength: 1 }),
   draft: Type.Optional(Type.Boolean({ description: "Create as a draft pull request" })),
+  assignees,
 });
 export const userParameters = Type.Object({
   platform,
