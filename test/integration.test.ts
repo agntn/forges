@@ -138,12 +138,15 @@ describe("createProvider factory", () => {
     expect(createProvider("gitea", baseConfig)).toBeInstanceOf(Provider);
   });
 
-  it("keeps a default search fallback for custom providers", async () => {
-    const fallback: unknown = Reflect.get(Provider.prototype, "searchIssues");
+  it.each([
+    ["searchIssues", "Issue search is not supported by this provider"],
+    ["searchPullRequests", "Pull-request search is not supported by this provider"],
+  ])("keeps a default %s fallback for custom providers", async (method, message) => {
+    const fallback: unknown = Reflect.get(Provider.prototype, method);
     expect(typeof fallback).toBe("function");
-    if (typeof fallback !== "function") throw new Error("searchIssues fallback is missing");
+    if (typeof fallback !== "function") throw new Error(`${method} fallback is missing`);
 
-    await expect(fallback()).rejects.toThrow("Issue search is not supported by this provider");
+    await expect(fallback()).rejects.toThrow(message);
   });
 });
 
@@ -187,6 +190,7 @@ describe("cross-provider class consistency", () => {
       const p = providers[platform];
       expect(p.pullRequests).toBeDefined();
       expect(typeof p.pullRequests.list).toBe("function");
+      expect(typeof p.pullRequests.search).toBe("function");
       expect(typeof p.pullRequests.get).toBe("function");
       expect(typeof p.pullRequests.create).toBe("function");
       expect(typeof p.pullRequests.listComments).toBe("function");
@@ -232,6 +236,7 @@ describe("cross-provider class consistency", () => {
 
       // pullRequests: same as issues
       expect(p.pullRequests.list.length).toBeGreaterThanOrEqual(2);
+      expect(p.pullRequests.search.length).toBeGreaterThanOrEqual(3);
       expect(p.pullRequests.get.length).toBeGreaterThanOrEqual(3);
       expect(p.pullRequests.create.length).toBeGreaterThanOrEqual(3);
       expect(p.pullRequests.listComments.length).toBeGreaterThanOrEqual(3);

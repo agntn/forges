@@ -12,6 +12,7 @@ export type {
   Repository,
   IssueState,
   Issue,
+  PullRequestSearchItem,
   PullRequest,
   Comment,
   ThreadState,

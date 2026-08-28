@@ -796,6 +796,82 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("pullRequests.search", () => {
+    it("searches one repository without fetching each pull request", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: {
+          items: [
+            {
+              ...ghIssue,
+              state: "closed",
+              repository_url: "https://github.example/api/v3/repos/OctoCat/Hello-World",
+            },
+            {
+              ...ghIssue,
+              state: "closed",
+              repository_url: "https://github.example/api/v3/repos/octocat/other-repo",
+              pull_request: {},
+            },
+            {
+              ...ghIssue,
+              repository_url: "https://github.example/api/v3/repos/OctoCat/Hello-World",
+              pull_request: {},
+            },
+            {
+              ...ghIssue,
+              state: "closed",
+              html_url: "https://github.com/octocat/hello-world/pull/42",
+              repository_url: "https://github.example/api/v3/repos/OctoCat/Hello-World",
+              pull_request: { merged_at: "2026-08-28T18:18:56Z" },
+              draft: false,
+            },
+          ],
+          incomplete_results: false,
+        },
+        headers: makeHeaders('<https://api.github.com/search/issues?q=search&page=3>; rel="next"'),
+      });
+
+      const result = await gh.pullRequests.search(
+        "octocat",
+        "hello-world",
+        "repo:octocat/other-repo OR is:issue OR search",
+        { state: "closed", page: 2, perPage: 1 },
+      );
+
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/search/issues", {
+        query: {
+          q: "repo:octocat/other-repo OR is:issue OR search repo:octocat/hello-world is:pr is:closed",
+          page: "2",
+          per_page: "1",
+        },
+      });
+      expect(mocks.client).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        items: [
+          {
+            number: 42,
+            merged: true,
+            draft: false,
+            url: "https://github.com/octocat/hello-world/pull/42",
+          },
+        ],
+        incomplete: true,
+        hasNextPage: true,
+        nextPage: 3,
+      });
+      expect(result.items[0]).not.toHaveProperty("sourceBranch");
+      expect(result.items[0]).not.toHaveProperty("headSha");
+    });
+
+    it("rejects a blank query before transport", async () => {
+      await expect(gh.pullRequests.search("octocat", "hello-world", "   ")).rejects.toThrow(
+        "Pull-request search query must not be empty",
+      );
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    });
+  });
+
   describe("pullRequests.get", () => {
     it("returns the merge commit SHA for a merged pull request", async () => {
       mocks.client.mockResolvedValueOnce({

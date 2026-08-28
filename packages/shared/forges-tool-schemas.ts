@@ -65,12 +65,12 @@ export const listRepositoryItemsParameters = Type.Object({
   perPage,
   state,
 });
-export const searchRepositoryIssuesParameters = Type.Object({
+export const searchRepositoryItemsParameters = Type.Object({
   platform,
   owner,
   repo,
   query: Type.String({
-    description: "Issue search query in the selected provider's syntax",
+    description: "Search query in the selected provider's syntax",
     minLength: 1,
   }),
   page,

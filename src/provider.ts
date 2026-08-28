@@ -17,6 +17,7 @@ import type {
   PageResult,
   PullRequest,
   PullRequestResource,
+  PullRequestSearchItem,
   ReplyThreadInput,
   Repository,
   RepositoryResource,
@@ -83,6 +84,12 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.pullRequests = {
       list: (owner, repo, options) => this.listPullRequests(owner, repo, options),
+      search: async (owner, repo, query, options) => {
+        if (query.trim() === "") {
+          throw new ForgesError("Pull-request search query must not be empty", 400);
+        }
+        return this.searchPullRequests(owner, repo, query, options);
+      },
       get: (owner, repo, number) => this.getPullRequest(owner, repo, number),
       create: async (owner, repo, input) => {
         assertAssignees(input.assignees);
@@ -145,6 +152,16 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     repo: string,
     options?: ListOptions,
   ): Promise<PageResult<PullRequest>>;
+  protected searchPullRequests(
+    _owner: string,
+    _repo: string,
+    _query: string,
+    _options?: ListOptions,
+  ): Promise<SearchPageResult<PullRequestSearchItem>> {
+    return Promise.reject(
+      new ForgesError("Pull-request search is not supported by this provider", 501),
+    );
+  }
   protected abstract getPullRequest(
     owner: string,
     repo: string,

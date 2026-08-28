@@ -16,7 +16,7 @@ import {
   replyThreadParameters,
   repositoryItemParameters,
   repositoryParameters,
-  searchRepositoryIssuesParameters,
+  searchRepositoryItemsParameters,
   threadParameters,
   userParameters,
 } from "../../shared/forges-tool-schemas.ts";
@@ -84,7 +84,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     promptGuidelines: [
       "Use forges_issues_search when duplicate checks need a query instead of the whole issue queue.",
     ],
-    parameters: searchRepositoryIssuesParameters,
+    parameters: searchRepositoryItemsParameters,
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).searchIssues(params);
     },
@@ -155,6 +155,20 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     parameters: listRepositoryItemsParameters,
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequests(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_search",
+    label: "Search Forges Pull Requests",
+    description: "Search repository pull requests with the selected platform's query syntax",
+    promptSnippet: "Search pull requests inside one GitHub, GitLab, or Gitea repository.",
+    promptGuidelines: [
+      "Use forges_pull_requests_search for duplicate checks by query inside one repository.",
+    ],
+    parameters: searchRepositoryItemsParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).searchPullRequests(params);
     },
   });
 

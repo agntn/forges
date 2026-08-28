@@ -758,6 +758,46 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("pullRequests.search", () => {
+    it("searches project merge requests with text, state, and pagination", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glMergedMR],
+        headers: glHeaders({ nextPage: "3", total: "7" }),
+      });
+
+      const result = await gl.pullRequests.search("gitlab-org", "gitlab-foss", "runner timeout", {
+        state: "closed",
+        page: 2,
+        perPage: 1,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/projects/278964/merge_requests", {
+        query: {
+          search: "runner timeout",
+          state: "closed",
+          page: 2,
+          per_page: 1,
+        },
+      });
+      expect(result).toMatchObject({
+        items: [
+          {
+            number: 34,
+            merged: true,
+            draft: false,
+          },
+        ],
+        incomplete: false,
+        totalCount: 7,
+        hasNextPage: true,
+        nextPage: 3,
+      });
+      expect(result.items[0]).not.toHaveProperty("sourceBranch");
+      expect(result.items[0]).not.toHaveProperty("headSha");
+    });
+  });
+
   describe("pullRequests.get", () => {
     it("returns mapped merge request as pull request", async () => {
       mockProjectResolve();

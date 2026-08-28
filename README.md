@@ -94,7 +94,7 @@ const gt = createProvider("gitea", {
 
 ## Agent tools
 
-The same twenty tools - repositories, issues, pull requests, users, authentication reload, discussion comments, and review threads - are exposed over MCP and through the Pi and OMP extensions. Read tools use the normal token detection chain, then fall back to anonymous access when no credential exists. Writes, `forges_users_authenticated`, and `forges_auth_reload` still require a credential. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
+The same twenty-two tools - repositories, issues, pull requests, users, authentication reload, discussion comments, and review threads - are exposed over MCP and through the Pi and OMP extensions. Read tools use the normal token detection chain, then fall back to anonymous access when no credential exists. Writes, `forges_users_authenticated`, and `forges_auth_reload` still require a credential. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
 
 | Platform           | Environment variable     |
 | ------------------ | ------------------------ |
@@ -120,7 +120,7 @@ Speaks MCP over stdio. Point a client at it:
 }
 ```
 
-An MCP client sees the text a tool returns and nothing else, so the text carries the whole answer as JSON. The issue and pull-request lists drop bodies outright and name the tool that reads one in full, because one page of a busy repository is otherwise large enough to crowd out the conversation that asked for it. `forges_threads_list` bounds each comment instead - twelve lines, four thousand characters - but keeps every comment of every thread on the page, so ask it for a small `perPage` on a heavily reviewed pull request. `forges_issues_comments` and `forges_pull_requests_comments` carry the same per-comment bound, and their `_get` variants read a single comment whole.
+An MCP client sees the text a tool returns and nothing else, so the text carries the whole answer as JSON. Issue and pull-request lists and searches drop bodies outright and name the tool that reads one in full, because one page of a busy repository is otherwise large enough to crowd out the conversation that asked for it. Pull-request search also leaves revision details to `forges_pull_requests_get`; GitHub and Gitea search responses do not carry them, and extra detail requests would make one search page unnecessarily expensive. `forges_threads_list` bounds each comment instead - twelve lines, four thousand characters - but keeps every comment of every thread on the page, so ask it for a small `perPage` on a heavily reviewed pull request. `forges_issues_comments` and `forges_pull_requests_comments` carry the same per-comment bound, and their `_get` variants read a single comment whole.
 
 A failure names the status and, on a rate limit, the retry window; it never repeats the endpoint the request went to, so a self-hosted `FORGES_*_BASE_URL` stays out of the model's context even when the platform answers with an error.
 
@@ -144,13 +144,13 @@ Every provider gives you five resources with the same method shapes. Thread sema
 
 **issues** - `list(owner, repo, opts?)`, `search(owner, repo, query, opts?)`, `get(owner, repo, number)`, `create(owner, repo, input)`, `listComments(owner, repo, number, opts?)`
 
-**pullRequests** - `list(owner, repo, opts?)`, `get(owner, repo, number)`, `create(owner, repo, input)`, `listComments(owner, repo, number, opts?)`
+**pullRequests** - `list(owner, repo, opts?)`, `search(owner, repo, query, opts?)`, `get(owner, repo, number)`, `create(owner, repo, input)`, `listComments(owner, repo, number, opts?)`
 
 **users** - `get(username)`, `authenticated()`
 
 **threads** - `list(owner, repo, number, opts?)`, `get(owner, repo, number, threadId)`, `reply(owner, repo, number, threadId, input)`, `resolve(owner, repo, number, threadId)`, `unresolve(owner, repo, number, threadId)`
 
-Issue and pull request lists accept `ListOptions`: `page`, `perPage`, and `state` (`'open' | 'closed' | 'all'`); repository lists use its pagination fields. Lists return `PageResult<T>` with `items`, `hasNextPage`, `nextPage`, and an optional `totalCount`. Issue search accepts the same options and returns those fields plus `incomplete`, which is true when the result is known to be partial. Its query keeps the selected platform's syntax: GitHub qualifiers work on GitHub, while GitLab and Gitea treat it as text.
+Issue and pull request lists accept `ListOptions`: `page`, `perPage`, and `state` (`'open' | 'closed' | 'all'`); repository lists use its pagination fields. Lists return `PageResult<T>` with `items`, `hasNextPage`, `nextPage`, and an optional `totalCount`. Issue and pull-request searches accept the same options and return those fields plus `incomplete`, which is true when the result is known to be partial. Queries keep the selected platform's syntax: GitHub qualifiers work on GitHub, while GitLab and Gitea treat them as text. Pull-request search returns `PullRequestSearchItem`; call `get` for branches, revisions, and mergeability.
 
 `listComments` reads the discussion under an issue or pull request oldest first and accepts `ListCommentOptions`: `page` and `perPage`. On GitHub and Gitea the two variants read the same endpoint, because both platforms index pull requests as issues. GitLab notes are fetched with an explicit ascending sort, and both its system notes about label and state churn and its inline DiffNotes, which belong to the thread surface, are dropped, so a short page whose `hasNextPage` is true means keep paging. Gitea answers with the whole discussion in one response, so the requested page is cut locally.
 
