@@ -86,12 +86,14 @@ const ghPullRequest = {
   created_at: "2024-02-01T08:00:00Z",
   updated_at: "2024-02-02T09:00:00Z",
   html_url: "https://github.com/octocat/hello-world/pull/99",
-  head: { ref: "feature/dark-mode" },
+  head: { ref: "feature/dark-mode", sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38" },
   base: { ref: "main" },
   merged: false,
   merged_at: null,
   draft: true,
   merge_commit_sha: "1e2367db3db90761dcd1dfa353898d8368f2262d",
+  mergeable: true,
+  mergeable_state: "blocked",
 };
 
 const ghComment = {
@@ -584,7 +586,13 @@ describe("GitHubProvider", () => {
   describe("pullRequests.list", () => {
     it("returns mapped pull requests", async () => {
       mocks.rawFetch.mockResolvedValueOnce({
-        data: [ghPullRequest],
+        data: [
+          {
+            ...ghPullRequest,
+            mergeable: undefined,
+            mergeable_state: undefined,
+          },
+        ],
         headers: makeHeaders(),
       });
 
@@ -601,6 +609,9 @@ describe("GitHubProvider", () => {
         merged: false,
         draft: true,
         mergeCommitSha: "",
+        headSha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+        mergeable: null,
+        mergeStatus: "",
         url: "https://github.com/octocat/hello-world/pull/99",
       });
     });
@@ -642,7 +653,23 @@ describe("GitHubProvider", () => {
       expect(pr.draft).toBe(true);
       expect(pr.assignees).toEqual([{ login: "maintainer" }]);
       expect(pr.mergeCommitSha).toBe("0549abd44267f5eb5c6e219fb9ab43b7129aa470");
+      expect(pr.headSha).toBe("cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38");
+      expect(pr.mergeable).toBe(true);
+      expect(pr.mergeStatus).toBe("blocked");
       expect(pr.url).toBe("https://github.com/octocat/hello-world/pull/99");
+    });
+
+    it("preserves unknown mergeability while GitHub computes it", async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...ghPullRequest,
+        mergeable: null,
+        mergeable_state: "unknown",
+      });
+
+      const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
+
+      expect(pr.mergeable).toBeNull();
+      expect(pr.mergeStatus).toBe("unknown");
     });
 
     it("reads current state on every call", async () => {
