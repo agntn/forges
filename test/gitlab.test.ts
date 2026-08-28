@@ -90,6 +90,9 @@ const glMergeRequest = {
   merged_at: null,
   draft: false,
   merge_commit_sha: "not-a-landed-commit",
+  sha: "9a6b45222d6f39adda15a820060d9d65adab2359",
+  merge_status: "can_be_merged",
+  detailed_merge_status: "ci_must_pass",
 };
 
 const glMergedMR = {
@@ -636,6 +639,9 @@ describe("GitLabProvider", () => {
         merged: false,
         draft: false,
         mergeCommitSha: "",
+        headSha: "9a6b45222d6f39adda15a820060d9d65adab2359",
+        mergeable: true,
+        mergeStatus: "ci_must_pass",
         url: "https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/33",
       });
     });
@@ -652,7 +658,27 @@ describe("GitLabProvider", () => {
       expect(pr.state).toBe("closed");
       expect(pr.assignees).toEqual([{ login: "maintainer" }]);
       expect(pr.mergeCommitSha).toBe("cd9bbd8a3e8af73864ca3c7704211309fae8ce0e");
+      expect(pr.headSha).toBe("9a6b45222d6f39adda15a820060d9d65adab2359");
+      expect(pr.mergeable).toBe(true);
+      expect(pr.mergeStatus).toBe("ci_must_pass");
       expect(pr.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/34");
+    });
+
+    it.each([
+      ["cannot_be_merged", "conflict", false],
+      ["unchecked", "checking", null],
+    ])("maps merge status %s to %s", async (mergeStatus, detailedMergeStatus, mergeable) => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        ...glMergeRequest,
+        merge_status: mergeStatus,
+        detailed_merge_status: detailedMergeStatus,
+      });
+
+      const pr = await gl.pullRequests.get("o", "r", 33);
+
+      expect(pr.mergeable).toBe(mergeable);
+      expect(pr.mergeStatus).toBe(detailedMergeStatus);
     });
 
     it("reads current state on every call", async () => {

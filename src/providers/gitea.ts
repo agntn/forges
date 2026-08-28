@@ -97,11 +97,12 @@ interface GiteaPullRequest {
   created_at: string;
   updated_at: string;
   html_url?: string | null;
-  head?: { ref?: string | null; label?: string | null } | null;
+  head?: { ref?: string | null; label?: string | null; sha?: string | null } | null;
   base?: { ref?: string | null; label?: string | null } | null;
   merged?: boolean;
   draft?: boolean;
   merge_commit_sha?: string | null;
+  mergeable?: boolean;
 }
 
 interface GiteaComment {
@@ -266,6 +267,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       merged,
       draft: raw.draft ?? false,
       mergeCommitSha: merged ? (raw.merge_commit_sha ?? "") : "",
+      headSha: raw.head?.sha ?? "",
+      mergeable: raw.mergeable ?? null,
+      mergeStatus: "",
     };
   }
 

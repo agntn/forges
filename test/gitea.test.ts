@@ -115,11 +115,16 @@ function giteaPullRequest(overrides: Record<string, unknown> = {}) {
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-02T00:00:00Z",
     html_url: "https://gitea.com/testowner/test-repo/pulls/5",
-    head: { ref: "feature-branch", label: "testowner:feature-branch" },
+    head: {
+      ref: "feature-branch",
+      label: "testowner:feature-branch",
+      sha: "42190a2e08172b2d2e3f63f7b848231ec566b08f",
+    },
     base: { ref: "main", label: "testowner:main" },
     merged: false,
     draft: false,
     merge_commit_sha: "not-a-landed-commit",
+    mergeable: true,
     ...overrides,
   };
 }
@@ -538,6 +543,9 @@ describe("Gitea Provider", () => {
         merged: false,
         draft: false,
         mergeCommitSha: "",
+        headSha: "42190a2e08172b2d2e3f63f7b848231ec566b08f",
+        mergeable: true,
+        mergeStatus: "",
       });
     });
 
@@ -576,7 +584,18 @@ describe("Gitea Provider", () => {
       expect(result.draft).toBe(false);
       expect(result.assignees).toEqual([{ login: "maintainer" }]);
       expect(result.mergeCommitSha).toBe("dfe89dfb6bf22dcbd2a6203bef8aa262e65ea085");
+      expect(result.headSha).toBe("42190a2e08172b2d2e3f63f7b848231ec566b08f");
+      expect(result.mergeable).toBe(true);
+      expect(result.mergeStatus).toBe("");
       expect(result.url).toBe("https://gitea.com/testowner/test-repo/pulls/5");
+    });
+
+    it("keeps mergeability unknown when an older server omits it", async () => {
+      mockClient.mockResolvedValueOnce(giteaPullRequest({ mergeable: undefined }));
+
+      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
+
+      expect(result.mergeable).toBeNull();
     });
 
     it("reads current state on every call", async () => {

@@ -92,6 +92,9 @@ interface GitLabMergeRequest {
   merged_at: string | null;
   draft: boolean;
   merge_commit_sha: string | null;
+  sha?: string | null;
+  merge_status?: string | null;
+  detailed_merge_status?: string | null;
 }
 
 interface GitLabUser {
@@ -294,6 +297,14 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       merged,
       draft: raw.draft,
       mergeCommitSha: merged ? (raw.merge_commit_sha ?? "") : "",
+      headSha: raw.sha ?? "",
+      mergeable:
+        raw.merge_status === "can_be_merged"
+          ? true
+          : raw.merge_status === "cannot_be_merged"
+            ? false
+            : null,
+      mergeStatus: raw.detailed_merge_status ?? raw.merge_status ?? "",
     };
   }
 

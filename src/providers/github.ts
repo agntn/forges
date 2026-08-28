@@ -90,12 +90,14 @@ interface GitHubIssue {
 }
 
 interface GitHubPullRequest extends GitHubIssue {
-  head: { ref: string };
+  head: { ref: string; sha?: string | null };
   base: { ref: string };
   merged?: boolean;
   merged_at?: string | null;
   draft: boolean;
   merge_commit_sha?: string | null;
+  mergeable?: boolean | null;
+  mergeable_state?: string | null;
 }
 
 interface GitHubComment {
@@ -393,6 +395,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       merged,
       draft: raw.draft,
       mergeCommitSha: merged ? (raw.merge_commit_sha ?? "") : "",
+      headSha: raw.head.sha ?? "",
+      mergeable: raw.mergeable ?? null,
+      mergeStatus: raw.mergeable_state ?? "",
     };
   }
 
