@@ -15,6 +15,7 @@ export function encodePathSegment(value: string | number): string {
     segment.includes("/") ||
     segment.includes("\\") ||
     segment.includes("%") ||
+    /* oxlint-disable-next-line no-control-regex */
     /[\u0000-\u001F\u007F]/.test(segment)
   ) {
     throw new TypeError("Invalid API path segment");

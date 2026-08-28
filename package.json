@@ -76,7 +76,7 @@
     "test:run": "vitest --run",
     "test:packed": "node --experimental-strip-types test/eval-packed-extensions.mjs",
     "fmt": "oxlint . --fix && oxfmt .",
-    "lint": "oxlint . && oxfmt --check .",
+    "lint": "oxlint --deny-warnings . && oxfmt --check .",
     "typecheck": "tsc --noEmit && pnpm build && tsc --noEmit -p tsconfig.extensions.json",
     "prepack": "pnpm run build",
     "release": "pnpm test:run && pnpm build && changelogen --release --push"
@@ -96,7 +96,7 @@
     "changelogen": "^0.6.2",
     "obuild": "^0.4.31",
     "oxfmt": "^0.36.0",
-    "oxlint": "^1.51.0",
+    "oxlint": "^1.80.0",
     "typescript": "^5.8.0",
     "vitest": "^3.2.0"
   },
