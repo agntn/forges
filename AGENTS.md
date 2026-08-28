@@ -111,7 +111,7 @@ try {
 }
 ```
 
-Use `cachedFetch` only for stable item reads. Issue and pull request item reads use the client directly because callers rely on current state.
+Use `cachedFetch` only for stable item reads. Issue, pull request, discussion comment, and user item reads use the client directly because callers rely on current state.
 
 ### Mapper methods
 
@@ -138,7 +138,7 @@ Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 
 - **Token check:** use `!== undefined` not falsy check. Empty string is intentional (allow unauthenticated).
 - **Agent auth boundary:** read executors may fall back to an isolated empty-token provider; writes and `users.authenticated` must use the credentialed provider map.
-- **List vs Get:** list operations use `rawFetch` for pagination headers. Stable item reads use `cachedFetch`; issue and pull request item reads use the client directly.
+- **List vs Get:** list operations use `rawFetch` for pagination headers. Stable item reads use `cachedFetch`; issue, pull request, discussion comment, and user item reads use the client directly.
 - **No raw error throws** — always `throw normalizeError(error, platform)`.
 - **No cache for mutations** — `cachedFetch` rejects non-GET automatically.
 - **No hardcoded URLs** — all providers accept `baseURL` config.

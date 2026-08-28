@@ -678,8 +678,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     commentId: string,
   ): Promise<Comment> {
     try {
-      const data = await cachedFetch<GitHubComment>(
-        this.client,
+      const data = await this.client<GitHubComment>(
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/comments/${encodePathSegment(commentId)}`,
       );
       if (data.issue_url && !data.issue_url.endsWith(`/issues/${number}`)) {
@@ -705,10 +704,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   protected override async getUser(username: string): Promise<User> {
     try {
-      const data = await cachedFetch<GitHubUser>(
-        this.client,
-        `/users/${encodePathSegment(username)}`,
-      );
+      const data = await this.client<GitHubUser>(`/users/${encodePathSegment(username)}`);
       return this.mapUser(data);
     } catch (error) {
       throw normalizeError(error, "github");
@@ -717,7 +713,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   protected override async getAuthenticatedUser(): Promise<User> {
     try {
-      const data = await cachedFetch<GitHubUser>(this.client, "/user");
+      const data = await this.client<GitHubUser>("/user");
       return this.mapUser(data);
     } catch (error) {
       throw normalizeError(error, "github");

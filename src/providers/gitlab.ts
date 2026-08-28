@@ -731,8 +731,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   ): Promise<Comment> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const note = await cachedFetch<GitLabNote>(
-        this.client,
+      const note = await this.client<GitLabNote>(
         `/projects/${projectId}/${resource}/${encodePathSegment(number)}/notes/${encodePathSegment(commentId)}`,
       );
       if (!this.isDiscussionNote(note)) {
@@ -753,14 +752,14 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
    */
   protected override async getUser(username: string): Promise<User> {
     try {
-      const users = await cachedFetch<GitLabUser[]>(this.client, "/users", { query: { username } });
+      const users = await this.client<GitLabUser[]>("/users", { query: { username } });
       const match = users[0];
 
       if (match === undefined) {
         throw new NotFoundError(`User not found: ${username}`, "gitlab");
       }
 
-      return this.mapUser(await cachedFetch<GitLabUser>(this.client, `/users/${match.id}`));
+      return this.mapUser(await this.client<GitLabUser>(`/users/${match.id}`));
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }
@@ -768,7 +767,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   protected override async getAuthenticatedUser(): Promise<User> {
     try {
-      const user = await cachedFetch<GitLabUser>(this.client, "/user");
+      const user = await this.client<GitLabUser>("/user");
       return this.mapUser(user);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
