@@ -16,6 +16,8 @@ import { AuthenticationError, ForgesError } from "./errors.ts";
 export type {
   User,
   Owner,
+  RepositoryParent,
+  RepositoryPermission,
   Repository,
   IssueState,
   Issue,

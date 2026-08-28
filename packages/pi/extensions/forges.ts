@@ -49,7 +49,8 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_repos_get",
     label: "Forges Repository",
-    description: "Get one repository by owner and name from a supported Git platform",
+    description:
+      "Get one repository, including fork parent and viewer access, from a supported Git platform",
     promptSnippet: "Get normalized repository metadata from GitHub, GitLab, or Gitea.",
     promptGuidelines: [
       "Use forges_repos_get when exact normalized repository metadata is required.",

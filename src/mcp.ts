@@ -109,7 +109,7 @@ const tools: ToolDefinition[] = [
     name: "forges_repos_get",
     title: "Get Repository",
     description:
-      "Get one repository by owner and name, normalized across platforms: description, visibility, default branch, web and clone URL, and owner.",
+      "Get one repository by owner and name, normalized across platforms: description, visibility, default branch, fork parent, viewer permission, web and clone URL, and owner. A null viewerPermission means the platform omitted access metadata.",
     inputSchema: repositoryParameters,
     annotations: readAnnotations,
     execute: getRepository,

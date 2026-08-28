@@ -26,15 +26,20 @@ import type {
 import { FetchError } from "ofetch";
 import { ForgesError, NotFoundError, normalizeError } from "../errors.ts";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
-import { cachedFetch } from "../cache.ts";
 import { parseLinkHeader } from "../pagination.ts";
 import { encodePathSegment } from "./base-url.ts";
+import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 
 // --- GitHub API response types (snake_case) ---
 
 interface GitHubOwner {
   login: string;
   avatar_url: string;
+}
+
+interface GitHubRepositoryParent {
+  full_name: string;
+  html_url: string;
 }
 
 interface GitHubRepo {
@@ -46,6 +51,15 @@ interface GitHubRepo {
   default_branch: string;
   html_url: string;
   clone_url: string;
+  fork: boolean;
+  parent?: GitHubRepositoryParent | null;
+  permissions?: {
+    admin?: boolean;
+    maintain?: boolean;
+    push?: boolean;
+    triage?: boolean;
+    pull?: boolean;
+  } | null;
   owner: GitHubOwner;
 }
 
@@ -366,6 +380,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       defaultBranch: raw.default_branch,
       url: raw.html_url,
       cloneUrl: raw.clone_url,
+      isFork: raw.fork,
+      parent: raw.parent ? { fullName: raw.parent.full_name, url: raw.parent.html_url } : null,
+      viewerPermission: mapBooleanRepositoryPermission(raw.permissions),
       owner: this.mapOwner(raw.owner),
     };
   }
@@ -495,8 +512,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   protected override async getRepo(owner: string, repo: string): Promise<Repository> {
     try {
-      const data = await cachedFetch<GitHubRepo>(
-        this.client,
+      const data = await this.client<GitHubRepo>(
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
       );
       return this.mapRepository(data);

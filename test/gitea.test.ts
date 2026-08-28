@@ -80,6 +80,9 @@ function giteaRepo(overrides: Record<string, unknown> = {}) {
     default_branch: "main",
     html_url: "https://gitea.com/testowner/test-repo",
     clone_url: "https://gitea.com/testowner/test-repo.git",
+    fork: false,
+    parent: null,
+    permissions: { admin: false, push: false, pull: true },
     owner: giteaOwner(),
     ...overrides,
   };
@@ -271,6 +274,9 @@ describe("Gitea Provider", () => {
         defaultBranch: "main",
         url: "https://gitea.com/testowner/test-repo",
         cloneUrl: "https://gitea.com/testowner/test-repo.git",
+        isFork: false,
+        parent: null,
+        viewerPermission: "read",
         owner: { login: "testowner", avatarUrl: "https://gitea.com/avatars/1" },
       });
       expect(result.items[1].id).toBe("101");
@@ -340,7 +346,58 @@ describe("Gitea Provider", () => {
       expect(result.id).toBe("100");
       expect(result.fullName).toBe("testowner/test-repo");
       expect(result.owner.login).toBe("testowner");
+      expect(result.isFork).toBe(false);
+      expect(result.parent).toBeNull();
+      expect(result.viewerPermission).toBe("read");
       expect(mockClient).toHaveBeenCalledWith("/repos/testowner/test-repo");
+    });
+
+    it("maps a fork parent and write permission", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaRepo({
+          fork: true,
+          parent: {
+            full_name: "upstream/test-repo",
+            html_url: "https://gitea.com/upstream/test-repo",
+          },
+          permissions: { admin: false, push: true, pull: true },
+        }),
+      );
+
+      const result = await provider.repos.get("testowner", "test-repo");
+
+      expect(result).toMatchObject({
+        isFork: true,
+        parent: {
+          fullName: "upstream/test-repo",
+          url: "https://gitea.com/upstream/test-repo",
+        },
+        viewerPermission: "write",
+      });
+    });
+
+    it("keeps omitted viewer permissions unknown", async () => {
+      mockClient.mockResolvedValueOnce(giteaRepo({ permissions: undefined }));
+
+      const result = await provider.repos.get("testowner", "test-repo");
+
+      expect(result.viewerPermission).toBeNull();
+    });
+
+    it("reads current viewer permission on every call", async () => {
+      mockedCachedFetch.mockResolvedValue(giteaRepo());
+      mockClient
+        .mockResolvedValueOnce(giteaRepo())
+        .mockResolvedValueOnce(
+          giteaRepo({ permissions: { admin: false, push: true, pull: true } }),
+        );
+
+      await provider.repos.get("testowner", "test-repo");
+      const repository = await provider.repos.get("testowner", "test-repo");
+
+      expect(repository.viewerPermission).toBe("write");
+      expect(mockClient).toHaveBeenCalledTimes(2);
+      expect(mockedCachedFetch).not.toHaveBeenCalled();
     });
 
     it("encodes repository path segments before transport", async () => {
