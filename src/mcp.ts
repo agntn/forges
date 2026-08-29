@@ -13,6 +13,7 @@ import {
   commentParameters,
   createIssueParameters,
   createPullRequestParameters,
+  listCiRunsParameters,
   listCommentsParameters,
   listRepositoriesParameters,
   listRepositoryItemsParameters,
@@ -35,6 +36,7 @@ import {
   getRepository,
   getThread,
   getUser,
+  listCiRuns,
   listIssueComments,
   listIssues,
   listPullRequestComments,
@@ -124,6 +126,15 @@ const tools: ToolDefinition[] = [
     inputSchema: repositoryParameters,
     annotations: readAnnotations,
     execute: getRepository,
+  }),
+  defineTool({
+    name: "forges_ci_runs_list",
+    title: "List CI Runs",
+    description:
+      "List paged repository CI runs, normalized from GitHub Actions, GitLab pipelines, and Gitea Actions. Each run includes its branch, revision SHA, lifecycle status, terminal conclusion, and web URL. Filter by branch when checking whether a specific line of development is green.",
+    inputSchema: listCiRunsParameters,
+    annotations: readAnnotations,
+    execute: listCiRuns,
   }),
   defineTool({
     name: "forges_issues_list",
@@ -363,8 +374,8 @@ function failureText(name: string, error: unknown): string {
 }
 
 /**
- * Creates an unconnected MCP server exposing the repository, issue, pull-request,
- * user, and review-thread tools.
+ * Creates an unconnected MCP server exposing repository, CI-run, issue,
+ * pull-request, user, and review-thread tools.
  *
  * Built on the low-level `Server` even though the SDK marks it `@deprecated`,
  * because `McpServer.registerTool` accepts Standard Schema (Zod) only. TypeBox 1.x

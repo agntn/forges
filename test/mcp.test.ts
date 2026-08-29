@@ -8,6 +8,7 @@ import { resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
+  const ciRuns = { list: vi.fn() };
   const issues = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
   const pullRequests = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
   const users = { get: vi.fn(), authenticated: vi.fn() };
@@ -18,12 +19,13 @@ const mocks = vi.hoisted(() => {
     resolve: vi.fn(),
     unresolve: vi.fn(),
   };
-  const provider = { repos, issues, pullRequests, users, threads };
+  const provider = { repos, ciRuns, issues, pullRequests, users, threads };
 
   return {
     resolveToken: vi.fn(() => ({ token: "test-token", source: "env" as const })),
     createProvider: vi.fn(() => provider),
     repos,
+    ciRuns,
     issues,
     pullRequests,
     users,
@@ -39,6 +41,7 @@ vi.mock("../src/index.ts", () => ({
 const toolNames = [
   "forges_repos_list",
   "forges_repos_get",
+  "forges_ci_runs_list",
   "forges_issues_list",
   "forges_issues_search",
   "forges_issues_get",
@@ -171,6 +174,43 @@ describe("forges MCP server", () => {
     });
     // Details never reach an MCP client, so the unbounded payload stays out of the result.
     expect(response.structuredContent).toBeUndefined();
+  });
+
+  it("lists CI runs through the shared operation", async () => {
+    const runs = {
+      items: [
+        {
+          id: "9876",
+          branch: "main",
+          revision: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+          status: "completed",
+          conclusion: "success",
+          url: "https://github.com/agntn/forges/actions/runs/9876",
+        },
+      ],
+      hasNextPage: false,
+    };
+    mocks.ciRuns.list.mockResolvedValue(runs);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_ci_runs_list",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        branch: "main",
+        page: 2,
+        perPage: 10,
+      },
+    });
+
+    expect(mocks.ciRuns.list).toHaveBeenCalledWith("agntn", "forges", {
+      branch: "main",
+      page: 2,
+      perPage: 10,
+    });
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: runs });
   });
 
   it("reloads the pinned credential and returns the authenticated profile", async () => {

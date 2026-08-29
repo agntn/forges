@@ -5,11 +5,14 @@
 import { assertAssignees } from "./assignees.ts";
 import { ForgesError } from "./errors.ts";
 import type {
+  CiRun,
+  CiRunResource,
   Comment,
   CreateIssueInput,
   CreatePullRequestInput,
   Issue,
   IssueResource,
+  ListCiRunsOptions,
   ListCommentOptions,
   ListOptions,
   ListThreadOptions,
@@ -54,6 +57,7 @@ export interface ProviderRawTypes {
  */
 export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> {
   public readonly repos: RepositoryResource;
+  public readonly ciRuns: CiRunResource;
   public readonly issues: IssueResource;
   public readonly pullRequests: PullRequestResource;
   public readonly users: UserResource;
@@ -63,6 +67,9 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     this.repos = {
       list: (owner, options) => this.listRepos(owner, options),
       get: (owner, repo) => this.getRepo(owner, repo),
+    };
+    this.ciRuns = {
+      list: (owner, repo, options) => this.listCiRuns(owner, repo, options),
     };
     this.issues = {
       list: (owner, repo, options) => this.listIssues(owner, repo, options),
@@ -128,6 +135,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     options?: ListOptions,
   ): Promise<PageResult<Repository>>;
   protected abstract getRepo(owner: string, repo: string): Promise<Repository>;
+  protected listCiRuns(
+    _owner: string,
+    _repo: string,
+    _options?: ListCiRunsOptions,
+  ): Promise<PageResult<CiRun>> {
+    return Promise.reject(new ForgesError("CI-run listing is not supported by this provider", 501));
+  }
   protected abstract listIssues(
     owner: string,
     repo: string,

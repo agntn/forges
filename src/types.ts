@@ -60,6 +60,32 @@ export interface Repository {
   owner: Owner;
 }
 
+/** Provider-independent lifecycle state of a CI run. */
+export type CiRunStatus = "queued" | "in_progress" | "waiting" | "completed";
+
+/** Provider-independent terminal outcome, or null while no outcome exists. */
+export type CiRunConclusion =
+  | "success"
+  | "failure"
+  | "cancelled"
+  | "skipped"
+  | "neutral"
+  | "timed_out"
+  | "action_required"
+  | "stale"
+  | "startup_failure"
+  | null;
+
+/** One GitHub Actions run, GitLab pipeline, or Gitea Actions run. */
+export interface CiRun {
+  id: string;
+  branch: string;
+  revision: string;
+  status: CiRunStatus;
+  conclusion: CiRunConclusion;
+  url: string;
+}
+
 /**
  * Issue state
  */
@@ -122,6 +148,13 @@ export interface ListOptions {
   page?: number;
   perPage?: number;
   state?: IssueState | "all";
+}
+
+/** List options for repository CI runs. */
+export interface ListCiRunsOptions {
+  page?: number;
+  perPage?: number;
+  branch?: string;
 }
 
 /**
@@ -240,6 +273,11 @@ export interface ProviderConfig {
 export interface RepositoryResource {
   list(owner: string, options?: ListOptions): Promise<PageResult<Repository>>;
   get(owner: string, repo: string): Promise<Repository>;
+}
+
+/** Resource accessor for repository CI runs. */
+export interface CiRunResource {
+  list(owner: string, repo: string, options?: ListCiRunsOptions): Promise<PageResult<CiRun>>;
 }
 
 /**

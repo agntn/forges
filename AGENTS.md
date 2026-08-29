@@ -40,10 +40,11 @@ src/
 ├── http.ts               # ofetch wrapper with auth headers, retry, rate limit
 ├── cache.ts              # unstorage LRU cache — GET-only, lazy-initialized
 ├── errors.ts             # ForgesError hierarchy + normalizeError()
+├── ci-run.ts             # Cross-platform CI status and conclusion normalization
 ├── pagination.ts         # Link header + x-next-page async generator
 ├── version.ts            # Package version — the one source for it in src/
 ├── tool-operations.ts    # Executors behind every agent surface (MCP, Pi, OMP)
-├── mcp.ts                # createMcpServer() - 22 tools over the low-level MCP Server
+├── mcp.ts                # createMcpServer() over the low-level MCP Server
 ├── cli.ts                # citty entry for the `forges` bin
 ├── commands/mcp.ts       # `forges mcp` — stdio transport
 ├── github.ts             # Sub-path re-export for @agntn/forges/github
@@ -60,7 +61,7 @@ packages/
 ├── pi/extensions/forges.ts      # Pi extension — imports the shared schemas
 └── omp/extensions/forges.ts     # OMP extension — rebuilds them with the host TypeBox
 test/
-├── *.test.ts             # 1:1 mirror of src/ + integration.test.ts (14 files, ~455 tests)
+├── *.test.ts             # Unit suites plus integration and agent-surface coverage
 └── eval-packed-extensions.mjs   # Loads both extensions from a published-shaped layout
 ```
 

@@ -35,6 +35,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   );
   const owner = Type.String({ description: "Repository owner or organization", minLength: 1 });
   const repo = Type.String({ description: "Repository name", minLength: 1 });
+  const branch = Type.Optional(Type.String({ description: "Filter by branch", minLength: 1 }));
   const page = Type.Optional(Type.Integer({ description: "Page number", minimum: 1 }));
   const perPage = Type.Optional(
     Type.Integer({ description: "Results per page", minimum: 1, maximum: 100 }),
@@ -54,6 +55,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
 
   const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
   const repositoryParameters = Type.Object({ platform, owner, repo });
+  const listCiRunsParameters = Type.Object({ platform, owner, repo, branch, page, perPage });
   const listRepositoryItemsParameters = Type.Object({
     platform,
     owner,
@@ -148,6 +150,17 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getRepository(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_ci_runs_list",
+    label: "Forges CI Runs",
+    description: "List paged repository CI runs, optionally filtered by branch",
+    parameters: listCiRunsParameters,
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listCiRuns(params);
     },
   });
 

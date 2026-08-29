@@ -16,6 +16,7 @@ import type {
   ProviderConfig,
   Repository,
   RepositoryPermission,
+  CiRun,
   Issue,
   PullRequest,
   PullRequestSearchItem,
@@ -24,6 +25,7 @@ import type {
   PageResult,
   SearchPageResult,
   ListOptions,
+  ListCiRunsOptions,
   ListCommentOptions,
   ListThreadOptions,
   Comment,
@@ -38,6 +40,7 @@ import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from
 import { cachedFetch, invalidateCache } from "../cache.ts";
 import { normalizeError, NotFoundError } from "../errors.ts";
 import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
+import { normalizeCiRunState } from "../ci-run.ts";
 
 // GitLab API response types (internal)
 
@@ -73,6 +76,14 @@ interface GitLabProject {
     project_access: GitLabProjectAccess | null;
     group_access: GitLabProjectAccess | null;
   } | null;
+}
+
+interface GitLabPipeline {
+  id: number;
+  ref: string | null;
+  sha: string;
+  status: string;
+  web_url: string;
 }
 
 interface GitLabIssue {
@@ -302,6 +313,16 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   private mapGitLabState(state: string): IssueState {
     return state === "closed" || state === "merged" ? "closed" : "open";
+  }
+
+  private mapCiRun(raw: GitLabPipeline): CiRun {
+    return {
+      id: String(raw.id),
+      branch: raw.ref ?? "",
+      revision: raw.sha,
+      ...normalizeCiRunState(raw.status),
+      url: raw.web_url,
+    };
   }
 
   protected override mapIssue(raw: GitLabIssue): Issue {
@@ -559,6 +580,33 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       // Cache project ID while we have it
       this.setCachedProjectId(`${owner}/${repo}`, project.id);
       return this.mapRepository(project);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async listCiRuns(
+    owner: string,
+    repo: string,
+    options?: ListCiRunsOptions,
+  ): Promise<PageResult<CiRun>> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const query: Record<string, string | number> = {
+        page: options?.page ?? 1,
+        per_page: options?.perPage ?? 30,
+      };
+      if (options?.branch) query.ref = options.branch;
+
+      const { data, headers } = await rawFetch<GitLabPipeline[]>(
+        this.client,
+        `/projects/${projectId}/pipelines`,
+        { query },
+      );
+      return this.parsePagination(
+        (data ?? []).map((raw) => this.mapCiRun(raw)),
+        headers,
+      );
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }

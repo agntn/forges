@@ -88,6 +88,18 @@ function giteaRepo(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function giteaCiRun(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 400,
+    head_branch: "main",
+    head_sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+    status: "completed",
+    conclusion: "cancelled",
+    html_url: "https://gitea.com/testowner/test-repo/actions/runs/400",
+    ...overrides,
+  };
+}
+
 function giteaIssue(overrides: Record<string, unknown> = {}) {
   return {
     id: 200,
@@ -417,6 +429,69 @@ describe("Gitea Provider", () => {
         expect(mockClient).not.toHaveBeenCalled();
       },
     );
+  });
+
+  // --- CI runs ---
+
+  describe("ciRuns.list", () => {
+    it("returns normalized paged workflow runs and filters by branch", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: {
+          total_count: 25,
+          workflow_runs: [
+            giteaCiRun(),
+            giteaCiRun({ id: 401, status: "in_progress", conclusion: "" }),
+            giteaCiRun({
+              id: 402,
+              head_branch: undefined,
+              head_sha: undefined,
+              commit_sha: "42190a2e08172b2d2e3f63f7b848231ec566b08f",
+              prettyref: "#5",
+              event_payload: JSON.stringify({ pull_request: { head: { ref: "feature-branch" } } }),
+              status: "success",
+              conclusion: undefined,
+            }),
+          ],
+        },
+        headers: makeHeaders(),
+        status: 200,
+      });
+
+      const result = await provider.ciRuns.list("testowner", "test-repo", {
+        branch: "main",
+        page: 2,
+        perPage: 10,
+      });
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        expect.anything(),
+        "/repos/testowner/test-repo/actions/runs",
+        { query: { branch: "main", page: "2", limit: "10" } },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            id: "400",
+            branch: "main",
+            revision: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+            status: "completed",
+            conclusion: "cancelled",
+            url: "https://gitea.com/testowner/test-repo/actions/runs/400",
+          },
+          expect.objectContaining({ id: "401", status: "in_progress", conclusion: null }),
+          expect.objectContaining({
+            id: "402",
+            branch: "feature-branch",
+            revision: "42190a2e08172b2d2e3f63f7b848231ec566b08f",
+            status: "completed",
+            conclusion: "success",
+          }),
+        ],
+        totalCount: 25,
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
   });
 
   // --- issues ---

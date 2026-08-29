@@ -64,6 +64,14 @@ const glProjectWithOwner = {
   },
 };
 
+const glPipeline = {
+  id: 9001,
+  ref: "main",
+  sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+  status: "failed",
+  web_url: "https://gitlab.com/gitlab-org/gitlab-foss/-/pipelines/9001",
+};
+
 const glIssue = {
   id: 5001,
   iid: 15,
@@ -517,6 +525,49 @@ describe("GitLabProvider", () => {
       mocks.client.mockResolvedValueOnce(glProject);
       const withNamespace = await gl.repos.get("gitlab-org", "gitlab-foss");
       expect(withNamespace.owner.login).toBe("gitlab-org");
+    });
+  });
+
+  // --- CI runs ---
+
+  describe("ciRuns.list", () => {
+    it("returns normalized paged pipelines and filters by ref", async () => {
+      mockProjectResolve();
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          glPipeline,
+          { ...glPipeline, id: 9002, status: "running" },
+          { ...glPipeline, id: 9003, status: "manual" },
+        ],
+        headers: glHeaders({ nextPage: "3", total: "12" }),
+      });
+
+      const result = await gl.ciRuns.list("gitlab-org", "gitlab-foss", {
+        branch: "main",
+        page: 2,
+        perPage: 10,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/projects/278964/pipelines", {
+        query: { page: 2, per_page: 10, ref: "main" },
+      });
+      expect(result).toEqual({
+        items: [
+          {
+            id: "9001",
+            branch: "main",
+            revision: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+            status: "completed",
+            conclusion: "failure",
+            url: "https://gitlab.com/gitlab-org/gitlab-foss/-/pipelines/9001",
+          },
+          expect.objectContaining({ id: "9002", status: "in_progress", conclusion: null }),
+          expect.objectContaining({ id: "9003", status: "waiting", conclusion: null }),
+        ],
+        totalCount: 12,
+        hasNextPage: true,
+        nextPage: 3,
+      });
     });
   });
 
