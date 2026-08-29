@@ -849,6 +849,52 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("pullRequests.listChecks", () => {
+    it("reads check runs for the pull-request head revision", async () => {
+      mocks.client.mockResolvedValueOnce(ghPullRequest);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: {
+          total_count: 1,
+          check_runs: [
+            {
+              id: 6001,
+              name: "test",
+              status: "completed",
+              conclusion: "success",
+              html_url: "https://github.com/octocat/hello-world/runs/6001",
+            },
+          ],
+        },
+        headers: makeHeaders(),
+      });
+
+      const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
+        page: 2,
+        perPage: 10,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/octocat/hello-world/commits/cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38/check-runs",
+        { query: { page: "2", per_page: "10" } },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            id: "6001",
+            name: "test",
+            status: "completed",
+            conclusion: "success",
+            url: "https://github.com/octocat/hello-world/runs/6001",
+          },
+        ],
+        totalCount: 1,
+        hasNextPage: false,
+        nextPage: undefined,
+      });
+    });
+  });
+
   describe("pullRequests.search", () => {
     it("searches one repository without fetching each pull request", async () => {
       mocks.rawFetch.mockResolvedValueOnce({

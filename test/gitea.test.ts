@@ -736,6 +736,90 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("pullRequests.listChecks", () => {
+    it("reads commit statuses for the pull-request head revision", async () => {
+      mockClient.mockResolvedValueOnce(giteaPullRequest());
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: {
+            statuses: [
+              {
+                id: 501,
+                context: "ci/test",
+                status: "warning",
+                target_url: "/testowner/test-repo/status/501",
+              },
+            ],
+          },
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: { statuses: [{ id: 502, context: "ci/build", status: "pending" }] },
+          headers: makeHeaders(),
+          status: 200,
+        });
+
+      const result = await provider.pullRequests.listChecks("testowner", "test-repo", 5, {
+        page: 2,
+        perPage: 1,
+      });
+
+      expect(mockedRawFetch).toHaveBeenNthCalledWith(
+        1,
+        expect.anything(),
+        "/repos/testowner/test-repo/commits/42190a2e08172b2d2e3f63f7b848231ec566b08f/status",
+        { query: { page: "2", limit: "1" } },
+      );
+      expect(mockedRawFetch).toHaveBeenNthCalledWith(
+        2,
+        expect.anything(),
+        "/repos/testowner/test-repo/commits/42190a2e08172b2d2e3f63f7b848231ec566b08f/status",
+        { query: { page: "3", limit: "1" } },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            id: "501",
+            name: "ci/test",
+            status: "completed",
+            conclusion: "neutral",
+            url: "https://gitea.com/testowner/test-repo/status/501",
+          },
+        ],
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+
+    it("falls back to the status API URL when no target URL exists", async () => {
+      mockClient.mockResolvedValueOnce(giteaPullRequest());
+      mockedRawFetch.mockResolvedValueOnce({
+        data: {
+          statuses: [
+            {
+              id: 503,
+              context: "external/check",
+              status: "success",
+              url: "https://gitea.com/api/v1/repos/testowner/test-repo/statuses/head-sha",
+            },
+          ],
+        },
+        headers: makeHeaders(),
+        status: 200,
+      });
+
+      const result = await provider.pullRequests.listChecks("testowner", "test-repo", 5, {
+        perPage: 2,
+      });
+
+      expect(result.items[0]).toMatchObject({
+        id: "503",
+        url: "https://gitea.com/api/v1/repos/testowner/test-repo/statuses/head-sha",
+      });
+    });
+  });
+
   describe("pullRequests.search", () => {
     it("searches repository pull requests without fetching each result", async () => {
       mockedRawFetch.mockResolvedValueOnce({

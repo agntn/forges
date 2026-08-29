@@ -13,9 +13,11 @@ import type {
   ListCiRunsOptions,
   ListCommentOptions,
   ListOptions,
+  ListPullRequestChecksOptions,
   ListThreadOptions,
   PageResult,
   PullRequest,
+  PullRequestCheck,
   PullRequestSearchItem,
   ReplyThreadInput,
   Repository,
@@ -190,6 +192,8 @@ export interface ListCommentsParams extends RepositoryParams {
   page?: number;
   perPage?: number;
 }
+
+export type ListPullRequestChecksParams = ListCommentsParams;
 
 export interface GetCommentParams extends RepositoryParams {
   number: number;
@@ -409,6 +413,22 @@ export async function listPullRequests(
     summarizeIssuePage(pullRequests),
     "Pull-request bodies are omitted from list output; use forges_pull_requests_get to read one body.",
   );
+}
+
+export async function listPullRequestChecks(
+  params: ListPullRequestChecksParams,
+): Promise<ForgesToolResult<PageResult<PullRequestCheck>>> {
+  const options: ListPullRequestChecksOptions = {
+    page: params.page,
+    perPage: params.perPage,
+  };
+  const checks = await readProvider(params.platform).pullRequests.listChecks(
+    params.owner,
+    params.repo,
+    params.number,
+    options,
+  );
+  return result(params.platform, checks);
 }
 
 export async function searchPullRequests(

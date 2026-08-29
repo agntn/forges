@@ -10,6 +10,7 @@ import type {
   CiRun,
   Issue,
   PullRequest,
+  PullRequestCheck,
   PullRequestSearchItem,
   User,
   Owner,
@@ -18,6 +19,7 @@ import type {
   ListOptions,
   ListCiRunsOptions,
   ListCommentOptions,
+  ListPullRequestChecksOptions,
   ListThreadOptions,
   Comment,
   CreateIssueInput,
@@ -84,6 +86,19 @@ interface GitHubCiRun {
 interface GitHubCiRunsResponse {
   total_count: number;
   workflow_runs: GitHubCiRun[];
+}
+
+interface GitHubCheckRun {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  html_url: string;
+}
+
+interface GitHubCheckRunsResponse {
+  total_count: number;
+  check_runs: GitHubCheckRun[];
 }
 
 interface GitHubUser {
@@ -427,6 +442,15 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     };
   }
 
+  private mapPullRequestCheck(raw: GitHubCheckRun): PullRequestCheck {
+    return {
+      id: String(raw.id),
+      name: raw.name,
+      ...normalizeCiRunState(raw.status, raw.conclusion),
+      url: raw.html_url,
+    };
+  }
+
   protected override mapIssue(raw: GitHubIssue): Issue {
     return {
       id: String(raw.id),
@@ -727,6 +751,32 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       );
 
       return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequest(raw));
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async listPullRequestChecks(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListPullRequestChecksOptions,
+  ): Promise<PageResult<PullRequestCheck>> {
+    try {
+      const pullRequest = await this.getPullRequest(owner, repo, number);
+      const query: Record<string, string> = {};
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+
+      const { data, headers } = await rawFetch<GitHubCheckRunsResponse>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodePathSegment(pullRequest.headSha)}/check-runs`,
+        { query },
+      );
+      return {
+        ...buildPageResult(data?.check_runs ?? [], headers, (raw) => this.mapPullRequestCheck(raw)),
+        totalCount: data?.total_count,
+      };
     } catch (error) {
       throw normalizeError(error, "github");
     }

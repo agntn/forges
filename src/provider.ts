@@ -15,10 +15,12 @@ import type {
   ListCiRunsOptions,
   ListCommentOptions,
   ListOptions,
+  ListPullRequestChecksOptions,
   ListThreadOptions,
   Owner,
   PageResult,
   PullRequest,
+  PullRequestCheck,
   PullRequestResource,
   PullRequestSearchItem,
   ReplyThreadInput,
@@ -91,6 +93,8 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.pullRequests = {
       list: (owner, repo, options) => this.listPullRequests(owner, repo, options),
+      listChecks: (owner, repo, number, options) =>
+        this.listPullRequestChecks(owner, repo, number, options),
       search: async (owner, repo, query, options) => {
         if (query.trim() === "") {
           throw new ForgesError("Pull-request search query must not be empty", 400);
@@ -166,6 +170,16 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     repo: string,
     options?: ListOptions,
   ): Promise<PageResult<PullRequest>>;
+  protected listPullRequestChecks(
+    _owner: string,
+    _repo: string,
+    _number: number,
+    _options?: ListPullRequestChecksOptions,
+  ): Promise<PageResult<PullRequestCheck>> {
+    return Promise.reject(
+      new ForgesError("Pull request checks are not supported by this provider", 501),
+    );
+  }
   protected searchPullRequests(
     _owner: string,
     _repo: string,

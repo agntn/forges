@@ -19,6 +19,7 @@ import type {
   CiRun,
   Issue,
   PullRequest,
+  PullRequestCheck,
   PullRequestSearchItem,
   User,
   Owner,
@@ -27,6 +28,7 @@ import type {
   ListOptions,
   ListCiRunsOptions,
   ListCommentOptions,
+  ListPullRequestChecksOptions,
   ListThreadOptions,
   Comment,
   CreateIssueInput,
@@ -83,7 +85,8 @@ interface GitLabPipeline {
   ref: string | null;
   sha: string;
   status: string;
-  web_url: string;
+  name?: string | null;
+  web_url?: string | null;
 }
 
 interface GitLabIssue {
@@ -321,7 +324,16 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       branch: raw.ref ?? "",
       revision: raw.sha,
       ...normalizeCiRunState(raw.status),
-      url: raw.web_url,
+      url: raw.web_url ?? "",
+    };
+  }
+
+  private mapPullRequestCheck(raw: GitLabPipeline): PullRequestCheck {
+    return {
+      id: String(raw.id),
+      name: raw.name ?? "pipeline",
+      ...normalizeCiRunState(raw.status),
+      url: raw.web_url ?? "",
     };
   }
 
@@ -736,6 +748,61 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
       const prs = (response.data ?? []).map((raw) => this.mapPullRequest(raw));
       return this.parsePagination(prs, response.headers);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async listPullRequestChecks(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListPullRequestChecksOptions,
+  ): Promise<PageResult<PullRequestCheck>> {
+    try {
+      const pullRequest = await this.getPullRequest(owner, repo, number);
+      const projectId = await this.resolveProjectId(owner, repo);
+      const perPage = options?.perPage ?? 30;
+      const page = options?.page ?? 1;
+      const skip = (page - 1) * perPage;
+      const matched: PullRequestCheck[] = [];
+      let remotePage = 1;
+      let hasMore = true;
+
+      // MR pipelines include earlier revisions. Scan one current-head match past
+      // the requested page so normalized pagination never reports stale checks.
+      while (hasMore && matched.length <= skip + perPage) {
+        const { data, headers } = await rawFetch<GitLabPipeline[]>(
+          this.client,
+          `/projects/${projectId}/merge_requests/${encodePathSegment(number)}/pipelines`,
+          { query: { page: remotePage, per_page: 100 } },
+        );
+        const batch = data ?? [];
+        if (batch.length === 0) {
+          hasMore = false;
+          continue;
+        }
+        matched.push(
+          ...batch
+            .filter((raw) => raw.sha === pullRequest.headSha)
+            .map((raw) => this.mapPullRequestCheck(raw)),
+        );
+        const nextPage = headers.get("x-next-page");
+        if (nextPage === null || nextPage === "") {
+          hasMore = false;
+        } else {
+          hasMore = true;
+          remotePage = parseInt(nextPage, 10);
+        }
+      }
+
+      const items = matched.slice(skip, skip + perPage);
+      const hasNextPage = matched.length > skip + perPage;
+      return {
+        items,
+        hasNextPage,
+        nextPage: hasNextPage ? page + 1 : undefined,
+      };
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }

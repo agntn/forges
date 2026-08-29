@@ -11,6 +11,7 @@ import {
   createPullRequestParameters,
   listCiRunsParameters,
   listCommentsParameters,
+  listPullRequestChecksParameters,
   listRepositoriesParameters,
   listRepositoryItemsParameters,
   listThreadsParameters,
@@ -196,6 +197,20 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     parameters: repositoryItemParameters,
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getPullRequest(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_checks",
+    label: "Forges Pull Request Checks",
+    description: "List normalized checks or pipelines for one pull request head revision",
+    promptSnippet: "Read the current checks for a pull request on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_pull_requests_checks to verify pull-request CI before merging or reviewing.",
+    ],
+    parameters: listPullRequestChecksParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listPullRequestChecks(params);
     },
   });
 

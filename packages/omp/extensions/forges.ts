@@ -78,6 +78,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   });
   const repositoryItemParameters = Type.Object({ platform, owner, repo, number });
   const listCommentsParameters = Type.Object({ platform, owner, repo, number, page, perPage });
+  const listPullRequestChecksParameters = listCommentsParameters;
   const commentId = Type.String({ description: "Discussion comment id", minLength: 1 });
   const commentParameters = Type.Object({ platform, owner, repo, number, commentId });
   const createIssueParameters = Type.Object({
@@ -260,6 +261,17 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getPullRequest(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_checks",
+    label: "Forges Pull Request Checks",
+    description: "List normalized checks or pipelines for one pull request head revision",
+    parameters: listPullRequestChecksParameters,
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listPullRequestChecks(params);
     },
   });
 

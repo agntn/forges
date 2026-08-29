@@ -15,6 +15,7 @@ import {
   createPullRequestParameters,
   listCiRunsParameters,
   listCommentsParameters,
+  listPullRequestChecksParameters,
   listRepositoriesParameters,
   listRepositoryItemsParameters,
   listThreadsParameters,
@@ -39,6 +40,7 @@ import {
   listCiRuns,
   listIssueComments,
   listIssues,
+  listPullRequestChecks,
   listPullRequestComments,
   listPullRequests,
   listRepositories,
@@ -216,6 +218,15 @@ const tools: ToolDefinition[] = [
     inputSchema: repositoryItemParameters,
     annotations: readAnnotations,
     execute: getPullRequest,
+  }),
+  defineTool({
+    name: "forges_pull_requests_checks",
+    title: "List Pull Request Checks",
+    description:
+      "List the checks or pipelines associated with one pull request head revision, normalized to name, lifecycle status, terminal conclusion, and URL.",
+    inputSchema: listPullRequestChecksParameters,
+    annotations: readAnnotations,
+    execute: listPullRequestChecks,
   }),
   defineTool({
     name: "forges_pull_requests_comments",
