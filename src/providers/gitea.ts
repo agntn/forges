@@ -16,6 +16,7 @@ import type {
   ProviderConfig,
   Repository,
   CiRun,
+  Commit,
   Issue,
   PullRequest,
   PullRequestCheck,
@@ -39,7 +40,7 @@ import type {
   ThreadComment,
 } from "../types.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
-import { normalizePullRequestFileStatus } from "../pull-request-file.ts";
+import { normalizeChangedFileStatus } from "../changed-file.ts";
 
 // -- Raw Gitea API response types --
 
@@ -167,6 +168,24 @@ interface GiteaPullRequestFile {
   status: string;
   additions?: number;
   deletions?: number;
+}
+
+interface GiteaCommitIdentity {
+  name: string;
+  email: string;
+  date: string;
+}
+
+interface GiteaCommit {
+  sha: string;
+  html_url?: string | null;
+  commit: {
+    message: string;
+    author: GiteaCommitIdentity;
+    committer: GiteaCommitIdentity;
+  };
+  parents?: Array<{ sha: string }>;
+  files?: GiteaPullRequestFile[];
 }
 
 interface GiteaComment {
@@ -363,7 +382,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   private mapPullRequestFile(raw: GiteaPullRequestFile): PullRequestFile {
     return {
       path: raw.filename,
-      status: normalizePullRequestFileStatus(raw.status),
+      status: normalizeChangedFileStatus(raw.status),
       additions: raw.additions ?? null,
       deletions: raw.deletions ?? null,
     };
@@ -529,6 +548,26 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         totalCount,
         hasNextPage,
         nextPage: hasNextPage ? (result.nextPage ?? page + 1) : undefined,
+      };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
+    try {
+      const commit = await this.client<GiteaCommit>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodePathSegment(sha)}`,
+      );
+      return {
+        sha: commit.sha,
+        message: commit.commit.message,
+        author: commit.commit.author,
+        committer: commit.commit.committer,
+        parents: (commit.parents ?? []).map((parent) => parent.sha),
+        url: commit.html_url ?? "",
+        files: (commit.files ?? []).map((file) => this.mapPullRequestFile(file)),
+        filesComplete: null,
       };
     } catch (error) {
       throw normalizeError(error, PLATFORM);

@@ -11,6 +11,7 @@ import { ForgesError, RateLimitError } from "./errors.ts";
 import {
   authenticatedUserParameters,
   commentParameters,
+  commitParameters,
   createIssueParameters,
   createPullRequestParameters,
   listCiRunsParameters,
@@ -31,6 +32,7 @@ import {
   createIssue,
   createPullRequest,
   getAuthenticatedUser,
+  getCommit,
   getIssue,
   getIssueComment,
   getPullRequest,
@@ -139,6 +141,15 @@ const tools: ToolDefinition[] = [
     inputSchema: listCiRunsParameters,
     annotations: readAnnotations,
     execute: listCiRuns,
+  }),
+  defineTool({
+    name: "forges_commits_get",
+    title: "Get Commit",
+    description:
+      "Get one commit by SHA with normalized author, committer, parent revisions, message, URL, and changed-file rows. Patches are omitted; per-file counts are null when the provider does not report them, and filesComplete is null when provider or safety limits make completeness unknowable.",
+    inputSchema: commitParameters,
+    annotations: readAnnotations,
+    execute: getCommit,
   }),
   defineTool({
     name: "forges_issues_list",

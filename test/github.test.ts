@@ -447,6 +447,103 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("commits.get", () => {
+    it("returns commit metadata and drains changed-file pages without patches", async () => {
+      const commit = {
+        sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+        commit: {
+          message: "fix: preserve commit metadata",
+          author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          committer: { name: "GitHub", email: "noreply@github.com", date: "2026-08-29T10:01:00Z" },
+        },
+        html_url: "https://github.com/octocat/hello-world/commit/cb9d4e5",
+        parents: [{ sha: "parent-sha" }],
+      };
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: {
+            ...commit,
+            files: [
+              {
+                filename: "src/provider.ts",
+                status: "modified",
+                additions: 12,
+                deletions: 3,
+                patch: "@@ -1 +1 @@",
+              },
+            ],
+          },
+          headers: makeHeaders(
+            '<https://api.github.com/repos/octocat/hello-world/commits/cb9d4e5?page=2>; rel="next"',
+          ),
+        })
+        .mockResolvedValueOnce({
+          data: {
+            ...commit,
+            files: [{ filename: "src/types.ts", status: "added", additions: 8, deletions: 0 }],
+          },
+          headers: makeHeaders(),
+        });
+
+      const result = await gh.commits.get("octocat", "hello-world", commit.sha);
+
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        1,
+        mocks.client,
+        `/repos/octocat/hello-world/commits/${commit.sha}`,
+        { query: { page: "1", per_page: "100" } },
+      );
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        2,
+        mocks.client,
+        `/repos/octocat/hello-world/commits/${commit.sha}`,
+        { query: { page: "2", per_page: "100" } },
+      );
+      expect(result).toEqual({
+        sha: commit.sha,
+        message: "fix: preserve commit metadata",
+        author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+        committer: { name: "GitHub", email: "noreply@github.com", date: "2026-08-29T10:01:00Z" },
+        parents: ["parent-sha"],
+        url: "https://github.com/octocat/hello-world/commit/cb9d4e5",
+        files: [
+          { path: "src/provider.ts", status: "modified", additions: 12, deletions: 3 },
+          { path: "src/types.ts", status: "added", additions: 8, deletions: 0 },
+        ],
+        filesComplete: true,
+      });
+      expect(JSON.stringify(result)).not.toContain("patch");
+    });
+
+    it("marks files incomplete when a relative next-page link does not advance", async () => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: {
+          sha,
+          commit: {
+            message: "one page",
+            author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+            committer: {
+              name: "Ori",
+              email: "ori@example.com",
+              date: "2026-08-29T10:00:00Z",
+            },
+          },
+          html_url: `https://github.com/octocat/hello-world/commit/${sha}`,
+          parents: [],
+          files: [{ filename: "src/provider.ts", status: "modified", additions: 1, deletions: 0 }],
+        },
+        headers: makeHeaders('<?page=1>; rel="next"'),
+      });
+
+      const result = await gh.commits.get("octocat", "hello-world", sha);
+
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
+      expect(result.files).toHaveLength(1);
+      expect(result.filesComplete).toBeNull();
+    });
+  });
+
   // --- Issues ---
 
   describe("issues.list", () => {

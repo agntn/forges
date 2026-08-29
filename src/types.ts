@@ -135,21 +135,40 @@ export interface PullRequest extends PullRequestSearchItem {
   mergeStatus: string;
 }
 
-/** Normalized status of one file changed by a pull request. */
-export type PullRequestFileStatus =
-  | "added"
-  | "modified"
-  | "removed"
-  | "renamed"
-  | "copied"
-  | "unknown";
+/** Normalized status of one changed file. */
+export type ChangedFileStatus = "added" | "modified" | "removed" | "renamed" | "copied" | "unknown";
 
-/** One file changed by a pull request. Counts are null when the provider does not report them. */
-export interface PullRequestFile {
+/** One changed file. Counts are null when the provider does not report them. */
+export interface ChangedFile {
   path: string;
-  status: PullRequestFileStatus;
+  status: ChangedFileStatus;
   additions: number | null;
   deletions: number | null;
+}
+
+/** Changed-file status exposed by pull-request reads. */
+export type PullRequestFileStatus = ChangedFileStatus;
+
+/** Changed file exposed by pull-request reads. */
+export interface PullRequestFile extends ChangedFile {}
+
+/** One commit author or committer identity from git metadata. */
+export interface CommitIdentity {
+  name: string;
+  email: string;
+  date: string;
+}
+
+/** One commit with normalized metadata and changed-file rows. filesComplete is null when provider or safety limits prevent certainty. */
+export interface Commit {
+  sha: string;
+  message: string;
+  author: CommitIdentity;
+  committer: CommitIdentity;
+  parents: string[];
+  url: string;
+  files: ChangedFile[];
+  filesComplete: boolean | null;
 }
 
 /**
@@ -316,6 +335,11 @@ export interface RepositoryResource {
 /** Resource accessor for repository CI runs. */
 export interface CiRunResource {
   list(owner: string, repo: string, options?: ListCiRunsOptions): Promise<PageResult<CiRun>>;
+}
+
+/** Resource accessor for commits. */
+export interface CommitResource {
+  get(owner: string, repo: string, sha: string): Promise<Commit>;
 }
 
 /**

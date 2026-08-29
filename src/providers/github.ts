@@ -8,6 +8,7 @@ import type {
   ProviderConfig,
   Repository,
   CiRun,
+  Commit,
   Issue,
   PullRequest,
   PullRequestCheck,
@@ -38,7 +39,9 @@ import { parseLinkHeader } from "../pagination.ts";
 import { encodePathSegment } from "./base-url.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
-import { normalizePullRequestFileStatus } from "../pull-request-file.ts";
+import { normalizeChangedFileStatus } from "../changed-file.ts";
+
+const MAX_COMMIT_FILE_PAGES = 30;
 
 // --- GitHub API response types (snake_case) ---
 
@@ -167,6 +170,24 @@ interface GitHubPullRequestFile {
   status: string;
   additions?: number;
   deletions?: number;
+}
+
+interface GitHubCommitIdentity {
+  name: string;
+  email: string;
+  date: string;
+}
+
+interface GitHubCommit {
+  sha: string;
+  commit: {
+    message: string;
+    author: GitHubCommitIdentity;
+    committer: GitHubCommitIdentity;
+  };
+  html_url: string;
+  parents: Array<{ sha: string }>;
+  files?: GitHubPullRequestFile[];
 }
 
 interface GitHubComment {
@@ -378,25 +399,30 @@ function presentGraphQLNodes<T>(nodes: Array<T | null> | null | undefined): T[] 
 
 // --- Pagination helper ---
 
+function paginationFromLink(headers: Headers): {
+  hasNextPage: boolean;
+  nextPage: number | undefined;
+} {
+  const next = parseLinkHeader(headers.get("Link")).next;
+  if (!next) return { hasNextPage: false, nextPage: undefined };
+  const page = new URL(next, "https://forges.invalid").searchParams.get("page");
+  if (page === null) return { hasNextPage: true, nextPage: undefined };
+  const parsed = parseInt(page, 10);
+  return {
+    hasNextPage: true,
+    nextPage: Number.isInteger(parsed) && parsed > 0 ? parsed : undefined,
+  };
+}
+
 function buildPageResult<TRaw, TMapped>(
   items: TRaw[],
   headers: Headers,
   mapper: (raw: TRaw) => TMapped,
 ): PageResult<TMapped> {
-  const links = parseLinkHeader(headers.get("Link"));
-  let nextPage: number | undefined;
-
-  if (links.next) {
-    const url = new URL(links.next);
-    const page = url.searchParams.get("page");
-    if (page) {
-      nextPage = parseInt(page, 10);
-    }
-  }
-
+  const { hasNextPage, nextPage } = paginationFromLink(headers);
   return {
     items: items.map(mapper),
-    hasNextPage: !!links.next,
+    hasNextPage,
     nextPage,
   };
 }
@@ -464,7 +490,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   private mapPullRequestFile(raw: GitHubPullRequestFile): PullRequestFile {
     return {
       path: raw.filename,
-      status: normalizePullRequestFileStatus(raw.status),
+      status: normalizeChangedFileStatus(raw.status),
       additions: raw.additions ?? null,
       deletions: raw.deletions ?? null,
     };
@@ -631,6 +657,52 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       return {
         ...buildPageResult(data?.workflow_runs ?? [], headers, (raw) => this.mapCiRun(raw)),
         totalCount: data?.total_count,
+      };
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
+    try {
+      const path = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodePathSegment(sha)}`;
+      const files: PullRequestFile[] = [];
+      let commit: GitHubCommit | undefined;
+      let filesComplete: boolean | null = true;
+      let page = 1;
+
+      while (page <= MAX_COMMIT_FILE_PAGES) {
+        const { data, headers } = await rawFetch<GitHubCommit>(this.client, path, {
+          query: { page: String(page), per_page: "100" },
+        });
+        if (!data) {
+          throw new ForgesError("GitHub returned no commit data", 502, "github");
+        }
+        commit ??= data;
+        files.push(...(data.files ?? []).map((file) => this.mapPullRequestFile(file)));
+
+        const { hasNextPage, nextPage } = paginationFromLink(headers);
+        if (!hasNextPage) break;
+        if (nextPage === undefined || nextPage <= page || nextPage > MAX_COMMIT_FILE_PAGES) {
+          filesComplete = null;
+          break;
+        }
+        page = nextPage;
+      }
+
+      if (!commit) {
+        throw new ForgesError("GitHub commit pagination produced no pages", 502, "github");
+      }
+
+      return {
+        sha: commit.sha,
+        message: commit.commit.message,
+        author: commit.commit.author,
+        committer: commit.commit.committer,
+        parents: commit.parents.map((parent) => parent.sha),
+        url: commit.html_url,
+        files,
+        filesComplete: files.length < 3000 ? filesComplete : null,
       };
     } catch (error) {
       throw normalizeError(error, "github");

@@ -17,6 +17,7 @@ import type {
   Repository,
   RepositoryPermission,
   CiRun,
+  Commit,
   Issue,
   PullRequest,
   PullRequestCheck,
@@ -45,7 +46,9 @@ import { cachedFetch, invalidateCache } from "../cache.ts";
 import { normalizeError, NotFoundError } from "../errors.ts";
 import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
-import { countDiffLines } from "../pull-request-file.ts";
+import { countDiffLines } from "../changed-file.ts";
+
+const MAX_COMMIT_DIFF_PAGES = 100;
 
 // GitLab API response types (internal)
 
@@ -141,6 +144,19 @@ interface GitLabMergeRequestDiff {
   collapsed?: boolean;
   too_large?: boolean;
   diff: string;
+}
+
+interface GitLabCommit {
+  id: string;
+  message: string;
+  author_name: string;
+  author_email: string;
+  authored_date: string;
+  committer_name: string;
+  committer_email: string;
+  committed_date: string;
+  parent_ids: string[];
+  web_url: string;
 }
 
 interface GitLabUser {
@@ -651,6 +667,56 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         (data ?? []).map((raw) => this.mapCiRun(raw)),
         headers,
       );
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const encodedSha = encodePathSegment(sha);
+      const commit = await this.client<GitLabCommit>(
+        `/projects/${projectId}/repository/commits/${encodedSha}`,
+      );
+      const files: PullRequestFile[] = [];
+      let page = 1;
+
+      while (page <= MAX_COMMIT_DIFF_PAGES) {
+        const { data, headers } = await rawFetch<GitLabMergeRequestDiff[]>(
+          this.client,
+          `/projects/${projectId}/repository/commits/${encodedSha}/diff`,
+          { query: { page, per_page: 100 } },
+        );
+        files.push(...(data ?? []).map((diff) => this.mapPullRequestFile(diff)));
+
+        const next = headers.get("x-next-page");
+        if (next === null || next === "") break;
+        const nextPage = parseInt(next, 10);
+        if (!Number.isInteger(nextPage) || nextPage <= page || nextPage > MAX_COMMIT_DIFF_PAGES) {
+          break;
+        }
+        page = nextPage;
+      }
+
+      return {
+        sha: commit.id,
+        message: commit.message,
+        author: {
+          name: commit.author_name,
+          email: commit.author_email,
+          date: commit.authored_date,
+        },
+        committer: {
+          name: commit.committer_name,
+          email: commit.committer_email,
+          date: commit.committed_date,
+        },
+        parents: commit.parent_ids,
+        url: commit.web_url,
+        files,
+        filesComplete: null,
+      };
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }

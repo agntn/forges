@@ -1,7 +1,7 @@
-import type { PullRequestFileStatus } from "./types.ts";
+import type { ChangedFileStatus } from "./types.ts";
 
 /** Normalize provider-specific changed-file states. */
-export function normalizePullRequestFileStatus(status: string): PullRequestFileStatus {
+export function normalizeChangedFileStatus(status: string): ChangedFileStatus {
   switch (status) {
     case "added":
       return "added";

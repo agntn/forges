@@ -494,6 +494,44 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("commits.get", () => {
+    it("returns commit metadata with null counts when Gitea omits them", async () => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      mockClient.mockResolvedValueOnce({
+        sha,
+        html_url: `https://gitea.com/testowner/test-repo/commit/${sha}`,
+        commit: {
+          message: "fix: preserve commit metadata",
+          author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:01:00Z" },
+        },
+        parents: [{ sha: "parent-sha" }],
+        files: [
+          {
+            filename: "src/provider.ts",
+            status: "changed",
+            patch: "@@ -1 +1 @@",
+          },
+        ],
+      });
+
+      const result = await provider.commits.get("testowner", "test-repo", sha);
+
+      expect(mockClient).toHaveBeenCalledWith(`/repos/testowner/test-repo/git/commits/${sha}`);
+      expect(result).toEqual({
+        sha,
+        message: "fix: preserve commit metadata",
+        author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+        committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:01:00Z" },
+        parents: ["parent-sha"],
+        url: `https://gitea.com/testowner/test-repo/commit/${sha}`,
+        files: [{ path: "src/provider.ts", status: "modified", additions: null, deletions: null }],
+        filesComplete: null,
+      });
+      expect(JSON.stringify(result)).not.toContain("patch");
+    });
+  });
+
   // --- issues ---
 
   describe("issues.list", () => {

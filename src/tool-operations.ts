@@ -6,6 +6,7 @@ import type { Provider } from "./provider.ts";
 import type {
   CiRun,
   Comment,
+  Commit,
   CreateIssueInput,
   CreatePullRequestInput,
   Issue,
@@ -162,6 +163,10 @@ export interface ListRepositoriesParams extends OwnerParams {
 
 export type GetRepositoryParams = RepositoryParams;
 
+export interface GetCommitParams extends RepositoryParams {
+  sha: string;
+}
+
 export interface ListCiRunsParams extends RepositoryParams {
   branch?: string;
   page?: number;
@@ -309,6 +314,15 @@ export async function listCiRuns(
   };
   const runs = await readProvider(params.platform).ciRuns.list(params.owner, params.repo, options);
   return result(params.platform, runs);
+}
+
+export async function getCommit(params: GetCommitParams): Promise<ForgesToolResult<Commit>> {
+  const commit = await readProvider(params.platform).commits.get(
+    params.owner,
+    params.repo,
+    params.sha,
+  );
+  return result(params.platform, commit);
 }
 
 export async function listIssues(

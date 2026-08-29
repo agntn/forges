@@ -41,7 +41,7 @@ src/
 ├── cache.ts              # unstorage LRU cache — GET-only, lazy-initialized
 ├── errors.ts             # ForgesError hierarchy + normalizeError()
 ├── ci-run.ts             # Cross-platform CI/check status and conclusion normalization
-├── pull-request-file.ts  # Changed-file status normalization + GitLab diff line counts
+├── changed-file.ts       # Changed-file status normalization + GitLab diff line counts
 ├── pagination.ts         # Link header + x-next-page async generator
 ├── version.ts            # Package version — the one source for it in src/
 ├── tool-operations.ts    # Executors behind every agent surface (MCP, Pi, OMP)
