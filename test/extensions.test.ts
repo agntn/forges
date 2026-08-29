@@ -18,6 +18,7 @@ import { resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
+  const ciRuns = { list: vi.fn() };
   const issues = {
     list: vi.fn(),
     search: vi.fn(),
@@ -40,12 +41,13 @@ const mocks = vi.hoisted(() => {
     resolve: vi.fn(),
     unresolve: vi.fn(),
   };
-  const provider = { repos, issues, pullRequests, users, threads };
+  const provider = { repos, ciRuns, issues, pullRequests, users, threads };
 
   return {
     resolveToken: vi.fn(() => ({ token: "test-token", source: "env" as const })),
     createProvider: vi.fn(() => provider),
     repos,
+    ciRuns,
     issues,
     pullRequests,
     users,
@@ -61,6 +63,7 @@ vi.mock("../src/index.ts", () => ({
 const toolNames = [
   "forges_repos_list",
   "forges_repos_get",
+  "forges_ci_runs_list",
   "forges_issues_list",
   "forges_issues_search",
   "forges_issues_get",
@@ -138,6 +141,7 @@ beforeEach(() => {
   vi.stubEnv("FORGES_GITLAB_BASE_URL", undefined);
   vi.stubEnv("FORGES_GITEA_BASE_URL", undefined);
   mocks.repos.list.mockResolvedValue({ items: [], hasNextPage: false });
+  mocks.ciRuns.list.mockResolvedValue({ items: [], hasNextPage: false });
   mocks.issues.search.mockResolvedValue({ items: [], incomplete: false, hasNextPage: false });
   mocks.pullRequests.search.mockResolvedValue({
     items: [],
@@ -201,6 +205,31 @@ describe("Forges Pi extension", () => {
       platform: "github",
       result: { items: [], hasNextPage: false },
     });
+  });
+
+  it("executes CI-run listing through the shared provider operation", async () => {
+    const tool = requirePiTool(registerPiTools(), "forges_ci_runs_list");
+    const result = await tool.execute(
+      "test",
+      {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        branch: "main",
+        page: 2,
+        perPage: 10,
+      },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+
+    expect(mocks.ciRuns.list).toHaveBeenCalledWith("agntn", "forges", {
+      branch: "main",
+      page: 2,
+      perPage: 10,
+    });
+    expect(result.details.result).toEqual({ items: [], hasNextPage: false });
   });
 
   it("executes issue search through the shared provider operation", async () => {

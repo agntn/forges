@@ -27,6 +27,7 @@ const platform = Type.Unsafe<ForgesPlatform>({
 });
 const owner = Type.String({ description: "Repository owner or organization", minLength: 1 });
 const repo = Type.String({ description: "Repository name", minLength: 1 });
+const branch = Type.Optional(Type.String({ description: "Filter by branch", minLength: 1 }));
 const page = Type.Optional(Type.Integer({ description: "Page number", minimum: 1 }));
 const perPage = Type.Optional(
   Type.Integer({ description: "Results per page", minimum: 1, maximum: 100 }),
@@ -57,6 +58,7 @@ const assignees = Type.Optional(
 
 export const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
 export const repositoryParameters = Type.Object({ platform, owner, repo });
+export const listCiRunsParameters = Type.Object({ platform, owner, repo, branch, page, perPage });
 export const listRepositoryItemsParameters = Type.Object({
   platform,
   owner,

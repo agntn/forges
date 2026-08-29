@@ -9,6 +9,7 @@ import {
   commentParameters,
   createIssueParameters,
   createPullRequestParameters,
+  listCiRunsParameters,
   listCommentsParameters,
   listRepositoriesParameters,
   listRepositoryItemsParameters,
@@ -59,6 +60,20 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     parameters: repositoryParameters,
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getRepository(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_ci_runs_list",
+    label: "Forges CI Runs",
+    description: "List paged repository CI runs, optionally filtered by branch",
+    promptSnippet: "Read CI runs from GitHub Actions, GitLab pipelines, or Gitea Actions.",
+    promptGuidelines: [
+      "Use forges_ci_runs_list to verify repository CI health instead of invoking a platform CLI.",
+    ],
+    parameters: listCiRunsParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listCiRuns(params);
     },
   });
 

@@ -52,6 +52,15 @@ const ghRepo = {
   },
 };
 
+const ghCiRun = {
+  id: 9876,
+  head_branch: "main",
+  head_sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+  status: "completed",
+  conclusion: "success",
+  html_url: "https://github.com/octocat/hello-world/actions/runs/9876",
+};
+
 const ghUser = {
   id: 583231,
   login: "octocat",
@@ -391,6 +400,50 @@ describe("GitHubProvider", () => {
         "Invalid API path segment",
       );
       expect(mocks.client).not.toHaveBeenCalled();
+    });
+  });
+
+  // --- CI runs ---
+
+  describe("ciRuns.list", () => {
+    it("returns normalized paged workflow runs and filters by branch", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: {
+          total_count: 12,
+          workflow_runs: [ghCiRun, { ...ghCiRun, id: 9877, status: "queued", conclusion: null }],
+        },
+        headers: makeHeaders(
+          '<https://api.github.com/repos/octocat/hello-world/actions/runs?page=3>; rel="next"',
+        ),
+      });
+
+      const result = await gh.ciRuns.list("octocat", "hello-world", {
+        branch: "main",
+        page: 2,
+        perPage: 10,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/octocat/hello-world/actions/runs",
+        { query: { branch: "main", page: "2", per_page: "10" } },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            id: "9876",
+            branch: "main",
+            revision: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+            status: "completed",
+            conclusion: "success",
+            url: "https://github.com/octocat/hello-world/actions/runs/9876",
+          },
+          expect.objectContaining({ id: "9877", status: "queued", conclusion: null }),
+        ],
+        totalCount: 12,
+        hasNextPage: true,
+        nextPage: 3,
+      });
     });
   });
 

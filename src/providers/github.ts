@@ -7,6 +7,7 @@ import { Provider, type ProviderRawTypes } from "../provider.ts";
 import type {
   ProviderConfig,
   Repository,
+  CiRun,
   Issue,
   PullRequest,
   PullRequestSearchItem,
@@ -15,6 +16,7 @@ import type {
   PageResult,
   SearchPageResult,
   ListOptions,
+  ListCiRunsOptions,
   ListCommentOptions,
   ListThreadOptions,
   Comment,
@@ -31,6 +33,7 @@ import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from
 import { parseLinkHeader } from "../pagination.ts";
 import { encodePathSegment } from "./base-url.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
+import { normalizeCiRunState } from "../ci-run.ts";
 
 // --- GitHub API response types (snake_case) ---
 
@@ -69,6 +72,20 @@ interface GitHubRepo {
  * The profile fields are optional because GitBucket's GitHub-compatible
  * payload omits them.
  */
+interface GitHubCiRun {
+  id: number;
+  head_branch: string | null;
+  head_sha: string;
+  status: string;
+  conclusion: string | null;
+  html_url: string;
+}
+
+interface GitHubCiRunsResponse {
+  total_count: number;
+  workflow_runs: GitHubCiRun[];
+}
+
 interface GitHubUser {
   id: number;
   login: string;
@@ -400,6 +417,16 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     };
   }
 
+  private mapCiRun(raw: GitHubCiRun): CiRun {
+    return {
+      id: String(raw.id),
+      branch: raw.head_branch ?? "",
+      revision: raw.head_sha,
+      ...normalizeCiRunState(raw.status, raw.conclusion),
+      url: raw.html_url,
+    };
+  }
+
   protected override mapIssue(raw: GitHubIssue): Issue {
     return {
       id: String(raw.id),
@@ -537,6 +564,31 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
       );
       return this.mapRepository(data);
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async listCiRuns(
+    owner: string,
+    repo: string,
+    options?: ListCiRunsOptions,
+  ): Promise<PageResult<CiRun>> {
+    try {
+      const query: Record<string, string> = {};
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+      if (options?.branch) query.branch = options.branch;
+
+      const { data, headers } = await rawFetch<GitHubCiRunsResponse>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/actions/runs`,
+        { query },
+      );
+      return {
+        ...buildPageResult(data?.workflow_runs ?? [], headers, (raw) => this.mapCiRun(raw)),
+        totalCount: data?.total_count,
+      };
     } catch (error) {
       throw normalizeError(error, "github");
     }

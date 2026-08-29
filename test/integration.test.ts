@@ -51,6 +51,7 @@ import { AuthenticationError, ForgesError } from "../src/errors.ts";
 import type {
   ProviderConfig,
   RepositoryResource,
+  CiRunResource,
   IssueResource,
   PullRequestResource,
   UserResource,
@@ -139,6 +140,7 @@ describe("createProvider factory", () => {
   });
 
   it.each([
+    ["listCiRuns", "CI-run listing is not supported by this provider"],
     ["searchIssues", "Issue search is not supported by this provider"],
     ["searchPullRequests", "Pull-request search is not supported by this provider"],
   ])("keeps a default %s fallback for custom providers", async (method, message) => {
@@ -169,6 +171,14 @@ describe("cross-provider class consistency", () => {
       expect(p.repos).toBeDefined();
       expect(typeof p.repos.list).toBe("function");
       expect(typeof p.repos.get).toBe("function");
+    }
+  });
+
+  it("all providers have CI runs resource", () => {
+    for (const platform of platforms) {
+      const p = providers[platform];
+      expect(p.ciRuns).toBeDefined();
+      expect(typeof p.ciRuns.list).toBe("function");
     }
   });
 
@@ -226,6 +236,8 @@ describe("cross-provider class consistency", () => {
       // repos: list(owner, options?) and get(owner, repo)
       expect(p.repos.list.length).toBeGreaterThanOrEqual(1);
       expect(p.repos.get.length).toBeGreaterThanOrEqual(2);
+
+      expect(p.ciRuns.list.length).toBeGreaterThanOrEqual(2);
 
       expect(p.issues.list.length).toBeGreaterThanOrEqual(2);
       expect(p.issues.search.length).toBeGreaterThanOrEqual(3);
@@ -407,12 +419,14 @@ describe("type-level consistency", () => {
 
     // These should compile without errors
     const repos: RepositoryResource = provider.repos;
+    const ciRuns: CiRunResource = provider.ciRuns;
     const issues: IssueResource = provider.issues;
     const prs: PullRequestResource = provider.pullRequests;
     const users: UserResource = provider.users;
     const threads: ThreadResource = provider.threads;
 
     expect(repos).toBeDefined();
+    expect(ciRuns).toBeDefined();
     expect(issues).toBeDefined();
     expect(prs).toBeDefined();
     expect(users).toBeDefined();

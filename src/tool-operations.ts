@@ -4,11 +4,13 @@ import { AuthenticationError } from "./errors.ts";
 import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
 import type { Provider } from "./provider.ts";
 import type {
+  CiRun,
   Comment,
   CreateIssueInput,
   CreatePullRequestInput,
   Issue,
   IssueState,
+  ListCiRunsOptions,
   ListCommentOptions,
   ListOptions,
   ListThreadOptions,
@@ -156,6 +158,12 @@ export interface ListRepositoriesParams extends OwnerParams {
 
 export type GetRepositoryParams = RepositoryParams;
 
+export interface ListCiRunsParams extends RepositoryParams {
+  branch?: string;
+  page?: number;
+  perPage?: number;
+}
+
 export interface ListRepositoryItemsParams extends RepositoryParams {
   page?: number;
   perPage?: number;
@@ -282,6 +290,18 @@ export async function getRepository(
 ): Promise<ForgesToolResult<Repository>> {
   const repository = await readProvider(params.platform).repos.get(params.owner, params.repo);
   return result(params.platform, repository);
+}
+
+export async function listCiRuns(
+  params: ListCiRunsParams,
+): Promise<ForgesToolResult<PageResult<CiRun>>> {
+  const options: ListCiRunsOptions = {
+    branch: params.branch,
+    page: params.page,
+    perPage: params.perPage,
+  };
+  const runs = await readProvider(params.platform).ciRuns.list(params.owner, params.repo, options);
+  return result(params.platform, runs);
 }
 
 export async function listIssues(

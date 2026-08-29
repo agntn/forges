@@ -15,6 +15,7 @@ import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import type {
   ProviderConfig,
   Repository,
+  CiRun,
   Issue,
   PullRequest,
   PullRequestSearchItem,
@@ -23,6 +24,7 @@ import type {
   PageResult,
   SearchPageResult,
   ListOptions,
+  ListCiRunsOptions,
   ListCommentOptions,
   ListThreadOptions,
   Comment,
@@ -32,8 +34,28 @@ import type {
   Thread,
   ThreadComment,
 } from "../types.ts";
+import { normalizeCiRunState } from "../ci-run.ts";
 
 // -- Raw Gitea API response types --
+
+interface GiteaCiRun {
+  id: number;
+  head_branch?: string | null;
+  head_sha?: string | null;
+  ref?: string | null;
+  commit_sha?: string | null;
+  prettyref?: string | null;
+  event_payload?: string | null;
+  status: string;
+  conclusion?: string | null;
+  html_url?: string | null;
+  url?: string | null;
+}
+
+interface GiteaCiRunsResponse {
+  total_count: number;
+  workflow_runs: GiteaCiRun[];
+}
 
 interface GiteaUser {
   id: number;
@@ -165,6 +187,31 @@ interface GiteaReviewThread {
   comments: GiteaPullReviewComment[];
 }
 
+function branchName(ref: string | null | undefined): string {
+  return ref?.replace(/^refs\/heads\//u, "") ?? "";
+}
+
+/** Older Forgejo responses keep the branch only inside the webhook payload. */
+function eventPayloadBranch(eventPayload: string | null | undefined): string {
+  if (!eventPayload) return "";
+  try {
+    const payload: unknown = JSON.parse(eventPayload);
+    if (typeof payload !== "object" || payload === null) return "";
+    const record = payload as Record<string, unknown>;
+    const pullRequest = record.pull_request;
+    if (typeof pullRequest === "object" && pullRequest !== null) {
+      const head = (pullRequest as Record<string, unknown>).head;
+      if (typeof head === "object" && head !== null) {
+        const ref = (head as Record<string, unknown>).ref;
+        if (typeof ref === "string") return branchName(ref);
+      }
+    }
+    return typeof record.ref === "string" ? branchName(record.ref) : "";
+  } catch {
+    return "";
+  }
+}
+
 // -- Pagination helper --
 
 function buildPageResult<TRaw, T>(
@@ -252,6 +299,21 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         : null,
       viewerPermission: mapBooleanRepositoryPermission(raw.permissions),
       owner: this.mapOwner(raw.owner),
+    };
+  }
+
+  private mapCiRun(raw: GiteaCiRun): CiRun {
+    const prettyBranch = raw.prettyref?.startsWith("#") ? "" : branchName(raw.prettyref);
+    return {
+      id: String(raw.id),
+      branch:
+        branchName(raw.head_branch) ||
+        branchName(raw.ref) ||
+        prettyBranch ||
+        eventPayloadBranch(raw.event_payload),
+      revision: raw.head_sha ?? raw.commit_sha ?? "",
+      ...normalizeCiRunState(raw.status, raw.conclusion),
+      url: raw.html_url ?? raw.url ?? "",
     };
   }
 
@@ -380,6 +442,42 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
           `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
         ),
       );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async listCiRuns(
+    owner: string,
+    repo: string,
+    options?: ListCiRunsOptions,
+  ): Promise<PageResult<CiRun>> {
+    try {
+      const page = options?.page ?? 1;
+      const perPage = options?.perPage ?? 30;
+      const query: Record<string, string> = {
+        page: String(page),
+        limit: String(perPage),
+      };
+      if (options?.branch) query.branch = options.branch;
+
+      const { data, headers } = await rawFetch<GiteaCiRunsResponse>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/actions/runs`,
+        { query },
+      );
+      const totalCount = data?.total_count;
+      const result = buildPageResult(data?.workflow_runs ?? [], headers, (raw) =>
+        this.mapCiRun(raw),
+      );
+      const hasNextPage =
+        result.hasNextPage || (totalCount !== undefined && page * perPage < totalCount);
+      return {
+        ...result,
+        totalCount,
+        hasNextPage,
+        nextPage: hasNextPage ? (result.nextPage ?? page + 1) : undefined,
+      };
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
