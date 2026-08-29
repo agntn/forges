@@ -8,6 +8,8 @@ import type {
   CiRun,
   CiRunResource,
   Comment,
+  Commit,
+  CommitResource,
   CreateIssueInput,
   CreatePullRequestInput,
   Issue,
@@ -62,6 +64,7 @@ export interface ProviderRawTypes {
 export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> {
   public readonly repos: RepositoryResource;
   public readonly ciRuns: CiRunResource;
+  public readonly commits: CommitResource;
   public readonly issues: IssueResource;
   public readonly pullRequests: PullRequestResource;
   public readonly users: UserResource;
@@ -74,6 +77,9 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.ciRuns = {
       list: (owner, repo, options) => this.listCiRuns(owner, repo, options),
+    };
+    this.commits = {
+      get: (owner, repo, sha) => this.getCommit(owner, repo, sha),
     };
     this.issues = {
       list: (owner, repo, options) => this.listIssues(owner, repo, options),
@@ -150,6 +156,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   ): Promise<PageResult<CiRun>> {
     return Promise.reject(new ForgesError("CI-run listing is not supported by this provider", 501));
   }
+  protected abstract getCommit(owner: string, repo: string, sha: string): Promise<Commit>;
   protected abstract listIssues(
     owner: string,
     repo: string,

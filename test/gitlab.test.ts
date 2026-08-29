@@ -571,6 +571,111 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("commits.get", () => {
+    it("returns commit metadata and drains diff pages without returning diffs", async () => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        id: sha,
+        message: "fix: preserve commit metadata",
+        author_name: "Ori",
+        author_email: "ori@example.com",
+        authored_date: "2026-08-29T10:00:00Z",
+        committer_name: "Ori",
+        committer_email: "ori@example.com",
+        committed_date: "2026-08-29T10:01:00Z",
+        parent_ids: ["parent-sha"],
+        web_url: `https://gitlab.com/gitlab-org/gitlab-foss/-/commit/${sha}`,
+      });
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: [
+            {
+              old_path: "src/provider.ts",
+              new_path: "src/provider.ts",
+              new_file: false,
+              renamed_file: false,
+              deleted_file: false,
+              collapsed: false,
+              too_large: false,
+              diff: "--- a/src/provider.ts\n+++ b/src/provider.ts\n@@ -1 +1,2 @@\n-old\n+new\n+line",
+            },
+          ],
+          headers: glHeaders({ nextPage: "2" }),
+        })
+        .mockResolvedValueOnce({
+          data: [
+            {
+              old_path: "generated.js",
+              new_path: "generated.js",
+              new_file: false,
+              renamed_file: false,
+              deleted_file: false,
+              collapsed: false,
+              too_large: true,
+              diff: "",
+            },
+          ],
+          headers: glHeaders(),
+        });
+
+      const result = await gl.commits.get("gitlab-org", "gitlab-foss", sha);
+
+      expect(mocks.client).toHaveBeenNthCalledWith(2, `/projects/278964/repository/commits/${sha}`);
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        1,
+        mocks.client,
+        `/projects/278964/repository/commits/${sha}/diff`,
+        { query: { page: 1, per_page: 100 } },
+      );
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        2,
+        mocks.client,
+        `/projects/278964/repository/commits/${sha}/diff`,
+        { query: { page: 2, per_page: 100 } },
+      );
+      expect(result).toEqual({
+        sha,
+        message: "fix: preserve commit metadata",
+        author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+        committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:01:00Z" },
+        parents: ["parent-sha"],
+        url: `https://gitlab.com/gitlab-org/gitlab-foss/-/commit/${sha}`,
+        files: [
+          { path: "src/provider.ts", status: "modified", additions: 2, deletions: 1 },
+          { path: "generated.js", status: "modified", additions: null, deletions: null },
+        ],
+        filesComplete: null,
+      });
+      expect(JSON.stringify(result)).not.toContain("diff");
+    });
+
+    it.each(["invalid", "101"])("stops on unsafe next-page header %s", async (nextPage) => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        id: sha,
+        message: "one page",
+        author_name: "Ori",
+        author_email: "ori@example.com",
+        authored_date: "2026-08-29T10:00:00Z",
+        committer_name: "Ori",
+        committer_email: "ori@example.com",
+        committed_date: "2026-08-29T10:00:00Z",
+        parent_ids: [],
+        web_url: `https://gitlab.com/gitlab-org/gitlab-foss/-/commit/${sha}`,
+      });
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [],
+        headers: glHeaders({ nextPage }),
+      });
+
+      await gl.commits.get("gitlab-org", "gitlab-foss", sha);
+
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
   // --- Issues ---
 
   describe("issues.list", () => {

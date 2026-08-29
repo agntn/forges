@@ -7,6 +7,7 @@ import type * as ForgesTools from "../../../dist/tool-operations.d.mts";
 import {
   authenticatedUserParameters,
   commentParameters,
+  commitParameters,
   createIssueParameters,
   createPullRequestParameters,
   listCiRunsParameters,
@@ -76,6 +77,20 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     parameters: listCiRunsParameters,
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listCiRuns(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_commits_get",
+    label: "Forges Commit",
+    description: "Get one commit with metadata and changed-file rows",
+    promptSnippet: "Read one commit and the files it changed from GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_commits_get when a known commit SHA needs exact metadata or changed paths.",
+    ],
+    parameters: commitParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getCommit(params);
     },
   });
 

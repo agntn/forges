@@ -35,6 +35,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   );
   const owner = Type.String({ description: "Repository owner or organization", minLength: 1 });
   const repo = Type.String({ description: "Repository name", minLength: 1 });
+  const sha = Type.String({ description: "Commit SHA", minLength: 1 });
   const branch = Type.Optional(Type.String({ description: "Filter by branch", minLength: 1 }));
   const page = Type.Optional(Type.Integer({ description: "Page number", minimum: 1 }));
   const perPage = Type.Optional(
@@ -55,6 +56,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
 
   const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
   const repositoryParameters = Type.Object({ platform, owner, repo });
+  const commitParameters = Type.Object({ platform, owner, repo, sha });
   const listCiRunsParameters = Type.Object({ platform, owner, repo, branch, page, perPage });
   const listRepositoryItemsParameters = Type.Object({
     platform,
@@ -163,6 +165,17 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listCiRuns(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_commits_get",
+    label: "Forges Commit",
+    description: "Get one commit with metadata and changed-file rows",
+    parameters: commitParameters,
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getCommit(params);
     },
   });
 

@@ -19,6 +19,7 @@ import { resetPinnedProviders } from "../src/tool-operations.ts";
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
   const ciRuns = { list: vi.fn() };
+  const commits = { get: vi.fn() };
   const issues = {
     list: vi.fn(),
     search: vi.fn(),
@@ -43,13 +44,14 @@ const mocks = vi.hoisted(() => {
     resolve: vi.fn(),
     unresolve: vi.fn(),
   };
-  const provider = { repos, ciRuns, issues, pullRequests, users, threads };
+  const provider = { repos, ciRuns, commits, issues, pullRequests, users, threads };
 
   return {
     resolveToken: vi.fn(() => ({ token: "test-token", source: "env" as const })),
     createProvider: vi.fn(() => provider),
     repos,
     ciRuns,
+    commits,
     issues,
     pullRequests,
     users,
@@ -66,6 +68,7 @@ const toolNames = [
   "forges_repos_list",
   "forges_repos_get",
   "forges_ci_runs_list",
+  "forges_commits_get",
   "forges_issues_list",
   "forges_issues_search",
   "forges_issues_get",
@@ -146,6 +149,7 @@ beforeEach(() => {
   vi.stubEnv("FORGES_GITEA_BASE_URL", undefined);
   mocks.repos.list.mockResolvedValue({ items: [], hasNextPage: false });
   mocks.ciRuns.list.mockResolvedValue({ items: [], hasNextPage: false });
+  mocks.commits.get.mockResolvedValue({ sha: "abc", files: [], filesComplete: true });
   mocks.issues.search.mockResolvedValue({ items: [], incomplete: false, hasNextPage: false });
   mocks.pullRequests.search.mockResolvedValue({
     items: [],
@@ -236,6 +240,29 @@ describe("Forges Pi extension", () => {
       perPage: 10,
     });
     expect(result.details.result).toEqual({ items: [], hasNextPage: false });
+  });
+
+  it("executes commit reads through the shared provider operation", async () => {
+    const tool = requirePiTool(registerPiTools(), "forges_commits_get");
+    const result = await tool.execute(
+      "test",
+      {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+      },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+
+    expect(mocks.commits.get).toHaveBeenCalledWith(
+      "agntn",
+      "forges",
+      "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+    );
+    expect(result.details.result).toEqual({ sha: "abc", files: [], filesComplete: true });
   });
 
   it("executes issue search through the shared provider operation", async () => {

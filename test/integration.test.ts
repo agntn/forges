@@ -52,6 +52,7 @@ import type {
   ProviderConfig,
   RepositoryResource,
   CiRunResource,
+  CommitResource,
   IssueResource,
   PullRequestResource,
   UserResource,
@@ -210,6 +211,14 @@ describe("cross-provider class consistency", () => {
     }
   });
 
+  it("all providers have commits resource", () => {
+    for (const platform of platforms) {
+      const p = providers[platform];
+      expect(p.commits).toBeDefined();
+      expect(typeof p.commits.get).toBe("function");
+    }
+  });
+
   it("all providers have users resource", () => {
     for (const platform of platforms) {
       const p = providers[platform];
@@ -240,6 +249,7 @@ describe("cross-provider class consistency", () => {
       expect(p.repos.get.length).toBeGreaterThanOrEqual(2);
 
       expect(p.ciRuns.list.length).toBeGreaterThanOrEqual(2);
+      expect(p.commits.get.length).toBeGreaterThanOrEqual(3);
 
       expect(p.issues.list.length).toBeGreaterThanOrEqual(2);
       expect(p.issues.search.length).toBeGreaterThanOrEqual(3);
@@ -423,6 +433,7 @@ describe("type-level consistency", () => {
     // These should compile without errors
     const repos: RepositoryResource = provider.repos;
     const ciRuns: CiRunResource = provider.ciRuns;
+    const commits: CommitResource = provider.commits;
     const issues: IssueResource = provider.issues;
     const prs: PullRequestResource = provider.pullRequests;
     const users: UserResource = provider.users;
@@ -430,6 +441,7 @@ describe("type-level consistency", () => {
 
     expect(repos).toBeDefined();
     expect(ciRuns).toBeDefined();
+    expect(commits).toBeDefined();
     expect(issues).toBeDefined();
     expect(prs).toBeDefined();
     expect(users).toBeDefined();

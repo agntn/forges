@@ -9,6 +9,7 @@ import { resetPinnedProviders } from "../src/tool-operations.ts";
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
   const ciRuns = { list: vi.fn() };
+  const commits = { get: vi.fn() };
   const issues = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
   const pullRequests = {
     list: vi.fn(),
@@ -26,13 +27,14 @@ const mocks = vi.hoisted(() => {
     resolve: vi.fn(),
     unresolve: vi.fn(),
   };
-  const provider = { repos, ciRuns, issues, pullRequests, users, threads };
+  const provider = { repos, ciRuns, commits, issues, pullRequests, users, threads };
 
   return {
     resolveToken: vi.fn(() => ({ token: "test-token", source: "env" as const })),
     createProvider: vi.fn(() => provider),
     repos,
     ciRuns,
+    commits,
     issues,
     pullRequests,
     users,
@@ -49,6 +51,7 @@ const toolNames = [
   "forges_repos_list",
   "forges_repos_get",
   "forges_ci_runs_list",
+  "forges_commits_get",
   "forges_issues_list",
   "forges_issues_search",
   "forges_issues_get",
@@ -220,6 +223,34 @@ describe("forges MCP server", () => {
       perPage: 10,
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: runs });
+  });
+
+  it("gets one commit through the shared operation", async () => {
+    const commit = {
+      sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+      message: "fix: preserve commit metadata",
+      author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+      committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+      parents: ["parent"],
+      url: "https://github.com/agntn/forges/commit/cb9d4e5",
+      files: [{ path: "src/provider.ts", status: "modified", additions: 12, deletions: 3 }],
+      filesComplete: true,
+    };
+    mocks.commits.get.mockResolvedValue(commit);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_commits_get",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        sha: commit.sha,
+      },
+    });
+
+    expect(mocks.commits.get).toHaveBeenCalledWith("agntn", "forges", commit.sha);
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: commit });
   });
 
   it("lists pull-request changed files through the shared operation", async () => {
