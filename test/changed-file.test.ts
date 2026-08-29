@@ -25,8 +25,10 @@ describe("countDiffLines", () => {
       "-old",
       "+new",
       "+added",
+      "---counter",
+      "+++counter",
     ].join("\n");
 
-    expect(countDiffLines(diff)).toEqual({ additions: 2, deletions: 1 });
+    expect(countDiffLines(diff)).toEqual({ additions: 3, deletions: 2 });
   });
 });
