@@ -20,6 +20,7 @@ import type {
   Issue,
   PullRequest,
   PullRequestCheck,
+  PullRequestFile,
   PullRequestSearchItem,
   User,
   Owner,
@@ -29,6 +30,7 @@ import type {
   ListCiRunsOptions,
   ListCommentOptions,
   ListPullRequestChecksOptions,
+  ListPullRequestFilesOptions,
   ListThreadOptions,
   Comment,
   CreateIssueInput,
@@ -43,6 +45,7 @@ import { cachedFetch, invalidateCache } from "../cache.ts";
 import { normalizeError, NotFoundError } from "../errors.ts";
 import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
+import { countDiffLines } from "../pull-request-file.ts";
 
 // GitLab API response types (internal)
 
@@ -127,6 +130,17 @@ interface GitLabMergeRequest {
   sha?: string | null;
   merge_status?: string | null;
   detailed_merge_status?: string | null;
+}
+
+interface GitLabMergeRequestDiff {
+  old_path: string;
+  new_path: string;
+  new_file: boolean;
+  renamed_file: boolean;
+  deleted_file: boolean;
+  collapsed?: boolean;
+  too_large?: boolean;
+  diff: string;
 }
 
 interface GitLabUser {
@@ -334,6 +348,24 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       name: raw.name ?? "pipeline",
       ...normalizeCiRunState(raw.status),
       url: raw.web_url ?? "",
+    };
+  }
+
+  private mapPullRequestFile(raw: GitLabMergeRequestDiff): PullRequestFile {
+    const counts =
+      raw.collapsed === true || raw.too_large === true
+        ? { additions: null, deletions: null }
+        : countDiffLines(raw.diff);
+    return {
+      path: raw.new_path,
+      status: raw.renamed_file
+        ? "renamed"
+        : raw.new_file
+          ? "added"
+          : raw.deleted_file
+            ? "removed"
+            : "modified",
+      ...counts,
     };
   }
 
@@ -748,6 +780,33 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
       const prs = (response.data ?? []).map((raw) => this.mapPullRequest(raw));
       return this.parsePagination(prs, response.headers);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async listPullRequestFiles(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListPullRequestFilesOptions,
+  ): Promise<PageResult<PullRequestFile>> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const response = await rawFetch<GitLabMergeRequestDiff[]>(
+        this.client,
+        `/projects/${projectId}/merge_requests/${encodePathSegment(number)}/diffs`,
+        {
+          query: {
+            page: options?.page ?? 1,
+            per_page: options?.perPage ?? 30,
+          },
+        },
+      );
+      return this.parsePagination(
+        (response.data ?? []).map((raw) => this.mapPullRequestFile(raw)),
+        response.headers,
+      );
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }

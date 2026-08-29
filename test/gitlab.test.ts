@@ -809,6 +809,67 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("pullRequests.listFiles", () => {
+    it("reads changed files and derives counts from available diffs", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          {
+            old_path: "src/auth.ts",
+            new_path: "src/auth.ts",
+            new_file: false,
+            renamed_file: false,
+            deleted_file: false,
+            collapsed: false,
+            too_large: false,
+            diff: "--- a/src/auth.ts\n+++ b/src/auth.ts\n@@ -1,3 +1,4 @@\n unchanged\n-removed\n---counter\n+added\n+added again\n+++counter",
+          },
+          {
+            old_path: "generated.js",
+            new_path: "generated.js",
+            new_file: false,
+            renamed_file: false,
+            deleted_file: false,
+            collapsed: false,
+            too_large: true,
+            diff: "",
+          },
+        ],
+        headers: glHeaders({ nextPage: "3", total: "4" }),
+      });
+
+      const result = await gl.pullRequests.listFiles("gitlab-org", "gitlab-foss", 33, {
+        page: 2,
+        perPage: 2,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/merge_requests/33/diffs",
+        { query: { page: 2, per_page: 2 } },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            path: "src/auth.ts",
+            status: "modified",
+            additions: 3,
+            deletions: 2,
+          },
+          {
+            path: "generated.js",
+            status: "modified",
+            additions: null,
+            deletions: null,
+          },
+        ],
+        totalCount: 4,
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+  });
+
   describe("pullRequests.listChecks", () => {
     it("reads and normalizes merge-request pipelines", async () => {
       mockProjectResolve(278964);

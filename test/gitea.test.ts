@@ -736,6 +736,49 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("pullRequests.listFiles", () => {
+    it("reads changed files and normalizes Gitea's changed status", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [
+          {
+            filename: "src/auth.ts",
+            status: "changed",
+            additions: 4,
+            deletions: 1,
+            patch: "@@ -1 +1 @@",
+          },
+        ],
+        headers: makeHeaders({
+          Link: '<https://gitea.com/api/v1/repos/testowner/test-repo/pulls/5/files?page=3>; rel="next"',
+        }),
+        status: 200,
+      });
+
+      const result = await provider.pullRequests.listFiles("testowner", "test-repo", 5, {
+        page: 2,
+        perPage: 10,
+      });
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        expect.anything(),
+        "/repos/testowner/test-repo/pulls/5/files",
+        { query: { page: "2", limit: "10" } },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            path: "src/auth.ts",
+            status: "modified",
+            additions: 4,
+            deletions: 1,
+          },
+        ],
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+  });
+
   describe("pullRequests.listChecks", () => {
     it("reads commit statuses for the pull-request head revision", async () => {
       mockClient.mockResolvedValueOnce(giteaPullRequest());

@@ -849,6 +849,48 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("pullRequests.listFiles", () => {
+    it("reads changed files without exposing patches", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          {
+            filename: "src/auth.ts",
+            status: "modified",
+            additions: 7,
+            deletions: 2,
+            patch: "@@ -1 +1 @@",
+          },
+        ],
+        headers: makeHeaders(
+          '<https://api.github.com/repos/octocat/hello-world/pulls/99/files?page=3>; rel="next"',
+        ),
+      });
+
+      const result = await gh.pullRequests.listFiles("octocat", "hello-world", 99, {
+        page: 2,
+        perPage: 10,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/octocat/hello-world/pulls/99/files",
+        { query: { page: "2", per_page: "10" } },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            path: "src/auth.ts",
+            status: "modified",
+            additions: 7,
+            deletions: 2,
+          },
+        ],
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+  });
+
   describe("pullRequests.listChecks", () => {
     it("reads check runs for the pull-request head revision", async () => {
       mocks.client.mockResolvedValueOnce(ghPullRequest);

@@ -16,6 +16,7 @@ import {
   listCiRunsParameters,
   listCommentsParameters,
   listPullRequestChecksParameters,
+  listPullRequestFilesParameters,
   listRepositoriesParameters,
   listRepositoryItemsParameters,
   listThreadsParameters,
@@ -42,6 +43,7 @@ import {
   listIssues,
   listPullRequestChecks,
   listPullRequestComments,
+  listPullRequestFiles,
   listPullRequests,
   listRepositories,
   listThreads,
@@ -218,6 +220,15 @@ const tools: ToolDefinition[] = [
     inputSchema: repositoryItemParameters,
     annotations: readAnnotations,
     execute: getPullRequest,
+  }),
+  defineTool({
+    name: "forges_pull_requests_files",
+    title: "List Pull Request Files",
+    description:
+      "List files changed by one pull request, normalized to path, status, additions, and deletions. Patches are omitted. GitLab counts are null when it withholds a collapsed or oversized diff.",
+    inputSchema: listPullRequestFilesParameters,
+    annotations: readAnnotations,
+    execute: listPullRequestFiles,
   }),
   defineTool({
     name: "forges_pull_requests_checks",

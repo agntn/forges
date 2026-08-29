@@ -78,6 +78,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   });
   const repositoryItemParameters = Type.Object({ platform, owner, repo, number });
   const listCommentsParameters = Type.Object({ platform, owner, repo, number, page, perPage });
+  const listPullRequestFilesParameters = listCommentsParameters;
   const listPullRequestChecksParameters = listCommentsParameters;
   const commentId = Type.String({ description: "Discussion comment id", minLength: 1 });
   const commentParameters = Type.Object({ platform, owner, repo, number, commentId });
@@ -261,6 +262,17 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getPullRequest(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_files",
+    label: "Forges Pull Request Files",
+    description: "List files changed by one pull request without exposing patches",
+    parameters: listPullRequestFilesParameters,
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listPullRequestFiles(params);
     },
   });
 
