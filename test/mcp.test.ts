@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
   const issues = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
   const pullRequests = {
     list: vi.fn(),
+    listFiles: vi.fn(),
     listChecks: vi.fn(),
     search: vi.fn(),
     get: vi.fn(),
@@ -57,6 +58,7 @@ const toolNames = [
   "forges_pull_requests_list",
   "forges_pull_requests_search",
   "forges_pull_requests_get",
+  "forges_pull_requests_files",
   "forges_pull_requests_checks",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
@@ -218,6 +220,40 @@ describe("forges MCP server", () => {
       perPage: 10,
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: runs });
+  });
+
+  it("lists pull-request changed files through the shared operation", async () => {
+    const files = {
+      items: [
+        {
+          path: "src/provider.ts",
+          status: "modified",
+          additions: 12,
+          deletions: 3,
+        },
+      ],
+      hasNextPage: false,
+    };
+    mocks.pullRequests.listFiles.mockResolvedValue(files);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_files",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        number: 53,
+        page: 2,
+        perPage: 10,
+      },
+    });
+
+    expect(mocks.pullRequests.listFiles).toHaveBeenCalledWith("agntn", "forges", 53, {
+      page: 2,
+      perPage: 10,
+    });
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: files });
   });
 
   it("lists pull-request checks through the shared operation", async () => {

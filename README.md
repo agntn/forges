@@ -94,7 +94,7 @@ const gt = createProvider("gitea", {
 
 ## Agent tools
 
-The same twenty-four tools - repositories, CI runs, issues, pull requests and their checks, users, authentication reload, discussion comments, and review threads - are exposed over MCP and through the Pi and OMP extensions. Read tools use the normal token detection chain, then fall back to anonymous access when no credential exists. Writes, `forges_users_authenticated`, and `forges_auth_reload` still require a credential. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
+The same twenty-five tools - repositories, CI runs, issues, pull requests and their changed files and checks, users, authentication reload, discussion comments, and review threads - are exposed over MCP and through the Pi and OMP extensions. Read tools use the normal token detection chain, then fall back to anonymous access when no credential exists. Writes, `forges_users_authenticated`, and `forges_auth_reload` still require a credential. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
 
 | Platform           | Environment variable     |
 | ------------------ | ------------------------ |
@@ -146,13 +146,13 @@ Every provider gives you six resources with the same method shapes. Thread seman
 
 **issues** - `list(owner, repo, opts?)`, `search(owner, repo, query, opts?)`, `get(owner, repo, number)`, `create(owner, repo, input)`, `listComments(owner, repo, number, opts?)`
 
-**pullRequests** - `list(owner, repo, opts?)`, `listChecks(owner, repo, number, opts?)`, `search(owner, repo, query, opts?)`, `get(owner, repo, number)`, `create(owner, repo, input)`, `listComments(owner, repo, number, opts?)`
+**pullRequests** - `list(owner, repo, opts?)`, `listFiles(owner, repo, number, opts?)`, `listChecks(owner, repo, number, opts?)`, `search(owner, repo, query, opts?)`, `get(owner, repo, number)`, `create(owner, repo, input)`, `listComments(owner, repo, number, opts?)`
 
 **users** - `get(username)`, `authenticated()`
 
 **threads** - `list(owner, repo, number, opts?)`, `get(owner, repo, number, threadId)`, `reply(owner, repo, number, threadId, input)`, `resolve(owner, repo, number, threadId)`, `unresolve(owner, repo, number, threadId)`
 
-CI-run lists accept `ListCiRunsOptions`: `page`, `perPage`, and an optional `branch` filter. They normalize GitHub Actions runs, GitLab pipelines, and Gitea Actions runs to branch, revision SHA, lifecycle status, terminal conclusion, and URL. Pull-request check lists accept `ListPullRequestChecksOptions`: `page` and `perPage`. They read GitHub check runs for the head SHA, GitLab merge-request pipelines for the current head SHA, and Gitea commit statuses, normalized to name, lifecycle status, terminal conclusion, and URL. Issue and pull request lists accept `ListOptions`: `page`, `perPage`, and `state` (`'open' | 'closed' | 'all'`); repository lists use its pagination fields. Lists return `PageResult<T>` with `items`, `hasNextPage`, `nextPage`, and an optional `totalCount`. Issue and pull-request searches accept the same options and return those fields plus `incomplete`, which is true when the result is known to be partial. Queries keep the selected platform's syntax: GitHub qualifiers work on GitHub, while GitLab and Gitea treat them as text. Pull-request search returns `PullRequestSearchItem`; call `get` for branches, revisions, and mergeability.
+CI-run lists accept `ListCiRunsOptions`: `page`, `perPage`, and an optional `branch` filter. They normalize GitHub Actions runs, GitLab pipelines, and Gitea Actions runs to branch, revision SHA, lifecycle status, terminal conclusion, and URL. Pull-request file lists accept `ListPullRequestFilesOptions`: `page` and `perPage`. They normalize each changed file to path, status, additions, and deletions without returning patches; GitLab counts are `null` when its API withholds a collapsed or oversized diff. Pull-request check lists accept `ListPullRequestChecksOptions`: `page` and `perPage`. They read GitHub check runs for the head SHA, GitLab merge-request pipelines for the current head SHA, and Gitea commit statuses, normalized to name, lifecycle status, terminal conclusion, and URL. Issue and pull request lists accept `ListOptions`: `page`, `perPage`, and `state` (`'open' | 'closed' | 'all'`); repository lists use its pagination fields. Lists return `PageResult<T>` with `items`, `hasNextPage`, `nextPage`, and an optional `totalCount`. Issue and pull-request searches accept the same options and return those fields plus `incomplete`, which is true when the result is known to be partial. Queries keep the selected platform's syntax: GitHub qualifiers work on GitHub, while GitLab and Gitea treat them as text. Pull-request search returns `PullRequestSearchItem`; call `get` for branches, revisions, and mergeability.
 
 `listComments` reads the discussion under an issue or pull request oldest first and accepts `ListCommentOptions`: `page` and `perPage`. On GitHub and Gitea the two variants read the same endpoint, because both platforms index pull requests as issues. GitLab notes are fetched with an explicit ascending sort, and both its system notes about label and state churn and its inline DiffNotes, which belong to the thread surface, are dropped, so a short page whose `hasNextPage` is true means keep paging. Gitea answers with the whole discussion in one response, so the requested page is cut locally.
 
@@ -233,7 +233,7 @@ import { fetchAllPages, paginate } from "@agntn/forges";
 
 This is an MVP. It covers repos, CI runs, issues, PRs, users, and review threads. It does not handle:
 
-- File/content operations (reading files, commits, trees)
+- Repository content operations (reading file contents, commits, trees)
 - Webhooks
 - Branch/tag management
 - GraphQL outside GitHub review threads

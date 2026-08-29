@@ -16,11 +16,13 @@ import type {
   ListCommentOptions,
   ListOptions,
   ListPullRequestChecksOptions,
+  ListPullRequestFilesOptions,
   ListThreadOptions,
   Owner,
   PageResult,
   PullRequest,
   PullRequestCheck,
+  PullRequestFile,
   PullRequestResource,
   PullRequestSearchItem,
   ReplyThreadInput,
@@ -93,6 +95,8 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.pullRequests = {
       list: (owner, repo, options) => this.listPullRequests(owner, repo, options),
+      listFiles: (owner, repo, number, options) =>
+        this.listPullRequestFiles(owner, repo, number, options),
       listChecks: (owner, repo, number, options) =>
         this.listPullRequestChecks(owner, repo, number, options),
       search: async (owner, repo, query, options) => {
@@ -170,6 +174,16 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     repo: string,
     options?: ListOptions,
   ): Promise<PageResult<PullRequest>>;
+  protected listPullRequestFiles(
+    _owner: string,
+    _repo: string,
+    _number: number,
+    _options?: ListPullRequestFilesOptions,
+  ): Promise<PageResult<PullRequestFile>> {
+    return Promise.reject(
+      new ForgesError("Pull request file listing is not supported by this provider", 501),
+    );
+  }
   protected listPullRequestChecks(
     _owner: string,
     _repo: string,

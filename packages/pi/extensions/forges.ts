@@ -12,6 +12,7 @@ import {
   listCiRunsParameters,
   listCommentsParameters,
   listPullRequestChecksParameters,
+  listPullRequestFilesParameters,
   listRepositoriesParameters,
   listRepositoryItemsParameters,
   listThreadsParameters,
@@ -197,6 +198,20 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     parameters: repositoryItemParameters,
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getPullRequest(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_files",
+    label: "Forges Pull Request Files",
+    description: "List files changed by one pull request without exposing patches",
+    promptSnippet: "Read changed-file paths and counts for a pull request.",
+    promptGuidelines: [
+      "Use forges_pull_requests_files when a review or audit needs the pull request's changed paths and line counts.",
+    ],
+    parameters: listPullRequestFilesParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listPullRequestFiles(params);
     },
   });
 

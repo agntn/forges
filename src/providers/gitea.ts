@@ -19,6 +19,7 @@ import type {
   Issue,
   PullRequest,
   PullRequestCheck,
+  PullRequestFile,
   PullRequestSearchItem,
   User,
   Owner,
@@ -28,6 +29,7 @@ import type {
   ListCiRunsOptions,
   ListCommentOptions,
   ListPullRequestChecksOptions,
+  ListPullRequestFilesOptions,
   ListThreadOptions,
   Comment,
   CreateIssueInput,
@@ -37,6 +39,7 @@ import type {
   ThreadComment,
 } from "../types.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
+import { normalizePullRequestFileStatus } from "../pull-request-file.ts";
 
 // -- Raw Gitea API response types --
 
@@ -157,6 +160,13 @@ interface GiteaPullRequest {
   draft?: boolean;
   merge_commit_sha?: string | null;
   mergeable?: boolean;
+}
+
+interface GiteaPullRequestFile {
+  filename: string;
+  status: string;
+  additions?: number;
+  deletions?: number;
 }
 
 interface GiteaComment {
@@ -347,6 +357,15 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       name: raw.context || "status",
       ...normalizeCiRunState(raw.status),
       url,
+    };
+  }
+
+  private mapPullRequestFile(raw: GiteaPullRequestFile): PullRequestFile {
+    return {
+      path: raw.filename,
+      status: normalizePullRequestFileStatus(raw.status),
+      additions: raw.additions ?? null,
+      deletions: raw.deletions ?? null,
     };
   }
 
@@ -614,6 +633,25 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         { query },
       );
       return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequest(raw));
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async listPullRequestFiles(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListPullRequestFilesOptions,
+  ): Promise<PageResult<PullRequestFile>> {
+    try {
+      const query = buildListQuery(options);
+      const { data, headers } = await rawFetch<GiteaPullRequestFile[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/files`,
+        { query },
+      );
+      return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequestFile(raw));
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }

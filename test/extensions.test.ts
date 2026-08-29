@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => {
   };
   const pullRequests = {
     list: vi.fn(),
+    listFiles: vi.fn(),
     listChecks: vi.fn(),
     search: vi.fn(),
     get: vi.fn(),
@@ -74,6 +75,7 @@ const toolNames = [
   "forges_pull_requests_list",
   "forges_pull_requests_search",
   "forges_pull_requests_get",
+  "forges_pull_requests_files",
   "forges_pull_requests_checks",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
@@ -150,6 +152,7 @@ beforeEach(() => {
     incomplete: false,
     hasNextPage: false,
   });
+  mocks.pullRequests.listFiles.mockResolvedValue({ items: [], hasNextPage: false });
   mocks.pullRequests.listChecks.mockResolvedValue({ items: [], hasNextPage: false });
   mocks.issues.create.mockResolvedValue({
     id: "42",
@@ -293,6 +296,30 @@ describe("Forges Pi extension", () => {
       incomplete: false,
       hasNextPage: false,
     });
+  });
+
+  it("executes pull-request file listing through the shared provider operation", async () => {
+    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_files");
+    const result = await tool.execute(
+      "test",
+      {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        number: 53,
+        page: 2,
+        perPage: 10,
+      },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+
+    expect(mocks.pullRequests.listFiles).toHaveBeenCalledWith("agntn", "forges", 53, {
+      page: 2,
+      perPage: 10,
+    });
+    expect(result.details.result).toEqual({ items: [], hasNextPage: false });
   });
 
   it("executes pull-request check listing through the shared provider operation", async () => {

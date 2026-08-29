@@ -11,6 +11,7 @@ import type {
   Issue,
   PullRequest,
   PullRequestCheck,
+  PullRequestFile,
   PullRequestSearchItem,
   User,
   Owner,
@@ -20,6 +21,7 @@ import type {
   ListCiRunsOptions,
   ListCommentOptions,
   ListPullRequestChecksOptions,
+  ListPullRequestFilesOptions,
   ListThreadOptions,
   Comment,
   CreateIssueInput,
@@ -36,6 +38,7 @@ import { parseLinkHeader } from "../pagination.ts";
 import { encodePathSegment } from "./base-url.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
+import { normalizePullRequestFileStatus } from "../pull-request-file.ts";
 
 // --- GitHub API response types (snake_case) ---
 
@@ -157,6 +160,13 @@ interface GitHubPullRequest extends GitHubIssue {
   merge_commit_sha?: string | null;
   mergeable?: boolean | null;
   mergeable_state?: string | null;
+}
+
+interface GitHubPullRequestFile {
+  filename: string;
+  status: string;
+  additions?: number;
+  deletions?: number;
 }
 
 interface GitHubComment {
@@ -448,6 +458,15 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       name: raw.name,
       ...normalizeCiRunState(raw.status, raw.conclusion),
       url: raw.html_url,
+    };
+  }
+
+  private mapPullRequestFile(raw: GitHubPullRequestFile): PullRequestFile {
+    return {
+      path: raw.filename,
+      status: normalizePullRequestFileStatus(raw.status),
+      additions: raw.additions ?? null,
+      deletions: raw.deletions ?? null,
     };
   }
 
@@ -751,6 +770,28 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       );
 
       return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequest(raw));
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async listPullRequestFiles(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListPullRequestFilesOptions,
+  ): Promise<PageResult<PullRequestFile>> {
+    try {
+      const query: Record<string, string> = {};
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+
+      const { data, headers } = await rawFetch<GitHubPullRequestFile[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/files`,
+        { query },
+      );
+      return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequestFile(raw));
     } catch (error) {
       throw normalizeError(error, "github");
     }

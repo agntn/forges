@@ -14,10 +14,12 @@ import type {
   ListCommentOptions,
   ListOptions,
   ListPullRequestChecksOptions,
+  ListPullRequestFilesOptions,
   ListThreadOptions,
   PageResult,
   PullRequest,
   PullRequestCheck,
+  PullRequestFile,
   PullRequestSearchItem,
   ReplyThreadInput,
   Repository,
@@ -193,6 +195,7 @@ export interface ListCommentsParams extends RepositoryParams {
   perPage?: number;
 }
 
+export type ListPullRequestFilesParams = ListCommentsParams;
 export type ListPullRequestChecksParams = ListCommentsParams;
 
 export interface GetCommentParams extends RepositoryParams {
@@ -413,6 +416,22 @@ export async function listPullRequests(
     summarizeIssuePage(pullRequests),
     "Pull-request bodies are omitted from list output; use forges_pull_requests_get to read one body.",
   );
+}
+
+export async function listPullRequestFiles(
+  params: ListPullRequestFilesParams,
+): Promise<ForgesToolResult<PageResult<PullRequestFile>>> {
+  const options: ListPullRequestFilesOptions = {
+    page: params.page,
+    perPage: params.perPage,
+  };
+  const files = await readProvider(params.platform).pullRequests.listFiles(
+    params.owner,
+    params.repo,
+    params.number,
+    options,
+  );
+  return result(params.platform, files);
 }
 
 export async function listPullRequestChecks(

@@ -81,6 +81,7 @@ export const searchRepositoryItemsParameters = Type.Object({
 });
 export const repositoryItemParameters = Type.Object({ platform, owner, repo, number });
 export const listCommentsParameters = Type.Object({ platform, owner, repo, number, page, perPage });
+export const listPullRequestFilesParameters = listCommentsParameters;
 export const listPullRequestChecksParameters = listCommentsParameters;
 export const commentParameters = Type.Object({ platform, owner, repo, number, commentId });
 export const createIssueParameters = Type.Object({

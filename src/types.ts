@@ -135,6 +135,23 @@ export interface PullRequest extends PullRequestSearchItem {
   mergeStatus: string;
 }
 
+/** Normalized status of one file changed by a pull request. */
+export type PullRequestFileStatus =
+  | "added"
+  | "modified"
+  | "removed"
+  | "renamed"
+  | "copied"
+  | "unknown";
+
+/** One file changed by a pull request. Counts are null when the provider does not report them. */
+export interface PullRequestFile {
+  path: string;
+  status: PullRequestFileStatus;
+  additions: number | null;
+  deletions: number | null;
+}
+
 /**
  * Paginated result wrapper
  */
@@ -208,6 +225,12 @@ export interface Comment {
  * List operation options for discussion comments
  */
 export interface ListCommentOptions {
+  page?: number;
+  perPage?: number;
+}
+
+/** List operation options for pull-request files. */
+export interface ListPullRequestFilesOptions {
   page?: number;
   perPage?: number;
 }
@@ -322,6 +345,12 @@ export interface IssueResource {
  */
 export interface PullRequestResource {
   list(owner: string, repo: string, options?: ListOptions): Promise<PageResult<PullRequest>>;
+  listFiles(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListPullRequestFilesOptions,
+  ): Promise<PageResult<PullRequestFile>>;
   listChecks(
     owner: string,
     repo: string,
