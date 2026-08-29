@@ -86,6 +86,15 @@ export interface CiRun {
   url: string;
 }
 
+/** A normalized check or pipeline associated with a pull request head revision. */
+export interface PullRequestCheck {
+  id: string;
+  name: string;
+  status: CiRunStatus;
+  conclusion: CiRunConclusion;
+  url: string;
+}
+
 /**
  * Issue state
  */
@@ -203,6 +212,12 @@ export interface ListCommentOptions {
   perPage?: number;
 }
 
+/** List operation options for pull-request checks. */
+export interface ListPullRequestChecksOptions {
+  page?: number;
+  perPage?: number;
+}
+
 /**
  * Review-thread state filter
  */
@@ -307,6 +322,12 @@ export interface IssueResource {
  */
 export interface PullRequestResource {
   list(owner: string, repo: string, options?: ListOptions): Promise<PageResult<PullRequest>>;
+  listChecks(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListPullRequestChecksOptions,
+  ): Promise<PageResult<PullRequestCheck>>;
   search(
     owner: string,
     repo: string,

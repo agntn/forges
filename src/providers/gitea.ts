@@ -18,6 +18,7 @@ import type {
   CiRun,
   Issue,
   PullRequest,
+  PullRequestCheck,
   PullRequestSearchItem,
   User,
   Owner,
@@ -26,6 +27,7 @@ import type {
   ListOptions,
   ListCiRunsOptions,
   ListCommentOptions,
+  ListPullRequestChecksOptions,
   ListThreadOptions,
   Comment,
   CreateIssueInput,
@@ -55,6 +57,18 @@ interface GiteaCiRun {
 interface GiteaCiRunsResponse {
   total_count: number;
   workflow_runs: GiteaCiRun[];
+}
+
+interface GiteaCommitStatus {
+  id: number;
+  context?: string | null;
+  status: string;
+  target_url?: string | null;
+  url?: string | null;
+}
+
+interface GiteaCombinedStatus {
+  statuses: GiteaCommitStatus[];
 }
 
 interface GiteaUser {
@@ -258,6 +272,7 @@ const PLATFORM = "gitea";
  */
 export class GiteaProvider extends Provider<GiteaRawTypes> {
   private client: HttpClient;
+  private readonly apiBaseURL: string;
 
   /**
    * Create a Gitea/Forgejo provider.
@@ -267,6 +282,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   constructor(config: ProviderConfig) {
     super();
     const baseURL = normalizeApiBaseURL(config.baseURL, "https://gitea.com/api/v1", "/api/v1");
+    this.apiBaseURL = baseURL;
 
     this.client = createHttpClient({
       baseURL,
@@ -314,6 +330,23 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       revision: raw.head_sha ?? raw.commit_sha ?? "",
       ...normalizeCiRunState(raw.status, raw.conclusion),
       url: raw.html_url ?? raw.url ?? "",
+    };
+  }
+
+  private mapPullRequestCheck(raw: GiteaCommitStatus): PullRequestCheck {
+    let url = raw.target_url ?? raw.url ?? "";
+    if (url.startsWith("/")) {
+      try {
+        url = new URL(url, this.apiBaseURL).toString();
+      } catch {
+        // Preserve an unusual provider value rather than dropping the check.
+      }
+    }
+    return {
+      id: String(raw.id),
+      name: raw.context || "status",
+      ...normalizeCiRunState(raw.status),
+      url,
     };
   }
 
@@ -581,6 +614,42 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         { query },
       );
       return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequest(raw));
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async listPullRequestChecks(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListPullRequestChecksOptions,
+  ): Promise<PageResult<PullRequestCheck>> {
+    try {
+      const pullRequest = await this.getPullRequest(owner, repo, number);
+      const page = options?.page ?? 1;
+      const perPage = options?.perPage ?? 30;
+      const path = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodePathSegment(pullRequest.headSha)}/status`;
+      const { data, headers } = await rawFetch<GiteaCombinedStatus>(this.client, path, {
+        query: { page: String(page), limit: String(perPage) },
+      });
+      const statuses = data?.statuses ?? [];
+      let hasNextPage = !!parseLinkHeader(headers.get("Link")).next;
+
+      // Forgejo paginates combined statuses but omits Link. Probe only when a
+      // full page leaves the existence of another page ambiguous.
+      if (!hasNextPage && statuses.length === perPage) {
+        const next = await rawFetch<GiteaCombinedStatus>(this.client, path, {
+          query: { page: String(page + 1), limit: String(perPage) },
+        });
+        hasNextPage = (next.data?.statuses.length ?? 0) > 0;
+      }
+
+      return {
+        items: statuses.map((raw) => this.mapPullRequestCheck(raw)),
+        hasNextPage,
+        nextPage: hasNextPage ? page + 1 : undefined,
+      };
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }

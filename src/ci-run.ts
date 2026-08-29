@@ -19,6 +19,7 @@ const conclusions: Record<string, CiRunConclusion> = {
   action_required: "action_required",
   canceled: "cancelled",
   cancelled: "cancelled",
+  error: "failure",
   failed: "failure",
   failure: "failure",
   neutral: "neutral",
@@ -27,6 +28,7 @@ const conclusions: Record<string, CiRunConclusion> = {
   startup_failure: "startup_failure",
   success: "success",
   timed_out: "timed_out",
+  warning: "neutral",
 };
 
 /** Normalize GitHub/Gitea workflow state and GitLab's combined pipeline state. */

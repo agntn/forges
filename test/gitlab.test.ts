@@ -809,6 +809,95 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("pullRequests.listChecks", () => {
+    it("reads and normalizes merge-request pipelines", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          { ...glPipeline, id: 8999, sha: "stale-revision", name: "stale" },
+          { ...glPipeline, sha: glMergeRequest.sha, name: "verify", status: "running" },
+        ],
+        headers: glHeaders(),
+      });
+
+      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33, {
+        perPage: 2,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/merge_requests/33/pipelines",
+        { query: { page: 1, per_page: 100 } },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            id: "9001",
+            name: "verify",
+            status: "in_progress",
+            conclusion: null,
+            url: "https://gitlab.com/gitlab-org/gitlab-foss/-/pipelines/9001",
+          },
+        ],
+        hasNextPage: false,
+        nextPage: undefined,
+      });
+    });
+
+    it("walks stale pipeline pages to preserve normalized pagination", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: [{ ...glPipeline, sha: "stale-revision" }],
+          headers: glHeaders({ nextPage: "2" }),
+        })
+        .mockResolvedValueOnce({
+          data: [
+            { ...glPipeline, sha: glMergeRequest.sha },
+            { ...glPipeline, id: 9002, sha: glMergeRequest.sha },
+          ],
+          headers: glHeaders(),
+        });
+
+      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33, {
+        perPage: 1,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        1,
+        mocks.client,
+        "/projects/278964/merge_requests/33/pipelines",
+        { query: { page: 1, per_page: 100 } },
+      );
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        2,
+        mocks.client,
+        "/projects/278964/merge_requests/33/pipelines",
+        { query: { page: 2, per_page: 100 } },
+      );
+      expect(result).toMatchObject({
+        items: [expect.objectContaining({ id: "9001" })],
+        hasNextPage: true,
+        nextPage: 2,
+      });
+    });
+
+    it("uses stable fallbacks when the pipeline response omits name and URL", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [{ ...glPipeline, sha: glMergeRequest.sha, name: null, web_url: null }],
+        headers: glHeaders(),
+      });
+
+      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+
+      expect(result.items[0]).toMatchObject({ name: "pipeline", url: "" });
+    });
+  });
+
   describe("pullRequests.search", () => {
     it("searches project merge requests with text, state, and pagination", async () => {
       mockProjectResolve(278964);

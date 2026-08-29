@@ -10,7 +10,13 @@ const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
   const ciRuns = { list: vi.fn() };
   const issues = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
-  const pullRequests = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
+  const pullRequests = {
+    list: vi.fn(),
+    listChecks: vi.fn(),
+    search: vi.fn(),
+    get: vi.fn(),
+    create: vi.fn(),
+  };
   const users = { get: vi.fn(), authenticated: vi.fn() };
   const threads = {
     list: vi.fn(),
@@ -51,6 +57,7 @@ const toolNames = [
   "forges_pull_requests_list",
   "forges_pull_requests_search",
   "forges_pull_requests_get",
+  "forges_pull_requests_checks",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
   "forges_pull_requests_create",
@@ -211,6 +218,41 @@ describe("forges MCP server", () => {
       perPage: 10,
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: runs });
+  });
+
+  it("lists pull-request checks through the shared operation", async () => {
+    const checks = {
+      items: [
+        {
+          id: "6001",
+          name: "test",
+          status: "completed",
+          conclusion: "success",
+          url: "https://github.com/agntn/forges/runs/6001",
+        },
+      ],
+      hasNextPage: false,
+    };
+    mocks.pullRequests.listChecks.mockResolvedValue(checks);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_checks",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        number: 53,
+        page: 2,
+        perPage: 10,
+      },
+    });
+
+    expect(mocks.pullRequests.listChecks).toHaveBeenCalledWith("agntn", "forges", 53, {
+      page: 2,
+      perPage: 10,
+    });
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: checks });
   });
 
   it("reloads the pinned credential and returns the authenticated profile", async () => {
