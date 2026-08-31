@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.2.1
+
+[compare changes](https://github.com/agntn/forges/compare/v0.2.0...v0.2.1)
+
+### 🚀 Enhancements
+
+- Read repository CI runs ([#86](https://github.com/agntn/forges/pull/86))
+- Read pull request checks ([#87](https://github.com/agntn/forges/pull/87))
+- Read pull request changed files ([#88](https://github.com/agntn/forges/pull/88))
+- Read commit details and changed files ([#89](https://github.com/agntn/forges/pull/89))
+- List repository commits ([#90](https://github.com/agntn/forges/pull/90))
+- **pi:** Confirm pull request creation ([#91](https://github.com/agntn/forges/pull/91))
+- Add repository code search ([#92](https://github.com/agntn/forges/pull/92))
+- Discover contribution templates ([#93](https://github.com/agntn/forges/pull/93))
+
+### 🩹 Fixes
+
+- Keep generated changelog out of lint ([#85](https://github.com/agntn/forges/pull/85))
+
+### ❤️ Contributors
+
+- Aeitwoen <aeitwoen@gmail.com>
+- Ori ([@oritwoen](https://github.com/oritwoen))
+
 ## v0.2.0
 
 [compare changes](https://github.com/agntn/forges/compare/v0.1.2...v0.2.0)
