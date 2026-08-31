@@ -447,6 +447,65 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("commits.list", () => {
+    it("returns paged commit summaries and forwards every history filter", async () => {
+      const commit = {
+        sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+        commit: {
+          message: "feat: list commit history",
+          author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:01:00Z" },
+        },
+        html_url: "https://github.com/octocat/hello-world/commit/cb9d4e5",
+        parents: [{ sha: "parent-sha" }],
+      };
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [commit],
+        headers: makeHeaders(
+          '<https://api.github.com/repos/octocat/hello-world/commits?page=3>; rel="next"',
+        ),
+      });
+
+      const result = await gh.commits.list("octocat", "hello-world", {
+        ref: "main",
+        path: "src/provider.ts",
+        since: "2026-08-01T00:00:00Z",
+        until: "2026-08-29T23:59:59Z",
+        page: 2,
+        perPage: 10,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/octocat/hello-world/commits",
+        {
+          query: {
+            sha: "main",
+            path: "src/provider.ts",
+            since: "2026-08-01T00:00:00Z",
+            until: "2026-08-29T23:59:59Z",
+            page: "2",
+            per_page: "10",
+          },
+        },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            sha: commit.sha,
+            message: "feat: list commit history",
+            author: commit.commit.author,
+            committer: commit.commit.committer,
+            parents: ["parent-sha"],
+            url: commit.html_url,
+          },
+        ],
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+  });
+
   describe("commits.get", () => {
     it("returns commit metadata and drains changed-file pages without patches", async () => {
       const commit = {

@@ -16,6 +16,7 @@ import {
   createPullRequestParameters,
   listCiRunsParameters,
   listCommentsParameters,
+  listCommitsParameters,
   listPullRequestChecksParameters,
   listPullRequestFilesParameters,
   listRepositoriesParameters,
@@ -41,6 +42,7 @@ import {
   getThread,
   getUser,
   listCiRuns,
+  listCommits,
   listIssueComments,
   listIssues,
   listPullRequestChecks,
@@ -141,6 +143,15 @@ const tools: ToolDefinition[] = [
     inputSchema: listCiRunsParameters,
     annotations: readAnnotations,
     execute: listCiRuns,
+  }),
+  defineTool({
+    name: "forges_commits_list",
+    title: "List Commits",
+    description:
+      "List paged commit summaries for one repository, optionally filtered by ref, path, and ISO-8601 since/until dates. Summaries omit changed-file rows; use forges_commits_get for one commit's files. Gitea rejects path because its API ignores pagination limits for that filter.",
+    inputSchema: listCommitsParameters,
+    annotations: readAnnotations,
+    execute: listCommits,
   }),
   defineTool({
     name: "forges_commits_get",
@@ -425,15 +436,13 @@ export function createMcpServer(): Server {
   const server = new Server({ name: "forges", version }, { capabilities: { tools: {} } });
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: tools.map(
-      (tool): Tool => ({
-        name: tool.name,
-        title: tool.title,
-        description: tool.description,
-        inputSchema: tool.inputSchema as Tool["inputSchema"],
-        annotations: tool.annotations,
-      }),
-    ),
+    tools: tools.map((tool): Tool => ({
+      name: tool.name,
+      title: tool.title,
+      description: tool.description,
+      inputSchema: tool.inputSchema as Tool["inputSchema"],
+      annotations: tool.annotations,
+    })),
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {

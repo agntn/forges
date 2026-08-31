@@ -37,6 +37,18 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   const repo = Type.String({ description: "Repository name", minLength: 1 });
   const sha = Type.String({ description: "Commit SHA", minLength: 1 });
   const branch = Type.Optional(Type.String({ description: "Filter by branch", minLength: 1 }));
+  const ref = Type.Optional(
+    Type.String({ description: "Branch, tag, or commit reference", minLength: 1 }),
+  );
+  const path = Type.Optional(
+    Type.String({ description: "Filter by repository path", minLength: 1 }),
+  );
+  const since = Type.Optional(
+    Type.String({ description: "Only commits at or after this ISO-8601 date", minLength: 1 }),
+  );
+  const until = Type.Optional(
+    Type.String({ description: "Only commits at or before this ISO-8601 date", minLength: 1 }),
+  );
   const page = Type.Optional(Type.Integer({ description: "Page number", minimum: 1 }));
   const perPage = Type.Optional(
     Type.Integer({ description: "Results per page", minimum: 1, maximum: 100 }),
@@ -57,6 +69,17 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
   const repositoryParameters = Type.Object({ platform, owner, repo });
   const commitParameters = Type.Object({ platform, owner, repo, sha });
+  const listCommitsParameters = Type.Object({
+    platform,
+    owner,
+    repo,
+    ref,
+    path,
+    since,
+    until,
+    page,
+    perPage,
+  });
   const listCiRunsParameters = Type.Object({ platform, owner, repo, branch, page, perPage });
   const listRepositoryItemsParameters = Type.Object({
     platform,
@@ -165,6 +188,18 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listCiRuns(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_commits_list",
+    label: "Forges Commits",
+    description:
+      "List paged commits, optionally filtered by ref, path, or date range; Gitea rejects path because its API ignores pagination limits",
+    parameters: listCommitsParameters,
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listCommits(params);
     },
   });
 

@@ -159,14 +159,18 @@ export interface CommitIdentity {
   date: string;
 }
 
-/** One commit with normalized metadata and changed-file rows. filesComplete is null when provider or safety limits prevent certainty. */
-export interface Commit {
+/** One commit summary without changed-file rows. */
+export interface CommitSummary {
   sha: string;
   message: string;
   author: CommitIdentity;
   committer: CommitIdentity;
   parents: string[];
   url: string;
+}
+
+/** One commit with normalized metadata and changed-file rows. filesComplete is null when provider or safety limits prevent certainty. */
+export interface Commit extends CommitSummary {
   files: ChangedFile[];
   filesComplete: boolean | null;
 }
@@ -200,6 +204,16 @@ export interface ListCiRunsOptions {
   page?: number;
   perPage?: number;
   branch?: string;
+}
+
+/** List options for repository commits. */
+export interface ListCommitOptions {
+  page?: number;
+  perPage?: number;
+  ref?: string;
+  path?: string;
+  since?: string;
+  until?: string;
 }
 
 /**
@@ -339,6 +353,11 @@ export interface CiRunResource {
 
 /** Resource accessor for commits. */
 export interface CommitResource {
+  list(
+    owner: string,
+    repo: string,
+    options?: ListCommitOptions,
+  ): Promise<PageResult<CommitSummary>>;
   get(owner: string, repo: string, sha: string): Promise<Commit>;
 }
 

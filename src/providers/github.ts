@@ -9,6 +9,7 @@ import type {
   Repository,
   CiRun,
   Commit,
+  CommitSummary,
   Issue,
   PullRequest,
   PullRequestCheck,
@@ -21,6 +22,7 @@ import type {
   ListOptions,
   ListCiRunsOptions,
   ListCommentOptions,
+  ListCommitOptions,
   ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
   ListThreadOptions,
@@ -478,6 +480,17 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     };
   }
 
+  private mapCommitSummary(raw: GitHubCommit): CommitSummary {
+    return {
+      sha: raw.sha,
+      message: raw.commit.message,
+      author: raw.commit.author,
+      committer: raw.commit.committer,
+      parents: raw.parents.map((parent) => parent.sha),
+      url: raw.html_url,
+    };
+  }
+
   private mapPullRequestCheck(raw: GitHubCheckRun): PullRequestCheck {
     return {
       id: String(raw.id),
@@ -663,6 +676,31 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
+  protected override async listCommits(
+    owner: string,
+    repo: string,
+    options?: ListCommitOptions,
+  ): Promise<PageResult<CommitSummary>> {
+    try {
+      const query: Record<string, string> = {};
+      if (options?.ref) query.sha = options.ref;
+      if (options?.path) query.path = options.path;
+      if (options?.since) query.since = options.since;
+      if (options?.until) query.until = options.until;
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+
+      const { data, headers } = await rawFetch<GitHubCommit[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits`,
+        { query },
+      );
+      return buildPageResult(data ?? [], headers, (raw) => this.mapCommitSummary(raw));
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
   protected override async getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
     try {
       const path = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodePathSegment(sha)}`;
@@ -695,12 +733,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       }
 
       return {
-        sha: commit.sha,
-        message: commit.commit.message,
-        author: commit.commit.author,
-        committer: commit.commit.committer,
-        parents: commit.parents.map((parent) => parent.sha),
-        url: commit.html_url,
+        ...this.mapCommitSummary(commit),
         files,
         filesComplete: files.length < 3000 ? filesComplete : null,
       };

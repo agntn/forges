@@ -26,8 +26,9 @@ vi.mock("../src/http.ts", () => ({
 }));
 
 vi.mock("../src/cache.ts", () => ({
-  cachedFetch: vi.fn(async (client: (...args: unknown[]) => unknown, url: string, opts?: unknown) =>
-    opts ? client(url, opts) : client(url),
+  cachedFetch: vi.fn(
+    async (client: (...args: unknown[]) => unknown, url: string, opts?: unknown) =>
+      opts ? client(url, opts) : client(url),
   ),
 }));
 
@@ -192,6 +193,8 @@ describe("Gitea Provider", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockedRawFetch.mockReset();
+    mockedRawFetch.mockImplementation(async () => ({ ...mockRawResponse }));
     mockClient.mockReset();
     mockClient.mockResolvedValue({});
     mockedCachedFetch.mockReset();
@@ -488,6 +491,73 @@ describe("Gitea Provider", () => {
           }),
         ],
         totalCount: 25,
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+  });
+
+  describe("commits.list", () => {
+    it("rejects Gitea path filters because that API ignores pagination limits", async () => {
+      await expect(
+        provider.commits.list("testowner", "test-repo", {
+          path: "src/provider.ts",
+          page: 2,
+          perPage: 1,
+        }),
+      ).rejects.toMatchObject({
+        message:
+          "Path-filtered commit listing is not supported by Gitea because its API ignores pagination limits",
+        status: 501,
+        platform: "gitea",
+      });
+      expect(mockedRawFetch).not.toHaveBeenCalled();
+    });
+
+    it("uses Gitea pagination headers when path is omitted", async () => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      const commit = {
+        sha,
+        html_url: `https://gitea.com/testowner/test-repo/commit/${sha}`,
+        commit: {
+          message: "feat: list commit history",
+          author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:01:00Z" },
+        },
+        parents: [{ sha: "parent-sha" }],
+      };
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [commit],
+        headers: new Headers({ "x-hasmore": "true", "x-total-count": "31" }),
+        status: 200,
+      });
+
+      const result = await provider.commits.list("testowner", "test-repo", {
+        ref: "main",
+        since: "2026-08-01T00:00:00Z",
+        until: "2026-08-29T23:59:59Z",
+        page: 2,
+        perPage: 10,
+      });
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        expect.anything(),
+        "/repos/testowner/test-repo/commits",
+        {
+          query: {
+            sha: "main",
+            since: "2026-08-01T00:00:00Z",
+            until: "2026-08-29T23:59:59Z",
+            stat: "false",
+            verification: "false",
+            files: "false",
+            page: "2",
+            limit: "10",
+          },
+        },
+      );
+      expect(result).toMatchObject({
+        totalCount: 31,
         hasNextPage: true,
         nextPage: 3,
       });

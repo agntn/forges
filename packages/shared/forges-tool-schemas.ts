@@ -29,6 +29,16 @@ const owner = Type.String({ description: "Repository owner or organization", min
 const repo = Type.String({ description: "Repository name", minLength: 1 });
 const sha = Type.String({ description: "Commit SHA", minLength: 1 });
 const branch = Type.Optional(Type.String({ description: "Filter by branch", minLength: 1 }));
+const ref = Type.Optional(
+  Type.String({ description: "Branch, tag, or commit reference", minLength: 1 }),
+);
+const path = Type.Optional(Type.String({ description: "Filter by repository path", minLength: 1 }));
+const since = Type.Optional(
+  Type.String({ description: "Only commits at or after this ISO-8601 date", minLength: 1 }),
+);
+const until = Type.Optional(
+  Type.String({ description: "Only commits at or before this ISO-8601 date", minLength: 1 }),
+);
 const page = Type.Optional(Type.Integer({ description: "Page number", minimum: 1 }));
 const perPage = Type.Optional(
   Type.Integer({ description: "Results per page", minimum: 1, maximum: 100 }),
@@ -60,6 +70,17 @@ const assignees = Type.Optional(
 export const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
 export const repositoryParameters = Type.Object({ platform, owner, repo });
 export const commitParameters = Type.Object({ platform, owner, repo, sha });
+export const listCommitsParameters = Type.Object({
+  platform,
+  owner,
+  repo,
+  ref,
+  path,
+  since,
+  until,
+  page,
+  perPage,
+});
 export const listCiRunsParameters = Type.Object({ platform, owner, repo, branch, page, perPage });
 export const listRepositoryItemsParameters = Type.Object({
   platform,

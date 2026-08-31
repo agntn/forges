@@ -571,6 +571,72 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("commits.list", () => {
+    it("returns paged commit summaries and maps portable filters", async () => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      const commit = {
+        id: sha,
+        message: "feat: list commit history",
+        author_name: "Ori",
+        author_email: "ori@example.com",
+        authored_date: "2026-08-29T10:00:00Z",
+        committer_name: "Ori",
+        committer_email: "ori@example.com",
+        committed_date: "2026-08-29T10:01:00Z",
+        parent_ids: ["parent-sha"],
+        web_url: `https://gitlab.com/gitlab-org/gitlab-foss/-/commit/${sha}`,
+      };
+      mockProjectResolve();
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [commit],
+        headers: glHeaders({ nextPage: "3" }),
+      });
+
+      const result = await gl.commits.list("gitlab-org", "gitlab-foss", {
+        ref: "main",
+        path: "src/provider.ts",
+        since: "2026-08-01T00:00:00Z",
+        until: "2026-08-29T23:59:59Z",
+        page: 2,
+        perPage: 10,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/repository/commits",
+        {
+          query: {
+            ref_name: "main",
+            path: "src/provider.ts",
+            since: "2026-08-01T00:00:00Z",
+            until: "2026-08-29T23:59:59Z",
+            page: 2,
+            per_page: 10,
+          },
+        },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            sha,
+            message: "feat: list commit history",
+            author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+            committer: {
+              name: "Ori",
+              email: "ori@example.com",
+              date: "2026-08-29T10:01:00Z",
+            },
+            parents: ["parent-sha"],
+            url: commit.web_url,
+          },
+        ],
+        totalCount: undefined,
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+  });
+
   describe("commits.get", () => {
     it("returns commit metadata and drains diff pages without returning diffs", async () => {
       const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";

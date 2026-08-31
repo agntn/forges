@@ -12,6 +12,7 @@ import {
   createPullRequestParameters,
   listCiRunsParameters,
   listCommentsParameters,
+  listCommitsParameters,
   listPullRequestChecksParameters,
   listPullRequestFilesParameters,
   listRepositoriesParameters,
@@ -77,6 +78,21 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     parameters: listCiRunsParameters,
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listCiRuns(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_commits_list",
+    label: "Forges Commits",
+    description: "List paged commits, optionally filtered by ref, path, or date range",
+    promptSnippet: "Read repository commit history from GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_commits_list for repository history; use forges_commits_get only when one commit's changed files are needed.",
+      "forges_commits_list rejects path on Gitea because that API ignores pagination limits for the filter.",
+    ],
+    parameters: listCommitsParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listCommits(params);
     },
   });
 

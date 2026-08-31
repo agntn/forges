@@ -10,12 +10,14 @@ import type {
   Comment,
   Commit,
   CommitResource,
+  CommitSummary,
   CreateIssueInput,
   CreatePullRequestInput,
   Issue,
   IssueResource,
   ListCiRunsOptions,
   ListCommentOptions,
+  ListCommitOptions,
   ListOptions,
   ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
@@ -79,6 +81,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       list: (owner, repo, options) => this.listCiRuns(owner, repo, options),
     };
     this.commits = {
+      list: (owner, repo, options) => this.listCommits(owner, repo, options),
       get: (owner, repo, sha) => this.getCommit(owner, repo, sha),
     };
     this.issues = {
@@ -155,6 +158,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _options?: ListCiRunsOptions,
   ): Promise<PageResult<CiRun>> {
     return Promise.reject(new ForgesError("CI-run listing is not supported by this provider", 501));
+  }
+  protected listCommits(
+    _owner: string,
+    _repo: string,
+    _options?: ListCommitOptions,
+  ): Promise<PageResult<CommitSummary>> {
+    return Promise.reject(new ForgesError("Commit listing is not supported by this provider", 501));
   }
   protected abstract getCommit(owner: string, repo: string, sha: string): Promise<Commit>;
   protected abstract listIssues(
