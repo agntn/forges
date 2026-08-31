@@ -10,6 +10,7 @@ import { Value } from "typebox/value";
 import { ForgesError, RateLimitError } from "./errors.ts";
 import {
   authenticatedUserParameters,
+  codeSearchParameters,
   commentParameters,
   commitParameters,
   createIssueParameters,
@@ -53,6 +54,7 @@ import {
   listThreads,
   reloadAuthentication,
   replyToThread,
+  searchCode,
   searchIssues,
   searchPullRequests,
   resolveThread,
@@ -134,6 +136,15 @@ const tools: ToolDefinition[] = [
     inputSchema: repositoryParameters,
     annotations: readAnnotations,
     execute: getRepository,
+  }),
+  defineTool({
+    name: "forges_code_search",
+    title: "Search Repository Code",
+    description:
+      "Search code across repositories, optionally scoped to an owner or one repository. Results contain normalized repository names, paths, and web URLs. Results are paged, and incomplete says whether the search is known to be partial. GitLab requires authentication, and its global or group code search requires Premium or Ultimate with advanced or exact code search. Gitea, Forgejo, and GitHub-compatible hosts without the endpoint return an explicit unsupported error.",
+    inputSchema: codeSearchParameters,
+    annotations: readAnnotations,
+    execute: searchCode,
   }),
   defineTool({
     name: "forges_ci_runs_list",

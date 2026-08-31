@@ -64,6 +64,17 @@ const glProjectWithOwner = {
   },
 };
 
+const glCodeSearchItem = {
+  basename: "provider.ts",
+  data: "export abstract class Provider",
+  path: "src/provider.ts",
+  filename: "provider.ts",
+  id: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+  ref: "main",
+  startline: 12,
+  project_id: 278964,
+};
+
 const glPipeline = {
   id: 9001,
   ref: "main",
@@ -266,6 +277,108 @@ describe("GitLabProvider", () => {
     gl = new GitLabProvider({
       baseURL: "https://gitlab.com/api/v4",
       token: "glpat-test",
+    });
+  });
+
+  describe("code.search", () => {
+    it.each([
+      [{}, "/search"],
+      [{ owner: "gitlab-org" }, "/groups/gitlab-org/search"],
+    ])("routes global and group searches through %s", async (scope, route) => {
+      mocks.rawFetch.mockResolvedValueOnce({ data: [], headers: glHeaders() });
+
+      await gl.code.search("Provider", scope);
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, route, {
+        query: { scope: "blobs", search: "Provider", page: 1, per_page: 30 },
+      });
+    });
+
+    it("searches a scoped project and enriches normalized result URLs", async () => {
+      mocks.client.mockResolvedValueOnce(glProject);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glCodeSearchItem],
+        headers: glHeaders({ nextPage: "3", total: "12" }),
+      });
+
+      const result = await gl.code.search("Provider", {
+        owner: "gitlab-org",
+        repo: "gitlab-foss",
+        page: 2,
+        perPage: 1,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/projects/278964/search", {
+        query: { scope: "blobs", search: "Provider", page: 2, per_page: 1 },
+      });
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+      expect(mocks.client).toHaveBeenCalledWith("/projects/gitlab-org%2Fgitlab-foss");
+      expect(result).toEqual({
+        items: [
+          {
+            repository: "gitlab-org/gitlab-foss",
+            path: "src/provider.ts",
+            url: "https://gitlab.com/gitlab-org/gitlab-foss/-/blob/main/src/provider.ts",
+          },
+        ],
+        totalCount: 12,
+        incomplete: false,
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+
+    it("limits project enrichment to five concurrent requests", async () => {
+      const projectIds = [1, 2, 3, 4, 5, 6];
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: projectIds.map((projectId) => ({ ...glCodeSearchItem, project_id: projectId })),
+        headers: glHeaders(),
+      });
+      const gates = projectIds.slice(0, 5).map(() => Promise.withResolvers<void>());
+      let active = 0;
+      let maximumActive = 0;
+      mocks.client.mockImplementation(async (url: string) => {
+        const projectId = Number(url.split("/").at(-1));
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
+        const gate = gates[projectId - 1];
+        if (gate) await gate.promise;
+        active -= 1;
+        return {
+          ...glProject,
+          id: projectId,
+          path_with_namespace: `group/project-${projectId}`,
+          web_url: `https://gitlab.com/group/project-${projectId}`,
+        };
+      });
+
+      const search = gl.code.search("Provider", { perPage: 100 });
+      await vi.waitFor(() => expect(mocks.client).toHaveBeenCalledTimes(5));
+      expect(maximumActive).toBe(5);
+      for (const gate of gates) gate.resolve();
+
+      const result = await search;
+      expect(result.items).toHaveLength(6);
+      expect(maximumActive).toBe(5);
+    });
+
+    it("keeps a partial global page when one project cannot be enriched", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glCodeSearchItem, { ...glCodeSearchItem, path: "src/other.ts", project_id: 99 }],
+        headers: glHeaders({ total: "2" }),
+      });
+      mocks.client.mockResolvedValueOnce(glProject).mockRejectedValueOnce(new Error("gone"));
+
+      const result = await gl.code.search("Provider");
+
+      expect(result.items).toEqual([
+        {
+          repository: "gitlab-org/gitlab-foss",
+          path: "src/provider.ts",
+          url: "https://gitlab.com/gitlab-org/gitlab-foss/-/blob/main/src/provider.ts",
+        },
+      ]);
+      expect(result).toMatchObject({ totalCount: 2, incomplete: true });
     });
   });
 

@@ -68,6 +68,17 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
 
   const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
   const repositoryParameters = Type.Object({ platform, owner, repo });
+  const codeSearchParameters = Type.Object({
+    platform,
+    query: Type.String({
+      description: "Search query in the selected provider's syntax",
+      minLength: 1,
+    }),
+    owner: Type.Optional(owner),
+    repo: Type.Optional(repo),
+    page,
+    perPage,
+  });
   const commitParameters = Type.Object({ platform, owner, repo, sha });
   const listCommitsParameters = Type.Object({
     platform,
@@ -177,6 +188,18 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getRepository(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_code_search",
+    label: "Search Forges Code",
+    description:
+      "Search code across repositories with optional owner and repository scope; GitLab requires authentication, and global or group scope requires Premium or Ultimate with advanced or exact code search; Gitea, Forgejo, and GitHub-compatible hosts without the endpoint are unsupported",
+    parameters: codeSearchParameters,
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).searchCode(params);
     },
   });
 

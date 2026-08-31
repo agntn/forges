@@ -7,6 +7,9 @@ import { ForgesError } from "./errors.ts";
 import type {
   CiRun,
   CiRunResource,
+  CodeSearchItem,
+  CodeSearchOptions,
+  CodeSearchResource,
   Comment,
   Commit,
   CommitResource,
@@ -65,6 +68,7 @@ export interface ProviderRawTypes {
  */
 export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> {
   public readonly repos: RepositoryResource;
+  public readonly code: CodeSearchResource;
   public readonly ciRuns: CiRunResource;
   public readonly commits: CommitResource;
   public readonly issues: IssueResource;
@@ -76,6 +80,17 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     this.repos = {
       list: (owner, options) => this.listRepos(owner, options),
       get: (owner, repo) => this.getRepo(owner, repo),
+    };
+    this.code = {
+      search: async (query, options) => {
+        if (query.trim() === "") {
+          throw new ForgesError("Code search query must not be empty", 400);
+        }
+        if (options?.repo !== undefined && options.owner === undefined) {
+          throw new ForgesError("Code search repository scope requires an owner", 400);
+        }
+        return this.searchCode(query, options);
+      },
     };
     this.ciRuns = {
       list: (owner, repo, options) => this.listCiRuns(owner, repo, options),
@@ -152,6 +167,12 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     options?: ListOptions,
   ): Promise<PageResult<Repository>>;
   protected abstract getRepo(owner: string, repo: string): Promise<Repository>;
+  protected searchCode(
+    _query: string,
+    _options?: CodeSearchOptions,
+  ): Promise<SearchPageResult<CodeSearchItem>> {
+    return Promise.reject(new ForgesError("Code search is not supported by this provider", 501));
+  }
   protected listCiRuns(
     _owner: string,
     _repo: string,

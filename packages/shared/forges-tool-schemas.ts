@@ -69,6 +69,17 @@ const assignees = Type.Optional(
 
 export const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
 export const repositoryParameters = Type.Object({ platform, owner, repo });
+export const codeSearchParameters = Type.Object({
+  platform,
+  query: Type.String({
+    description: "Search query in the selected provider's syntax",
+    minLength: 1,
+  }),
+  owner: Type.Optional(owner),
+  repo: Type.Optional(repo),
+  page,
+  perPage,
+});
 export const commitParameters = Type.Object({ platform, owner, repo, sha });
 export const listCommitsParameters = Type.Object({
   platform,

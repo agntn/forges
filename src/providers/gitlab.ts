@@ -16,6 +16,8 @@ import type {
   ProviderConfig,
   Repository,
   RepositoryPermission,
+  CodeSearchItem,
+  CodeSearchOptions,
   CiRun,
   Commit,
   CommitSummary,
@@ -51,6 +53,7 @@ import { normalizeCiRunState } from "../ci-run.ts";
 import { countDiffLines } from "../changed-file.ts";
 
 const MAX_COMMIT_DIFF_PAGES = 100;
+const MAX_CODE_SEARCH_PROJECT_REQUESTS = 5;
 
 // GitLab API response types (internal)
 
@@ -61,6 +64,12 @@ interface GitLabProjectParent {
 
 interface GitLabProjectAccess {
   access_level: number;
+}
+
+interface GitLabCodeSearchItem {
+  path: string;
+  ref: string;
+  project_id: number;
 }
 
 interface GitLabProject {
@@ -241,6 +250,10 @@ function encodeNamespacePath(namespace: string): string {
  */
 function encodeProjectPath(owner: string, repo: string): string {
   return `${encodeNamespacePath(owner)}%2F${encodePathSegment(repo)}`;
+}
+
+function encodeWebPath(path: string): string {
+  return path.split("/").map(encodePathSegment).join("/");
 }
 
 const DEFAULT_PROJECT_ID_CACHE_MAX = 500;
@@ -754,6 +767,79 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         ...this.mapCommitSummary(commit),
         files,
         filesComplete: null,
+      };
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  // --- Code search ---
+
+  protected override async searchCode(
+    search: string,
+    options?: CodeSearchOptions,
+  ): Promise<SearchPageResult<CodeSearchItem>> {
+    try {
+      let route = "/search";
+      let scopedProject: GitLabProject | undefined;
+      if (options?.owner !== undefined && options.repo !== undefined) {
+        scopedProject = await this.client<GitLabProject>(
+          `/projects/${encodeProjectPath(options.owner, options.repo)}`,
+        );
+        this.setCachedProjectId(`${options.owner}/${options.repo}`, scopedProject.id);
+        route = `/projects/${scopedProject.id}/search`;
+      } else if (options?.owner !== undefined) {
+        route = `/groups/${encodeNamespacePath(options.owner)}/search`;
+      }
+
+      const response = await rawFetch<GitLabCodeSearchItem[]>(this.client, route, {
+        query: {
+          scope: "blobs",
+          search,
+          page: options?.page ?? 1,
+          per_page: options?.perPage ?? 30,
+        },
+      });
+      const rawItems = response.data ?? [];
+      // Blob rows expose only project_id, so repository names and web URLs need
+      // separate project reads. Deduplicate them and cap concurrency per page.
+      const projects = new Map<number, GitLabProject>();
+      if (scopedProject !== undefined) projects.set(scopedProject.id, scopedProject);
+      const projectIds = [...new Set(rawItems.map((item) => item.project_id))].filter(
+        (projectId) => !projects.has(projectId),
+      );
+      let enrichmentError: unknown;
+      for (let offset = 0; offset < projectIds.length; offset += MAX_CODE_SEARCH_PROJECT_REQUESTS) {
+        const batch = projectIds.slice(offset, offset + MAX_CODE_SEARCH_PROJECT_REQUESTS);
+        await Promise.all(
+          batch.map(async (projectId) => {
+            try {
+              const project = await this.client<GitLabProject>(`/projects/${projectId}`);
+              projects.set(projectId, project);
+            } catch (error: unknown) {
+              enrichmentError ??= error;
+            }
+          }),
+        );
+      }
+      if (rawItems.length > 0 && projects.size === 0 && enrichmentError !== undefined) {
+        throw enrichmentError;
+      }
+
+      const items = rawItems.flatMap((raw): CodeSearchItem[] => {
+        const project = projects.get(raw.project_id);
+        if (!project) return [];
+        return [
+          {
+            repository: project.path_with_namespace,
+            path: raw.path,
+            url: `${project.web_url}/-/blob/${encodeWebPath(raw.ref)}/${encodeWebPath(raw.path)}`,
+          },
+        ];
+      });
+      return {
+        ...this.parsePagination(items, response.headers),
+        incomplete: items.length !== rawItems.length,
       };
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");

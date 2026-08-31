@@ -15,6 +15,7 @@ const originalEnvironment = environmentKeys.map((key) => [key, process.env[key]]
 const expectedToolNames = [
   "forges_repos_list",
   "forges_repos_get",
+  "forges_code_search",
   "forges_ci_runs_list",
   "forges_commits_list",
   "forges_commits_get",

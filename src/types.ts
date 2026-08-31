@@ -190,6 +190,21 @@ export interface SearchPageResult<T> extends PageResult<T> {
   incomplete: boolean;
 }
 
+/** One normalized file match from repository code search. */
+export interface CodeSearchItem {
+  repository: string;
+  path: string;
+  url: string;
+}
+
+/** Pagination and optional repository scope for code search. */
+export interface CodeSearchOptions {
+  owner?: string;
+  repo?: string;
+  page?: number;
+  perPage?: number;
+}
+
 /**
  * List operation options
  */
@@ -344,6 +359,11 @@ export interface ProviderConfig {
 export interface RepositoryResource {
   list(owner: string, options?: ListOptions): Promise<PageResult<Repository>>;
   get(owner: string, repo: string): Promise<Repository>;
+}
+
+/** Resource accessor for repository code search. */
+export interface CodeSearchResource {
+  search(query: string, options?: CodeSearchOptions): Promise<SearchPageResult<CodeSearchItem>>;
 }
 
 /** Resource accessor for repository CI runs. */
