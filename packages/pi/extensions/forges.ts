@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -37,8 +38,47 @@ function loadToolOperations(): Promise<typeof ForgesTools> {
   return toolOperationsPromise;
 }
 
+const platformLabels: Record<ForgesTools.ForgesPlatform, string> = {
+  github: "GitHub",
+  gitlab: "GitLab",
+  gitea: "Gitea",
+};
+// oxlint-disable-next-line eslint/no-control-regex -- Removing terminal control bytes is intentional.
+const controlCharacter = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/g;
+const formatOrLineSeparator = /[\p{Cf}\p{Zl}\p{Zp}]/gu;
+const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+function sanitizeApprovalText(value: string): string {
+  const separated = value
+    .replaceAll("\r\n", "\n")
+    .replaceAll("\r", "\n")
+    .replaceAll("\u001B", " \u001B")
+    .replaceAll("\u009B", " \u009B")
+    .replaceAll("\u009D", " \u009D");
+  return stripVTControlCharacters(separated)
+    .replace(controlCharacter, " ")
+    .replace(formatOrLineSeparator, " ")
+    .replace(loneSurrogate, " ");
+}
+
+function approvalField(value: string): string {
+  return sanitizeApprovalText(value).replaceAll("\n", " ");
+}
+
 function pullRequestApprovalMessage(params: ForgesTools.CreatePullRequestParams): string {
-  return `This will create a hosted pull request with the following payload:\n\n${JSON.stringify(params, null, 2)}`;
+  const body = sanitizeApprovalText(params.body);
+  return [
+    `Repository  ${approvalField(params.owner)}/${approvalField(params.repo)} on ${platformLabels[params.platform]}`,
+    `Branches    ${approvalField(params.sourceBranch)} → ${approvalField(params.targetBranch)}`,
+    `Status      ${params.draft === true ? "Draft" : "Ready for review"}`,
+    `Assignees   ${params.assignees?.map(approvalField).join(", ") || "None"}`,
+    "",
+    "Title",
+    approvalField(params.title),
+    "",
+    "Description",
+    body || "(none)",
+  ].join("\n");
 }
 
 export default function forgesExtension(pi: ExtensionAPI): void {

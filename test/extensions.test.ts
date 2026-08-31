@@ -482,7 +482,7 @@ describe("Forges Pi extension", () => {
     expect(confirm).toHaveBeenCalledOnce();
     expect(confirm).toHaveBeenCalledWith(
       "Create pull request?",
-      expect.stringContaining('"sourceBranch": "feat/pr-approval"'),
+      expect.stringContaining("Branches    feat/pr-approval → main"),
       { signal: undefined },
     );
     expect(mocks.pullRequests.create).not.toHaveBeenCalled();
@@ -513,7 +513,18 @@ describe("Forges Pi extension", () => {
 
     expect(confirm).toHaveBeenCalledWith(
       "Create pull request?",
-      expect.stringContaining(JSON.stringify(params, null, 2)),
+      [
+        "Repository  agntn/forges on GitHub",
+        "Branches    feat/pr-approval → main",
+        "Status      Draft",
+        "Assignees   reviewer",
+        "",
+        "Title",
+        "Add approval",
+        "",
+        "Description",
+        "Require confirmation before creation.",
+      ].join("\n"),
       { signal: undefined },
     );
     expect(mocks.pullRequests.create).toHaveBeenCalledWith("agntn", "forges", {
@@ -525,6 +536,38 @@ describe("Forges Pi extension", () => {
       assignees: ["reviewer"],
     });
     expect(result.details.result).toMatchObject({ number: 43 });
+  });
+
+  it("sanitizes pull-request approval fields before rendering them", async () => {
+    const confirm = vi.fn().mockResolvedValue(false);
+    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
+
+    await expect(
+      tool.execute(
+        "test",
+        {
+          platform: "github",
+          owner: "agntn",
+          repo: "forges",
+          title: "Title\u001B]0;owned\u0007",
+          body: `Line one\u009B31mred\nLine two${String.fromCodePoint(0xd800)}end`,
+          sourceBranch: "feat/pr-approval",
+          targetBranch: "main",
+        },
+        undefined,
+        undefined,
+        approvalPiContext(confirm),
+      ),
+    ).rejects.toThrow("cancelled by the user");
+
+    const message = confirm.mock.calls[0]?.[1];
+    expect(message).toContain("Title\nTitle");
+    expect(message).toContain("Description\nLine one red\nLine two end");
+    expect(message).not.toMatch(
+      // oxlint-disable-next-line eslint/no-control-regex -- The assertion detects unsafe terminal bytes.
+      /[\u0000-\u0009\u000B-\u001F\u007F-\u009F\uD800-\uDFFF\u2028\u2029]/u,
+    );
+    expect(mocks.pullRequests.create).not.toHaveBeenCalled();
   });
 
   it("reloads authentication through the shared operation", async () => {
