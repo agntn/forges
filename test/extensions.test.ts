@@ -142,6 +142,13 @@ function ompAccepts(tool: OmpToolDefinition, value: unknown): boolean {
 const unusedPiContext = {} as PiExtensionContext;
 const unusedOmpContext = {} as OmpExtensionContext;
 
+function approvalPiContext(
+  confirm: PiExtensionContext["ui"]["confirm"],
+  hasUI = true,
+): PiExtensionContext {
+  return { hasUI, ui: { confirm } } as unknown as PiExtensionContext;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   resetPinnedProviders();
@@ -171,6 +178,22 @@ beforeEach(() => {
     assignees: [{ login: "triager" }],
     createdAt: "2026-08-18T00:00:00Z",
     updatedAt: "2026-08-18T00:00:00Z",
+  });
+  mocks.pullRequests.create.mockResolvedValue({
+    id: "43",
+    number: 43,
+    title: "Add approval",
+    body: "Require confirmation before creation.",
+    state: "open",
+    labels: [],
+    author: { login: "oritwoen" },
+    assignees: [{ login: "reviewer" }],
+    createdAt: "2026-09-01T00:00:00Z",
+    updatedAt: "2026-09-01T00:00:00Z",
+    sourceBranch: "feat/pr-approval",
+    targetBranch: "main",
+    merged: false,
+    draft: true,
   });
 });
 
@@ -404,6 +427,147 @@ describe("Forges Pi extension", () => {
       perPage: 10,
     });
     expect(result.details.result).toEqual({ items: [], hasNextPage: false });
+  });
+
+  it("fails closed when pull-request creation has no approval UI", async () => {
+    const confirm = vi.fn();
+    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
+
+    await expect(
+      tool.execute(
+        "test",
+        {
+          platform: "github",
+          owner: "agntn",
+          repo: "forges",
+          title: "Add approval",
+          body: "Require confirmation before creation.",
+          sourceBranch: "feat/pr-approval",
+          targetBranch: "main",
+        },
+        undefined,
+        undefined,
+        approvalPiContext(confirm, false),
+      ),
+    ).rejects.toThrow("requires interactive approval");
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(mocks.pullRequests.create).not.toHaveBeenCalled();
+  });
+
+  it("does not create a pull request when Pi approval is declined", async () => {
+    const confirm = vi.fn().mockResolvedValue(false);
+    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
+
+    await expect(
+      tool.execute(
+        "test",
+        {
+          platform: "github",
+          owner: "agntn",
+          repo: "forges",
+          title: "Add approval",
+          body: "Require confirmation before creation.",
+          sourceBranch: "feat/pr-approval",
+          targetBranch: "main",
+          draft: true,
+          assignees: ["reviewer"],
+        },
+        undefined,
+        undefined,
+        approvalPiContext(confirm),
+      ),
+    ).rejects.toThrow("cancelled by the user");
+
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(confirm).toHaveBeenCalledWith(
+      "Create pull request?",
+      expect.stringContaining("Branches    feat/pr-approval → main"),
+      { signal: undefined },
+    );
+    expect(mocks.pullRequests.create).not.toHaveBeenCalled();
+  });
+
+  it("creates a pull request after Pi approval", async () => {
+    const confirm = vi.fn().mockResolvedValue(true);
+    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
+    const params = {
+      platform: "github" as const,
+      owner: "agntn",
+      repo: "forges",
+      title: "Add approval",
+      body: "Require confirmation before creation.",
+      sourceBranch: "feat/pr-approval",
+      targetBranch: "main",
+      draft: true,
+      assignees: ["reviewer"],
+    };
+
+    const result = await tool.execute(
+      "test",
+      params,
+      undefined,
+      undefined,
+      approvalPiContext(confirm),
+    );
+
+    expect(confirm).toHaveBeenCalledWith(
+      "Create pull request?",
+      [
+        "Repository  agntn/forges on GitHub",
+        "Branches    feat/pr-approval → main",
+        "Status      Draft",
+        "Assignees   reviewer",
+        "",
+        "Title",
+        "Add approval",
+        "",
+        "Description",
+        "Require confirmation before creation.",
+      ].join("\n"),
+      { signal: undefined },
+    );
+    expect(mocks.pullRequests.create).toHaveBeenCalledWith("agntn", "forges", {
+      title: "Add approval",
+      body: "Require confirmation before creation.",
+      sourceBranch: "feat/pr-approval",
+      targetBranch: "main",
+      draft: true,
+      assignees: ["reviewer"],
+    });
+    expect(result.details.result).toMatchObject({ number: 43 });
+  });
+
+  it("sanitizes pull-request approval fields before rendering them", async () => {
+    const confirm = vi.fn().mockResolvedValue(false);
+    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
+
+    await expect(
+      tool.execute(
+        "test",
+        {
+          platform: "github",
+          owner: "agntn",
+          repo: "forges",
+          title: "Title\u001B]0;owned\u0007",
+          body: `Line one\u009B31mred\nLine two${String.fromCodePoint(0xd800)}end`,
+          sourceBranch: "feat/pr-approval",
+          targetBranch: "main",
+        },
+        undefined,
+        undefined,
+        approvalPiContext(confirm),
+      ),
+    ).rejects.toThrow("cancelled by the user");
+
+    const message = confirm.mock.calls[0]?.[1];
+    expect(message).toContain("Title\nTitle");
+    expect(message).toContain("Description\nLine one red\nLine two end");
+    expect(message).not.toMatch(
+      // oxlint-disable-next-line eslint/no-control-regex -- The assertion detects unsafe terminal bytes.
+      /[\u0000-\u0009\u000B-\u001F\u007F-\u009F\uD800-\uDFFF\u2028\u2029]/u,
+    );
+    expect(mocks.pullRequests.create).not.toHaveBeenCalled();
   });
 
   it("reloads authentication through the shared operation", async () => {

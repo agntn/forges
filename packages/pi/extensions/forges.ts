@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -35,6 +36,49 @@ function loadToolOperations(): Promise<typeof ForgesTools> {
     existsSync(fileURLToPath(sourceModuleUrl)) ? sourceModuleUrl.href : distributionModuleUrl.href
   ) as Promise<typeof ForgesTools>;
   return toolOperationsPromise;
+}
+
+const platformLabels: Record<ForgesTools.ForgesPlatform, string> = {
+  github: "GitHub",
+  gitlab: "GitLab",
+  gitea: "Gitea",
+};
+// oxlint-disable-next-line eslint/no-control-regex -- Removing terminal control bytes is intentional.
+const controlCharacter = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/g;
+const formatOrLineSeparator = /[\p{Cf}\p{Zl}\p{Zp}]/gu;
+const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+function sanitizeApprovalText(value: string): string {
+  const separated = value
+    .replaceAll("\r\n", "\n")
+    .replaceAll("\r", "\n")
+    .replaceAll("\u001B", " \u001B")
+    .replaceAll("\u009B", " \u009B")
+    .replaceAll("\u009D", " \u009D");
+  return stripVTControlCharacters(separated)
+    .replace(controlCharacter, " ")
+    .replace(formatOrLineSeparator, " ")
+    .replace(loneSurrogate, " ");
+}
+
+function approvalField(value: string): string {
+  return sanitizeApprovalText(value).replaceAll("\n", " ");
+}
+
+function pullRequestApprovalMessage(params: ForgesTools.CreatePullRequestParams): string {
+  const body = sanitizeApprovalText(params.body);
+  return [
+    `Repository  ${approvalField(params.owner)}/${approvalField(params.repo)} on ${platformLabels[params.platform]}`,
+    `Branches    ${approvalField(params.sourceBranch)} → ${approvalField(params.targetBranch)}`,
+    `Status      ${params.draft === true ? "Draft" : "Ready for review"}`,
+    `Assignees   ${params.assignees?.map(approvalField).join(", ") || "None"}`,
+    "",
+    "Title",
+    approvalField(params.title),
+    "",
+    "Description",
+    body || "(none)",
+  ].join("\n");
 }
 
 export default function forgesExtension(pi: ExtensionAPI): void {
@@ -298,7 +342,24 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_pull_requests_create only when the user explicitly asks to create a pull request.",
     ],
     parameters: createPullRequestParameters,
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      if (!ctx.hasUI) {
+        throw new Error(
+          "Pull request creation requires interactive approval in Pi TUI or RPC mode",
+        );
+      }
+
+      const approved = await ctx.ui.confirm(
+        "Create pull request?",
+        pullRequestApprovalMessage(params),
+        { signal },
+      );
+      if (!approved) {
+        throw new Error(
+          "Pull request creation was cancelled by the user. Do not retry unless the user asks again.",
+        );
+      }
+
       return (await loadToolOperations()).createPullRequest(params);
     },
   });
