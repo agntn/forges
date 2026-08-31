@@ -51,6 +51,7 @@ import { AuthenticationError, ForgesError } from "../src/errors.ts";
 import type {
   ProviderConfig,
   RepositoryResource,
+  CodeSearchResource,
   CiRunResource,
   CommitResource,
   IssueResource,
@@ -72,6 +73,7 @@ describe("createProvider factory", () => {
 
     expect(provider).toBeDefined();
     expect(provider.repos).toBeDefined();
+    expect(provider.code).toBeDefined();
     expect(provider.issues).toBeDefined();
     expect(provider.pullRequests).toBeDefined();
     expect(provider.users).toBeDefined();
@@ -82,6 +84,7 @@ describe("createProvider factory", () => {
 
     expect(provider).toBeDefined();
     expect(provider.repos).toBeDefined();
+    expect(provider.code).toBeDefined();
     expect(provider.issues).toBeDefined();
     expect(provider.pullRequests).toBeDefined();
     expect(provider.users).toBeDefined();
@@ -92,6 +95,7 @@ describe("createProvider factory", () => {
 
     expect(provider).toBeDefined();
     expect(provider.repos).toBeDefined();
+    expect(provider.code).toBeDefined();
     expect(provider.issues).toBeDefined();
     expect(provider.pullRequests).toBeDefined();
     expect(provider.users).toBeDefined();
@@ -141,6 +145,7 @@ describe("createProvider factory", () => {
   });
 
   it.each([
+    ["searchCode", "Code search is not supported by this provider"],
     ["listCiRuns", "CI-run listing is not supported by this provider"],
     ["listPullRequestChecks", "Pull request checks are not supported by this provider"],
     ["searchIssues", "Issue search is not supported by this provider"],
@@ -173,6 +178,14 @@ describe("cross-provider class consistency", () => {
       expect(p.repos).toBeDefined();
       expect(typeof p.repos.list).toBe("function");
       expect(typeof p.repos.get).toBe("function");
+    }
+  });
+
+  it("all providers have code search resource", () => {
+    for (const platform of platforms) {
+      const p = providers[platform];
+      expect(p.code).toBeDefined();
+      expect(typeof p.code.search).toBe("function");
     }
   });
 
@@ -249,6 +262,7 @@ describe("cross-provider class consistency", () => {
       expect(p.repos.list.length).toBeGreaterThanOrEqual(1);
       expect(p.repos.get.length).toBeGreaterThanOrEqual(2);
 
+      expect(p.code.search.length).toBeGreaterThanOrEqual(1);
       expect(p.ciRuns.list.length).toBeGreaterThanOrEqual(2);
       expect(p.commits.list.length).toBeGreaterThanOrEqual(2);
       expect(p.commits.get.length).toBeGreaterThanOrEqual(3);
@@ -371,6 +385,7 @@ describe("direct provider instantiation", () => {
     });
 
     expect(provider.repos).toBeDefined();
+    expect(provider.code).toBeDefined();
     expect(provider.issues).toBeDefined();
     expect(provider.pullRequests).toBeDefined();
     expect(provider.users).toBeDefined();
@@ -384,6 +399,7 @@ describe("direct provider instantiation", () => {
     });
 
     expect(provider.repos).toBeDefined();
+    expect(provider.code).toBeDefined();
     expect(provider.issues).toBeDefined();
     expect(provider.pullRequests).toBeDefined();
     expect(provider.users).toBeDefined();
@@ -394,6 +410,7 @@ describe("direct provider instantiation", () => {
     const provider = new GiteaProvider({ token: "test" });
 
     expect(provider.repos).toBeDefined();
+    expect(provider.code).toBeDefined();
     expect(provider.issues).toBeDefined();
     expect(provider.pullRequests).toBeDefined();
     expect(provider.users).toBeDefined();
@@ -407,6 +424,7 @@ describe("direct provider instantiation", () => {
     });
 
     expect(provider.repos).toBeDefined();
+    expect(provider.code).toBeDefined();
     expect(provider.issues).toBeDefined();
     expect(provider.pullRequests).toBeDefined();
     expect(provider.users).toBeDefined();
@@ -434,6 +452,7 @@ describe("type-level consistency", () => {
 
     // These should compile without errors
     const repos: RepositoryResource = provider.repos;
+    const code: CodeSearchResource = provider.code;
     const ciRuns: CiRunResource = provider.ciRuns;
     const commits: CommitResource = provider.commits;
     const issues: IssueResource = provider.issues;
@@ -442,6 +461,7 @@ describe("type-level consistency", () => {
     const threads: ThreadResource = provider.threads;
 
     expect(repos).toBeDefined();
+    expect(code).toBeDefined();
     expect(ciRuns).toBeDefined();
     expect(commits).toBeDefined();
     expect(issues).toBeDefined();

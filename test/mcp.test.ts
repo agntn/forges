@@ -8,6 +8,7 @@ import { resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
+  const code = { search: vi.fn() };
   const ciRuns = { list: vi.fn() };
   const commits = { list: vi.fn(), get: vi.fn() };
   const issues = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
@@ -27,12 +28,13 @@ const mocks = vi.hoisted(() => {
     resolve: vi.fn(),
     unresolve: vi.fn(),
   };
-  const provider = { repos, ciRuns, commits, issues, pullRequests, users, threads };
+  const provider = { repos, code, ciRuns, commits, issues, pullRequests, users, threads };
 
   return {
     resolveToken: vi.fn(() => ({ token: "test-token", source: "env" as const })),
     createProvider: vi.fn(() => provider),
     repos,
+    code,
     ciRuns,
     commits,
     issues,
@@ -50,6 +52,7 @@ vi.mock("../src/index.ts", () => ({
 const toolNames = [
   "forges_repos_list",
   "forges_repos_get",
+  "forges_code_search",
   "forges_ci_runs_list",
   "forges_commits_list",
   "forges_commits_get",
@@ -187,6 +190,43 @@ describe("forges MCP server", () => {
     });
     // Details never reach an MCP client, so the unbounded payload stays out of the result.
     expect(response.structuredContent).toBeUndefined();
+  });
+
+  it("searches code through the shared operation", async () => {
+    const search = {
+      items: [
+        {
+          repository: "agntn/forges",
+          path: "src/provider.ts",
+          url: "https://github.com/agntn/forges/blob/main/src/provider.ts",
+        },
+      ],
+      totalCount: 1,
+      incomplete: false,
+      hasNextPage: false,
+    };
+    mocks.code.search.mockResolvedValue(search);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_code_search",
+      arguments: {
+        platform: "github",
+        query: "Provider",
+        owner: "agntn",
+        repo: "forges",
+        page: 2,
+        perPage: 10,
+      },
+    });
+
+    expect(mocks.code.search).toHaveBeenCalledWith("Provider", {
+      owner: "agntn",
+      repo: "forges",
+      page: 2,
+      perPage: 10,
+    });
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: search });
   });
 
   it("lists CI runs through the shared operation", async () => {

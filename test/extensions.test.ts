@@ -18,6 +18,7 @@ import { resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
+  const code = { search: vi.fn() };
   const ciRuns = { list: vi.fn() };
   const commits = { list: vi.fn(), get: vi.fn() };
   const issues = {
@@ -44,12 +45,13 @@ const mocks = vi.hoisted(() => {
     resolve: vi.fn(),
     unresolve: vi.fn(),
   };
-  const provider = { repos, ciRuns, commits, issues, pullRequests, users, threads };
+  const provider = { repos, code, ciRuns, commits, issues, pullRequests, users, threads };
 
   return {
     resolveToken: vi.fn(() => ({ token: "test-token", source: "env" as const })),
     createProvider: vi.fn(() => provider),
     repos,
+    code,
     ciRuns,
     commits,
     issues,
@@ -67,6 +69,7 @@ vi.mock("../src/index.ts", () => ({
 const toolNames = [
   "forges_repos_list",
   "forges_repos_get",
+  "forges_code_search",
   "forges_ci_runs_list",
   "forges_commits_list",
   "forges_commits_get",
@@ -156,6 +159,7 @@ beforeEach(() => {
   vi.stubEnv("FORGES_GITLAB_BASE_URL", undefined);
   vi.stubEnv("FORGES_GITEA_BASE_URL", undefined);
   mocks.repos.list.mockResolvedValue({ items: [], hasNextPage: false });
+  mocks.code.search.mockResolvedValue({ items: [], incomplete: false, hasNextPage: false });
   mocks.ciRuns.list.mockResolvedValue({ items: [], hasNextPage: false });
   mocks.commits.list.mockResolvedValue({ items: [], hasNextPage: false });
   mocks.commits.get.mockResolvedValue({ sha: "abc", files: [], filesComplete: true });
@@ -239,6 +243,35 @@ describe("Forges Pi extension", () => {
     expect(result.details).toEqual({
       platform: "github",
       result: { items: [], hasNextPage: false },
+    });
+  });
+
+  it("executes code search through the shared provider operation", async () => {
+    const tool = requirePiTool(registerPiTools(), "forges_code_search");
+    const result = await tool.execute(
+      "test",
+      {
+        platform: "github",
+        query: "Provider",
+        owner: "agntn",
+        repo: "forges",
+        page: 2,
+        perPage: 10,
+      },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+
+    expect(mocks.code.search).toHaveBeenCalledWith("Provider", {
+      owner: "agntn",
+      repo: "forges",
+      page: 2,
+      perPage: 10,
+    });
+    expect(result.details).toEqual({
+      platform: "github",
+      result: { items: [], incomplete: false, hasNextPage: false },
     });
   });
 

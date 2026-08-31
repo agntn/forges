@@ -7,6 +7,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type * as ForgesTools from "../../../dist/tool-operations.d.mts";
 import {
   authenticatedUserParameters,
+  codeSearchParameters,
   commentParameters,
   commitParameters,
   createIssueParameters,
@@ -108,6 +109,22 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     parameters: repositoryParameters,
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getRepository(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_code_search",
+    label: "Search Forges Code",
+    description: "Search code across repositories with optional owner and repository scope",
+    promptSnippet: "Search repository code on GitHub or GitLab.",
+    promptGuidelines: [
+      "Use forges_code_search to discover repositories from code or file fragments instead of invoking a platform CLI.",
+      "forges_code_search on GitLab requires authentication; global and group scope also require Premium or Ultimate with advanced or exact code search.",
+      "forges_code_search returns unsupported on Gitea, Forgejo, and GitHub-compatible hosts without a code-search endpoint.",
+    ],
+    parameters: codeSearchParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).searchCode(params);
     },
   });
 

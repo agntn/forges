@@ -6,6 +6,7 @@ import {
   getAuthenticatedUser,
   getRepository,
   reloadAuthentication,
+  searchCode,
   resetPinnedProviders,
 } from "../src/tool-operations.ts";
 
@@ -31,6 +32,21 @@ const mocks = vi.hoisted(() => {
       const login = anonymous ? "anonymous" : localLogin.current;
 
       return {
+        code: {
+          search: vi.fn(async (query: string, options: unknown) => ({
+            items: [
+              {
+                repository: "agntn/forges",
+                path: "src/provider.ts",
+                url: "https://github.com/agntn/forges/blob/main/src/provider.ts",
+              },
+            ],
+            query,
+            options,
+            incomplete: false,
+            hasNextPage: false,
+          })),
+        },
         repos: {
           list: vi.fn(),
           get: vi.fn(async (owner: string, repo: string) => ({
@@ -104,6 +120,22 @@ afterEach(() => {
 });
 
 describe("configured provider", () => {
+  it("passes optional scope and pagination to code search", async () => {
+    const searched = await searchCode({
+      platform: "github",
+      query: "Provider",
+      owner: "agntn",
+      repo: "forges",
+      page: 2,
+      perPage: 10,
+    });
+
+    expect(searched.details.result).toMatchObject({
+      query: "Provider",
+      options: { owner: "agntn", repo: "forges", page: 2, perPage: 10 },
+    });
+  });
+
   it("writes as the account the authenticated check named, even after the local login moves", async () => {
     const identity = await getAuthenticatedUser({ platform: "github" });
     // Another process runs `gh auth switch` between the confirmation and the write.

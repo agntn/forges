@@ -5,6 +5,8 @@ import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
 import type { Provider } from "./provider.ts";
 import type {
   CiRun,
+  CodeSearchItem,
+  CodeSearchOptions,
   Comment,
   Commit,
   CommitSummary,
@@ -165,6 +167,10 @@ export interface ListRepositoriesParams extends OwnerParams {
 
 export type GetRepositoryParams = RepositoryParams;
 
+export interface SearchCodeParams extends PlatformParams, CodeSearchOptions {
+  query: string;
+}
+
 export interface GetCommitParams extends RepositoryParams {
   sha: string;
 }
@@ -306,6 +312,18 @@ export async function getRepository(
 ): Promise<ForgesToolResult<Repository>> {
   const repository = await readProvider(params.platform).repos.get(params.owner, params.repo);
   return result(params.platform, repository);
+}
+
+export async function searchCode(
+  params: SearchCodeParams,
+): Promise<ForgesToolResult<SearchPageResult<CodeSearchItem>>> {
+  const search = await readProvider(params.platform).code.search(params.query, {
+    owner: params.owner,
+    repo: params.repo,
+    page: params.page,
+    perPage: params.perPage,
+  });
+  return result(params.platform, search);
 }
 
 export async function listCiRuns(

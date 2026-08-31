@@ -7,6 +7,8 @@ import { Provider, type ProviderRawTypes } from "../provider.ts";
 import type {
   ProviderConfig,
   Repository,
+  CodeSearchItem,
+  CodeSearchOptions,
   CiRun,
   Commit,
   CommitSummary,
@@ -44,6 +46,7 @@ import { normalizeCiRunState } from "../ci-run.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
 
 const MAX_COMMIT_FILE_PAGES = 30;
+const GITHUB_SEARCH_RESULT_LIMIT = 1000;
 
 // --- GitHub API response types (snake_case) ---
 
@@ -55,6 +58,20 @@ interface GitHubOwner {
 interface GitHubRepositoryParent {
   full_name: string;
   html_url: string;
+}
+
+interface GitHubCodeSearchItem {
+  path: string;
+  html_url: string;
+  repository: {
+    full_name: string;
+  };
+}
+
+interface GitHubCodeSearchResponse {
+  total_count: number;
+  incomplete_results: boolean;
+  items: GitHubCodeSearchItem[];
 }
 
 interface GitHubRepo {
@@ -416,6 +433,14 @@ function paginationFromLink(headers: Headers): {
   };
 }
 
+function githubSearchQualifierSegment(value: string): string {
+  encodePathSegment(value);
+  if (/[\s:'"]/u.test(value)) {
+    throw new TypeError("Invalid GitHub search qualifier segment");
+  }
+  return value;
+}
+
 function buildPageResult<TRaw, TMapped>(
   items: TRaw[],
   headers: Headers,
@@ -738,6 +763,70 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         filesComplete: files.length < 3000 ? filesComplete : null,
       };
     } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  // --- Code search ---
+
+  protected override async searchCode(
+    searchQuery: string,
+    options?: CodeSearchOptions,
+  ): Promise<SearchPageResult<CodeSearchItem>> {
+    try {
+      const qualifiers: string[] = [];
+      if (options?.owner !== undefined && options.repo !== undefined) {
+        const owner = githubSearchQualifierSegment(options.owner);
+        const repo = githubSearchQualifierSegment(options.repo);
+        qualifiers.push(`repo:${owner}/${repo}`);
+      } else if (options?.owner !== undefined) {
+        qualifiers.push(`user:${githubSearchQualifierSegment(options.owner)}`);
+      }
+
+      const query: Record<string, string> = {
+        q: qualifiers.length === 0 ? searchQuery : `${searchQuery} ${qualifiers.join(" ")}`,
+      };
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+
+      const { data, headers } = await rawFetch<GitHubCodeSearchResponse>(
+        this.client,
+        "/search/code",
+        { query },
+      );
+      const rawItems = data?.items ?? [];
+      const expectedOwner = options?.owner?.toLowerCase();
+      const expectedRepository =
+        options?.owner !== undefined && options.repo !== undefined
+          ? `${options.owner}/${options.repo}`.toLowerCase()
+          : undefined;
+      const scopedItems = rawItems.filter((item) => {
+        const repository = item.repository.full_name.toLowerCase();
+        if (expectedRepository !== undefined) return repository === expectedRepository;
+        if (expectedOwner !== undefined) return repository.startsWith(`${expectedOwner}/`);
+        return true;
+      });
+      return {
+        ...buildPageResult(scopedItems, headers, (raw) => ({
+          repository: raw.repository.full_name,
+          path: raw.path,
+          url: raw.html_url,
+        })),
+        totalCount: data?.total_count,
+        incomplete:
+          (data?.incomplete_results ?? false) ||
+          (data?.total_count ?? 0) > GITHUB_SEARCH_RESULT_LIMIT ||
+          scopedItems.length !== rawItems.length,
+      };
+    } catch (error) {
+      if (error instanceof FetchError && (error.status === 404 || error.status === 405)) {
+        throw new ForgesError(
+          "Code search is not supported by this GitHub-compatible host",
+          501,
+          "github",
+          error,
+        );
+      }
       throw normalizeError(error, "github");
     }
   }

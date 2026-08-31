@@ -203,6 +203,14 @@ describe("Gitea Provider", () => {
     provider = new GiteaProvider({ token: "test-token" });
   });
 
+  describe("code.search", () => {
+    it("fails explicitly because the provider has no code-search endpoint", async () => {
+      await expect(provider.code.search("Provider")).rejects.toMatchObject({ status: 501 });
+      expect(mockedRawFetch).not.toHaveBeenCalled();
+      expect(mockClient).not.toHaveBeenCalled();
+    });
+  });
+
   describe("provider setup", () => {
     it("extends the abstract Provider base class", () => {
       expect(provider).toBeInstanceOf(Provider);

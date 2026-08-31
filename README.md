@@ -94,7 +94,7 @@ const gt = createProvider("gitea", {
 
 ## Agent tools
 
-The same twenty-seven tools - repositories, CI runs, commits, issues, pull requests and their changed files and checks, users, authentication reload, discussion comments, and review threads - are exposed over MCP and through the Pi and OMP extensions. Read tools use the normal token detection chain, then fall back to anonymous access when no credential exists. Writes, `forges_users_authenticated`, and `forges_auth_reload` still require a credential. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
+The same twenty-eight tools - repositories, code search, CI runs, commits, issues, pull requests and their changed files and checks, users, authentication reload, discussion comments, and review threads - are exposed over MCP and through the Pi and OMP extensions. Read tools use the normal token detection chain, then fall back to anonymous access when no credential exists. Writes, `forges_users_authenticated`, and `forges_auth_reload` still require a credential. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
 
 | Platform           | Environment variable     |
 | ------------------ | ------------------------ |
@@ -138,9 +138,11 @@ The extensions add the details the harnesses render; MCP drops them and keeps th
 
 ## API
 
-Every provider gives you seven resources with the same method shapes. Thread semantics still follow the platform: GitHub and GitLab return real multi-comment conversations, while Gitea has no parent id on review comments, so each one comes back as its own single-comment thread.
+Every provider gives you eight resources with the same method shapes. Thread semantics still follow the platform: GitHub and GitLab return real multi-comment conversations, while Gitea has no parent id on review comments, so each one comes back as its own single-comment thread.
 
 **repos** - `list(owner, opts?)`, `get(owner, repo)`
+
+**code** - `search(query, opts?)`
 
 **ciRuns** - `list(owner, repo, opts?)`
 
@@ -153,6 +155,8 @@ Every provider gives you seven resources with the same method shapes. Thread sem
 **users** - `get(username)`, `authenticated()`
 
 **threads** - `list(owner, repo, number, opts?)`, `get(owner, repo, number, threadId)`, `reply(owner, repo, number, threadId, input)`, `resolve(owner, repo, number, threadId)`, `unresolve(owner, repo, number, threadId)`
+
+Code search accepts `CodeSearchOptions`: `page`, `perPage`, and optional `owner` and `repo` scope. A repository scope requires its owner. GitHub supports global, owner, and repository search. GitLab uses global search, group search for owner-only scope, and project search for repository scope. GitLab requires authentication for every search API call; global and group code search also require Premium or Ultimate with advanced or exact code search enabled. Gitea, Forgejo, and GitHub-compatible hosts without a code-search endpoint return an explicit unsupported error. Results are `CodeSearchItem` rows with `repository`, `path`, and `url`, wrapped in `SearchPageResult` so callers can follow pagination and inspect `incomplete`. For GitHub, `incomplete` is true when the search times out, scope enforcement drops an unexpected row, or the match count exceeds the 1,000-result retrieval cap.
 
 CI-run lists accept `ListCiRunsOptions`: `page`, `perPage`, and an optional `branch` filter. They normalize GitHub Actions runs, GitLab pipelines, and Gitea Actions runs to branch, revision SHA, lifecycle status, terminal conclusion, and URL. Commit lists accept `ListCommitOptions`: `page`, `perPage`, `ref`, `path`, `since`, and `until`. They return metadata-only `CommitSummary` rows. Gitea rejects `path` because its API ignores pagination limits for that filter; the other filters remain supported. Commit reads return the SHA, message, author, committer, parent SHAs, URL, and changed-file rows without patches. GitHub pages are collected through its 3,000-file API cap; GitLab reads at most 10,000 rows per call. Gitea per-file counts and withheld GitLab diff counts are `null`. `filesComplete` is `true` when GitHub confirms a complete result and `null` when provider or safety limits make completeness unknowable. Pull-request file lists accept `ListPullRequestFilesOptions`: `page` and `perPage`. They normalize each changed file to path, status, additions, and deletions without returning patches; GitLab counts are `null` when its API withholds a collapsed or oversized diff. Pull-request check lists accept `ListPullRequestChecksOptions`: `page` and `perPage`. They read GitHub check runs for the head SHA, GitLab merge-request pipelines for the current head SHA, and Gitea commit statuses, normalized to name, lifecycle status, terminal conclusion, and URL. Issue and pull request lists accept `ListOptions`: `page`, `perPage`, and `state` (`'open' | 'closed' | 'all'`); repository lists use its pagination fields. Lists return `PageResult<T>` with `items`, `hasNextPage`, `nextPage`, and an optional `totalCount`. Issue and pull-request searches accept the same options and return those fields plus `incomplete`, which is true when the result is known to be partial. Queries keep the selected platform's syntax: GitHub qualifiers work on GitHub, while GitLab and Gitea treat them as text. Pull-request search returns `PullRequestSearchItem`; call `get` for branches, revisions, and mergeability.
 
@@ -213,7 +217,7 @@ const gitea = new GiteaProvider({ token: process.env.GITEA_TOKEN });
 console.log(gitea instanceof Provider); // true
 ```
 
-`Provider` is the abstract base class for every implementation. It owns the six resource accessors, while concrete classes implement the typed mappers and platform-specific API operations. Custom providers that do not implement CI runs or pull-request checks get an explicit unsupported-operation error.
+`Provider` is the abstract base class for every implementation. It owns the eight resource accessors, while concrete classes implement the typed mappers and platform-specific API operations. Custom providers that do not implement code search, CI runs, or pull-request checks get an explicit unsupported-operation error.
 
 The runtime base class is also available from `@agntn/forges/provider`. The
 `@agntn/forges/types` subpath contains only TypeScript models and resource interfaces.

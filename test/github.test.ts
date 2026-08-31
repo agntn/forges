@@ -52,6 +52,15 @@ const ghRepo = {
   },
 };
 
+const ghCodeSearchItem = {
+  name: "provider.ts",
+  path: "src/provider.ts",
+  html_url: "https://github.com/agntn/forges/blob/main/src/provider.ts",
+  repository: {
+    full_name: "agntn/forges",
+  },
+};
+
 const ghCiRun = {
   id: 9876,
   head_branch: "main",
@@ -216,6 +225,113 @@ describe("GitHubProvider", () => {
       expect(mocks.createHttpClient).toHaveBeenLastCalledWith(
         expect.objectContaining({ baseURL: "https://api.github.com" }),
       );
+    });
+  });
+
+  describe("code.search", () => {
+    it("maps scoped code results and pagination metadata", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: {
+          total_count: 12,
+          incomplete_results: true,
+          items: [ghCodeSearchItem],
+        },
+        headers: makeHeaders('<https://api.github.com/search/code?q=Provider&page=3>; rel="next"'),
+      });
+
+      const result = await gh.code.search("Provider", {
+        owner: "agntn",
+        repo: "forges",
+        page: 2,
+        perPage: 1,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/search/code", {
+        query: {
+          q: "Provider repo:agntn/forges",
+          page: "2",
+          per_page: "1",
+        },
+      });
+      expect(result).toEqual({
+        items: [
+          {
+            repository: "agntn/forges",
+            path: "src/provider.ts",
+            url: "https://github.com/agntn/forges/blob/main/src/provider.ts",
+          },
+        ],
+        totalCount: 12,
+        incomplete: true,
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+
+    it("marks searches above GitHub's 1,000-result cap as incomplete", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: {
+          total_count: 1001,
+          incomplete_results: false,
+          items: [ghCodeSearchItem],
+        },
+        headers: makeHeaders(),
+      });
+
+      const result = await gh.code.search("Provider");
+
+      expect(result.incomplete).toBe(true);
+    });
+
+    it("uses an owner qualifier and drops out-of-scope API results", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: {
+          total_count: 2,
+          incomplete_results: false,
+          items: [
+            ghCodeSearchItem,
+            {
+              ...ghCodeSearchItem,
+              repository: { full_name: "other/forges" },
+            },
+          ],
+        },
+        headers: makeHeaders(),
+      });
+
+      const result = await gh.code.search("Provider", { owner: "agntn" });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/search/code", {
+        query: { q: "Provider user:agntn" },
+      });
+      expect(result.items).toEqual([
+        {
+          repository: "agntn/forges",
+          path: "src/provider.ts",
+          url: "https://github.com/agntn/forges/blob/main/src/provider.ts",
+        },
+      ]);
+      expect(result.incomplete).toBe(true);
+    });
+
+    it("reports GitHub-compatible hosts without the endpoint as unsupported", async () => {
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(gh.code.search("Provider")).rejects.toMatchObject({
+        status: 501,
+        platform: "github",
+      });
+    });
+
+    it("rejects invalid searches before transport", async () => {
+      await expect(gh.code.search("Provider", { repo: "forges" })).rejects.toThrow(
+        "Code search repository scope requires an owner",
+      );
+      await expect(gh.code.search("   ")).rejects.toThrow("Code search query must not be empty");
+      await expect(gh.code.search("Provider", { owner: "agntn repo:other" })).rejects.toThrow(
+        "Invalid GitHub search qualifier segment",
+      );
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
   });
 
