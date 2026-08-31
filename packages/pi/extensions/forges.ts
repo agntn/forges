@@ -37,6 +37,10 @@ function loadToolOperations(): Promise<typeof ForgesTools> {
   return toolOperationsPromise;
 }
 
+function pullRequestApprovalMessage(params: ForgesTools.CreatePullRequestParams): string {
+  return `This will create a hosted pull request with the following payload:\n\n${JSON.stringify(params, null, 2)}`;
+}
+
 export default function forgesExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_repos_list",
@@ -298,7 +302,24 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_pull_requests_create only when the user explicitly asks to create a pull request.",
     ],
     parameters: createPullRequestParameters,
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      if (!ctx.hasUI) {
+        throw new Error(
+          "Pull request creation requires interactive approval in Pi TUI or RPC mode",
+        );
+      }
+
+      const approved = await ctx.ui.confirm(
+        "Create pull request?",
+        pullRequestApprovalMessage(params),
+        { signal },
+      );
+      if (!approved) {
+        throw new Error(
+          "Pull request creation was cancelled by the user. Do not retry unless the user asks again.",
+        );
+      }
+
       return (await loadToolOperations()).createPullRequest(params);
     },
   });
