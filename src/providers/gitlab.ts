@@ -21,6 +21,8 @@ import type {
   CiRun,
   Commit,
   CommitSummary,
+  ContributionTemplateKind,
+  ContributionTemplateSummary,
   Issue,
   PullRequest,
   PullRequestCheck,
@@ -47,15 +49,32 @@ import type {
 } from "../types.ts";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
 import { cachedFetch, invalidateCache } from "../cache.ts";
-import { normalizeError, NotFoundError } from "../errors.ts";
-import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
+import { ForgesError, normalizeError, NotFoundError } from "../errors.ts";
+import {
+  encodeApiResponsePathSegment,
+  encodePathSegment,
+  normalizeApiBaseURL,
+} from "./base-url.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
 import { countDiffLines } from "../changed-file.ts";
 
 const MAX_COMMIT_DIFF_PAGES = 100;
 const MAX_CODE_SEARCH_PROJECT_REQUESTS = 5;
+const MAX_CONTRIBUTION_TEMPLATE_PAGES = 100;
 
 // GitLab API response types (internal)
+
+interface GitLabContributionTemplate {
+  key: string;
+  name: string;
+  content?: string;
+}
+
+interface GitLabTreeEntry {
+  name: string;
+  path: string;
+  type: string;
+}
 
 interface GitLabProjectParent {
   path_with_namespace: string;
@@ -674,6 +693,135 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       // Cache project ID while we have it
       this.setCachedProjectId(`${owner}/${repo}`, project.id);
       return this.mapRepository(project);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  private contributionTemplateApiType(kind: ContributionTemplateKind): string {
+    return kind === "issue" ? "issues" : "merge_requests";
+  }
+
+  private contributionTemplateDirectory(kind: ContributionTemplateKind): string {
+    return kind === "issue" ? ".gitlab/issue_templates" : ".gitlab/merge_request_templates";
+  }
+
+  private nextContributionTemplatePage(headers: Headers, page: number): number | null {
+    const next = headers.get("x-next-page");
+    if (next === null || next === "") return null;
+    const parsed = Number.parseInt(next, 10);
+    if (!Number.isInteger(parsed) || parsed <= page || parsed > MAX_CONTRIBUTION_TEMPLATE_PAGES) {
+      throw new ForgesError("GitLab returned unsafe template pagination", 502, "gitlab");
+    }
+    return parsed;
+  }
+
+  private async collectContributionTemplateRows(
+    projectId: number,
+    apiType: string,
+  ): Promise<GitLabContributionTemplate[]> {
+    const rows: GitLabContributionTemplate[] = [];
+    let page = 1;
+    while (page <= MAX_CONTRIBUTION_TEMPLATE_PAGES) {
+      const { data, headers } = await rawFetch<GitLabContributionTemplate[]>(
+        this.client,
+        `/projects/${projectId}/templates/${apiType}`,
+        { query: { page, per_page: 100 } },
+      );
+      rows.push(...(data ?? []));
+      const next = this.nextContributionTemplatePage(headers, page);
+      if (next === null) break;
+      page = next;
+    }
+    return rows;
+  }
+
+  private async collectLocalContributionTemplates(
+    projectId: number,
+    directory: string,
+    ref: string,
+  ): Promise<Map<string, string>> {
+    const local = new Map<string, string>();
+    let page = 1;
+    try {
+      while (page <= MAX_CONTRIBUTION_TEMPLATE_PAGES) {
+        const { data, headers } = await rawFetch<GitLabTreeEntry[]>(
+          this.client,
+          `/projects/${projectId}/repository/tree`,
+          { query: { path: directory, ref, page, per_page: 100 } },
+        );
+        for (const entry of data ?? []) {
+          if (entry.type !== "blob" || !entry.name.endsWith(".md")) continue;
+          local.set(entry.name.slice(0, -3), entry.path);
+        }
+        const next = this.nextContributionTemplatePage(headers, page);
+        if (next === null) break;
+        page = next;
+      }
+      return local;
+    } catch (error: unknown) {
+      const normalized = normalizeError(error, "gitlab");
+      if (normalized.status === 404) return local;
+      throw normalized;
+    }
+  }
+
+  protected override async listContributionTemplates(
+    owner: string,
+    repo: string,
+    kind: ContributionTemplateKind,
+  ): Promise<ContributionTemplateSummary[]> {
+    try {
+      const project = await this.client<GitLabProject>(
+        `/projects/${encodeProjectPath(owner, repo)}`,
+      );
+      this.setCachedProjectId(`${owner}/${repo}`, project.id);
+      const sourceRef = project.default_branch ?? "main";
+      const apiType = this.contributionTemplateApiType(kind);
+      const directory = this.contributionTemplateDirectory(kind);
+      const [rows, local] = await Promise.all([
+        this.collectContributionTemplateRows(project.id, apiType),
+        this.collectLocalContributionTemplates(project.id, directory, sourceRef),
+      ]);
+      const seen = new Set<string>();
+      return rows.flatMap((row): ContributionTemplateSummary[] => {
+        if (seen.has(row.key)) return [];
+        seen.add(row.key);
+        const sourcePath = local.get(row.key) ?? null;
+        const inherited = sourcePath === null;
+        return [
+          {
+            kind,
+            key: row.key,
+            name: row.name,
+            scope: inherited ? "unknown" : "repository",
+            inherited,
+            sourceRepository: inherited ? null : project.path_with_namespace,
+            sourcePath,
+            sourceRef: inherited ? null : sourceRef,
+          },
+        ];
+      });
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async readContributionTemplate(
+    owner: string,
+    repo: string,
+    template: ContributionTemplateSummary,
+  ): Promise<string> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const apiType = this.contributionTemplateApiType(template.kind);
+      const row = await this.client<GitLabContributionTemplate>(
+        `/projects/${projectId}/templates/${apiType}/${encodeApiResponsePathSegment(template.key)}`,
+      );
+      if (row.content === undefined) {
+        throw new ForgesError("GitLab returned template metadata without content", 502, "gitlab");
+      }
+      return row.content;
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodePathSegment } from "../src/providers/base-url.ts";
+import { encodeApiResponsePathSegment, encodePathSegment } from "../src/providers/base-url.ts";
 
 describe("encodePathSegment", () => {
   it.each([
@@ -21,6 +21,22 @@ describe("encodePathSegment", () => {
     "rejects unsafe number %j",
     (value) => {
       expect(() => encodePathSegment(value)).toThrow("Invalid API path segment");
+    },
+  );
+});
+
+describe("encodeApiResponsePathSegment", () => {
+  it("encodes literal percent signs returned in forge filenames", () => {
+    expect(encodeApiResponsePathSegment("100%.md")).toBe("100%25.md");
+    expect(encodeApiResponsePathSegment("already%20literal.md")).toBe("already%2520literal.md");
+  });
+
+  it.each(["", ".", "..", "owner/repo", "owner\\repo", "\0", "\n", "\x7f"])(
+    "rejects unsafe response segment %j",
+    (value) => {
+      expect(() => encodeApiResponsePathSegment(value)).toThrow(
+        "Invalid API response path segment",
+      );
     },
   );
 });

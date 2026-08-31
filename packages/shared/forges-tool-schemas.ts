@@ -27,6 +27,15 @@ const platform = Type.Unsafe<ForgesPlatform>({
 });
 const owner = Type.String({ description: "Repository owner or organization", minLength: 1 });
 const repo = Type.String({ description: "Repository name", minLength: 1 });
+const contributionTemplateKind = Type.Unsafe<"issue" | "pull_request">({
+  type: "string",
+  enum: ["issue", "pull_request"],
+  description: "Contribution template kind",
+});
+const contributionTemplateKey = Type.String({
+  description: "Provider key returned by the contribution-template list operation",
+  minLength: 1,
+});
 const sha = Type.String({ description: "Commit SHA", minLength: 1 });
 const branch = Type.Optional(Type.String({ description: "Filter by branch", minLength: 1 }));
 const ref = Type.Optional(
@@ -69,6 +78,21 @@ const assignees = Type.Optional(
 
 export const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
 export const repositoryParameters = Type.Object({ platform, owner, repo });
+export const listContributionTemplatesParameters = Type.Object({
+  platform,
+  owner,
+  repo,
+  kind: contributionTemplateKind,
+  page,
+  perPage,
+});
+export const contributionTemplateParameters = Type.Object({
+  platform,
+  owner,
+  repo,
+  kind: contributionTemplateKind,
+  key: contributionTemplateKey,
+});
 export const codeSearchParameters = Type.Object({
   platform,
   query: Type.String({

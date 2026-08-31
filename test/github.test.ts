@@ -210,6 +210,248 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("contributionTemplates", () => {
+    const defaultRepo = {
+      ...ghRepo,
+      id: 54321,
+      name: ".github",
+      full_name: "octocat/.github",
+      html_url: "https://github.com/octocat/.github",
+      clone_url: "https://github.com/octocat/.github.git",
+    };
+
+    function contentFile(name: string, path: string) {
+      return {
+        type: "file",
+        name,
+        path,
+        content: "",
+        encoding: "base64",
+      };
+    }
+
+    it("uses public owner defaults and returns the exact inherited source content", async () => {
+      const form = "name: Bug report\ndescription: Tell us what broke\nbody: []\n";
+      mocks.client.mockImplementation(async (url: string) => {
+        if (url === "/repos/octocat/hello-world") return ghRepo;
+        if (url === "/repos/octocat/.github") return defaultRepo;
+        if (url === "/repos/octocat/hello-world/contents/.github/ISSUE_TEMPLATE") {
+          throw makeFetchError(404);
+        }
+        if (url === "/repos/octocat/.github/contents/.github/ISSUE_TEMPLATE") {
+          return [
+            contentFile("config.yml", ".github/ISSUE_TEMPLATE/config.yml"),
+            contentFile("bug.yml", ".github/ISSUE_TEMPLATE/bug.yml"),
+          ];
+        }
+        if (url === "/repos/octocat/.github/contents/.github/ISSUE_TEMPLATE/bug.yml") {
+          return {
+            ...contentFile("bug.yml", ".github/ISSUE_TEMPLATE/bug.yml"),
+            content: Buffer.from(form).toString("base64"),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const page = await gh.contributionTemplates.list("octocat", "hello-world", "issue");
+
+      expect(page).toEqual({
+        items: [
+          {
+            kind: "issue",
+            key: "octocat/.github:.github/ISSUE_TEMPLATE/bug.yml",
+            name: "bug",
+            scope: "owner",
+            inherited: true,
+            sourceRepository: "octocat/.github",
+            sourcePath: ".github/ISSUE_TEMPLATE/bug.yml",
+            sourceRef: "main",
+          },
+        ],
+        totalCount: 1,
+        hasNextPage: false,
+      });
+
+      const template = await gh.contributionTemplates.get(
+        "octocat",
+        "hello-world",
+        "issue",
+        page.items[0]!.key,
+      );
+      expect(template).toEqual({ ...page.items[0], content: form });
+    });
+
+    it("lets local issue-template configuration suppress owner defaults", async () => {
+      mocks.client.mockImplementation(async (url: string) => {
+        if (url === "/repos/octocat/hello-world") return ghRepo;
+        if (url === "/repos/octocat/hello-world/contents/.github/ISSUE_TEMPLATE") {
+          return [contentFile("config.yml", ".github/ISSUE_TEMPLATE/config.yml")];
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      await expect(
+        gh.contributionTemplates.list("octocat", "hello-world", "issue"),
+      ).resolves.toEqual({ items: [], totalCount: 0, hasNextPage: false });
+      expect(mocks.client).not.toHaveBeenCalledWith("/repos/octocat/.github");
+    });
+
+    it("ignores unrelated issue-template directory files when resolving owner defaults", async () => {
+      mocks.client.mockImplementation(async (url: string) => {
+        if (url === "/repos/octocat/hello-world") return ghRepo;
+        if (url === "/repos/octocat/hello-world/contents/.github/ISSUE_TEMPLATE") {
+          return [contentFile("notes.txt", ".github/ISSUE_TEMPLATE/notes.txt")];
+        }
+        if (url === "/repos/octocat/.github") return defaultRepo;
+        if (url === "/repos/octocat/.github/contents/.github/ISSUE_TEMPLATE") {
+          return [contentFile("bug.md", ".github/ISSUE_TEMPLATE/bug.md")];
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const page = await gh.contributionTemplates.list("octocat", "hello-world", "issue");
+
+      expect(page.items[0]).toMatchObject({
+        scope: "owner",
+        sourceRepository: "octocat/.github",
+      });
+    });
+
+    it("honors pull-request path precedence and keeps independently selectable files", async () => {
+      mocks.client.mockImplementation(async (url: string) => {
+        if (url === "/repos/octocat/hello-world") return ghRepo;
+        if (url === "/repos/octocat/hello-world/contents/.github") {
+          return [contentFile("PULL_REQUEST_TEMPLATE.md", ".github/PULL_REQUEST_TEMPLATE.md")];
+        }
+        if (url === "/repos/octocat/hello-world/contents") {
+          return [contentFile("pull_request_template.md", "pull_request_template.md")];
+        }
+        if (url === "/repos/octocat/hello-world/contents/docs") return [];
+        if (url === "/repos/octocat/hello-world/contents/.github/PULL_REQUEST_TEMPLATE") {
+          return [contentFile("focused.md", ".github/PULL_REQUEST_TEMPLATE/focused.md")];
+        }
+        if (url === "/repos/octocat/hello-world/contents/PULL_REQUEST_TEMPLATE") {
+          return [contentFile("focused.md", "PULL_REQUEST_TEMPLATE/focused.md")];
+        }
+        if (url === "/repos/octocat/hello-world/contents/docs/PULL_REQUEST_TEMPLATE") return [];
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const page = await gh.contributionTemplates.list("octocat", "hello-world", "pull_request");
+
+      expect(page.items.map(({ sourcePath }) => sourcePath)).toEqual([
+        ".github/PULL_REQUEST_TEMPLATE.md",
+        ".github/PULL_REQUEST_TEMPLATE/focused.md",
+      ]);
+      expect(page.items.every(({ scope, inherited }) => scope === "repository" && !inherited)).toBe(
+        true,
+      );
+      expect(mocks.client).not.toHaveBeenCalledWith("/repos/octocat/.github");
+    });
+
+    it("accepts a singular pull-request template without an extension", async () => {
+      mocks.client.mockImplementation(async (url: string) => {
+        if (url === "/repos/octocat/hello-world") return ghRepo;
+        if (url === "/repos/octocat/hello-world/contents/.github") {
+          return [contentFile("PULL_REQUEST_TEMPLATE", ".github/PULL_REQUEST_TEMPLATE")];
+        }
+        if (url === "/repos/octocat/hello-world/contents") return [];
+        if (url === "/repos/octocat/hello-world/contents/docs") return [];
+        if (url === "/repos/octocat/hello-world/contents/.github/PULL_REQUEST_TEMPLATE") {
+          return contentFile("PULL_REQUEST_TEMPLATE", ".github/PULL_REQUEST_TEMPLATE");
+        }
+        if (url === "/repos/octocat/hello-world/contents/PULL_REQUEST_TEMPLATE") return [];
+        if (url === "/repos/octocat/hello-world/contents/docs/PULL_REQUEST_TEMPLATE") return [];
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const page = await gh.contributionTemplates.list("octocat", "hello-world", "pull_request");
+
+      expect(page.items).toHaveLength(1);
+      expect(page.items[0]?.sourcePath).toBe(".github/PULL_REQUEST_TEMPLATE");
+    });
+
+    it("does not invent owner inheritance on GitHub-compatible hosts without GitHub headers", async () => {
+      const bucket = new GitHubProvider({
+        baseURL: "https://gitbucket.example.com/api/v3",
+        token: "",
+      });
+      mocks.client.mockImplementation(async (url: string) => {
+        if (url === "/repos/octocat/hello-world") return ghRepo;
+        if (url === "/repos/octocat/hello-world/contents/.github/ISSUE_TEMPLATE") {
+          throw makeFetchError(404);
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+      mocks.rawFetch.mockResolvedValue({
+        data: ghRepo,
+        headers: new Headers(),
+        status: 200,
+      });
+
+      await expect(
+        bucket.contributionTemplates.list("octocat", "hello-world", "issue"),
+      ).resolves.toEqual({ items: [], totalCount: 0, hasNextPage: false });
+      expect(mocks.client).not.toHaveBeenCalledWith("/repos/octocat/.github");
+    });
+
+    it("uses internal owner defaults on GitHub Enterprise", async () => {
+      const enterprise = new GitHubProvider({
+        baseURL: "https://github.example.com/api/v3",
+        token: "",
+      });
+      const internalDefaults = {
+        ...defaultRepo,
+        private: true,
+        visibility: "internal",
+      };
+      mocks.client.mockImplementation(async (url: string) => {
+        if (url === "/repos/octocat/hello-world") return ghRepo;
+        if (url === "/repos/octocat/hello-world/contents/.github/ISSUE_TEMPLATE") {
+          throw makeFetchError(404);
+        }
+        if (url === "/repos/octocat/.github") return internalDefaults;
+        if (url === "/repos/octocat/.github/contents/.github/ISSUE_TEMPLATE") {
+          return [contentFile("bug.md", ".github/ISSUE_TEMPLATE/bug.md")];
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+      mocks.rawFetch.mockResolvedValue({
+        data: ghRepo,
+        headers: new Headers({ "x-github-enterprise-version": "3.18.0" }),
+        status: 200,
+      });
+
+      const page = await enterprise.contributionTemplates.list("octocat", "hello-world", "issue");
+
+      expect(page.items[0]).toMatchObject({
+        scope: "owner",
+        inherited: true,
+        sourceRepository: "octocat/.github",
+      });
+    });
+
+    it("rejects invalid local pagination before making a request", async () => {
+      await expect(
+        gh.contributionTemplates.list("octocat", "hello-world", "issue", { page: 0 }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("rejects a stale key instead of treating it as a repository path", async () => {
+      mocks.client.mockImplementation(async (url: string) => {
+        if (url === "/repos/octocat/hello-world") return ghRepo;
+        if (url === "/repos/octocat/hello-world/contents/.github/ISSUE_TEMPLATE") return [];
+        if (url === "/repos/octocat/.github") throw makeFetchError(404);
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      await expect(
+        gh.contributionTemplates.get("octocat", "hello-world", "issue", "../../secrets"),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+
   describe("constructor", () => {
     it("creates http client with GitHub auth config", () => {
       expect(mocks.createHttpClient).toHaveBeenCalledWith({

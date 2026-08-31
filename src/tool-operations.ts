@@ -9,6 +9,9 @@ import type {
   CodeSearchOptions,
   Comment,
   Commit,
+  ContributionTemplate,
+  ContributionTemplateKind,
+  ContributionTemplateSummary,
   CommitSummary,
   CreateIssueInput,
   CreatePullRequestInput,
@@ -17,6 +20,7 @@ import type {
   ListCiRunsOptions,
   ListCommentOptions,
   ListCommitOptions,
+  ListContributionTemplatesOptions,
   ListOptions,
   ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
@@ -167,6 +171,17 @@ export interface ListRepositoriesParams extends OwnerParams {
 
 export type GetRepositoryParams = RepositoryParams;
 
+export interface ListContributionTemplatesParams extends RepositoryParams {
+  readonly kind: ContributionTemplateKind;
+  readonly page?: number;
+  readonly perPage?: number;
+}
+
+export interface GetContributionTemplateParams extends RepositoryParams {
+  readonly kind: ContributionTemplateKind;
+  readonly key: string;
+}
+
 export interface SearchCodeParams extends PlatformParams, CodeSearchOptions {
   query: string;
 }
@@ -312,6 +327,38 @@ export async function getRepository(
 ): Promise<ForgesToolResult<Repository>> {
   const repository = await readProvider(params.platform).repos.get(params.owner, params.repo);
   return result(params.platform, repository);
+}
+
+export async function listContributionTemplates(
+  params: ListContributionTemplatesParams,
+): Promise<ForgesToolResult<PageResult<ContributionTemplateSummary>>> {
+  const options: ListContributionTemplatesOptions = {
+    page: params.page,
+    perPage: params.perPage,
+  };
+  const templates = await readProvider(params.platform).contributionTemplates.list(
+    params.owner,
+    params.repo,
+    params.kind,
+    options,
+  );
+  return result(
+    params.platform,
+    templates,
+    "Template bodies are omitted from list output; use forges_contribution_templates_get with the returned kind and key.",
+  );
+}
+
+export async function getContributionTemplate(
+  params: GetContributionTemplateParams,
+): Promise<ForgesToolResult<ContributionTemplate>> {
+  const template = await readProvider(params.platform).contributionTemplates.get(
+    params.owner,
+    params.repo,
+    params.kind,
+    params.key,
+  );
+  return result(params.platform, template);
 }
 
 export async function searchCode(

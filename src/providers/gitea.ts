@@ -6,10 +6,15 @@
  * - Some fields may be null where GitHub returns empty strings
  */
 
+import { Buffer } from "node:buffer";
 import { createHttpClient, rawFetch, type HttpClient } from "../http.ts";
 import { parseLinkHeader } from "../pagination.ts";
 import { ForgesError, normalizeError, NotFoundError } from "../errors.ts";
-import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
+import {
+  encodeApiResponsePathSegment,
+  encodePathSegment,
+  normalizeApiBaseURL,
+} from "./base-url.ts";
 import { Provider, type ProviderRawTypes } from "../provider.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import type {
@@ -18,6 +23,8 @@ import type {
   CiRun,
   Commit,
   CommitSummary,
+  ContributionTemplateKind,
+  ContributionTemplateSummary,
   Issue,
   PullRequest,
   PullRequestCheck,
@@ -45,6 +52,19 @@ import { normalizeCiRunState } from "../ci-run.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
 
 // -- Raw Gitea API response types --
+
+interface GiteaContent {
+  type: string;
+  name: string;
+  path: string;
+  content?: string;
+  encoding?: string;
+}
+
+interface GiteaIssueTemplate {
+  name: string;
+  file_name: string;
+}
 
 interface GiteaCiRun {
   id: number;
@@ -297,6 +317,26 @@ function buildListQuery(options?: ListOptions): Record<string, string> {
 // -- Provider --
 
 const PLATFORM = "gitea";
+const GITEA_PULL_REQUEST_TEMPLATE_CANDIDATES = [
+  "PULL_REQUEST_TEMPLATE.md",
+  "PULL_REQUEST_TEMPLATE.yaml",
+  "PULL_REQUEST_TEMPLATE.yml",
+  "pull_request_template.md",
+  "pull_request_template.yaml",
+  "pull_request_template.yml",
+  ".gitea/PULL_REQUEST_TEMPLATE.md",
+  ".gitea/PULL_REQUEST_TEMPLATE.yaml",
+  ".gitea/PULL_REQUEST_TEMPLATE.yml",
+  ".gitea/pull_request_template.md",
+  ".gitea/pull_request_template.yaml",
+  ".gitea/pull_request_template.yml",
+  ".github/PULL_REQUEST_TEMPLATE.md",
+  ".github/PULL_REQUEST_TEMPLATE.yaml",
+  ".github/PULL_REQUEST_TEMPLATE.yml",
+  ".github/pull_request_template.md",
+  ".github/pull_request_template.yaml",
+  ".github/pull_request_template.yml",
+] as const;
 
 /**
  * Gitea/Forgejo provider implementation.
@@ -526,6 +566,111 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
           `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
         ),
       );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  private contributionTemplateContentsRoute(owner: string, repo: string, path: string): string {
+    const encodedPath = path.split("/").map(encodeApiResponsePathSegment).join("/");
+    return `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/contents/${encodedPath}`;
+  }
+
+  private async tryContributionTemplateFile(
+    owner: string,
+    repo: string,
+    path: string,
+    ref: string,
+  ): Promise<GiteaContent | null> {
+    try {
+      const file = await this.client<GiteaContent>(
+        this.contributionTemplateContentsRoute(owner, repo, path),
+        { query: { ref } },
+      );
+      return file.type === "file" ? file : null;
+    } catch (error) {
+      const normalized = normalizeError(error, PLATFORM);
+      if (normalized.status === 404) return null;
+      throw normalized;
+    }
+  }
+
+  private giteaTemplateSummary(
+    repository: GiteaRepository,
+    kind: ContributionTemplateKind,
+    key: string,
+    name: string,
+  ): ContributionTemplateSummary {
+    return {
+      kind,
+      key,
+      name,
+      scope: "repository",
+      inherited: false,
+      sourceRepository: repository.full_name,
+      sourcePath: key,
+      sourceRef: repository.default_branch ?? "main",
+    };
+  }
+
+  protected override async listContributionTemplates(
+    owner: string,
+    repo: string,
+    kind: ContributionTemplateKind,
+  ): Promise<ContributionTemplateSummary[]> {
+    try {
+      const repository = await this.client<GiteaRepository>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
+      );
+      if (kind === "issue") {
+        const rows = await this.client<GiteaIssueTemplate[]>(
+          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issue_templates`,
+        );
+        const seen = new Set<string>();
+        return rows.flatMap((row): ContributionTemplateSummary[] => {
+          if (seen.has(row.file_name)) return [];
+          seen.add(row.file_name);
+          const fallbackName =
+            row.file_name
+              .split("/")
+              .at(-1)
+              ?.replace(/\.[^.]+$/u, "") ?? "";
+          return [
+            this.giteaTemplateSummary(repository, kind, row.file_name, row.name || fallbackName),
+          ];
+        });
+      }
+
+      const sourceRef = repository.default_branch ?? "main";
+      for (const candidate of GITEA_PULL_REQUEST_TEMPLATE_CANDIDATES) {
+        const file = await this.tryContributionTemplateFile(owner, repo, candidate, sourceRef);
+        if (file === null) continue;
+        const name = file.name.replace(/\.[^.]+$/u, "");
+        return [this.giteaTemplateSummary(repository, kind, file.path, name)];
+      }
+      return [];
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async readContributionTemplate(
+    owner: string,
+    repo: string,
+    template: ContributionTemplateSummary,
+  ): Promise<string> {
+    try {
+      if (template.sourcePath === null || template.sourceRef === null) {
+        throw new ForgesError("Gitea template source metadata is incomplete", 502, PLATFORM);
+      }
+      const file = await this.client<GiteaContent>(
+        this.contributionTemplateContentsRoute(owner, repo, template.sourcePath),
+        { query: { ref: template.sourceRef } },
+      );
+      if (file.type !== "file" || file.encoding !== "base64" || file.content === undefined) {
+        throw new ForgesError("Gitea did not return decodable template content", 502, PLATFORM);
+      }
+      return Buffer.from(file.content.replaceAll("\n", ""), "base64").toString("utf8");
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }

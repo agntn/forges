@@ -51,6 +51,7 @@ import { AuthenticationError, ForgesError } from "../src/errors.ts";
 import type {
   ProviderConfig,
   RepositoryResource,
+  ContributionTemplateResource,
   CodeSearchResource,
   CiRunResource,
   CommitResource,
@@ -73,6 +74,7 @@ describe("createProvider factory", () => {
 
     expect(provider).toBeDefined();
     expect(provider.repos).toBeDefined();
+    expect(provider.contributionTemplates).toBeDefined();
     expect(provider.code).toBeDefined();
     expect(provider.issues).toBeDefined();
     expect(provider.pullRequests).toBeDefined();
@@ -84,6 +86,7 @@ describe("createProvider factory", () => {
 
     expect(provider).toBeDefined();
     expect(provider.repos).toBeDefined();
+    expect(provider.contributionTemplates).toBeDefined();
     expect(provider.code).toBeDefined();
     expect(provider.issues).toBeDefined();
     expect(provider.pullRequests).toBeDefined();
@@ -95,6 +98,7 @@ describe("createProvider factory", () => {
 
     expect(provider).toBeDefined();
     expect(provider.repos).toBeDefined();
+    expect(provider.contributionTemplates).toBeDefined();
     expect(provider.code).toBeDefined();
     expect(provider.issues).toBeDefined();
     expect(provider.pullRequests).toBeDefined();
@@ -145,6 +149,11 @@ describe("createProvider factory", () => {
   });
 
   it.each([
+    [
+      "listContributionTemplates",
+      "Contribution template discovery is not supported by this provider",
+    ],
+    ["readContributionTemplate", "Contribution template reads are not supported by this provider"],
     ["searchCode", "Code search is not supported by this provider"],
     ["listCiRuns", "CI-run listing is not supported by this provider"],
     ["listPullRequestChecks", "Pull request checks are not supported by this provider"],
@@ -178,6 +187,15 @@ describe("cross-provider class consistency", () => {
       expect(p.repos).toBeDefined();
       expect(typeof p.repos.list).toBe("function");
       expect(typeof p.repos.get).toBe("function");
+    }
+  });
+
+  it("all providers have contribution-template resources", () => {
+    for (const platform of platforms) {
+      const p = providers[platform];
+      expect(p.contributionTemplates).toBeDefined();
+      expect(typeof p.contributionTemplates.list).toBe("function");
+      expect(typeof p.contributionTemplates.get).toBe("function");
     }
   });
 
@@ -262,6 +280,8 @@ describe("cross-provider class consistency", () => {
       expect(p.repos.list.length).toBeGreaterThanOrEqual(1);
       expect(p.repos.get.length).toBeGreaterThanOrEqual(2);
 
+      expect(p.contributionTemplates.list.length).toBeGreaterThanOrEqual(3);
+      expect(p.contributionTemplates.get.length).toBeGreaterThanOrEqual(4);
       expect(p.code.search.length).toBeGreaterThanOrEqual(1);
       expect(p.ciRuns.list.length).toBeGreaterThanOrEqual(2);
       expect(p.commits.list.length).toBeGreaterThanOrEqual(2);
@@ -452,6 +472,7 @@ describe("type-level consistency", () => {
 
     // These should compile without errors
     const repos: RepositoryResource = provider.repos;
+    const contributionTemplates: ContributionTemplateResource = provider.contributionTemplates;
     const code: CodeSearchResource = provider.code;
     const ciRuns: CiRunResource = provider.ciRuns;
     const commits: CommitResource = provider.commits;
@@ -461,6 +482,7 @@ describe("type-level consistency", () => {
     const threads: ThreadResource = provider.threads;
 
     expect(repos).toBeDefined();
+    expect(contributionTemplates).toBeDefined();
     expect(code).toBeDefined();
     expect(ciRuns).toBeDefined();
     expect(commits).toBeDefined();
