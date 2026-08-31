@@ -469,13 +469,15 @@ export function createMcpServer(): Server {
   const server = new Server({ name: "forges", version }, { capabilities: { tools: {} } });
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: tools.map((tool): Tool => ({
-      name: tool.name,
-      title: tool.title,
-      description: tool.description,
-      inputSchema: tool.inputSchema as Tool["inputSchema"],
-      annotations: tool.annotations,
-    })),
+    tools: tools.map(
+      (tool): Tool => ({
+        name: tool.name,
+        title: tool.title,
+        description: tool.description,
+        inputSchema: tool.inputSchema as Tool["inputSchema"],
+        annotations: tool.annotations,
+      }),
+    ),
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
