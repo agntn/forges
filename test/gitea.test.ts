@@ -26,9 +26,8 @@ vi.mock("../src/http.ts", () => ({
 }));
 
 vi.mock("../src/cache.ts", () => ({
-  cachedFetch: vi.fn(
-    async (client: (...args: unknown[]) => unknown, url: string, opts?: unknown) =>
-      opts ? client(url, opts) : client(url),
+  cachedFetch: vi.fn(async (client: (...args: unknown[]) => unknown, url: string, opts?: unknown) =>
+    opts ? client(url, opts) : client(url),
   ),
 }));
 
