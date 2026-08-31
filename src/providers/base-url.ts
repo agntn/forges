@@ -24,6 +24,26 @@ export function encodePathSegment(value: string | number): string {
   return encodeURIComponent(segment);
 }
 
+/**
+ * Encode a raw path segment returned by a forge API. A literal percent sign is
+ * allowed and encoded again rather than interpreted as an existing escape.
+ */
+export function encodeApiResponsePathSegment(value: string): string {
+  if (
+    value.length === 0 ||
+    value === "." ||
+    value === ".." ||
+    value.includes("/") ||
+    value.includes("\\") ||
+    /* oxlint-disable-next-line no-control-regex */
+    /[\u0000-\u001F\u007F]/.test(value)
+  ) {
+    throw new TypeError("Invalid API response path segment");
+  }
+
+  return encodeURIComponent(value);
+}
+
 export function normalizeApiBaseURL(
   baseURL: string | undefined,
   fallbackBaseURL: string,

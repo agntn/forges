@@ -382,6 +382,130 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("contributionTemplates", () => {
+    const templateRows = [
+      { key: "Bug", name: "Bug" },
+      { key: "Bug", name: "Bug" },
+      { key: "Security", name: "Security" },
+    ];
+
+    function mockTemplateDiscovery(): void {
+      mocks.client.mockImplementation(async (url: string) => {
+        if (url === "/projects/gitlab-org%2Fgitlab-foss") return glProject;
+        if (url === "/projects/278964/templates/issues/Security") {
+          return { key: "Security", name: "Security", content: "Report privately.\n" };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+      mocks.rawFetch.mockImplementation(async (_client: unknown, url: string) => {
+        if (url === "/projects/278964/templates/issues") {
+          return { data: templateRows, headers: new Headers() };
+        }
+        if (url === "/projects/278964/repository/tree") {
+          return {
+            data: [
+              {
+                id: "abc123",
+                name: "Bug.md",
+                type: "blob",
+                path: ".gitlab/issue_templates/Bug.md",
+              },
+            ],
+            headers: new Headers(),
+          };
+        }
+        throw new Error(`Unexpected raw URL: ${url}`);
+      });
+    }
+
+    it("deduplicates effective names and distinguishes project-local from inherited templates", async () => {
+      mockTemplateDiscovery();
+
+      const page = await gl.contributionTemplates.list("gitlab-org", "gitlab-foss", "issue", {
+        perPage: 1,
+      });
+
+      expect(page).toEqual({
+        items: [
+          {
+            kind: "issue",
+            key: "Bug",
+            name: "Bug",
+            scope: "repository",
+            inherited: false,
+            sourceRepository: "gitlab-org/gitlab-foss",
+            sourcePath: ".gitlab/issue_templates/Bug.md",
+            sourceRef: "master",
+          },
+        ],
+        totalCount: 2,
+        hasNextPage: true,
+        nextPage: 2,
+      });
+    });
+
+    it("retrieves inherited content without inventing unavailable source provenance", async () => {
+      mockTemplateDiscovery();
+
+      const template = await gl.contributionTemplates.get(
+        "gitlab-org",
+        "gitlab-foss",
+        "issue",
+        "Security",
+      );
+
+      expect(template).toEqual({
+        kind: "issue",
+        key: "Security",
+        name: "Security",
+        scope: "unknown",
+        inherited: true,
+        sourceRepository: null,
+        sourcePath: null,
+        sourceRef: null,
+        content: "Report privately.\n",
+      });
+    });
+
+    it("rejects non-advancing effective-template pagination", async () => {
+      mocks.client.mockResolvedValueOnce(glProject);
+      mocks.rawFetch.mockImplementation(async (_client: unknown, url: string) => {
+        if (url === "/projects/278964/templates/issues") {
+          return {
+            data: [{ key: "Bug", name: "Bug" }],
+            headers: new Headers({ "x-next-page": "1" }),
+          };
+        }
+        if (url === "/projects/278964/repository/tree") {
+          return { data: [], headers: new Headers() };
+        }
+        throw new Error(`Unexpected raw URL: ${url}`);
+      });
+
+      await expect(
+        gl.contributionTemplates.list("gitlab-org", "gitlab-foss", "issue"),
+      ).rejects.toMatchObject({ status: 502 });
+    });
+
+    it("keeps provenance unknown when the local template tree is unavailable", async () => {
+      mocks.client.mockResolvedValueOnce(glProject);
+      mocks.rawFetch.mockImplementation(async (_client: unknown, url: string) => {
+        if (url === "/projects/278964/templates/issues") {
+          return {
+            data: [{ key: "Security", name: "Security" }],
+            headers: new Headers(),
+          };
+        }
+        if (url === "/projects/278964/repository/tree") throw makeFetchError(404);
+        throw new Error(`Unexpected raw URL: ${url}`);
+      });
+
+      const page = await gl.contributionTemplates.list("gitlab-org", "gitlab-foss", "issue");
+
+      expect(page.items[0]).toMatchObject({ scope: "unknown", inherited: true });
+    });
+  });
+
   describe("constructor", () => {
     it("creates http client with Private-Token auth", () => {
       expect(mocks.createHttpClient).toHaveBeenCalledWith({

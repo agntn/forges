@@ -3,7 +3,7 @@
  */
 
 import { assertAssignees } from "./assignees.ts";
-import { ForgesError } from "./errors.ts";
+import { ForgesError, NotFoundError } from "./errors.ts";
 import type {
   CiRun,
   CiRunResource,
@@ -12,6 +12,10 @@ import type {
   CodeSearchResource,
   Comment,
   Commit,
+  ContributionTemplate,
+  ContributionTemplateKind,
+  ContributionTemplateResource,
+  ContributionTemplateSummary,
   CommitResource,
   CommitSummary,
   CreateIssueInput,
@@ -21,6 +25,7 @@ import type {
   ListCiRunsOptions,
   ListCommentOptions,
   ListCommitOptions,
+  ListContributionTemplatesOptions,
   ListOptions,
   ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
@@ -60,6 +65,54 @@ export interface ProviderRawTypes {
   comment: unknown;
 }
 
+function contributionTemplatePageValue(
+  value: number | undefined,
+  fallback: number,
+  label: string,
+  maximum?: number,
+): number {
+  const resolved = value ?? fallback;
+  if (
+    !Number.isSafeInteger(resolved) ||
+    resolved < 1 ||
+    (maximum !== undefined && resolved > maximum)
+  ) {
+    const range = maximum === undefined ? "a positive integer" : `an integer from 1 to ${maximum}`;
+    throw new ForgesError(`${label} must be ${range}`, 400);
+  }
+  return resolved;
+}
+
+interface ContributionTemplatePagination {
+  page: number;
+  perPage: number;
+}
+
+function contributionTemplatePagination(
+  options?: ListContributionTemplatesOptions,
+): ContributionTemplatePagination {
+  return {
+    page: contributionTemplatePageValue(options?.page, 1, "page"),
+    perPage: contributionTemplatePageValue(options?.perPage, 30, "perPage", 100),
+  };
+}
+
+function paginateContributionTemplates(
+  templates: readonly ContributionTemplateSummary[],
+  pagination: ContributionTemplatePagination,
+): PageResult<ContributionTemplateSummary> {
+  const { page, perPage } = pagination;
+  const start = (page - 1) * perPage;
+  const items = templates.slice(start, start + perPage);
+  const hasNextPage = start + items.length < templates.length;
+  return {
+    items,
+    totalCount: templates.length,
+    hasNextPage,
+    nextPage: hasNextPage ? page + 1 : undefined,
+  };
+}
+
 /**
  * Abstract base for every git provider.
  *
@@ -68,6 +121,7 @@ export interface ProviderRawTypes {
  */
 export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> {
   public readonly repos: RepositoryResource;
+  public readonly contributionTemplates: ContributionTemplateResource;
   public readonly code: CodeSearchResource;
   public readonly ciRuns: CiRunResource;
   public readonly commits: CommitResource;
@@ -80,6 +134,25 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     this.repos = {
       list: (owner, options) => this.listRepos(owner, options),
       get: (owner, repo) => this.getRepo(owner, repo),
+    };
+    this.contributionTemplates = {
+      list: async (owner, repo, kind, options) => {
+        const pagination = contributionTemplatePagination(options);
+        const templates = await this.listContributionTemplates(owner, repo, kind);
+        return paginateContributionTemplates(templates, pagination);
+      },
+      get: async (owner, repo, kind, key) => {
+        if (key.length === 0) {
+          throw new ForgesError("Contribution template key must not be empty", 400);
+        }
+        const templates = await this.listContributionTemplates(owner, repo, kind);
+        const template = templates.find((candidate) => candidate.key === key);
+        if (!template) {
+          throw new NotFoundError(`Contribution template not found: ${kind}/${key}`);
+        }
+        const content = await this.readContributionTemplate(owner, repo, template);
+        return { ...template, content };
+      },
     };
     this.code = {
       search: async (query, options) => {
@@ -167,6 +240,24 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     options?: ListOptions,
   ): Promise<PageResult<Repository>>;
   protected abstract getRepo(owner: string, repo: string): Promise<Repository>;
+  protected listContributionTemplates(
+    _owner: string,
+    _repo: string,
+    _kind: ContributionTemplateKind,
+  ): Promise<ContributionTemplateSummary[]> {
+    return Promise.reject(
+      new ForgesError("Contribution template discovery is not supported by this provider", 501),
+    );
+  }
+  protected readContributionTemplate(
+    _owner: string,
+    _repo: string,
+    _template: ContributionTemplateSummary,
+  ): Promise<ContributionTemplate["content"]> {
+    return Promise.reject(
+      new ForgesError("Contribution template reads are not supported by this provider", 501),
+    );
+  }
   protected searchCode(
     _query: string,
     _options?: CodeSearchOptions,

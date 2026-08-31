@@ -10,11 +10,13 @@ import {
   codeSearchParameters,
   commentParameters,
   commitParameters,
+  contributionTemplateParameters,
   createIssueParameters,
   createPullRequestParameters,
   listCiRunsParameters,
   listCommentsParameters,
   listCommitsParameters,
+  listContributionTemplatesParameters,
   listPullRequestChecksParameters,
   listPullRequestFilesParameters,
   listRepositoriesParameters,
@@ -109,6 +111,35 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     parameters: repositoryParameters,
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getRepository(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_contribution_templates_list",
+    label: "Forges Contribution Templates",
+    description:
+      "List paged metadata for effective issue or pull-request templates, including inheritance provenance",
+    promptSnippet: "Discover the contribution templates that apply to a repository.",
+    promptGuidelines: [
+      "Use forges_contribution_templates_list before drafting an issue or pull request; pass one returned kind and key to forges_contribution_templates_get when its full body is needed.",
+    ],
+    parameters: listContributionTemplatesParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listContributionTemplates(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_contribution_templates_get",
+    label: "Forges Contribution Template",
+    description: "Get one effective contribution template with its complete source body",
+    promptSnippet: "Read one issue or pull-request template in full.",
+    promptGuidelines: [
+      "Use forges_contribution_templates_get only with the exact kind and key returned by forges_contribution_templates_list.",
+    ],
+    parameters: contributionTemplateParameters,
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getContributionTemplate(params);
     },
   });
 

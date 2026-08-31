@@ -94,7 +94,7 @@ const gt = createProvider("gitea", {
 
 ## Agent tools
 
-The same twenty-eight tools - repositories, code search, CI runs, commits, issues, pull requests and their changed files and checks, users, authentication reload, discussion comments, and review threads - are exposed over MCP and through the Pi and OMP extensions. Read tools use the normal token detection chain, then fall back to anonymous access when no credential exists. Writes, `forges_users_authenticated`, and `forges_auth_reload` still require a credential. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
+The same thirty tools - repositories, contribution templates, code search, CI runs, commits, issues, pull requests and their changed files and checks, users, authentication reload, discussion comments, and review threads - are exposed over MCP and through the Pi and OMP extensions. Read tools use the normal token detection chain, then fall back to anonymous access when no credential exists. Writes, `forges_users_authenticated`, and `forges_auth_reload` still require a credential. For a trusted self-hosted endpoint, set the matching local environment variable to the full API base URL:
 
 | Platform           | Environment variable     |
 | ------------------ | ------------------------ |
@@ -120,7 +120,7 @@ Speaks MCP over stdio. Point a client at it:
 }
 ```
 
-An MCP client sees the text a tool returns and nothing else, so the text carries the whole answer as JSON. Issue and pull-request lists and searches drop bodies outright and name the tool that reads one in full, because one page of a busy repository is otherwise large enough to crowd out the conversation that asked for it. Pull-request search also leaves revision details to `forges_pull_requests_get`; GitHub and Gitea search responses do not carry them, and extra detail requests would make one search page unnecessarily expensive. `forges_threads_list` bounds each comment instead - twelve lines, four thousand characters - but keeps every comment of every thread on the page, so ask it for a small `perPage` on a heavily reviewed pull request. `forges_issues_comments` and `forges_pull_requests_comments` carry the same per-comment bound, and their `_get` variants read a single comment whole.
+An MCP client sees the text a tool returns and nothing else, so the text carries the whole answer as JSON. Contribution-template lists, issue and pull-request lists, and searches drop bodies outright and name the tool that reads one in full, because one page of a busy repository is otherwise large enough to crowd out the conversation that asked for it. Pull-request search also leaves revision details to `forges_pull_requests_get`; GitHub and Gitea search responses do not carry them, and extra detail requests would make one search page unnecessarily expensive. `forges_threads_list` bounds each comment instead - twelve lines, four thousand characters - but keeps every comment of every thread on the page, so ask it for a small `perPage` on a heavily reviewed pull request. `forges_issues_comments` and `forges_pull_requests_comments` carry the same per-comment bound, and their `_get` variants read a single comment whole.
 
 A failure names the status and, on a rate limit, the retry window; it never repeats the endpoint the request went to, so a self-hosted `FORGES_*_BASE_URL` stays out of the model's context even when the platform answers with an error.
 
@@ -138,9 +138,11 @@ The extensions add the details the harnesses render; MCP drops them and keeps th
 
 ## API
 
-Every provider gives you eight resources with the same method shapes. Thread semantics still follow the platform: GitHub and GitLab return real multi-comment conversations, while Gitea has no parent id on review comments, so each one comes back as its own single-comment thread.
+Every provider gives you nine resources with the same method shapes. Thread semantics still follow the platform: GitHub and GitLab return real multi-comment conversations, while Gitea has no parent id on review comments, so each one comes back as its own single-comment thread.
 
 **repos** - `list(owner, opts?)`, `get(owner, repo)`
+
+**contributionTemplates** - `list(owner, repo, kind, opts?)`, `get(owner, repo, kind, key)`
 
 **code** - `search(query, opts?)`
 
@@ -155,6 +157,8 @@ Every provider gives you eight resources with the same method shapes. Thread sem
 **users** - `get(username)`, `authenticated()`
 
 **threads** - `list(owner, repo, number, opts?)`, `get(owner, repo, number, threadId)`, `reply(owner, repo, number, threadId, input)`, `resolve(owner, repo, number, threadId)`, `unresolve(owner, repo, number, threadId)`
+
+Contribution-template lists accept `issue` or `pull_request` as `kind` and paginate metadata without returning template bodies. Each `ContributionTemplateSummary` carries an opaque `key`, `scope`, `inherited`, `sourceRepository`, `sourcePath`, and `sourceRef`; pass the returned kind and key unchanged to `get` for the complete source body. On GitHub, `scope: "repository"` means a local file under the target repository, such as `agntn/repo` plus `.github/ISSUE_TEMPLATE/bug.yml`. `scope: "owner"` means an inherited default from the `agntn/.github` repository. Local issue and pull-request overrides are resolved independently. GitHub-compatible hosts without GitHub Enterprise headers expose repository scope only instead of guessing at owner inheritance. Discovery follows each platform's recognized locations and precedence but does not lint template frontmatter or form schemas. GitLab uses its effective project template API, including group and instance inheritance; when that API hides the winning inherited source, `scope` is `unknown` and the three source fields are `null` instead of guesses. Gitea and Forgejo expose repository scope only.
 
 Code search accepts `CodeSearchOptions`: `page`, `perPage`, and optional `owner` and `repo` scope. A repository scope requires its owner. GitHub supports global, owner, and repository search. GitLab uses global search, group search for owner-only scope, and project search for repository scope. GitLab requires authentication for every search API call; global and group code search also require Premium or Ultimate with advanced or exact code search enabled. Gitea, Forgejo, and GitHub-compatible hosts without a code-search endpoint return an explicit unsupported error. Results are `CodeSearchItem` rows with `repository`, `path`, and `url`, wrapped in `SearchPageResult` so callers can follow pagination and inspect `incomplete`. For GitHub, `incomplete` is true when the search times out, scope enforcement drops an unexpected row, or the match count exceeds the 1,000-result retrieval cap.
 
@@ -217,7 +221,7 @@ const gitea = new GiteaProvider({ token: process.env.GITEA_TOKEN });
 console.log(gitea instanceof Provider); // true
 ```
 
-`Provider` is the abstract base class for every implementation. It owns the eight resource accessors, while concrete classes implement the typed mappers and platform-specific API operations. Custom providers that do not implement code search, CI runs, or pull-request checks get an explicit unsupported-operation error.
+`Provider` is the abstract base class for every implementation. It owns the nine resource accessors, while concrete classes implement the typed mappers and platform-specific API operations. Custom providers that do not implement contribution templates, code search, CI runs, or pull-request checks get an explicit unsupported-operation error.
 
 The runtime base class is also available from `@agntn/forges/provider`. The
 `@agntn/forges/types` subpath contains only TypeScript models and resource interfaces.

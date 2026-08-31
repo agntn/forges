@@ -8,6 +8,7 @@ import { resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
+  const contributionTemplates = { list: vi.fn(), get: vi.fn() };
   const code = { search: vi.fn() };
   const ciRuns = { list: vi.fn() };
   const commits = { list: vi.fn(), get: vi.fn() };
@@ -28,12 +29,23 @@ const mocks = vi.hoisted(() => {
     resolve: vi.fn(),
     unresolve: vi.fn(),
   };
-  const provider = { repos, code, ciRuns, commits, issues, pullRequests, users, threads };
+  const provider = {
+    repos,
+    contributionTemplates,
+    code,
+    ciRuns,
+    commits,
+    issues,
+    pullRequests,
+    users,
+    threads,
+  };
 
   return {
     resolveToken: vi.fn(() => ({ token: "test-token", source: "env" as const })),
     createProvider: vi.fn(() => provider),
     repos,
+    contributionTemplates,
     code,
     ciRuns,
     commits,
@@ -52,6 +64,8 @@ vi.mock("../src/index.ts", () => ({
 const toolNames = [
   "forges_repos_list",
   "forges_repos_get",
+  "forges_contribution_templates_list",
+  "forges_contribution_templates_get",
   "forges_code_search",
   "forges_ci_runs_list",
   "forges_commits_list",
@@ -190,6 +204,61 @@ describe("forges MCP server", () => {
     });
     // Details never reach an MCP client, so the unbounded payload stays out of the result.
     expect(response.structuredContent).toBeUndefined();
+  });
+
+  it("lists contribution-template metadata and reads one body by its returned key", async () => {
+    const summary = {
+      kind: "issue",
+      key: "agntn/.github:.github/ISSUE_TEMPLATE/bug.yml",
+      name: "bug",
+      scope: "owner",
+      inherited: true,
+      sourceRepository: "agntn/.github",
+      sourcePath: ".github/ISSUE_TEMPLATE/bug.yml",
+      sourceRef: "main",
+    };
+    mocks.contributionTemplates.list.mockResolvedValue({
+      items: [summary],
+      totalCount: 1,
+      hasNextPage: false,
+    });
+    mocks.contributionTemplates.get.mockResolvedValue({ ...summary, content: "body: []\n" });
+    const client = await connectTestClient();
+
+    const listed = await client.callTool({
+      name: "forges_contribution_templates_list",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        kind: "issue",
+        page: 1,
+        perPage: 10,
+      },
+    });
+    const read = await client.callTool({
+      name: "forges_contribution_templates_get",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        kind: "issue",
+        key: summary.key,
+      },
+    });
+
+    expect(mocks.contributionTemplates.list).toHaveBeenCalledWith("agntn", "forges", "issue", {
+      page: 1,
+      perPage: 10,
+    });
+    expect(mocks.contributionTemplates.get).toHaveBeenCalledWith(
+      "agntn",
+      "forges",
+      "issue",
+      summary.key,
+    );
+    expect(text(listed.content)).not.toContain("body: []");
+    expect(text(read.content)).toContain("body: []");
   });
 
   it("searches code through the shared operation", async () => {

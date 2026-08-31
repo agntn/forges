@@ -3,6 +3,7 @@
  * Also serves GitBucket (GitHub API v3 compatible) via custom baseURL
  */
 
+import { Buffer } from "node:buffer";
 import { Provider, type ProviderRawTypes } from "../provider.ts";
 import type {
   ProviderConfig,
@@ -12,6 +13,8 @@ import type {
   CiRun,
   Commit,
   CommitSummary,
+  ContributionTemplateKind,
+  ContributionTemplateSummary,
   Issue,
   PullRequest,
   PullRequestCheck,
@@ -40,13 +43,15 @@ import { FetchError } from "ofetch";
 import { ForgesError, NotFoundError, normalizeError } from "../errors.ts";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
 import { parseLinkHeader } from "../pagination.ts";
-import { encodePathSegment } from "./base-url.ts";
+import { encodeApiResponsePathSegment, encodePathSegment } from "./base-url.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
 
 const MAX_COMMIT_FILE_PAGES = 30;
 const GITHUB_SEARCH_RESULT_LIMIT = 1000;
+const GITHUB_ISSUE_TEMPLATE_DIRECTORY = ".github/ISSUE_TEMPLATE";
+const GITHUB_PULL_REQUEST_TEMPLATE_LOCATIONS = [".github", "", "docs"] as const;
 
 // --- GitHub API response types (snake_case) ---
 
@@ -74,12 +79,21 @@ interface GitHubCodeSearchResponse {
   items: GitHubCodeSearchItem[];
 }
 
+interface GitHubContent {
+  type: string;
+  name: string;
+  path: string;
+  content?: string;
+  encoding?: string;
+}
+
 interface GitHubRepo {
   id: number;
   name: string;
   full_name: string;
   description: string | null;
   private: boolean;
+  visibility?: string;
   default_branch: string;
   html_url: string;
   clone_url: string;
@@ -469,6 +483,227 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       tokenHeader: "Authorization",
       tokenPrefix: "token ",
     });
+  }
+
+  private repositoryRoute(fullName: string): string {
+    const segments = fullName.split("/");
+    const owner = segments[0];
+    const repo = segments[1];
+    if (segments.length !== 2 || owner === undefined || repo === undefined) {
+      throw new ForgesError("GitHub returned an invalid repository name", 502, "github");
+    }
+    return `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`;
+  }
+
+  private contentsRoute(fullName: string, path: string): string {
+    const encodedPath =
+      path === "" ? "" : path.split("/").map(encodeApiResponsePathSegment).join("/");
+    const suffix = encodedPath === "" ? "" : `/${encodedPath}`;
+    return `${this.repositoryRoute(fullName)}/contents${suffix}`;
+  }
+
+  private async tryRepository(owner: string, repo: string): Promise<GitHubRepo | null> {
+    try {
+      return await this.client<GitHubRepo>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
+      );
+    } catch (error) {
+      const normalized = normalizeError(error, "github");
+      if (normalized.status === 404) return null;
+      throw normalized;
+    }
+  }
+
+  private async supportsOwnerDefaults(owner: string, repo: string): Promise<boolean> {
+    const hostname = new URL(this.restBaseURL).hostname;
+    if (hostname === "api.github.com" || hostname.endsWith(".ghe.com")) return true;
+    try {
+      const { headers } = await rawFetch<GitHubRepo>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
+      );
+      return headers.has("x-github-enterprise-version");
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  private async tryListContents(
+    fullName: string,
+    path: string,
+    ref: string,
+  ): Promise<GitHubContent[]> {
+    try {
+      const contents = await this.client<GitHubContent[] | GitHubContent>(
+        this.contentsRoute(fullName, path),
+        { query: { ref } },
+      );
+      return Array.isArray(contents) ? contents : [];
+    } catch (error) {
+      const normalized = normalizeError(error, "github");
+      if (normalized.status === 404) return [];
+      throw normalized;
+    }
+  }
+
+  private templateSummary(
+    kind: ContributionTemplateKind,
+    sourceRepository: string,
+    sourceRef: string,
+    file: GitHubContent,
+    inherited: boolean,
+  ): ContributionTemplateSummary {
+    const name = file.name.replace(/\.[^.]+$/u, "");
+    return {
+      kind,
+      key: `${sourceRepository}:${file.path}`,
+      name,
+      scope: inherited ? "owner" : "repository",
+      inherited,
+      sourceRepository,
+      sourcePath: file.path,
+      sourceRef,
+    };
+  }
+
+  private async discoverIssueTemplates(
+    repository: GitHubRepo,
+    inherited: boolean,
+  ): Promise<{ templates: ContributionTemplateSummary[]; overrides: boolean }> {
+    const entries = await this.tryListContents(
+      repository.full_name,
+      GITHUB_ISSUE_TEMPLATE_DIRECTORY,
+      repository.default_branch,
+    );
+    const files = entries.filter(
+      (entry) =>
+        entry.type === "file" &&
+        !/^config\.ya?ml$/iu.test(entry.name) &&
+        /\.(?:md|ya?ml)$/iu.test(entry.name),
+    );
+    const hasConfiguration = entries.some(
+      (entry) => entry.type === "file" && /^config\.ya?ml$/iu.test(entry.name),
+    );
+    return {
+      templates: files.map((file) =>
+        this.templateSummary(
+          "issue",
+          repository.full_name,
+          repository.default_branch,
+          file,
+          inherited,
+        ),
+      ),
+      overrides: files.length > 0 || hasConfiguration,
+    };
+  }
+
+  private async discoverPullRequestTemplates(
+    repository: GitHubRepo,
+    inherited: boolean,
+  ): Promise<{ templates: ContributionTemplateSummary[]; overrides: boolean }> {
+    const baseEntries = await Promise.all(
+      GITHUB_PULL_REQUEST_TEMPLATE_LOCATIONS.map((location) =>
+        this.tryListContents(repository.full_name, location, repository.default_branch),
+      ),
+    );
+    const templateDirectories = await Promise.all(
+      GITHUB_PULL_REQUEST_TEMPLATE_LOCATIONS.map((location) => {
+        const path =
+          location === "" ? "PULL_REQUEST_TEMPLATE" : `${location}/PULL_REQUEST_TEMPLATE`;
+        return this.tryListContents(repository.full_name, path, repository.default_branch);
+      }),
+    );
+    const singular = baseEntries
+      .flatMap((entries) =>
+        entries.filter(
+          (entry) =>
+            entry.type === "file" && /^pull_request_template(?:\.[^/]+)?$/iu.test(entry.name),
+        ),
+      )
+      .at(0);
+    const seenNames = new Set<string>();
+    const selectable = templateDirectories.flatMap((entries) =>
+      entries.filter((entry) => {
+        if (entry.type !== "file") return false;
+        const name = entry.name.toLowerCase();
+        if (seenNames.has(name)) return false;
+        seenNames.add(name);
+        return true;
+      }),
+    );
+    const files = singular === undefined ? selectable : [singular, ...selectable];
+    return {
+      templates: files.map((file) =>
+        this.templateSummary(
+          "pull_request",
+          repository.full_name,
+          repository.default_branch,
+          file,
+          inherited,
+        ),
+      ),
+      overrides:
+        singular !== undefined || templateDirectories.some((entries) => entries.length > 0),
+    };
+  }
+
+  protected override async listContributionTemplates(
+    owner: string,
+    repo: string,
+    kind: ContributionTemplateKind,
+  ): Promise<ContributionTemplateSummary[]> {
+    try {
+      const repository = await this.client<GitHubRepo>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
+      );
+      const local =
+        kind === "issue"
+          ? await this.discoverIssueTemplates(repository, false)
+          : await this.discoverPullRequestTemplates(repository, false);
+      if (local.overrides || repository.name.toLowerCase() === ".github") {
+        return local.templates;
+      }
+      if (!(await this.supportsOwnerDefaults(owner, repo))) return local.templates;
+
+      const defaults = await this.tryRepository(owner, ".github");
+      const usableDefaults =
+        defaults !== null && (!defaults.private || defaults.visibility === "internal");
+      if (!usableDefaults) return local.templates;
+      const inherited =
+        kind === "issue"
+          ? await this.discoverIssueTemplates(defaults, true)
+          : await this.discoverPullRequestTemplates(defaults, true);
+      return inherited.templates;
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async readContributionTemplate(
+    _owner: string,
+    _repo: string,
+    template: ContributionTemplateSummary,
+  ): Promise<string> {
+    try {
+      if (
+        template.sourceRepository === null ||
+        template.sourcePath === null ||
+        template.sourceRef === null
+      ) {
+        throw new ForgesError("GitHub template source metadata is incomplete", 502, "github");
+      }
+      const file = await this.client<GitHubContent>(
+        this.contentsRoute(template.sourceRepository, template.sourcePath),
+        { query: { ref: template.sourceRef } },
+      );
+      if (file.type !== "file" || file.encoding !== "base64" || file.content === undefined) {
+        throw new ForgesError("GitHub did not return decodable template content", 502, "github");
+      }
+      return Buffer.from(file.content.replaceAll("\n", ""), "base64").toString("utf8");
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
   }
 
   protected override mapOwner(raw: GitHubOwner): Owner {

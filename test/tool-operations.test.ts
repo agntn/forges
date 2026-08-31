@@ -4,7 +4,9 @@ import { AuthenticationError } from "../src/errors.ts";
 import {
   createIssue,
   getAuthenticatedUser,
+  getContributionTemplate,
   getRepository,
+  listContributionTemplates,
   reloadAuthentication,
   searchCode,
   resetPinnedProviders,
@@ -32,6 +34,36 @@ const mocks = vi.hoisted(() => {
       const login = anonymous ? "anonymous" : localLogin.current;
 
       return {
+        contributionTemplates: {
+          list: vi.fn(async (_owner: string, _repo: string, kind: string, options: unknown) => ({
+            items: [
+              {
+                kind,
+                key: "agntn/.github:.github/ISSUE_TEMPLATE/bug.yml",
+                name: "bug",
+                scope: "owner",
+                inherited: true,
+                sourceRepository: "agntn/.github",
+                sourcePath: ".github/ISSUE_TEMPLATE/bug.yml",
+                sourceRef: "main",
+              },
+            ],
+            totalCount: 1,
+            hasNextPage: false,
+            options,
+          })),
+          get: vi.fn(async (_owner: string, _repo: string, kind: string, key: string) => ({
+            kind,
+            key,
+            name: "bug",
+            scope: "owner",
+            inherited: true,
+            sourceRepository: "agntn/.github",
+            sourcePath: ".github/ISSUE_TEMPLATE/bug.yml",
+            sourceRef: "main",
+            content: "name: Bug report\nbody: []\n",
+          })),
+        },
         code: {
           search: vi.fn(async (query: string, options: unknown) => ({
             items: [
@@ -120,6 +152,29 @@ afterEach(() => {
 });
 
 describe("configured provider", () => {
+  it("lists template metadata without bodies and reads one exact key in full", async () => {
+    const listed = await listContributionTemplates({
+      platform: "github",
+      owner: "agntn",
+      repo: "forges",
+      kind: "issue",
+      page: 2,
+      perPage: 10,
+    });
+    const summary = listed.details.result.items[0]!;
+    const read = await getContributionTemplate({
+      platform: "github",
+      owner: "agntn",
+      repo: "forges",
+      kind: "issue",
+      key: summary.key,
+    });
+
+    expect(summary).not.toHaveProperty("content");
+    expect(listed.content[0].text).toContain("use forges_contribution_templates_get");
+    expect(read.details.result.content).toBe("name: Bug report\nbody: []\n");
+  });
+
   it("passes optional scope and pagination to code search", async () => {
     const searched = await searchCode({
       platform: "github",

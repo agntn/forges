@@ -68,19 +68,20 @@ test/
 
 **Where to put new code:**
 
-| Task                 | Location                            | Notes                                                              |
-| -------------------- | ----------------------------------- | ------------------------------------------------------------------ |
-| Add new provider     | `src/providers/`                    | Copy github.ts as template. Extend the abstract `Provider` base    |
-| Add new resource     | `src/types.ts` → provider files     | Define interface in types.ts, implement in each provider           |
-| Change auth logic    | `src/auth.ts`                       | `resolveToken()` chain — order matters                             |
-| Change cache backend | `src/cache.ts`                      | `configureStorage()` swaps unstorage driver                        |
-| Fix pagination       | `src/pagination.ts`                 | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab     |
-| Fix error mapping    | `src/errors.ts`                     | `normalizeError()` maps FetchError → ForgesError subtypes          |
-| Add sub-path export  | `build.config.mjs` + `package.json` | Must update both: entries array + exports map                      |
-| Add agent tool       | `src/tool-operations.ts`            | Executor first, then `src/mcp.ts` and both extensions              |
-| Change tool schema   | `packages/shared/`                  | MCP and Pi share it; OMP rebuilds it from `pi.typebox`             |
-| Debug HTTP           | `src/http.ts`                       | `rawFetch()` returns headers, `createHttpClient()` configures auth |
-| Add tests            | `test/`                             | Name must match `test/<module>.test.ts`                            |
+| Task                          | Location                            | Notes                                                              |
+| ----------------------------- | ----------------------------------- | ------------------------------------------------------------------ |
+| Add new provider              | `src/providers/`                    | Copy github.ts as template. Extend the abstract `Provider` base    |
+| Add new resource              | `src/types.ts` → provider files     | Define interface in types.ts, implement in each provider           |
+| Change contribution templates | `src/provider.ts` + provider files  | Keep lists metadata-only; `get` must resolve an exact listed key   |
+| Change auth logic             | `src/auth.ts`                       | `resolveToken()` chain: order matters                              |
+| Change cache backend          | `src/cache.ts`                      | `configureStorage()` swaps unstorage driver                        |
+| Fix pagination                | `src/pagination.ts`                 | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab     |
+| Fix error mapping             | `src/errors.ts`                     | `normalizeError()` maps FetchError → ForgesError subtypes          |
+| Add sub-path export           | `build.config.mjs` + `package.json` | Must update both: entries array + exports map                      |
+| Add agent tool                | `src/tool-operations.ts`            | Executor first, then `src/mcp.ts` and both extensions              |
+| Change tool schema            | `packages/shared/`                  | MCP and Pi share it; OMP rebuilds it from `pi.typebox`             |
+| Debug HTTP                    | `src/http.ts`                       | `rawFetch()` returns headers, `createHttpClient()` configures auth |
+| Add tests                     | `test/`                             | Name must match `test/<module>.test.ts`                            |
 
 ## Code Conventions
 
@@ -210,6 +211,9 @@ vi.mock("../src/cache.ts", () => ({ cachedFetch: mocks.cachedFetch }));
 - **GitBucket** works via GitHub provider with custom `baseURL` — no separate provider needed.
 - **GitLab `/users/:owner/projects`** returns 404 for groups — `listRepos` falls back to `/groups/:owner/projects` only on 404, re-throws other errors.
 - **GitHub `/issues` returns PRs** — filtered by absence of `pull_request` key.
+- **GitHub template scope is explicit:** repository files and inherited owner `.github` defaults are different scopes; local overrides apply independently to issue and pull-request templates.
 - **GitLab uses `iid`** (project-scoped) not `id` (global) for issue/MR numbers.
+- **GitLab template provenance can be hidden:** use the effective template API and leave inherited source fields unknown rather than guessing a group or instance source.
 - **Gitea uses `limit`** param, not `per_page`.
+- **Gitea templates are repository-scoped:** do not claim GitHub-style owner inheritance.
 - **unstorage memory driver has no TTL** — that's why lru-cache driver is used.

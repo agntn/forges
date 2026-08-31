@@ -26,8 +26,9 @@ vi.mock("../src/http.ts", () => ({
 }));
 
 vi.mock("../src/cache.ts", () => ({
-  cachedFetch: vi.fn(async (client: (...args: unknown[]) => unknown, url: string, opts?: unknown) =>
-    opts ? client(url, opts) : client(url),
+  cachedFetch: vi.fn(
+    async (client: (...args: unknown[]) => unknown, url: string, opts?: unknown) =>
+      opts ? client(url, opts) : client(url),
   ),
 }));
 
@@ -175,6 +176,14 @@ function giteaComment(overrides: Record<string, unknown> = {}) {
 
 function makeHeaders(extra: Record<string, string> = {}): Headers {
   return new Headers(extra);
+}
+
+function makeFetchError(status: number): FetchError {
+  const error = new FetchError(`HTTP ${status}`);
+  error.status = status;
+  error.statusCode = status;
+  error.response = Object.assign(new Response(null, { status }), { _data: undefined });
+  return error;
 }
 
 function linkHeader(
@@ -356,6 +365,133 @@ describe("Gitea Provider", () => {
 
       expect(result.items).toHaveLength(0);
       expect(result.hasNextPage).toBe(false);
+    });
+  });
+
+  describe("contributionTemplates", () => {
+    function contentFile(path: string, content: string) {
+      const name = path.split("/").at(-1) ?? path;
+      return {
+        type: "file",
+        name,
+        path,
+        content: Buffer.from(content).toString("base64"),
+        encoding: "base64",
+      };
+    }
+
+    it("keeps same-name issue templates distinct by their provider paths", async () => {
+      const first = "---\nname: Bug\nabout: Root template\n---\nRoot body\n";
+      mockClient.mockImplementation(async (url: string) => {
+        if (url === "/repos/testowner/test-repo") return giteaRepo();
+        if (url === "/repos/testowner/test-repo/issue_templates") {
+          return [
+            {
+              name: "Bug",
+              title: "",
+              about: "Root template",
+              labels: [],
+              assignees: [],
+              ref: "refs/heads/",
+              content: "Root body\n",
+              body: [],
+              file_name: "ISSUE_TEMPLATE/bug.md",
+            },
+            {
+              name: "Bug",
+              title: "",
+              about: "Gitea template",
+              labels: [],
+              assignees: [],
+              ref: "refs/heads/",
+              content: "Gitea body\n",
+              body: [],
+              file_name: ".gitea/ISSUE_TEMPLATE/bug.md",
+            },
+          ];
+        }
+        if (url === "/repos/testowner/test-repo/contents/ISSUE_TEMPLATE/bug.md") {
+          return contentFile("ISSUE_TEMPLATE/bug.md", first);
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const page = await provider.contributionTemplates.list("testowner", "test-repo", "issue");
+
+      expect(page.items.map(({ key }) => key)).toEqual([
+        "ISSUE_TEMPLATE/bug.md",
+        ".gitea/ISSUE_TEMPLATE/bug.md",
+      ]);
+      expect(page.items.every(({ inherited }) => !inherited)).toBe(true);
+
+      const template = await provider.contributionTemplates.get(
+        "testowner",
+        "test-repo",
+        "issue",
+        page.items[0]!.key,
+      );
+      expect(template.content).toBe(first);
+    });
+
+    it("returns no pull-request template after the bounded candidate set misses", async () => {
+      mockClient.mockImplementation(async (url: string) => {
+        if (url === "/repos/testowner/test-repo") return giteaRepo();
+        if (url.startsWith("/repos/testowner/test-repo/contents/")) {
+          throw makeFetchError(404);
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const page = await provider.contributionTemplates.list(
+        "testowner",
+        "test-repo",
+        "pull_request",
+      );
+
+      expect(page.items).toEqual([]);
+      expect(mockClient).toHaveBeenCalledTimes(19);
+    });
+
+    it("stops at the first pull-request template candidate", async () => {
+      const body = "Describe the change.\n";
+      mockClient.mockImplementation(async (url: string) => {
+        if (url === "/repos/testowner/test-repo") return giteaRepo();
+        if (
+          url === "/repos/testowner/test-repo/contents/PULL_REQUEST_TEMPLATE.md" ||
+          url === "/repos/testowner/test-repo/contents/PULL_REQUEST_TEMPLATE.yaml" ||
+          url === "/repos/testowner/test-repo/contents/PULL_REQUEST_TEMPLATE.yml"
+        ) {
+          throw makeFetchError(404);
+        }
+        if (url === "/repos/testowner/test-repo/contents/pull_request_template.md") {
+          return contentFile("pull_request_template.md", body);
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const page = await provider.contributionTemplates.list(
+        "testowner",
+        "test-repo",
+        "pull_request",
+      );
+
+      expect(page.items).toEqual([
+        {
+          kind: "pull_request",
+          key: "pull_request_template.md",
+          name: "pull_request_template",
+          scope: "repository",
+          inherited: false,
+          sourceRepository: "testowner/test-repo",
+          sourcePath: "pull_request_template.md",
+          sourceRef: "main",
+        },
+      ]);
+      expect(
+        mockClient.mock.calls.some(([url]) =>
+          String(url).includes(".gitea/PULL_REQUEST_TEMPLATE.md"),
+        ),
+      ).toBe(false);
     });
   });
 

@@ -35,6 +35,14 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   );
   const owner = Type.String({ description: "Repository owner or organization", minLength: 1 });
   const repo = Type.String({ description: "Repository name", minLength: 1 });
+  const contributionTemplateKind = Type.Union(
+    [Type.Literal("issue"), Type.Literal("pull_request")],
+    { description: "Contribution template kind" },
+  );
+  const contributionTemplateKey = Type.String({
+    description: "Provider key returned by the contribution-template list operation",
+    minLength: 1,
+  });
   const sha = Type.String({ description: "Commit SHA", minLength: 1 });
   const branch = Type.Optional(Type.String({ description: "Filter by branch", minLength: 1 }));
   const ref = Type.Optional(
@@ -68,6 +76,21 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
 
   const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
   const repositoryParameters = Type.Object({ platform, owner, repo });
+  const listContributionTemplatesParameters = Type.Object({
+    platform,
+    owner,
+    repo,
+    kind: contributionTemplateKind,
+    page,
+    perPage,
+  });
+  const contributionTemplateParameters = Type.Object({
+    platform,
+    owner,
+    repo,
+    kind: contributionTemplateKind,
+    key: contributionTemplateKey,
+  });
   const codeSearchParameters = Type.Object({
     platform,
     query: Type.String({
@@ -188,6 +211,29 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getRepository(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_contribution_templates_list",
+    label: "Forges Contribution Templates",
+    description:
+      "List paged metadata for effective issue or pull-request templates, including inheritance provenance",
+    parameters: listContributionTemplatesParameters,
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listContributionTemplates(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_contribution_templates_get",
+    label: "Forges Contribution Template",
+    description: "Get one effective contribution template with its complete source body",
+    parameters: contributionTemplateParameters,
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getContributionTemplate(params);
     },
   });
 

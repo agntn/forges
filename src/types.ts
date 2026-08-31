@@ -60,6 +60,45 @@ export interface Repository {
   owner: Owner;
 }
 
+/** Contribution workflow that a repository template belongs to. */
+export type ContributionTemplateKind = "issue" | "pull_request";
+
+/**
+ * Scope that supplied the effective template. Group and instance are available
+ * to providers that expose those origins; use unknown when the API hides them.
+ */
+export type ContributionTemplateScope = "repository" | "owner" | "group" | "instance" | "unknown";
+
+/**
+ * One effective contribution template without its potentially large body.
+ * The provider-issued key is opaque and must be passed back unchanged to `get`.
+ */
+export interface ContributionTemplateSummary {
+  kind: ContributionTemplateKind;
+  key: string;
+  name: string;
+  /** Repository-local, owner-level, or another platform inheritance scope. */
+  scope: ContributionTemplateScope;
+  inherited: boolean;
+  /** Repository holding the winning file, or null when the platform hides it. */
+  sourceRepository: string | null;
+  /** Repository-relative path of the winning file, or null when the platform hides it. */
+  sourcePath: string | null;
+  /** Ref used to read the winning file, or null when the platform hides it. */
+  sourceRef: string | null;
+}
+
+/** One effective contribution template with its complete source body. */
+export interface ContributionTemplate extends ContributionTemplateSummary {
+  content: string;
+}
+
+/** Pagination for one contribution-template kind. */
+export interface ListContributionTemplatesOptions {
+  page?: number;
+  perPage?: number;
+}
+
 /** Provider-independent lifecycle state of a CI run. */
 export type CiRunStatus = "queued" | "in_progress" | "waiting" | "completed";
 
@@ -359,6 +398,22 @@ export interface ProviderConfig {
 export interface RepositoryResource {
   list(owner: string, options?: ListOptions): Promise<PageResult<Repository>>;
   get(owner: string, repo: string): Promise<Repository>;
+}
+
+/** Resource accessor for effective repository contribution templates. */
+export interface ContributionTemplateResource {
+  list(
+    owner: string,
+    repo: string,
+    kind: ContributionTemplateKind,
+    options?: ListContributionTemplatesOptions,
+  ): Promise<PageResult<ContributionTemplateSummary>>;
+  get(
+    owner: string,
+    repo: string,
+    kind: ContributionTemplateKind,
+    key: string,
+  ): Promise<ContributionTemplate>;
 }
 
 /** Resource accessor for repository code search. */
