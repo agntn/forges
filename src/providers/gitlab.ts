@@ -18,6 +18,7 @@ import type {
   RepositoryPermission,
   CiRun,
   Commit,
+  CommitSummary,
   Issue,
   PullRequest,
   PullRequestCheck,
@@ -30,6 +31,7 @@ import type {
   ListOptions,
   ListCiRunsOptions,
   ListCommentOptions,
+  ListCommitOptions,
   ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
   ListThreadOptions,
@@ -358,6 +360,25 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     };
   }
 
+  private mapCommitSummary(raw: GitLabCommit): CommitSummary {
+    return {
+      sha: raw.id,
+      message: raw.message,
+      author: {
+        name: raw.author_name,
+        email: raw.author_email,
+        date: raw.authored_date,
+      },
+      committer: {
+        name: raw.committer_name,
+        email: raw.committer_email,
+        date: raw.committed_date,
+      },
+      parents: raw.parent_ids,
+      url: raw.web_url,
+    };
+  }
+
   private mapPullRequestCheck(raw: GitLabPipeline): PullRequestCheck {
     return {
       id: String(raw.id),
@@ -672,6 +693,36 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     }
   }
 
+  protected override async listCommits(
+    owner: string,
+    repo: string,
+    options?: ListCommitOptions,
+  ): Promise<PageResult<CommitSummary>> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const query: Record<string, string | number> = {
+        page: options?.page ?? 1,
+        per_page: options?.perPage ?? 30,
+      };
+      if (options?.ref) query.ref_name = options.ref;
+      if (options?.path) query.path = options.path;
+      if (options?.since) query.since = options.since;
+      if (options?.until) query.until = options.until;
+
+      const { data, headers } = await rawFetch<GitLabCommit[]>(
+        this.client,
+        `/projects/${projectId}/repository/commits`,
+        { query },
+      );
+      return this.parsePagination(
+        (data ?? []).map((raw) => this.mapCommitSummary(raw)),
+        headers,
+      );
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
   protected override async getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
@@ -700,20 +751,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       }
 
       return {
-        sha: commit.id,
-        message: commit.message,
-        author: {
-          name: commit.author_name,
-          email: commit.author_email,
-          date: commit.authored_date,
-        },
-        committer: {
-          name: commit.committer_name,
-          email: commit.committer_email,
-          date: commit.committed_date,
-        },
-        parents: commit.parent_ids,
-        url: commit.web_url,
+        ...this.mapCommitSummary(commit),
         files,
         filesComplete: null,
       };

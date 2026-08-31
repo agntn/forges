@@ -9,7 +9,7 @@ import { resetPinnedProviders } from "../src/tool-operations.ts";
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn() };
   const ciRuns = { list: vi.fn() };
-  const commits = { get: vi.fn() };
+  const commits = { list: vi.fn(), get: vi.fn() };
   const issues = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
   const pullRequests = {
     list: vi.fn(),
@@ -51,6 +51,7 @@ const toolNames = [
   "forges_repos_list",
   "forges_repos_get",
   "forges_ci_runs_list",
+  "forges_commits_list",
   "forges_commits_get",
   "forges_issues_list",
   "forges_issues_search",
@@ -223,6 +224,49 @@ describe("forges MCP server", () => {
       perPage: 10,
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: runs });
+  });
+
+  it("lists commit summaries through the shared operation", async () => {
+    const commits = {
+      items: [
+        {
+          sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+          message: "feat: list commit history",
+          author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          parents: ["parent"],
+          url: "https://github.com/agntn/forges/commit/cb9d4e5",
+        },
+      ],
+      hasNextPage: false,
+    };
+    mocks.commits.list.mockResolvedValue(commits);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_commits_list",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        ref: "main",
+        path: "src/provider.ts",
+        since: "2026-08-01T00:00:00Z",
+        until: "2026-08-29T23:59:59Z",
+        page: 2,
+        perPage: 10,
+      },
+    });
+
+    expect(mocks.commits.list).toHaveBeenCalledWith("agntn", "forges", {
+      ref: "main",
+      path: "src/provider.ts",
+      since: "2026-08-01T00:00:00Z",
+      until: "2026-08-29T23:59:59Z",
+      page: 2,
+      perPage: 10,
+    });
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: commits });
   });
 
   it("gets one commit through the shared operation", async () => {

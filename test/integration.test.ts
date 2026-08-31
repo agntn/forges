@@ -215,6 +215,7 @@ describe("cross-provider class consistency", () => {
     for (const platform of platforms) {
       const p = providers[platform];
       expect(p.commits).toBeDefined();
+      expect(typeof p.commits.list).toBe("function");
       expect(typeof p.commits.get).toBe("function");
     }
   });
@@ -249,6 +250,7 @@ describe("cross-provider class consistency", () => {
       expect(p.repos.get.length).toBeGreaterThanOrEqual(2);
 
       expect(p.ciRuns.list.length).toBeGreaterThanOrEqual(2);
+      expect(p.commits.list.length).toBeGreaterThanOrEqual(2);
       expect(p.commits.get.length).toBeGreaterThanOrEqual(3);
 
       expect(p.issues.list.length).toBeGreaterThanOrEqual(2);

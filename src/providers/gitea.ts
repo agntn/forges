@@ -8,7 +8,7 @@
 
 import { createHttpClient, rawFetch, type HttpClient } from "../http.ts";
 import { parseLinkHeader } from "../pagination.ts";
-import { normalizeError, NotFoundError } from "../errors.ts";
+import { ForgesError, normalizeError, NotFoundError } from "../errors.ts";
 import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
 import { Provider, type ProviderRawTypes } from "../provider.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
@@ -17,6 +17,7 @@ import type {
   Repository,
   CiRun,
   Commit,
+  CommitSummary,
   Issue,
   PullRequest,
   PullRequestCheck,
@@ -29,6 +30,7 @@ import type {
   ListOptions,
   ListCiRunsOptions,
   ListCommentOptions,
+  ListCommitOptions,
   ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
   ListThreadOptions,
@@ -362,6 +364,17 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     };
   }
 
+  private mapCommitSummary(raw: GiteaCommit): CommitSummary {
+    return {
+      sha: raw.sha,
+      message: raw.commit.message,
+      author: raw.commit.author,
+      committer: raw.commit.committer,
+      parents: (raw.parents ?? []).map((parent) => parent.sha),
+      url: raw.html_url ?? "",
+    };
+  }
+
   private mapPullRequestCheck(raw: GiteaCommitStatus): PullRequestCheck {
     let url = raw.target_url ?? raw.url ?? "";
     if (url.startsWith("/")) {
@@ -554,18 +567,59 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     }
   }
 
+  protected override async listCommits(
+    owner: string,
+    repo: string,
+    options?: ListCommitOptions,
+  ): Promise<PageResult<CommitSummary>> {
+    try {
+      if (options?.path) {
+        throw new ForgesError(
+          "Path-filtered commit listing is not supported by Gitea because its API ignores pagination limits",
+          501,
+          PLATFORM,
+        );
+      }
+
+      const page = options?.page ?? 1;
+      const query: Record<string, string> = {
+        stat: "false",
+        verification: "false",
+        files: "false",
+        page: String(page),
+        limit: String(options?.perPage ?? 30),
+      };
+      if (options?.ref) query.sha = options.ref;
+      if (options?.since) query.since = options.since;
+      if (options?.until) query.until = options.until;
+
+      const { data, headers } = await rawFetch<GiteaCommit[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits`,
+        { query },
+      );
+      const result = buildPageResult(data ?? [], headers, (raw) => this.mapCommitSummary(raw));
+      const totalHeader = headers.get("x-total-count");
+      const totalCount = totalHeader === null ? undefined : Number.parseInt(totalHeader, 10);
+      const hasNextPage = result.hasNextPage || headers.get("x-hasmore") === "true";
+      return {
+        ...result,
+        totalCount: Number.isInteger(totalCount) ? totalCount : undefined,
+        hasNextPage,
+        nextPage: hasNextPage ? (result.nextPage ?? page + 1) : undefined,
+      };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
   protected override async getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
     try {
       const commit = await this.client<GiteaCommit>(
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodePathSegment(sha)}`,
       );
       return {
-        sha: commit.sha,
-        message: commit.commit.message,
-        author: commit.commit.author,
-        committer: commit.commit.committer,
-        parents: (commit.parents ?? []).map((parent) => parent.sha),
-        url: commit.html_url ?? "",
+        ...this.mapCommitSummary(commit),
         files: (commit.files ?? []).map((file) => this.mapPullRequestFile(file)),
         filesComplete: null,
       };

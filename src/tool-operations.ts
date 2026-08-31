@@ -7,12 +7,14 @@ import type {
   CiRun,
   Comment,
   Commit,
+  CommitSummary,
   CreateIssueInput,
   CreatePullRequestInput,
   Issue,
   IssueState,
   ListCiRunsOptions,
   ListCommentOptions,
+  ListCommitOptions,
   ListOptions,
   ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
@@ -167,6 +169,8 @@ export interface GetCommitParams extends RepositoryParams {
   sha: string;
 }
 
+export type ListCommitsParams = RepositoryParams & ListCommitOptions;
+
 export interface ListCiRunsParams extends RepositoryParams {
   branch?: string;
   page?: number;
@@ -314,6 +318,20 @@ export async function listCiRuns(
   };
   const runs = await readProvider(params.platform).ciRuns.list(params.owner, params.repo, options);
   return result(params.platform, runs);
+}
+
+export async function listCommits(
+  params: ListCommitsParams,
+): Promise<ForgesToolResult<PageResult<CommitSummary>>> {
+  const commits = await readProvider(params.platform).commits.list(params.owner, params.repo, {
+    ref: params.ref,
+    path: params.path,
+    since: params.since,
+    until: params.until,
+    page: params.page,
+    perPage: params.perPage,
+  });
+  return result(params.platform, commits);
 }
 
 export async function getCommit(params: GetCommitParams): Promise<ForgesToolResult<Commit>> {
