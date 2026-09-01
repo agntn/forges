@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.2.2
+
+[compare changes](https://github.com/agntn/forges/compare/v0.2.1...v0.2.2)
+
+### 🚀 Enhancements
+
+- **tui:** Improve Forges tool presentation ([#94](https://github.com/agntn/forges/pull/94))
+
+### ❤️ Contributors
+
+- Ori ([@oritwoen](https://github.com/oritwoen))
+
 ## v0.2.1
 
 [compare changes](https://github.com/agntn/forges/compare/v0.2.0...v0.2.1)

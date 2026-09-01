@@ -1,6 +1,6 @@
 {
   "name": "@agntn/forges",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Unified Git Provider - single TypeScript API for GitHub, GitLab, Gitea, and GitBucket",
   "keywords": [
     "api",
