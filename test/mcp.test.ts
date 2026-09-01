@@ -152,13 +152,20 @@ describe("forges MCP server", () => {
 
     const response = await client.listTools();
 
+    expect(client.getServerVersion()).toMatchObject({
+      name: "forges",
+      title: "Forges",
+      websiteUrl: "https://github.com/agntn/forges",
+    });
     expect(response.tools.map((tool) => tool.name)).toEqual(toolNames);
     for (const tool of response.tools) {
       expect(tool.annotations).toMatchObject({
+        title: tool.title,
         readOnlyHint: !writingTools.has(tool.name),
         destructiveHint: false,
         openWorldHint: true,
       });
+      expect(tool.title).not.toBe(tool.name);
     }
     // Creating the same issue twice leaves two behind; resolving twice leaves one thread resolved.
     expect(
