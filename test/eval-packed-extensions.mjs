@@ -12,6 +12,16 @@ const temporaryRoot = await mkdtemp(join(root, ".forges-packed-test-"));
 const packageRoot = join(temporaryRoot, "package");
 const environmentKeys = ["FORGES_GITHUB_BASE_URL", "GH_TOKEN", "GITHUB_TOKEN"];
 const originalEnvironment = environmentKeys.map((key) => [key, process.env[key]]);
+class PackedText {
+  constructor(text) {
+    this.text = text;
+  }
+
+  render() {
+    return this.text.split("\n");
+  }
+}
+
 const expectedToolNames = [
   "forges_repos_list",
   "forges_repos_get",
@@ -59,15 +69,14 @@ async function assertDistributionFallback(extensionPath, api) {
   assert.deepEqual([...tools.keys()], expectedToolNames);
   const tool = tools.get("forges_repos_get");
   assert(tool, "forges_repos_get was not registered");
+  const args = { platform: "github", owner: "agntn", repo: "forges" };
+  const theme = { fg: (_color, text) => text, bold: (text) => text };
+  const component = api.typebox
+    ? tool.renderCall(args, { isPartial: true, spinnerFrame: 0 }, theme)
+    : tool.renderCall(args, theme, { executionStarted: true, isPartial: true });
+  assert.match(component.render(120).join("\n"), /Forges Repository agntn\/forges/u);
   await assert.rejects(
-    () =>
-      tool.execute(
-        "packed-test",
-        { platform: "github", owner: "agntn", repo: "forges" },
-        undefined,
-        undefined,
-        {},
-      ),
+    () => tool.execute("packed-test", args, undefined, undefined, {}),
     /Failed to parse URL/,
   );
 }
@@ -118,6 +127,7 @@ try {
   await assertDistributionFallback(join(piExtensionDirectory, "forges.ts"), {});
   await assertDistributionFallback(join(ompExtensionDirectory, "forges.ts"), {
     typebox: OmpTypeBox,
+    pi: { Text: PackedText },
     setLabel() {},
   });
   await assertPackedMcpServer(packageRoot);

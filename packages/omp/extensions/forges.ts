@@ -4,6 +4,13 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
 import type * as ForgesTools from "../../../dist/tool-operations.d.mts";
+import {
+  type RenderedToolResult,
+  type RenderOptions,
+  renderToolCall,
+  renderToolResult,
+  type StatusTheme,
+} from "../../shared/tui.ts";
 
 const sourceModulePath = fileURLToPath(new URL("../../../src/tool-operations.ts", import.meta.url));
 let toolOperationsPromise: Promise<typeof ForgesTools> | undefined;
@@ -24,6 +31,21 @@ function loadToolOperations(): Promise<typeof ForgesTools> {
 
 export default function forgesOmpExtension(pi: ExtensionAPI): void {
   const { Type } = pi.typebox;
+  const { Text } = pi.pi;
+  function statusRenderers(name: string, label: string) {
+    return {
+      renderCall(args: unknown, options: RenderOptions, theme: StatusTheme) {
+        return new Text(renderToolCall(name, label, args, options, theme), 0, 0);
+      },
+      renderResult(result: RenderedToolResult, options: RenderOptions, theme: StatusTheme) {
+        return new Text(
+          renderToolResult(name, result, result.isError === true, options, theme),
+          0,
+          0,
+        );
+      },
+    };
+  }
   pi.setLabel("Forges");
 
   // OMP validates tool parameters with its host TypeBox build, so these shapes are
@@ -196,6 +218,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Repositories",
     description: "List repositories owned by a user or organization on a supported Git platform",
     parameters: listRepositoriesParameters,
+    ...statusRenderers("forges_repos_list", "Forges Repositories"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listRepositories(params);
@@ -208,6 +231,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     description:
       "Get one repository, including fork parent and viewer access, from a supported Git platform",
     parameters: repositoryParameters,
+    ...statusRenderers("forges_repos_get", "Forges Repository"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getRepository(params);
@@ -220,6 +244,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     description:
       "List paged metadata for effective issue or pull-request templates, including inheritance provenance",
     parameters: listContributionTemplatesParameters,
+    ...statusRenderers("forges_contribution_templates_list", "Forges Contribution Templates"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listContributionTemplates(params);
@@ -231,6 +256,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Contribution Template",
     description: "Get one effective contribution template with its complete source body",
     parameters: contributionTemplateParameters,
+    ...statusRenderers("forges_contribution_templates_get", "Forges Contribution Template"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getContributionTemplate(params);
@@ -243,6 +269,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     description:
       "Search code across repositories with optional owner and repository scope; GitLab requires authentication, and global or group scope requires Premium or Ultimate with advanced or exact code search; Gitea, Forgejo, and GitHub-compatible hosts without the endpoint are unsupported",
     parameters: codeSearchParameters,
+    ...statusRenderers("forges_code_search", "Search Forges Code"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).searchCode(params);
@@ -254,6 +281,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges CI Runs",
     description: "List paged repository CI runs, optionally filtered by branch",
     parameters: listCiRunsParameters,
+    ...statusRenderers("forges_ci_runs_list", "Forges CI Runs"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listCiRuns(params);
@@ -266,6 +294,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     description:
       "List paged commits, optionally filtered by ref, path, or date range; Gitea rejects path because its API ignores pagination limits",
     parameters: listCommitsParameters,
+    ...statusRenderers("forges_commits_list", "Forges Commits"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listCommits(params);
@@ -277,6 +306,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Commit",
     description: "Get one commit with metadata and changed-file rows",
     parameters: commitParameters,
+    ...statusRenderers("forges_commits_get", "Forges Commit"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getCommit(params);
@@ -288,6 +318,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Issues",
     description: "List normalized issues for a repository, optionally filtered by state",
     parameters: listRepositoryItemsParameters,
+    ...statusRenderers("forges_issues_list", "Forges Issues"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listIssues(params);
@@ -299,6 +330,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Search Forges Issues",
     description: "Search repository issues with the selected platform's query syntax",
     parameters: searchRepositoryItemsParameters,
+    ...statusRenderers("forges_issues_search", "Search Forges Issues"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).searchIssues(params);
@@ -310,6 +342,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Issue",
     description: "Get one normalized repository issue by number",
     parameters: repositoryItemParameters,
+    ...statusRenderers("forges_issues_get", "Forges Issue"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getIssue(params);
@@ -321,6 +354,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Issue Comments",
     description: "List the discussion comments under one issue, oldest first",
     parameters: listCommentsParameters,
+    ...statusRenderers("forges_issues_comments", "Forges Issue Comments"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listIssueComments(params);
@@ -332,6 +366,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Issue Comment",
     description: "Get one discussion comment under an issue, with its full body",
     parameters: commentParameters,
+    ...statusRenderers("forges_issues_comments_get", "Forges Issue Comment"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getIssueComment(params);
@@ -343,6 +378,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Create Forges Issue",
     description: "Create an issue in a repository; this mutates the selected Git platform",
     parameters: createIssueParameters,
+    ...statusRenderers("forges_issues_create", "Create Forges Issue"),
     approval: "write",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).createIssue(params);
@@ -354,6 +390,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Pull Requests",
     description: "List normalized pull requests for a repository, optionally filtered by state",
     parameters: listRepositoryItemsParameters,
+    ...statusRenderers("forges_pull_requests_list", "Forges Pull Requests"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequests(params);
@@ -365,6 +402,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Search Forges Pull Requests",
     description: "Search repository pull requests with the selected platform's query syntax",
     parameters: searchRepositoryItemsParameters,
+    ...statusRenderers("forges_pull_requests_search", "Search Forges Pull Requests"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).searchPullRequests(params);
@@ -376,6 +414,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Pull Request",
     description: "Get one normalized pull request by repository and number",
     parameters: repositoryItemParameters,
+    ...statusRenderers("forges_pull_requests_get", "Forges Pull Request"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getPullRequest(params);
@@ -387,6 +426,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Pull Request Files",
     description: "List files changed by one pull request without exposing patches",
     parameters: listPullRequestFilesParameters,
+    ...statusRenderers("forges_pull_requests_files", "Forges Pull Request Files"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequestFiles(params);
@@ -398,6 +438,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Pull Request Checks",
     description: "List normalized checks or pipelines for one pull request head revision",
     parameters: listPullRequestChecksParameters,
+    ...statusRenderers("forges_pull_requests_checks", "Forges Pull Request Checks"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequestChecks(params);
@@ -409,6 +450,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Pull Request Comments",
     description: "List the conversation comments under one pull request, oldest first",
     parameters: listCommentsParameters,
+    ...statusRenderers("forges_pull_requests_comments", "Forges Pull Request Comments"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequestComments(params);
@@ -420,6 +462,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Pull Request Comment",
     description: "Get one conversation comment under a pull request, with its full body",
     parameters: commentParameters,
+    ...statusRenderers("forges_pull_requests_comments_get", "Forges Pull Request Comment"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getPullRequestComment(params);
@@ -431,6 +474,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Create Forges Pull Request",
     description: "Create a pull request in a repository; this mutates the selected Git platform",
     parameters: createPullRequestParameters,
+    ...statusRenderers("forges_pull_requests_create", "Create Forges Pull Request"),
     approval: "write",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).createPullRequest(params);
@@ -442,6 +486,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges User",
     description: "Get one normalized user profile by username from a supported Git platform",
     parameters: userParameters,
+    ...statusRenderers("forges_users_get", "Forges User"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getUser(params);
@@ -453,6 +498,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Authenticated User",
     description: "Get the normalized user profile for the currently authenticated account",
     parameters: authenticatedUserParameters,
+    ...statusRenderers("forges_users_authenticated", "Forges Authenticated User"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getAuthenticatedUser(params);
@@ -464,6 +510,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Reload Forges Authentication",
     description: "Replace one platform's pinned local credential and return its authenticated user",
     parameters: authenticatedUserParameters,
+    ...statusRenderers("forges_auth_reload", "Reload Forges Authentication"),
     approval: "write",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).reloadAuthentication(params);
@@ -476,6 +523,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     description:
       "List normalized pull-request review threads, optionally filtered by resolved state",
     parameters: listThreadsParameters,
+    ...statusRenderers("forges_threads_list", "Forges Threads"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listThreads(params);
@@ -487,6 +535,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Forges Thread",
     description: "Get one normalized pull-request review thread by id",
     parameters: threadParameters,
+    ...statusRenderers("forges_threads_get", "Forges Thread"),
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getThread(params);
@@ -499,6 +548,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     description:
       "Reply inside an existing pull-request review thread; this mutates the selected Git platform",
     parameters: replyThreadParameters,
+    ...statusRenderers("forges_threads_reply", "Reply Forges Thread"),
     approval: "write",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).replyToThread(params);
@@ -511,6 +561,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     description:
       "Mark a pull-request review thread as resolved; this mutates the selected Git platform",
     parameters: threadParameters,
+    ...statusRenderers("forges_threads_resolve", "Resolve Forges Thread"),
     approval: "write",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).resolveThread(params);
@@ -523,6 +574,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     description:
       "Mark a pull-request review thread as unresolved; this mutates the selected Git platform",
     parameters: threadParameters,
+    ...statusRenderers("forges_threads_unresolve", "Unresolve Forges Thread"),
     approval: "write",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).unresolveThread(params);

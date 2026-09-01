@@ -3,8 +3,16 @@ import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 
 import type * as ForgesTools from "../../../dist/tool-operations.d.mts";
+import {
+  type RenderedToolResult,
+  type RenderOptions,
+  renderToolCall,
+  renderToolResult,
+  type StatusTheme,
+} from "../../shared/tui.ts";
 import {
   authenticatedUserParameters,
   codeSearchParameters,
@@ -84,6 +92,26 @@ function pullRequestApprovalMessage(params: ForgesTools.CreatePullRequestParams)
   ].join("\n");
 }
 
+function statusRenderers(name: string, label: string) {
+  return {
+    renderCall(args: unknown, theme: StatusTheme, context: RenderOptions) {
+      return new Text(renderToolCall(name, label, args, context, theme), 0, 0);
+    },
+    renderResult(
+      result: RenderedToolResult,
+      options: RenderOptions,
+      theme: StatusTheme,
+      context?: Readonly<{ isError?: boolean }>,
+    ) {
+      return new Text(
+        renderToolResult(name, result, context?.isError === true, options, theme),
+        0,
+        0,
+      );
+    },
+  };
+}
+
 export default function forgesExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_repos_list",
@@ -94,6 +122,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_repos_list for repository discovery instead of constructing provider API requests.",
     ],
     parameters: listRepositoriesParameters,
+    ...statusRenderers("forges_repos_list", "Forges Repositories"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listRepositories(params);
     },
@@ -109,6 +138,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_repos_get when exact normalized repository metadata is required.",
     ],
     parameters: repositoryParameters,
+    ...statusRenderers("forges_repos_get", "Forges Repository"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getRepository(params);
     },
@@ -124,6 +154,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_contribution_templates_list before drafting an issue or pull request; pass one returned kind and key to forges_contribution_templates_get when its full body is needed.",
     ],
     parameters: listContributionTemplatesParameters,
+    ...statusRenderers("forges_contribution_templates_list", "Forges Contribution Templates"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listContributionTemplates(params);
     },
@@ -138,6 +169,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_contribution_templates_get only with the exact kind and key returned by forges_contribution_templates_list.",
     ],
     parameters: contributionTemplateParameters,
+    ...statusRenderers("forges_contribution_templates_get", "Forges Contribution Template"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getContributionTemplate(params);
     },
@@ -154,6 +186,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "forges_code_search returns unsupported on Gitea, Forgejo, and GitHub-compatible hosts without a code-search endpoint.",
     ],
     parameters: codeSearchParameters,
+    ...statusRenderers("forges_code_search", "Search Forges Code"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).searchCode(params);
     },
@@ -168,6 +201,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_ci_runs_list to verify repository CI health instead of invoking a platform CLI.",
     ],
     parameters: listCiRunsParameters,
+    ...statusRenderers("forges_ci_runs_list", "Forges CI Runs"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listCiRuns(params);
     },
@@ -183,6 +217,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "forges_commits_list rejects path on Gitea because that API ignores pagination limits for the filter.",
     ],
     parameters: listCommitsParameters,
+    ...statusRenderers("forges_commits_list", "Forges Commits"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listCommits(params);
     },
@@ -197,6 +232,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_commits_get when a known commit SHA needs exact metadata or changed paths.",
     ],
     parameters: commitParameters,
+    ...statusRenderers("forges_commits_get", "Forges Commit"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getCommit(params);
     },
@@ -211,6 +247,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_issues_list to inspect issue queues across supported platforms.",
     ],
     parameters: listRepositoryItemsParameters,
+    ...statusRenderers("forges_issues_list", "Forges Issues"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listIssues(params);
     },
@@ -225,6 +262,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_issues_search when duplicate checks need a query instead of the whole issue queue.",
     ],
     parameters: searchRepositoryItemsParameters,
+    ...statusRenderers("forges_issues_search", "Search Forges Issues"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).searchIssues(params);
     },
@@ -237,6 +275,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     promptSnippet: "Get one repository issue from GitHub, GitLab, or Gitea.",
     promptGuidelines: ["Use forges_issues_get when the exact issue number is known."],
     parameters: repositoryItemParameters,
+    ...statusRenderers("forges_issues_get", "Forges Issue"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getIssue(params);
     },
@@ -251,6 +290,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_issues_comments to read an issue's discussion instead of scraping the web UI.",
     ],
     parameters: listCommentsParameters,
+    ...statusRenderers("forges_issues_comments", "Forges Issue Comments"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listIssueComments(params);
     },
@@ -265,6 +305,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_issues_comments_get with an id from forges_issues_comments when the truncated body is not enough.",
     ],
     parameters: commentParameters,
+    ...statusRenderers("forges_issues_comments_get", "Forges Issue Comment"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getIssueComment(params);
     },
@@ -279,6 +320,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_issues_create only when the user explicitly asks to create an issue.",
     ],
     parameters: createIssueParameters,
+    ...statusRenderers("forges_issues_create", "Create Forges Issue"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).createIssue(params);
     },
@@ -293,6 +335,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_pull_requests_list to inspect pull-request queues across supported platforms.",
     ],
     parameters: listRepositoryItemsParameters,
+    ...statusRenderers("forges_pull_requests_list", "Forges Pull Requests"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequests(params);
     },
@@ -307,6 +350,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_pull_requests_search for duplicate checks by query inside one repository.",
     ],
     parameters: searchRepositoryItemsParameters,
+    ...statusRenderers("forges_pull_requests_search", "Search Forges Pull Requests"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).searchPullRequests(params);
     },
@@ -319,6 +363,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     promptSnippet: "Get one pull request from GitHub, GitLab, or Gitea.",
     promptGuidelines: ["Use forges_pull_requests_get when the exact pull-request number is known."],
     parameters: repositoryItemParameters,
+    ...statusRenderers("forges_pull_requests_get", "Forges Pull Request"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getPullRequest(params);
     },
@@ -333,6 +378,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_pull_requests_files when a review or audit needs the pull request's changed paths and line counts.",
     ],
     parameters: listPullRequestFilesParameters,
+    ...statusRenderers("forges_pull_requests_files", "Forges Pull Request Files"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequestFiles(params);
     },
@@ -347,6 +393,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_pull_requests_checks to verify pull-request CI before merging or reviewing.",
     ],
     parameters: listPullRequestChecksParameters,
+    ...statusRenderers("forges_pull_requests_checks", "Forges Pull Request Checks"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequestChecks(params);
     },
@@ -361,6 +408,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_pull_requests_comments for the pull-request conversation; review threads come from forges_threads_list.",
     ],
     parameters: listCommentsParameters,
+    ...statusRenderers("forges_pull_requests_comments", "Forges Pull Request Comments"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequestComments(params);
     },
@@ -376,6 +424,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_pull_requests_comments_get with an id from forges_pull_requests_comments; review threads still come back whole from forges_threads_get.",
     ],
     parameters: commentParameters,
+    ...statusRenderers("forges_pull_requests_comments_get", "Forges Pull Request Comment"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getPullRequestComment(params);
     },
@@ -390,6 +439,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_pull_requests_create only when the user explicitly asks to create a pull request.",
     ],
     parameters: createPullRequestParameters,
+    ...statusRenderers("forges_pull_requests_create", "Create Forges Pull Request"),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       if (!ctx.hasUI) {
         throw new Error(
@@ -421,6 +471,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_users_get to resolve a platform username to normalized metadata.",
     ],
     parameters: userParameters,
+    ...statusRenderers("forges_users_get", "Forges User"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getUser(params);
     },
@@ -435,6 +486,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_users_authenticated to identify the account selected by trusted local authentication.",
     ],
     parameters: authenticatedUserParameters,
+    ...statusRenderers("forges_users_authenticated", "Forges Authenticated User"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getAuthenticatedUser(params);
     },
@@ -449,6 +501,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_auth_reload only after the user intentionally changes trusted local authentication.",
     ],
     parameters: authenticatedUserParameters,
+    ...statusRenderers("forges_auth_reload", "Reload Forges Authentication"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).reloadAuthentication(params);
     },
@@ -464,6 +517,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_threads_list to inspect review threads instead of dumping full PR comments.",
     ],
     parameters: listThreadsParameters,
+    ...statusRenderers("forges_threads_list", "Forges Threads"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listThreads(params);
     },
@@ -476,6 +530,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     promptSnippet: "Get one review thread from GitHub, GitLab, or Gitea.",
     promptGuidelines: ["Use forges_threads_get when the exact review thread id is known."],
     parameters: threadParameters,
+    ...statusRenderers("forges_threads_get", "Forges Thread"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getThread(params);
     },
@@ -491,6 +546,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_threads_reply to answer inside the thread, not as a standalone pull-request comment.",
     ],
     parameters: replyThreadParameters,
+    ...statusRenderers("forges_threads_reply", "Reply Forges Thread"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).replyToThread(params);
     },
@@ -506,6 +562,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_threads_resolve only when the user explicitly asks to resolve a thread.",
     ],
     parameters: threadParameters,
+    ...statusRenderers("forges_threads_resolve", "Resolve Forges Thread"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).resolveThread(params);
     },
@@ -521,6 +578,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       "Use forges_threads_unresolve only when the user explicitly asks to reopen a thread.",
     ],
     parameters: threadParameters,
+    ...statusRenderers("forges_threads_unresolve", "Unresolve Forges Thread"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).unresolveThread(params);
     },

@@ -77,7 +77,15 @@ vi.mock("../src/index.ts", () => ({
   resolveToken: mocks.resolveToken,
   createProvider: mocks.createProvider,
 }));
+vi.mock("@earendil-works/pi-tui", () => ({
+  Text: class {
+    readonly text: string;
 
+    constructor(text: string) {
+      this.text = text;
+    }
+  },
+}));
 const toolNames = [
   "forges_repos_list",
   "forges_repos_get",
@@ -127,6 +135,15 @@ function registerOmpTools(): { label: string | undefined; tools: Map<string, Omp
   const tools = new Map<string, OmpToolDefinition>();
   const api = {
     typebox: OmpTypeBox,
+    pi: {
+      Text: class {
+        readonly text: string;
+
+        constructor(text: string) {
+          this.text = text;
+        }
+      },
+    },
     setLabel(value: string) {
       label = value;
     },
@@ -154,6 +171,15 @@ function ompAccepts(tool: OmpToolDefinition, value: unknown): boolean {
   // OMP's host schema and the extension type package are structurally identical at this test seam.
   const schema = tool.parameters as unknown as OmpTypeBox.TSchema;
   return schema.safeParse(value).success;
+}
+
+function renderedText(component: unknown): string {
+  if (typeof component !== "object" || component === null || !("text" in component)) {
+    throw new Error("Renderer did not return text");
+  }
+  const text = Reflect.get(component, "text");
+  if (typeof text !== "string") throw new Error("Renderer returned invalid text");
+  return text;
 }
 
 const unusedPiContext = {} as PiExtensionContext;
@@ -225,14 +251,36 @@ afterEach(() => {
 });
 
 describe("Forges Pi extension", () => {
-  it("registers the complete tool set with self-identifying guidelines", () => {
+  it("registers the complete tool set with self-identifying guidelines and renderers", () => {
     const tools = registerPiTools();
 
     expect([...tools.keys()]).toEqual(toolNames);
     for (const tool of tools.values()) {
       expect(tool.promptGuidelines).not.toHaveLength(0);
       for (const guideline of tool.promptGuidelines ?? []) expect(guideline).toContain(tool.name);
+      expect(tool.renderCall).toBeTypeOf("function");
+      expect(tool.renderResult).toBeTypeOf("function");
     }
+  });
+
+  it("renders Pi failures from the render context", () => {
+    const tool = requirePiTool(registerPiTools(), "forges_issues_get");
+    if (!tool.renderCall || !tool.renderResult) throw new Error("Missing Pi renderers");
+    const theme = {};
+    const call = Reflect.apply(tool.renderCall, tool, [
+      { platform: "github", owner: "agntn", repo: "forges", number: 42 },
+      theme,
+      { executionStarted: true, isPartial: true },
+    ]);
+    const result = Reflect.apply(tool.renderResult, tool, [
+      { content: [{ type: "text", text: "Repository not found" }], details: {} },
+      { expanded: false, isPartial: false },
+      theme,
+      { isError: true },
+    ]);
+
+    expect(renderedText(call)).toBe("◌ ◈ Forges Issue agntn/forges#42 platform github");
+    expect(renderedText(result)).toBe("✗ Repository not found (failed)");
   });
 
   it("exposes only supported platforms and no credential or endpoint parameters", () => {
@@ -826,11 +874,47 @@ describe("Forges Pi extension", () => {
 });
 
 describe("Forges OMP extension", () => {
-  it("registers the complete tool set under the Forges label", () => {
+  it("registers the complete tool set under the Forges label with renderers", () => {
     const { label, tools } = registerOmpTools();
 
     expect(label).toBe("Forges");
     expect([...tools.keys()]).toEqual(toolNames);
+    for (const tool of tools.values()) {
+      expect(tool.renderCall).toBeTypeOf("function");
+      expect(tool.renderResult).toBeTypeOf("function");
+    }
+  });
+
+  it("renders OMP failures from the result object", () => {
+    const tool = requireOmpTool(registerOmpTools().tools, "forges_threads_reply");
+    if (!tool.renderCall || !tool.renderResult) throw new Error("Missing OMP renderers");
+    const theme = {};
+    const call = Reflect.apply(tool.renderCall, tool, [
+      {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        number: 42,
+        threadId: "PRRT_1",
+        body: "Done.",
+      },
+      { isPartial: true, spinnerFrame: 2 },
+      theme,
+    ]);
+    const result = Reflect.apply(tool.renderResult, tool, [
+      {
+        content: [{ type: "text", text: "Thread not found" }],
+        details: {},
+        isError: true,
+      },
+      { expanded: false, isPartial: false },
+      theme,
+    ]);
+
+    expect(renderedText(call)).toBe(
+      "⠹ ◌ Reply Forges Thread PRRT_1 (write) agntn/forges#42 · platform github",
+    );
+    expect(renderedText(result)).toBe("✗ Thread not found (failed)");
   });
 
   it("keeps Pi and OMP parameter schemas aligned recursively", () => {

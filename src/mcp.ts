@@ -66,6 +66,7 @@ import {
   type ForgesToolResult,
 } from "./tool-operations.ts";
 import { version } from "./version.ts";
+import { forgeToolTitle } from "../packages/shared/tui.ts";
 
 interface ToolDefinition<S extends TSchema = TSchema> {
   name: string;
@@ -466,18 +467,27 @@ function failureText(name: string, error: unknown): string {
  */
 export function createMcpServer(): Server {
   const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
-  const server = new Server({ name: "forges", version }, { capabilities: { tools: {} } });
+  const server = new Server(
+    {
+      name: "forges",
+      title: "Forges",
+      version,
+      websiteUrl: "https://github.com/agntn/forges",
+    },
+    { capabilities: { tools: {} } },
+  );
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: tools.map(
-      (tool): Tool => ({
+    tools: tools.map((tool): Tool => {
+      const title = forgeToolTitle(tool.name, tool.title);
+      return {
         name: tool.name,
-        title: tool.title,
+        title,
         description: tool.description,
         inputSchema: tool.inputSchema as Tool["inputSchema"],
-        annotations: tool.annotations,
-      }),
-    ),
+        annotations: { ...tool.annotations, title },
+      };
+    }),
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
