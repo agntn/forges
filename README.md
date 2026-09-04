@@ -9,7 +9,7 @@ One API for GitHub, GitLab, Gitea, and GitBucket. Write your code once, swap the
 
 If you've ever had to maintain separate API integrations for different git platforms, you know the pain. They all do the same things but none of them agree on how. GitLab calls them "merge requests", GitHub calls them "pull requests". GitLab paginates with `x-next-page` headers, GitHub uses `Link` headers. GitLab authenticates with `Private-Token`, GitHub with `Authorization: token`. And so on.
 
-`@agntn/forges` normalizes all of that behind one abstract provider API.
+`@agntn/forges` normalizes all of that behind one abstract provider API. Docs and the live explorer: [forges.agntn.dev](https://forges.agntn.dev). The source lives in [`docs/`](./docs); run `pnpm docs` after `pnpm build` for a local copy.
 
 ## Install
 
