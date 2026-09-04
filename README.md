@@ -1,8 +1,8 @@
 # @agntn/forges
 
-[![npm version](https://img.shields.io/npm/v/%40agntn%2Fforges?style=flat&colorA=130f40&colorB=474787)](https://npmjs.com/package/@agntn/forges)
-[![npm downloads](https://img.shields.io/npm/dm/%40agntn%2Fforges?style=flat&colorA=130f40&colorB=474787)](https://npm.chart.dev/@agntn/forges)
-[![license](https://img.shields.io/github/license/agntn/forges?style=flat&colorA=130f40&colorB=474787)](https://github.com/agntn/forges/blob/main/LICENSE)
+[![npm version](https://npmx.dev/api/registry/badge/version/@agntn/forges)](https://npmx.dev/package/@agntn/forges)
+[![npm downloads](https://npmx.dev/api/registry/badge/downloads/@agntn/forges)](https://npmx.dev/package/@agntn/forges)
+[![license](https://npmx.dev/api/registry/badge/license/@agntn/forges)](https://npmx.dev/package/@agntn/forges)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/agntn/forges)
 
 One API. Every forge. GitHub, GitLab, Gitea and GitBucket behind one TypeScript provider, with repositories, issues, pull requests, review threads, commits and CI in the same shape and the token found for you.
