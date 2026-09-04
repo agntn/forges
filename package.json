@@ -15,7 +15,7 @@
     "provider",
     "unified"
   ],
-  "homepage": "https://github.com/agntn/forges#readme",
+  "homepage": "https://forges.agntn.dev",
   "bugs": "https://github.com/agntn/forges/issues",
   "license": "MIT",
   "author": "oritwoen (https://github.com/oritwoen)",
@@ -79,7 +79,9 @@
     "lint": "oxlint --deny-warnings . && oxfmt --check .",
     "typecheck": "tsc --noEmit && pnpm build && tsc --noEmit -p tsconfig.extensions.json",
     "prepack": "pnpm run build",
-    "release": "pnpm test:run && pnpm build && changelogen --release --push"
+    "release": "pnpm test:run && pnpm build && changelogen --release --push",
+    "docs": "pnpm --dir docs dev",
+    "docs:build": "pnpm --dir docs build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

@@ -6,3 +6,9 @@ dist
 .agents
 .claude
 .sisyphus
+docs/.data
+docs/.nitro
+docs/.cache
+docs/.wrangler
+docs/.nuxt
+docs/.output
