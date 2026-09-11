@@ -182,7 +182,7 @@ const tools: ToolDefinition[] = [
     name: "forges_commits_list",
     title: "List Commits",
     description:
-      "List paged commit summaries for one repository, optionally filtered by ref, path, and ISO-8601 since/until dates. Summaries omit changed-file rows; use forges_commits_get for one commit's files. Gitea rejects path because its API ignores pagination limits for that filter.",
+      "List paged commit summaries for one repository, optionally filtered by ref, path, and ISO-8601 since/until dates. Summaries omit changed-file rows; use forges_commits_get for one commit's files. Gitea rejects path because that API ignores pagination limits for the filter; Forgejo paginates it.",
     inputSchema: listCommitsParameters,
     annotations: readAnnotations,
     execute: listCommits,

@@ -214,7 +214,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     promptSnippet: "Read repository commit history from GitHub, GitLab, or Gitea.",
     promptGuidelines: [
       "Use forges_commits_list for repository history; use forges_commits_get only when one commit's changed files are needed.",
-      "forges_commits_list rejects path on Gitea because that API ignores pagination limits for the filter.",
+      "forges_commits_list rejects path on Gitea because that API ignores pagination limits for the filter; Forgejo paginates it.",
     ],
     parameters: listCommitsParameters,
     ...statusRenderers("forges_commits_list", "Forges Commits"),

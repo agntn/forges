@@ -338,12 +338,20 @@ const GITEA_PULL_REQUEST_TEMPLATE_CANDIDATES = [
   ".github/pull_request_template.yml",
 ] as const;
 
+/** Gitea ignores `limit` when `path` is set. Forgejo paginates that filter. */
+function versionPagesCommitPathFilter(version: string | undefined): boolean {
+  if (!version) return false;
+  const normalized = version.toLowerCase();
+  return normalized.includes("forgejo") || normalized.includes("+gitea-");
+}
+
 /**
  * Gitea/Forgejo provider implementation.
  */
 export class GiteaProvider extends Provider<GiteaRawTypes> {
   private client: HttpClient;
   private readonly apiBaseURL: string;
+  private pagedCommitPathFilter: boolean | undefined;
 
   /**
    * Create a Gitea/Forgejo provider.
@@ -712,13 +720,26 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     }
   }
 
+  private async commitPathFilterIsPaged(): Promise<boolean> {
+    if (this.pagedCommitPathFilter !== undefined) {
+      return this.pagedCommitPathFilter;
+    }
+    try {
+      const info = await this.client<{ version?: string }>("/version");
+      this.pagedCommitPathFilter = versionPagesCommitPathFilter(info?.version);
+      return this.pagedCommitPathFilter;
+    } catch {
+      return false;
+    }
+  }
+
   protected override async listCommits(
     owner: string,
     repo: string,
     options?: ListCommitOptions,
   ): Promise<PageResult<CommitSummary>> {
     try {
-      if (options?.path) {
+      if (options?.path && !(await this.commitPathFilterIsPaged())) {
         throw new ForgesError(
           "Path-filtered commit listing is not supported by Gitea because its API ignores pagination limits",
           501,
@@ -735,6 +756,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         limit: String(options?.perPage ?? 30),
       };
       if (options?.ref) query.sha = options.ref;
+      if (options?.path) query.path = options.path;
       if (options?.since) query.since = options.since;
       if (options?.until) query.until = options.until;
 

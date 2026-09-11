@@ -641,6 +641,8 @@ describe("Gitea Provider", () => {
 
   describe("commits.list", () => {
     it("rejects Gitea path filters because that API ignores pagination limits", async () => {
+      mockClient.mockResolvedValueOnce({ version: "1.27.0+dev-954-g1f3981a301" });
+
       await expect(
         provider.commits.list("testowner", "test-repo", {
           path: "src/provider.ts",
@@ -653,7 +655,75 @@ describe("Gitea Provider", () => {
         status: 501,
         platform: "gitea",
       });
+      expect(mockClient).toHaveBeenCalledWith("/version");
       expect(mockedRawFetch).not.toHaveBeenCalled();
+    });
+
+    it("rejects path filters when the version endpoint is unavailable", async () => {
+      mockClient.mockRejectedValueOnce(new Error("version unavailable"));
+
+      await expect(
+        provider.commits.list("testowner", "test-repo", { path: "README.md" }),
+      ).rejects.toMatchObject({
+        status: 501,
+        platform: "gitea",
+      });
+      expect(mockedRawFetch).not.toHaveBeenCalled();
+    });
+
+    it("forwards path on Forgejo, which paginates that filter", async () => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      mockClient.mockResolvedValueOnce({
+        version: "16.0.0-dev-741-6f391573+gitea-1.22.0",
+      });
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [
+          {
+            sha,
+            html_url: `https://codeberg.org/forgejo/forgejo/commit/${sha}`,
+            commit: {
+              message: "docs: refresh readme",
+              author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+              committer: {
+                name: "Ori",
+                email: "ori@example.com",
+                date: "2026-08-29T10:01:00Z",
+              },
+            },
+            parents: [{ sha: "parent-sha" }],
+          },
+        ],
+        headers: new Headers({ "x-hasmore": "true", "x-total-count": "546" }),
+        status: 200,
+      });
+
+      const result = await provider.commits.list("forgejo", "forgejo", {
+        path: "README.md",
+        page: 1,
+        perPage: 2,
+      });
+
+      expect(mockClient).toHaveBeenCalledWith("/version");
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        expect.anything(),
+        "/repos/forgejo/forgejo/commits",
+        {
+          query: {
+            path: "README.md",
+            stat: "false",
+            verification: "false",
+            files: "false",
+            page: "1",
+            limit: "2",
+          },
+        },
+      );
+      expect(result).toMatchObject({
+        totalCount: 546,
+        hasNextPage: true,
+        nextPage: 2,
+        items: [{ sha, message: "docs: refresh readme" }],
+      });
     });
 
     it("uses Gitea pagination headers when path is omitted", async () => {
@@ -703,6 +773,7 @@ describe("Gitea Provider", () => {
         hasNextPage: true,
         nextPage: 3,
       });
+      expect(mockClient).not.toHaveBeenCalled();
     });
   });
 
