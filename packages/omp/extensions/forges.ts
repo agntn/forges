@@ -292,7 +292,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     name: "forges_commits_list",
     label: "Forges Commits",
     description:
-      "List paged commits, optionally filtered by ref, path, or date range; Gitea rejects path because its API ignores pagination limits",
+      "List paged commits, optionally filtered by ref, path, or date range; Gitea rejects path because its API ignores pagination limits; Forgejo paginates it",
     parameters: listCommitsParameters,
     ...statusRenderers("forges_commits_list", "Forges Commits"),
     approval: "read",
