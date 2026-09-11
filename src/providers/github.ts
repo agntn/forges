@@ -51,7 +51,7 @@ import { normalizeChangedFileStatus } from "../changed-file.ts";
 const MAX_COMMIT_FILE_PAGES = 30;
 const GITHUB_SEARCH_RESULT_LIMIT = 1000;
 const GITHUB_ISSUE_TEMPLATE_DIRECTORY = ".github/ISSUE_TEMPLATE";
-const GITHUB_PULL_REQUEST_TEMPLATE_LOCATIONS = [".github", "", "docs"] as const;
+const GITHUB_COMMUNITY_FILE_DIRECTORIES = [".github", "", "docs"] as const;
 
 // --- GitHub API response types (snake_case) ---
 
@@ -584,17 +584,47 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     const hasConfiguration = entries.some(
       (entry) => entry.type === "file" && /^config\.ya?ml$/iu.test(entry.name),
     );
-    return {
-      templates: files.map((file) =>
-        this.templateSummary(
-          "issue",
-          repository.full_name,
-          repository.default_branch,
-          file,
-          inherited,
+    if (files.length > 0 || hasConfiguration) {
+      return {
+        templates: files.map((file) =>
+          this.templateSummary(
+            "issue",
+            repository.full_name,
+            repository.default_branch,
+            file,
+            inherited,
+          ),
         ),
+        overrides: true,
+      };
+    }
+
+    const listings = await Promise.all(
+      GITHUB_COMMUNITY_FILE_DIRECTORIES.map((location) =>
+        this.tryListContents(repository.full_name, location, repository.default_branch),
       ),
-      overrides: files.length > 0 || hasConfiguration,
+    );
+    const singular = listings
+      .flatMap((listing) =>
+        listing.filter(
+          (entry) => entry.type === "file" && /^issue_template(?:\.[^/]+)?$/iu.test(entry.name),
+        ),
+      )
+      .at(0);
+    return {
+      templates:
+        singular === undefined
+          ? []
+          : [
+              this.templateSummary(
+                "issue",
+                repository.full_name,
+                repository.default_branch,
+                singular,
+                inherited,
+              ),
+            ],
+      overrides: singular !== undefined,
     };
   }
 
@@ -603,12 +633,12 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     inherited: boolean,
   ): Promise<{ templates: ContributionTemplateSummary[]; overrides: boolean }> {
     const baseEntries = await Promise.all(
-      GITHUB_PULL_REQUEST_TEMPLATE_LOCATIONS.map((location) =>
+      GITHUB_COMMUNITY_FILE_DIRECTORIES.map((location) =>
         this.tryListContents(repository.full_name, location, repository.default_branch),
       ),
     );
     const templateDirectories = await Promise.all(
-      GITHUB_PULL_REQUEST_TEMPLATE_LOCATIONS.map((location) => {
+      GITHUB_COMMUNITY_FILE_DIRECTORIES.map((location) => {
         const path =
           location === "" ? "PULL_REQUEST_TEMPLATE" : `${location}/PULL_REQUEST_TEMPLATE`;
         return this.tryListContents(repository.full_name, path, repository.default_branch);
