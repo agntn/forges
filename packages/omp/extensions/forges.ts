@@ -96,9 +96,14 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     }),
   );
 
-  const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
-  const repositoryParameters = Type.Object({ platform, owner, repo });
-  const listContributionTemplatesParameters = Type.Object({
+  /** Closed like the shared schemas: an unknown argument fails instead of vanishing. */
+  function closed<P extends Parameters<typeof Type.Object>[0]>(properties: P) {
+    return Type.Object(properties, { additionalProperties: false });
+  }
+
+  const listRepositoriesParameters = closed({ platform, owner, page, perPage });
+  const repositoryParameters = closed({ platform, owner, repo });
+  const listContributionTemplatesParameters = closed({
     platform,
     owner,
     repo,
@@ -106,14 +111,14 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     page,
     perPage,
   });
-  const contributionTemplateParameters = Type.Object({
+  const contributionTemplateParameters = closed({
     platform,
     owner,
     repo,
     kind: contributionTemplateKind,
     key: contributionTemplateKey,
   });
-  const codeSearchParameters = Type.Object({
+  const codeSearchParameters = closed({
     platform,
     query: Type.String({
       description: "Search query in the selected provider's syntax",
@@ -124,8 +129,8 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     page,
     perPage,
   });
-  const commitParameters = Type.Object({ platform, owner, repo, sha });
-  const listCommitsParameters = Type.Object({
+  const commitParameters = closed({ platform, owner, repo, sha });
+  const listCommitsParameters = closed({
     platform,
     owner,
     repo,
@@ -136,8 +141,8 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     page,
     perPage,
   });
-  const listCiRunsParameters = Type.Object({ platform, owner, repo, branch, page, perPage });
-  const listRepositoryItemsParameters = Type.Object({
+  const listCiRunsParameters = closed({ platform, owner, repo, branch, page, perPage });
+  const listRepositoryItemsParameters = closed({
     platform,
     owner,
     repo,
@@ -145,7 +150,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     perPage,
     state,
   });
-  const searchRepositoryItemsParameters = Type.Object({
+  const searchRepositoryItemsParameters = closed({
     platform,
     owner,
     repo,
@@ -157,13 +162,13 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     perPage,
     state,
   });
-  const repositoryItemParameters = Type.Object({ platform, owner, repo, number });
-  const listCommentsParameters = Type.Object({ platform, owner, repo, number, page, perPage });
+  const repositoryItemParameters = closed({ platform, owner, repo, number });
+  const listCommentsParameters = closed({ platform, owner, repo, number, page, perPage });
   const listPullRequestFilesParameters = listCommentsParameters;
   const listPullRequestChecksParameters = listCommentsParameters;
   const commentId = Type.String({ description: "Discussion comment id", minLength: 1 });
-  const commentParameters = Type.Object({ platform, owner, repo, number, commentId });
-  const createIssueParameters = Type.Object({
+  const commentParameters = closed({ platform, owner, repo, number, commentId });
+  const createIssueParameters = closed({
     platform,
     owner,
     repo,
@@ -172,7 +177,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     labels: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     assignees,
   });
-  const createPullRequestParameters = Type.Object({
+  const createPullRequestParameters = closed({
     platform,
     owner,
     repo,
@@ -183,18 +188,18 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     draft: Type.Optional(Type.Boolean({ description: "Create as a draft pull request" })),
     assignees,
   });
-  const userParameters = Type.Object({
+  const userParameters = closed({
     platform,
     username: Type.String({ description: "Platform username", minLength: 1 }),
   });
-  const authenticatedUserParameters = Type.Object({ platform });
+  const authenticatedUserParameters = closed({ platform });
   const threadState = Type.Optional(
     Type.Union([Type.Literal("unresolved"), Type.Literal("resolved"), Type.Literal("all")], {
       description: "Filter by resolved state",
     }),
   );
   const threadId = Type.String({ description: "Review thread id", minLength: 1 });
-  const listThreadsParameters = Type.Object({
+  const listThreadsParameters = closed({
     platform,
     owner,
     repo,
@@ -203,8 +208,8 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     perPage,
     state: threadState,
   });
-  const threadParameters = Type.Object({ platform, owner, repo, number, threadId });
-  const replyThreadParameters = Type.Object({
+  const threadParameters = closed({ platform, owner, repo, number, threadId });
+  const replyThreadParameters = closed({
     platform,
     owner,
     repo,

@@ -400,7 +400,12 @@ const tools: ToolDefinition[] = [
 function validationError(schema: TSchema, value: unknown): string {
   const first = Value.Errors(schema, value)[0];
   if (!first) return "Invalid arguments";
-  return `Invalid arguments at ${first.instancePath || "/"}: ${first.message}`;
+  const location = first.instancePath || "/";
+  if (first.keyword === "additionalProperties") {
+    const names = first.params.additionalProperties.join(", ");
+    return `Invalid arguments at ${location}: unknown property ${names}`;
+  }
+  return `Invalid arguments at ${location}: ${first.message}`;
 }
 
 /**
