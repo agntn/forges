@@ -24,6 +24,8 @@ export interface HttpClientConfig {
  */
 export type HttpClient = $Fetch;
 
+const PAYLOAD_METHODS = new Set(["PATCH", "POST", "PUT", "DELETE"]);
+
 /**
  * Response data and metadata returned by {@link rawFetch}.
  */
@@ -47,12 +49,18 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
 
   const client = $fetch.create({
     baseURL,
-    retry: 2,
     retryDelay: 1000,
     headers: {
       "User-Agent": userAgent,
     },
-    onRequest({ options }) {
+    onRequest({ request, options }) {
+      const method = (
+        options.method ?? (typeof request === "string" ? "GET" : request.method)
+      ).toUpperCase();
+      if (options.retry === undefined) {
+        options.retry = PAYLOAD_METHODS.has(method) ? 0 : 2;
+      }
+
       // Skip auth header for unauthenticated requests (empty token is intentional)
       if (token) {
         const authValue = tokenPrefix ? `${tokenPrefix}${token}` : token;

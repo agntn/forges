@@ -63,7 +63,7 @@ describe("createHttpClient", () => {
     mockRaw.mockReset();
   });
 
-  it("passes baseURL, retry, and default User-Agent to $fetch.create", () => {
+  it("passes baseURL, retry delay, and default User-Agent to $fetch.create", () => {
     createHttpClient({
       baseURL: "https://api.github.com",
       token: "test-token",
@@ -71,7 +71,6 @@ describe("createHttpClient", () => {
 
     const config = mockCreateConfigs[0];
     expect(config.baseURL).toBe("https://api.github.com");
-    expect(config.retry).toBe(2);
     expect(config.retryDelay).toBe(1000);
     expect(config.headers["User-Agent"]).toBe(`forges/${version}`);
   });
