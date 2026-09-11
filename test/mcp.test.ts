@@ -776,6 +776,19 @@ describe("forges MCP server", () => {
     expect(mocks.createProvider).not.toHaveBeenCalled();
   });
 
+  it("names an argument the schema does not know instead of dropping it", async () => {
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_issues_list",
+      arguments: { platform: "github", owner: "agntn", repo: "forges", per_page: 100 },
+    });
+
+    expect(response.isError).toBe(true);
+    expect(text(response.content)).toBe("Invalid arguments at /: unknown property per_page");
+    expect(mocks.createProvider).not.toHaveBeenCalled();
+  });
+
   it("rejects prototype property names as unknown tools", async () => {
     const client = await connectTestClient();
 

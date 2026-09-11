@@ -949,6 +949,12 @@ describe("Forges OMP extension", () => {
     };
     expect(Value.Check(piCreate.parameters, tooManyAssignees)).toBe(false);
     expect(ompAccepts(ompCreate, tooManyAssignees)).toBe(false);
+
+    const unknownArgument = { platform: "github", owner: "agntn", per_page: 100 };
+    const piList = requirePiTool(piTools, "forges_repos_list");
+    const ompList = requireOmpTool(ompTools, "forges_repos_list");
+    expect(Value.Check(piList.parameters, unknownArgument)).toBe(false);
+    expect(ompAccepts(ompList, unknownArgument)).toBe(false);
   });
 
   it("marks read operations read-only and mutations as writes", () => {

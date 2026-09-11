@@ -1,4 +1,4 @@
-import { Type } from "typebox";
+import { Type, type TObject, type TProperties } from "typebox";
 
 /**
  * The platforms every tool surface accepts, re-exported from `src/tool-operations.ts`.
@@ -76,9 +76,14 @@ const assignees = Type.Optional(
   }),
 );
 
-export const listRepositoriesParameters = Type.Object({ platform, owner, page, perPage });
-export const repositoryParameters = Type.Object({ platform, owner, repo });
-export const listContributionTemplatesParameters = Type.Object({
+/** A closed object rejects a stray `per_page` instead of quietly shrinking the page. */
+function closed<T extends TProperties>(properties: T): TObject<T> {
+  return Type.Object(properties, { additionalProperties: false });
+}
+
+export const listRepositoriesParameters = closed({ platform, owner, page, perPage });
+export const repositoryParameters = closed({ platform, owner, repo });
+export const listContributionTemplatesParameters = closed({
   platform,
   owner,
   repo,
@@ -86,14 +91,14 @@ export const listContributionTemplatesParameters = Type.Object({
   page,
   perPage,
 });
-export const contributionTemplateParameters = Type.Object({
+export const contributionTemplateParameters = closed({
   platform,
   owner,
   repo,
   kind: contributionTemplateKind,
   key: contributionTemplateKey,
 });
-export const codeSearchParameters = Type.Object({
+export const codeSearchParameters = closed({
   platform,
   query: Type.String({
     description: "Search query in the selected provider's syntax",
@@ -104,8 +109,8 @@ export const codeSearchParameters = Type.Object({
   page,
   perPage,
 });
-export const commitParameters = Type.Object({ platform, owner, repo, sha });
-export const listCommitsParameters = Type.Object({
+export const commitParameters = closed({ platform, owner, repo, sha });
+export const listCommitsParameters = closed({
   platform,
   owner,
   repo,
@@ -116,8 +121,8 @@ export const listCommitsParameters = Type.Object({
   page,
   perPage,
 });
-export const listCiRunsParameters = Type.Object({ platform, owner, repo, branch, page, perPage });
-export const listRepositoryItemsParameters = Type.Object({
+export const listCiRunsParameters = closed({ platform, owner, repo, branch, page, perPage });
+export const listRepositoryItemsParameters = closed({
   platform,
   owner,
   repo,
@@ -125,7 +130,7 @@ export const listRepositoryItemsParameters = Type.Object({
   perPage,
   state,
 });
-export const searchRepositoryItemsParameters = Type.Object({
+export const searchRepositoryItemsParameters = closed({
   platform,
   owner,
   repo,
@@ -137,12 +142,12 @@ export const searchRepositoryItemsParameters = Type.Object({
   perPage,
   state,
 });
-export const repositoryItemParameters = Type.Object({ platform, owner, repo, number });
-export const listCommentsParameters = Type.Object({ platform, owner, repo, number, page, perPage });
+export const repositoryItemParameters = closed({ platform, owner, repo, number });
+export const listCommentsParameters = closed({ platform, owner, repo, number, page, perPage });
 export const listPullRequestFilesParameters = listCommentsParameters;
 export const listPullRequestChecksParameters = listCommentsParameters;
-export const commentParameters = Type.Object({ platform, owner, repo, number, commentId });
-export const createIssueParameters = Type.Object({
+export const commentParameters = closed({ platform, owner, repo, number, commentId });
+export const createIssueParameters = closed({
   platform,
   owner,
   repo,
@@ -151,7 +156,7 @@ export const createIssueParameters = Type.Object({
   labels: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
   assignees,
 });
-export const createPullRequestParameters = Type.Object({
+export const createPullRequestParameters = closed({
   platform,
   owner,
   repo,
@@ -162,12 +167,12 @@ export const createPullRequestParameters = Type.Object({
   draft: Type.Optional(Type.Boolean({ description: "Create as a draft pull request" })),
   assignees,
 });
-export const userParameters = Type.Object({
+export const userParameters = closed({
   platform,
   username: Type.String({ description: "Platform username", minLength: 1 }),
 });
-export const authenticatedUserParameters = Type.Object({ platform });
-export const listThreadsParameters = Type.Object({
+export const authenticatedUserParameters = closed({ platform });
+export const listThreadsParameters = closed({
   platform,
   owner,
   repo,
@@ -176,8 +181,8 @@ export const listThreadsParameters = Type.Object({
   perPage,
   state: threadState,
 });
-export const threadParameters = Type.Object({ platform, owner, repo, number, threadId });
-export const replyThreadParameters = Type.Object({
+export const threadParameters = closed({ platform, owner, repo, number, threadId });
+export const replyThreadParameters = closed({
   platform,
   owner,
   repo,
