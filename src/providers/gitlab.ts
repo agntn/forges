@@ -318,6 +318,7 @@ function mapGitLabPermission(
  */
 export class GitLabProvider extends Provider<GitLabRawTypes> {
   private client: HttpClient;
+  private readonly apiBaseURL: string;
   private projectIdCache = new Map<string, ProjectIdCacheEntry>();
   private readonly projectIdCacheMax: number;
   private readonly projectIdCacheTtl: number;
@@ -325,6 +326,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   constructor(config: ProviderConfig) {
     super();
     const baseURL = normalizeApiBaseURL(config.baseURL, "https://gitlab.com/api/v4", "/api/v4");
+    this.apiBaseURL = baseURL;
 
     this.client = createHttpClient({
       baseURL,
@@ -347,13 +349,18 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     if (raw.owner) {
       return {
         login: raw.owner.username,
-        avatarUrl: raw.owner.avatar_url ?? "",
+        avatarUrl: this.normalizeAvatarUrl(raw.owner.avatar_url),
       };
     }
     return {
       login: raw.namespace.path,
-      avatarUrl: raw.namespace.avatar_url ?? "",
+      avatarUrl: this.normalizeAvatarUrl(raw.namespace.avatar_url),
     };
+  }
+
+  private normalizeAvatarUrl(avatarUrl: string | null): string {
+    if (!avatarUrl || !avatarUrl.startsWith("/")) return avatarUrl ?? "";
+    return new URL(avatarUrl, this.apiBaseURL).toString();
   }
 
   protected override mapRepository(raw: GitLabProject): Repository {

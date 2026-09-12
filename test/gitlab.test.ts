@@ -672,7 +672,13 @@ describe("GitLabProvider", () => {
     });
 
     it("returns mapped repository", async () => {
-      mocks.client.mockResolvedValueOnce(glProject);
+      mocks.client.mockResolvedValueOnce({
+        ...glProject,
+        namespace: {
+          ...glProject.namespace,
+          avatar_url: "/uploads/-/system/group/avatar/9970/logo.png",
+        },
+      });
 
       const repo = await gl.repos.get("gitlab-org", "gitlab-foss");
 
@@ -681,6 +687,9 @@ describe("GitLabProvider", () => {
       expect(repo.isFork).toBe(false);
       expect(repo.parent).toBeNull();
       expect(repo.viewerPermission).toBe("read");
+      expect(repo.owner.avatarUrl).toBe(
+        "https://gitlab.com/uploads/-/system/group/avatar/9970/logo.png",
+      );
     });
 
     it("maps a fork parent and the highest inherited access level", async () => {
@@ -758,10 +767,28 @@ describe("GitLabProvider", () => {
       mocks.client.mockResolvedValueOnce(glProjectWithOwner);
       const withOwner = await gl.repos.get("user1", "my-project");
       expect(withOwner.owner.login).toBe("user1");
+      expect(withOwner.owner.avatarUrl).toBe("https://gitlab.com/uploads/-/user/avatar/user1.png");
 
       mocks.client.mockResolvedValueOnce(glProject);
       const withNamespace = await gl.repos.get("gitlab-org", "gitlab-foss");
       expect(withNamespace.owner.login).toBe("gitlab-org");
+    });
+
+    it("resolves group avatar paths against a self-hosted origin", async () => {
+      gl = new GitLabProvider({ baseURL: "https://gitlab.example.com/root", token: "test-token" });
+      mocks.client.mockResolvedValueOnce({
+        ...glProject,
+        namespace: {
+          ...glProject.namespace,
+          avatar_url: "/uploads/-/system/group/avatar/9970/logo.png",
+        },
+      });
+
+      const repo = await gl.repos.get("gitlab-org", "gitlab-foss");
+
+      expect(repo.owner.avatarUrl).toBe(
+        "https://gitlab.example.com/uploads/-/system/group/avatar/9970/logo.png",
+      );
     });
   });
 
