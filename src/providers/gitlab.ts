@@ -325,11 +325,10 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   constructor(config: ProviderConfig) {
     super();
-    const baseURL = normalizeApiBaseURL(config.baseURL, "https://gitlab.com/api/v4", "/api/v4");
-    this.apiBaseURL = baseURL;
+    this.apiBaseURL = normalizeApiBaseURL(config.baseURL, "https://gitlab.com/api/v4", "/api/v4");
 
     this.client = createHttpClient({
-      baseURL,
+      baseURL: this.apiBaseURL,
       token: config.token ?? "",
       tokenHeader: "Private-Token",
       tokenPrefix: "",
