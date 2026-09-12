@@ -30,7 +30,7 @@ export default defineAppConfig({
   },
   socials: {
     github: "https://github.com/agntn/forges",
-    npm: "https://www.npmjs.com/package/@agntn/forges",
+    npm: "https://npmx.dev/package/@agntn/forges",
   },
   ui: {
     colors: {
