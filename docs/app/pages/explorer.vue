@@ -1,11 +1,24 @@
 <script setup lang="ts">
 definePageMeta({ layout: "default" });
 
-useSeoMeta({
-  title: "Explorer · @agntn/forges",
-  description:
-    "Read a repository, its issues, pull requests, commits, CI runs and review threads on GitHub, GitLab or Gitea through the docs worker and see the normalized shape.",
+const title = "Explorer";
+const description =
+  "Read a repository, its issues, pull requests, commits, CI runs and review threads on GitHub, GitLab or Gitea through the docs worker, in the normalized shape.";
+
+useSeo({
+  title,
+  description,
+  type: "article",
+  breadcrumbs: [{ title, path: "/explorer" }],
 });
+
+defineOgImage(
+  "Docs",
+  { headline: "Explorer", title, description },
+  {
+    alt: "Explorer: any repository on GitHub, GitLab or Gitea read through the library, in one shape",
+  },
+);
 </script>
 
 <template>
@@ -13,7 +26,7 @@ useSeoMeta({
     <ToolHero
       eyebrow="explorer"
       title="Any repository."
-      accent="Every platform, one shape."
+      accent="One shape."
       description="The docs worker runs the same calls the library exposes: repos.get, issues.list, pullRequests.list, commits.list, ciRuns.list, threads.list and users.get. Answers are cached for a while, a demo page has no business burning somebody else's rate limit."
     >
       <p
