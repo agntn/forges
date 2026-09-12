@@ -473,16 +473,37 @@ function buildPageResult<TRaw, TMapped>(
 export class GitHubProvider extends Provider<GitHubRawTypes> {
   private client: HttpClient;
   private readonly restBaseURL: string;
+  private readonly authenticated: boolean;
 
   constructor(config: ProviderConfig) {
     super();
     this.restBaseURL = config.baseURL || "https://api.github.com";
+    const token = config.token ?? "";
+    this.authenticated = token !== "";
     this.client = createHttpClient({
       baseURL: this.restBaseURL,
-      token: config.token ?? "",
+      token,
       tokenHeader: "Authorization",
       tokenPrefix: "token ",
     });
+  }
+
+  /**
+   * An empty token names no viewer, so anonymous reads skip the lookup. An
+   * installation token has no viewer either: GitHub refuses /user for it with
+   * 403 while the public repository routes still answer, so that refusal
+   * means "not the viewer" rather than a failed listing.
+   */
+  private async isViewer(owner: string): Promise<boolean> {
+    if (!this.authenticated) return false;
+    try {
+      const viewer = await this.getAuthenticatedUser();
+      return viewer.login.toLowerCase() === owner.toLowerCase();
+    } catch (error) {
+      const normalized = normalizeError(error, "github");
+      if (normalized.status === 403) return false;
+      throw normalized;
+    }
   }
 
   private repositoryRoute(fullName: string): string {
@@ -891,7 +912,10 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   /**
    * /users/{owner}/repos answers for organizations too, but only with their
    * public repositories, so the organization route has to go first. It
-   * returns 404 for regular users, which selects the user route.
+   * returns 404 for regular users, which selects the user route. That route
+   * is public-only as well, even when the owner is the viewer, so the
+   * viewer's own inventory comes from /user/repos, which carries the private
+   * repositories too.
    */
   protected override async listRepos(
     owner: string,
@@ -915,11 +939,13 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
           throw normalized;
         }
 
-        response = await rawFetch<GitHubRepo[]>(
-          this.client,
-          `/users/${encodePathSegment(owner)}/repos`,
-          { query },
-        );
+        response = (await this.isViewer(owner))
+          ? await rawFetch<GitHubRepo[]>(this.client, "/user/repos", {
+              query: { ...query, affiliation: "owner" },
+            })
+          : await rawFetch<GitHubRepo[]>(this.client, `/users/${encodePathSegment(owner)}/repos`, {
+              query,
+            });
       }
 
       return buildPageResult(response.data ?? [], response.headers, (raw) =>
