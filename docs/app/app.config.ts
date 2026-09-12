@@ -6,6 +6,19 @@ export default defineAppConfig({
     title: "@agntn/forges",
     description:
       "One TypeScript API over GitHub, GitLab, Gitea and GitBucket: repos, issues, pull requests, review threads, commits and CI in one shape.",
+    schema: {
+      type: "SoftwareApplication",
+      applicationCategory: "DeveloperApplication",
+      operatingSystem: "Node.js",
+      price: 0,
+      sameAs: ["https://github.com/agntn/forges", "https://npmx.dev/package/@agntn/forges"],
+      organization: {
+        name: "agntn",
+        url: "https://agntn.dev",
+        logo: "https://agntn.dev/icon-512.png",
+        sameAs: ["https://github.com/agntn", "https://npmx.dev/org/agntn"],
+      },
+    },
   },
   header: {
     title: "@agntn/forges",

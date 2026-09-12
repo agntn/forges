@@ -1,11 +1,24 @@
 <script setup lang="ts">
 definePageMeta({ layout: "default" });
 
-useSeoMeta({
-  title: "Explorer · @agntn/forges",
-  description:
-    "Read a repository, its issues, pull requests, commits, CI runs and review threads on GitHub, GitLab or Gitea through the docs worker and see the normalized shape.",
+const title = "Explorer";
+const description =
+  "Read a repository, its issues, pull requests, commits, CI runs and review threads on GitHub, GitLab or Gitea through the docs worker, in the normalized shape.";
+
+useSeo({
+  title,
+  description,
+  type: "article",
+  breadcrumbs: [{ title, path: "/explorer" }],
 });
+
+defineOgImage(
+  "Docs",
+  { headline: "Explorer", title, description },
+  {
+    alt: "Explorer: any repository on GitHub, GitLab or Gitea read through the library, in one shape",
+  },
+);
 </script>
 
 <template>

@@ -16,6 +16,7 @@ docs/
 ├── app/composables/               # useLandingForge (one clock for every live panel), useSubNavigation
 ├── app/utils/                     # platforms table, formatting, recorded landing samples
 ├── app/pages/explorer.vue         # explorer, own route outside the docs layout
+├── public/                        # fonts, favicon.svg and the icons and manifest cut from it
 ├── server/api/                    # repo, issues, pulls, commits, ci, threads, user, platforms over the library
 ├── server/utils/                  # forge.ts (one provider per platform), query.ts (caps, cache, rate limit, errors), slim.ts (wire shapes)
 ├── scripts/record-fixtures.mjs    # regenerates app/utils/landing-fixtures.ts through dist/
@@ -56,6 +57,11 @@ Resolution traps, both caused by the repo root being a pnpm workspace:
 - `app/utils/landing-fixtures.ts` holds answers recorded through the library so the landing paints before the worker answers. Regenerate it with `scripts/record-fixtures.mjs` over `dist/index.mjs`. Never edit the recorded text by hand, it drifts and nobody notices. GitLab threads stay empty in the sample because discussions need a token even on a public project.
 - In production the cache lives in the KV binding `CACHE` (`$production.nitro.storage.cache`). Locally it is in memory.
 - The explorer applies its deep link once after mount. A prerendered page hydrates with an empty query and Nuxt restores the address only afterwards, so reading `route.query` in setup gives you nothing.
+
+## Favicon and SEO
+
+- Docus links `/favicon.ico` without shipping one. `public/favicon.svg` is the source, the PNGs and the `.ico` are cut from it with `rsvg-convert` and ImageMagick, `app.head` in `nuxt.config.ts` links them with the manifest and theme colours.
+- Docus emits the JSON-LD itself: `Article` and `BreadcrumbList` on every content page through `useSeo`, and on the landing a `WebSite` graph with the `SoftwareApplication` and `Organization` nodes from `seo.schema` in `app.config.ts`. `app/pages/explorer.vue` is outside the content collection, so it calls `useSeo` and `defineOgImage` on its own.
 
 ## OG images
 
