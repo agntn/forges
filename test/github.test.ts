@@ -729,12 +729,14 @@ describe("GitHubProvider", () => {
     });
 
     it("falls back to the user route when the owner is not an organization", async () => {
+      mocks.client.mockResolvedValueOnce({ ...ghUser, login: "monalisa" });
       mocks.rawFetch
         .mockRejectedValueOnce(makeFetchError(404))
         .mockResolvedValueOnce({ data: [ghRepo], headers: makeHeaders() });
 
       const result = await gh.repos.list("octocat");
 
+      expect(mocks.client).toHaveBeenCalledWith("/user");
       expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
       expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, "/orgs/octocat/repos", {
         query: {},
@@ -746,7 +748,41 @@ describe("GitHubProvider", () => {
       expect(result.items[0]).toMatchObject({ id: "12345", name: "hello-world" });
     });
 
+    it("lists the viewer's own repositories through /user/repos", async () => {
+      mocks.client.mockResolvedValueOnce(ghUser);
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404)).mockResolvedValueOnce({
+        data: [{ ...ghRepo, private: true }],
+        headers: makeHeaders(),
+      });
+
+      const result = await gh.repos.list("OctoCat", { page: 2, perPage: 50 });
+
+      expect(mocks.client).toHaveBeenCalledWith("/user");
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/user/repos", {
+        query: { page: "2", per_page: "50", affiliation: "owner" },
+      });
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({ id: "12345", private: true });
+    });
+
+    it("keeps the public user route without a token", async () => {
+      const anonymous = new GitHubProvider({ baseURL: "https://api.github.com", token: "" });
+      mocks.rawFetch
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce({ data: [ghRepo], headers: makeHeaders() });
+
+      const result = await anonymous.repos.list("octocat");
+
+      expect(mocks.client).not.toHaveBeenCalled();
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/users/octocat/repos", {
+        query: {},
+      });
+      expect(result.items).toHaveLength(1);
+    });
+
     it("reports not found when both routes 404", async () => {
+      mocks.client.mockResolvedValueOnce({ ...ghUser, login: "monalisa" });
       mocks.rawFetch
         .mockRejectedValueOnce(makeFetchError(404))
         .mockRejectedValueOnce(makeFetchError(404));
@@ -763,6 +799,7 @@ describe("GitHubProvider", () => {
     });
 
     it("forwards pagination options to both routes", async () => {
+      mocks.client.mockResolvedValueOnce({ ...ghUser, login: "monalisa" });
       mocks.rawFetch
         .mockRejectedValueOnce(makeFetchError(404))
         .mockResolvedValueOnce({ data: [], headers: makeHeaders() });
