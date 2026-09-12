@@ -26,7 +26,7 @@ defineOgImage(
     <ToolHero
       eyebrow="explorer"
       title="Any repository."
-      accent="Every platform, one shape."
+      accent="One shape."
       description="The docs worker runs the same calls the library exposes: repos.get, issues.list, pullRequests.list, commits.list, ciRuns.list, threads.list and users.get. Answers are cached for a while, a demo page has no business burning somebody else's rate limit."
     >
       <p

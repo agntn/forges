@@ -28,8 +28,8 @@ export default defineAppConfig({
     branch: "main",
     rootDir: "docs",
   },
+  /** The GitHub link comes from `github.url`; listing it here too doubles the icon in the footer. */
   socials: {
-    github: "https://github.com/agntn/forges",
     npm: "https://npmx.dev/package/@agntn/forges",
   },
   ui: {
@@ -60,6 +60,12 @@ export default defineAppConfig({
         headline: "forges-eyebrow mb-3",
         title: "text-3xl sm:text-4xl font-medium tracking-tight text-highlighted",
         description: "text-base leading-7 text-muted",
+      },
+    },
+    /** Nuxt UI truncates TOC entries; headings here are sentences, so let them wrap. */
+    contentToc: {
+      slots: {
+        linkText: "whitespace-normal",
       },
     },
     contentSurround: {

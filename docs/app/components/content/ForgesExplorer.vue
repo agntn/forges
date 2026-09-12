@@ -522,12 +522,13 @@ onMounted(() => {
         </button>
         <button
           type="button"
-          class="forges-copy ms-auto"
+          class="forges-copy ms-auto min-w-0 max-w-full"
           :aria-label="copied ? 'Copied' : 'Copy tool call'"
           @click="copyCall"
         >
-          <span class="text-dimmed">tool</span> {{ clip(toolCall, 64) }}
-          <UIcon :name="copied ? 'i-lucide-check' : 'i-lucide-copy'" class="size-3.5" />
+          <span class="shrink-0 text-dimmed">tool</span>
+          <span class="min-w-0 truncate">{{ clip(toolCall, 64) }}</span>
+          <UIcon :name="copied ? 'i-lucide-check' : 'i-lucide-copy'" class="size-3.5 shrink-0" />
         </button>
       </div>
     </form>
