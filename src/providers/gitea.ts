@@ -842,11 +842,13 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
 
   protected override async getIssue(owner: string, repo: string, number: number): Promise<Issue> {
     try {
-      return this.mapIssue(
-        await this.client<GiteaIssue>(
-          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}`,
-        ),
+      const issue = await this.client<GiteaIssue>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}`,
       );
+      if (issue.pull_request != null) {
+        throw new NotFoundError(`Issue not found: ${number}`, PLATFORM);
+      }
+      return this.mapIssue(issue);
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }

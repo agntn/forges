@@ -1253,6 +1253,12 @@ describe("GitHubProvider", () => {
       expect(issue.url).toBe("https://github.com/octocat/hello-world/issues/42");
     });
 
+    it("rejects a pull request returned by the issues endpoint", async () => {
+      mocks.client.mockResolvedValueOnce({ ...ghIssue, pull_request: {} });
+
+      await expect(gh.issues.get("octocat", "hello-world", 42)).rejects.toThrow(NotFoundError);
+    });
+
     it("reads current state on every call", async () => {
       const closed = { ...ghIssue, state: "closed", updated_at: "2024-01-17T12:00:00Z" };
       mocks.cachedFetch.mockResolvedValue(ghIssue);

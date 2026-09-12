@@ -929,6 +929,14 @@ describe("Gitea Provider", () => {
       expect(result.url).toBe("https://gitea.com/testowner/test-repo/issues/1");
     });
 
+    it("rejects a pull request returned by the issues endpoint", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaIssue({ pull_request: { merged: false, draft: false } }),
+      );
+
+      await expect(provider.issues.get("testowner", "test-repo", 1)).rejects.toThrow(NotFoundError);
+    });
+
     it("reads current state on every call", async () => {
       const closed = giteaIssue({ state: "closed", updated_at: "2024-01-03T00:00:00Z" });
       mockedCachedFetch.mockResolvedValue(giteaIssue());
