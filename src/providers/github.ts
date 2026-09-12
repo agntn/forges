@@ -1179,6 +1179,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       const data = await this.client<GitHubIssue>(
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(issueNumber)}`,
       );
+      if (data.pull_request !== undefined) {
+        throw new NotFoundError(`Issue not found: ${issueNumber}`, "github");
+      }
       return this.mapIssue(data);
     } catch (error) {
       throw normalizeError(error, "github");
