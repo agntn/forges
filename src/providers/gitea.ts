@@ -317,6 +317,8 @@ function buildListQuery(options?: ListOptions): Record<string, string> {
 // -- Provider --
 
 const PLATFORM = "gitea";
+const GITEA_LABEL_PAGE_SIZE = 50;
+const MAX_GITEA_LABEL_PAGES = 100;
 const GITEA_PULL_REQUEST_TEMPLATE_CANDIDATES = [
   "PULL_REQUEST_TEMPLATE.md",
   "PULL_REQUEST_TEMPLATE.yaml",
@@ -864,7 +866,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         body.assignees = input.assignees;
       }
       if (input.labels?.length) {
-        body.labels = input.labels;
+        body.labels = await this.resolveIssueLabelIds(owner, repo, input.labels);
       }
       return this.mapIssue(
         await this.client<GiteaIssue>(
@@ -877,6 +879,71 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       );
     } catch (error) {
       throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  private async resolveIssueLabelIds(
+    owner: string,
+    repo: string,
+    names: readonly string[],
+  ): Promise<number[]> {
+    const ids = new Map<string, number>();
+    const pending = new Set(names);
+    await this.collectIssueLabelIds(
+      `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/labels`,
+      pending,
+      ids,
+    );
+
+    if (pending.size > 0) {
+      try {
+        await this.collectIssueLabelIds(`/orgs/${encodePathSegment(owner)}/labels`, pending, ids);
+      } catch (error) {
+        const normalized = normalizeError(error, PLATFORM);
+        if (normalized.status !== 404) throw normalized;
+      }
+    }
+
+    if (pending.size > 0) {
+      throw new NotFoundError(`Labels not found: ${[...pending].join(", ")}`, PLATFORM);
+    }
+    return names.map((name) => {
+      const id = ids.get(name);
+      if (id === undefined) {
+        throw new NotFoundError(`Label not found: ${name}`, PLATFORM);
+      }
+      return id;
+    });
+  }
+
+  private async collectIssueLabelIds(
+    path: string,
+    pending: Set<string>,
+    ids: Map<string, number>,
+  ): Promise<void> {
+    let page = 1;
+    while (pending.size > 0 && page <= MAX_GITEA_LABEL_PAGES) {
+      const { data, headers } = await rawFetch<GiteaLabel[]>(this.client, path, {
+        query: { page: String(page), limit: String(GITEA_LABEL_PAGE_SIZE) },
+      });
+      const labels = data ?? [];
+      for (const label of labels) {
+        if (pending.delete(label.name)) ids.set(label.name, label.id);
+      }
+
+      const totalHeader = headers.get("x-total-count");
+      const total = totalHeader === null ? undefined : Number(totalHeader);
+      const hasNextPage =
+        parseLinkHeader(headers.get("Link")).next !== undefined ||
+        headers.get("x-hasmore") === "true" ||
+        (Number.isSafeInteger(total) && total !== undefined && total >= 0
+          ? page * GITEA_LABEL_PAGE_SIZE < total
+          : labels.length === GITEA_LABEL_PAGE_SIZE);
+      if (!hasNextPage) break;
+      if (page === MAX_GITEA_LABEL_PAGES) {
+        throw new ForgesError("Gitea label lookup exceeded its pagination limit", 502, PLATFORM);
+      }
+      page += 1;
     }
   }
 
