@@ -488,11 +488,22 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     });
   }
 
-  /** An empty token names no viewer, so anonymous reads skip the lookup. */
+  /**
+   * An empty token names no viewer, so anonymous reads skip the lookup. An
+   * installation token has no viewer either: GitHub refuses /user for it with
+   * 403 while the public repository routes still answer, so that refusal
+   * means "not the viewer" rather than a failed listing.
+   */
   private async isViewer(owner: string): Promise<boolean> {
     if (!this.authenticated) return false;
-    const viewer = await this.getAuthenticatedUser();
-    return viewer.login.toLowerCase() === owner.toLowerCase();
+    try {
+      const viewer = await this.getAuthenticatedUser();
+      return viewer.login.toLowerCase() === owner.toLowerCase();
+    } catch (error) {
+      const normalized = normalizeError(error, "github");
+      if (normalized.status === 403) return false;
+      throw normalized;
+    }
   }
 
   private repositoryRoute(fullName: string): string {

@@ -781,6 +781,29 @@ describe("GitHubProvider", () => {
       expect(result.items).toHaveLength(1);
     });
 
+    it("keeps the public user route when the token may not read /user", async () => {
+      mocks.client.mockRejectedValueOnce(makeFetchError(403));
+      mocks.rawFetch
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce({ data: [ghRepo], headers: makeHeaders() });
+
+      const result = await gh.repos.list("octocat");
+
+      expect(mocks.client).toHaveBeenCalledWith("/user");
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/users/octocat/repos", {
+        query: {},
+      });
+      expect(result.items).toHaveLength(1);
+    });
+
+    it("re-throws other viewer lookup failures", async () => {
+      mocks.client.mockRejectedValueOnce(makeFetchError(500));
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(gh.repos.list("octocat")).rejects.toThrow(ForgesError);
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
+    });
+
     it("reports not found when both routes 404", async () => {
       mocks.client.mockResolvedValueOnce({ ...ghUser, login: "monalisa" });
       mocks.rawFetch
