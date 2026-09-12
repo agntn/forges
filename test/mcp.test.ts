@@ -763,6 +763,22 @@ describe("forges MCP server", () => {
     );
   });
 
+  it("escapes controls and directional formatting in error text", async () => {
+    mocks.issues.list.mockRejectedValue(
+      new Error("upstream\u001b]0;forged\u0007\nsecond\u0085\u2028\u202eflip"),
+    );
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_issues_list",
+      arguments: { platform: "github", owner: "agntn", repo: "forges" },
+    });
+
+    expect(text(response.content)).toBe(
+      "forges_issues_list failed: upstream\\u001b]0;forged\\u0007\\u000asecond\\u0085\\u2028\\u202eflip",
+    );
+  });
+
   it("rejects arguments that miss the schema before reaching a provider", async () => {
     const client = await connectTestClient();
 
@@ -796,5 +812,14 @@ describe("forges MCP server", () => {
 
     expect(response.isError).toBe(true);
     expect(text(response.content)).toBe("Unknown forges tool: toString");
+  });
+
+  it("escapes controls in unknown tool names", async () => {
+    const client = await connectTestClient();
+
+    const response = await client.callTool({ name: "missing\nforged", arguments: {} });
+
+    expect(response.isError).toBe(true);
+    expect(text(response.content)).toBe("Unknown forges tool: missing\\u000aforged");
   });
 });

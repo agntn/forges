@@ -419,8 +419,19 @@ function toCallToolResult(result: ForgesToolResult<unknown>): CallToolResult {
   return { content: result.content };
 }
 
+const MODEL_UNSAFE = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/gu;
+
+function escapeModelUnsafe(text: string): string {
+  return text.replace(MODEL_UNSAFE, (character) => {
+    const codePoint = character.codePointAt(0);
+    if (codePoint === undefined) return character;
+    const hex = codePoint.toString(16);
+    return codePoint <= 0xffff ? `\\u${hex.padStart(4, "0")}` : `\\u{${hex}}`;
+  });
+}
+
 function errorResult(text: string): CallToolResult {
-  return { content: [{ type: "text", text }], isError: true };
+  return { content: [{ type: "text", text: escapeModelUnsafe(text) }], isError: true };
 }
 
 /**
