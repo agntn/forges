@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.2.3
+
+[compare changes](https://github.com/agntn/forges/compare/v0.2.2...v0.2.3)
+
+### 🩹 Fixes
+
+- Stop missing GitHub's ISSUE_TEMPLATE.md ([#96](https://github.com/agntn/forges/pull/96))
+- **http:** Stop automatic retries on payload requests ([#97](https://github.com/agntn/forges/pull/97))
+- **gitea:** Stop rejecting Forgejo path commit lists ([#98](https://github.com/agntn/forges/pull/98))
+- Refuse unknown tool arguments ([#99](https://github.com/agntn/forges/pull/99))
+- **gitea:** Create issues with named labels ([#100](https://github.com/agntn/forges/pull/100))
+- **mcp:** Escape unsafe characters in error in error output ([#101](https://github.com/agntn/forges/pull/101))
+- Keep PRs out of issue lookups ([#102](https://github.com/agntn/forges/pull/102))
+- **gitlab:** Make group avatar URLs absolute ([#103](https://github.com/agntn/forges/pull/103))
+- **github:** Show the viewer's private repos ([#105](https://github.com/agntn/forges/pull/105))
+
+### 📖 Documentation
+
+- Ship forges.agntn.dev with a repository explorer ([#95](https://github.com/agntn/forges/pull/95))
+- Add favicon, structured data and platform cards ([#104](https://github.com/agntn/forges/pull/104))
+
+### ❤️ Contributors
+
+- Ori ([@oritwoen](https://github.com/oritwoen))
+- Aeitwoen ([@aeitwoen](https://github.com/aeitwoen))
+
 ## v0.2.2
 
 [compare changes](https://github.com/agntn/forges/compare/v0.2.1...v0.2.2)
