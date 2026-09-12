@@ -979,7 +979,24 @@ describe("Gitea Provider", () => {
       );
     });
 
-    it("includes labels when provided", async () => {
+    it("resolves label names to the ids required by Gitea", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [
+            { id: 1, name: "bug" },
+            ...Array.from({ length: 49 }, (_, index) => ({
+              id: index + 100,
+              name: `other-${index}`,
+            })),
+          ],
+          headers: makeHeaders({ "x-total-count": "51" }),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [{ id: 2, name: "urgent" }],
+          headers: makeHeaders(),
+          status: 200,
+        });
       mockClient.mockResolvedValueOnce(
         giteaIssue({
           labels: [
@@ -995,12 +1012,91 @@ describe("Gitea Provider", () => {
         labels: ["bug", "urgent"],
       });
 
+      expect(mockedRawFetch).toHaveBeenNthCalledWith(
+        1,
+        mockClient,
+        "/repos/testowner/test-repo/labels",
+        { query: { page: "1", limit: "50" } },
+      );
+      expect(mockedRawFetch).toHaveBeenNthCalledWith(
+        2,
+        mockClient,
+        "/repos/testowner/test-repo/labels",
+        { query: { page: "2", limit: "50" } },
+      );
       expect(mockClient).toHaveBeenCalledWith(
         "/repos/testowner/test-repo/issues",
         expect.objectContaining({
-          body: expect.objectContaining({ labels: ["bug", "urgent"] }),
+          body: expect.objectContaining({ labels: [1, 2] }),
         }),
       );
+    });
+
+    it("resolves organization labels when the repository has no matching label", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({ data: [], headers: makeHeaders(), status: 200 })
+        .mockResolvedValueOnce({
+          data: [{ id: 3, name: "org-label" }],
+          headers: makeHeaders(),
+          status: 200,
+        });
+      mockClient.mockResolvedValueOnce(giteaIssue());
+
+      await provider.issues.create("testowner", "test-repo", {
+        title: "Bug report",
+        body: "Critical bug",
+        labels: ["org-label"],
+      });
+
+      expect(mockedRawFetch).toHaveBeenNthCalledWith(2, mockClient, "/orgs/testowner/labels", {
+        query: { page: "1", limit: "50" },
+      });
+      expect(mockClient).toHaveBeenCalledWith(
+        "/repos/testowner/test-repo/issues",
+        expect.objectContaining({
+          body: expect.objectContaining({ labels: [3] }),
+        }),
+      );
+    });
+
+    it("refuses an unknown label before creating the issue", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [{ id: 1, name: "bug" }],
+          headers: makeHeaders({ "x-total-count": "1" }),
+          status: 200,
+        })
+        .mockResolvedValueOnce({ data: [], headers: makeHeaders(), status: 200 });
+
+      await expect(
+        provider.issues.create("testowner", "test-repo", {
+          title: "Bug report",
+          body: "Critical bug",
+          labels: ["missing"],
+        }),
+      ).rejects.toMatchObject({ status: 404, platform: "gitea" });
+      expect(mockClient).not.toHaveBeenCalled();
+    });
+
+    it("does not report a label missing when pagination cannot finish", async () => {
+      mockedRawFetch.mockResolvedValue({
+        data: Array.from({ length: 50 }, (_, index) => ({
+          id: index + 1,
+          name: `other-${index}`,
+        })),
+        headers: makeHeaders(),
+        status: 200,
+      });
+
+      await expect(
+        provider.issues.create("testowner", "test-repo", {
+          title: "Bug report",
+          body: "Critical bug",
+          labels: ["missing"],
+        }),
+      ).rejects.toMatchObject({ status: 502, platform: "gitea" });
+      expect(mockedRawFetch).toHaveBeenCalledTimes(100);
+      expect(mockClient).not.toHaveBeenCalled();
     });
   });
 
