@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.3.0
+
+[compare changes](https://github.com/agntn/forges/compare/v0.2.3...v0.3.0)
+
+### 🚀 Enhancements
+
+- Unify pull request reviews ([#109](https://github.com/agntn/forges/pull/109))
+
+### 🩹 Fixes
+
+- **gitlab:** Rank Reporter above Guest ([#106](https://github.com/agntn/forges/pull/106))
+- **docs:** Bundle the library from src ([#108](https://github.com/agntn/forges/pull/108))
+
+### 💅 Refactors
+
+- ⚠️  Import only what a call needs ([#107](https://github.com/agntn/forges/pull/107))
+
+#### ⚠️ Breaking Changes
+
+- ⚠️  Import only what a call needs ([#107](https://github.com/agntn/forges/pull/107))
+
+### ❤️ Contributors
+
+- Ori ([@oritwoen](https://github.com/oritwoen))
+- Aeitwoen ([@aeitwoen](https://github.com/aeitwoen))
+
 ## v0.2.3
 
 [compare changes](https://github.com/agntn/forges/compare/v0.2.2...v0.2.3)
