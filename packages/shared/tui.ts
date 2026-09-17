@@ -28,7 +28,7 @@ const FIELD_SCAN_LIMIT = 2048;
 const TERMINAL_UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
 const MALFORMED_SURROGATE = /\p{Cs}/gu;
 
-const WRITE_TOOLS = /* @__PURE__ */ new Set([
+const WRITE_TOOLS = new Set([
   "forges_issues_create",
   "forges_pull_requests_create",
   "forges_auth_reload",

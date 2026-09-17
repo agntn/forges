@@ -9,8 +9,8 @@ import type { Static, TSchema } from "typebox";
 import type { ForgesToolSchemas } from "../packages/shared/forges-tool-schemas.ts";
 import type * as ToolOperations from "./tool-operations.ts";
 import type { ForgesToolResult } from "./tool-operations.ts";
-import { lazy } from "./lazy.ts";
 import { version } from "./version.ts";
+import { lazy } from "../packages/shared/lazy.ts";
 import { forgeToolTitle } from "../packages/shared/tui.ts";
 
 /** The executors every tool binds to, loaded on the first call rather than at import. */
@@ -427,6 +427,38 @@ function failureText(errors: ErrorsModule, name: string, error: unknown): string
 }
 
 /**
+ * The tool table and its `tools/list` payload, built on the first `tools/list`
+ * of the process. Schemas are immutable, so every server instance shares them.
+ */
+const tools = /* @__PURE__ */ lazy(async () => {
+  const { forgesToolSchemas } = await import("../packages/shared/forges-tool-schemas.ts");
+  const definitions = defineTools(forgesToolSchemas());
+  return {
+    byName: new Map(definitions.map((tool) => [tool.name, tool])),
+    listed: definitions.map((tool): Tool => {
+      const title = forgeToolTitle(tool.name, tool.title);
+      return {
+        name: tool.name,
+        title,
+        description: tool.description,
+        inputSchema: tool.inputSchema as Tool["inputSchema"],
+        annotations: { ...tool.annotations, title },
+      };
+    }),
+  };
+});
+
+/** The validator, the error classes and the executors, loaded on the first `tools/call`. */
+const runtime = /* @__PURE__ */ lazy(async () => {
+  const [{ Value }, errors, operations] = await Promise.all([
+    import("typebox/value"),
+    import("./errors.ts"),
+    import("./tool-operations.ts"),
+  ]);
+  return { Value, errors, operations };
+});
+
+/**
  * Creates an unconnected MCP server exposing repository, CI-run, issue,
  * pull-request, user, and review-thread tools.
  *
@@ -445,19 +477,6 @@ function failureText(errors: ErrorsModule, name: string, error: unknown): string
  * variables of the server process.
  */
 export function createMcpServer(): Server {
-  const tools = lazy(async () => {
-    const { forgesToolSchemas } = await import("../packages/shared/forges-tool-schemas.ts");
-    return new Map(defineTools(forgesToolSchemas()).map((tool) => [tool.name, tool]));
-  });
-  const runtime = lazy(async () => {
-    const [{ Value }, errors, operations] = await Promise.all([
-      import("typebox/value"),
-      import("./errors.ts"),
-      import("./tool-operations.ts"),
-    ]);
-    return { Value, errors, operations };
-  });
-
   const server = new Server(
     {
       name: "forges",
@@ -469,20 +488,11 @@ export function createMcpServer(): Server {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: Array.from((await tools()).values(), (tool): Tool => {
-      const title = forgeToolTitle(tool.name, tool.title);
-      return {
-        name: tool.name,
-        title,
-        description: tool.description,
-        inputSchema: tool.inputSchema as Tool["inputSchema"],
-        annotations: { ...tool.annotations, title },
-      };
-    }),
+    tools: (await tools()).listed,
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const tool = (await tools()).get(request.params.name);
+    const tool = (await tools()).byName.get(request.params.name);
     if (!tool) return errorResult(`Unknown forges tool: ${request.params.name}`);
 
     const { Value, errors, operations } = await runtime();

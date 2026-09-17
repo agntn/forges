@@ -1,6 +1,6 @@
 import type { CiRunConclusion, CiRunStatus } from "./types.ts";
 
-const queuedStatuses = /* @__PURE__ */ new Set([
+const queuedStatuses = new Set([
   "created",
   "pending",
   "preparing",
@@ -11,14 +11,9 @@ const queuedStatuses = /* @__PURE__ */ new Set([
   "waiting_for_resource",
 ]);
 
-const waitingStatuses = /* @__PURE__ */ new Set(["blocked", "manual", "waiting"]);
+const waitingStatuses = new Set(["blocked", "manual", "waiting"]);
 
-const activeStatuses = /* @__PURE__ */ new Set([
-  "canceling",
-  "cancelling",
-  "in_progress",
-  "running",
-]);
+const activeStatuses = new Set(["canceling", "cancelling", "in_progress", "running"]);
 
 const conclusions: Record<string, CiRunConclusion> = {
   action_required: "action_required",

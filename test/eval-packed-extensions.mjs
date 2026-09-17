@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { registerHooks } from "node:module";
+import { execFile } from "node:child_process";
+import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 
+import { loaded, recordSourcesUnder } from "./record-loads.mjs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import * as OmpTypeBox from "@oh-my-pi/omptype/typebox";
@@ -13,44 +14,45 @@ const root = process.cwd();
 const temporaryRoot = await mkdtemp(join(root, ".forges-packed-test-"));
 const packageRoot = join(temporaryRoot, "package");
 const packageRootUrl = pathToFileURL(`${packageRoot}/`).href;
+recordSourcesUnder(packageRootUrl);
 
 /**
- * Every module the packed package loads from here on, so each surface can prove
- * what it did not load: provider code before a call needs it, the MCP SDK for
- * `--help`. The hook sees only modules that are not in the cache yet, which is
- * exactly the set the package itself pulls in. The order below follows from
- * that: both extensions register first, the server runs next, and only the tool
- * calls at the end may load the GitHub provider.
+ * Load assertions read what the packed package pulled in so far, so the order
+ * of the main flow matters: both extensions register first, the server runs
+ * next, and only the tool calls at the end may load the GitHub provider.
  */
-const loadedModules = [];
-registerHooks({
-  load(url, context, nextLoad) {
-    loadedModules.push(url);
-    return nextLoad(url, context);
-  },
-});
-
-function loadedPackageFiles() {
-  return loadedModules
-    .filter((url) => url.startsWith(packageRootUrl))
-    .map((url) => url.slice(packageRootUrl.length));
+function loadedPackageModules() {
+  return loaded.filter((module) => module.url.startsWith(packageRootUrl));
 }
 
-function assertNotLoaded(pattern, reason) {
-  const offending = loadedPackageFiles().filter((file) => pattern.test(file));
+function assertNotLoaded(matches, reason) {
+  const offending = loadedPackageModules()
+    .filter(matches)
+    .map((module) => module.url.slice(packageRootUrl.length));
   assert.deepEqual(offending, [], reason);
 }
 
-function assertLoaded(pattern, reason) {
-  assert(
-    loadedPackageFiles().some((file) => pattern.test(file)),
-    reason,
-  );
+function assertLoaded(matches, reason) {
+  assert(loadedPackageModules().some(matches), reason);
 }
 
-const providerChunk = /(^|\/)(github|gitlab|gitea)[^/]*\.mjs$/u;
-const gitlabOrGiteaChunk = /(^|\/)(gitlab|gitea)[^/]*\.mjs$/u;
-const toolOperationsChunk = /(^|\/)tool-operations[^/]*\.mjs$/u;
+/**
+ * Matches by the class a module defines: the public name, not the chunk file
+ * rolldown picked. Both `class X` and rolldown's `var X = class` count.
+ */
+function declares(...classes) {
+  const names = classes.join("|");
+  const pattern = new RegExp(
+    String.raw`\bclass\s+(?:${names})\b|\b(?:${names})\s*=\s*class\b`,
+    "u",
+  );
+  return (module) => module.source !== undefined && pattern.test(module.source);
+}
+
+const executors = (module) => module.url === `${packageRootUrl}dist/tool-operations.mjs`;
+const anyProvider = declares("GitHubProvider", "GitLabProvider", "GiteaProvider");
+const gitHubProvider = declares("GitHubProvider");
+const otherProviders = declares("GitLabProvider", "GiteaProvider");
 const environmentKeys = ["FORGES_GITHUB_BASE_URL", "GH_TOKEN", "GITHUB_TOKEN"];
 const originalEnvironment = environmentKeys.map((key) => [key, process.env[key]]);
 class PackedText {
@@ -96,19 +98,18 @@ const expectedToolNames = [
   "forges_threads_unresolve",
 ];
 
-function registerPackedExtension(extensionPath, api) {
+async function registerPackedExtension(extensionPath, api) {
   const moduleUrl = `${pathToFileURL(extensionPath).href}?packed=${Date.now()}`;
-  return import(moduleUrl).then((extension) => {
-    const tools = new Map();
-    extension.default({
-      ...api,
-      registerTool(tool) {
-        tools.set(tool.name, tool);
-      },
-    });
-    assert.deepEqual([...tools.keys()], expectedToolNames);
-    return tools;
+  const extension = await import(moduleUrl);
+  const tools = new Map();
+  extension.default({
+    ...api,
+    registerTool(tool) {
+      tools.set(tool.name, tool);
+    },
   });
+  assert.deepEqual([...tools.keys()], expectedToolNames);
+  return tools;
 }
 
 async function assertDistributionFallback(tools, api) {
@@ -124,8 +125,8 @@ async function assertDistributionFallback(tools, api) {
     () => tool.execute("packed-test", args, undefined, undefined, {}),
     /Failed to parse URL/,
   );
-  assertLoaded(/(^|\/)github[^/]*\.mjs$/u, "a GitHub call loads the GitHub provider");
-  assertNotLoaded(gitlabOrGiteaChunk, "a GitHub call must not load the other providers");
+  assertLoaded(gitHubProvider, "a GitHub call loads the GitHub provider");
+  assertNotLoaded(otherProviders, "a GitHub call must not load the other providers");
 }
 
 /**
@@ -139,8 +140,8 @@ async function assertPackedMcpServer(root) {
   const server = createMcpServer();
   const client = new Client({ name: "packed-test", version: "1.0.0" });
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
-  assertNotLoaded(toolOperationsChunk, "connecting the server must not load the executors");
-  assertNotLoaded(providerChunk, "connecting the server must not load a provider");
+  assertNotLoaded(executors, "connecting the server must not load the executors");
+  assertNotLoaded(anyProvider, "connecting the server must not load a provider");
 
   try {
     const { tools } = await client.listTools();
@@ -148,7 +149,7 @@ async function assertPackedMcpServer(root) {
       tools.map((tool) => tool.name),
       expectedToolNames,
     );
-    assertNotLoaded(toolOperationsChunk, "listing tools must not load the executors");
+    assertNotLoaded(executors, "listing tools must not load the executors");
 
     const rejected = await client.callTool({
       name: "forges_repos_get",
@@ -160,45 +161,36 @@ async function assertPackedMcpServer(root) {
       /^Invalid arguments at \/platform/u,
       "the rejection must come from the bundled validator",
     );
-    assertLoaded(toolOperationsChunk, "the first call loads the executors");
-    assertNotLoaded(providerChunk, "a call rejected by its schema must not load a provider");
+    assertLoaded(executors, "the first call loads the executors");
+    assertNotLoaded(anyProvider, "a call rejected by its schema must not load a provider");
   } finally {
     await Promise.all([client.close(), server.close()]);
   }
 }
 
+const execFileAsync = promisify(execFile);
+
 /**
  * citty resolves every subcommand to print usage, so a static SDK import inside
- * the `mcp` command would load the whole server on `forges --help`.
+ * the `mcp` command would load the whole server on `forges --help`. The child
+ * runs under the same load hook and reports every module on exit.
  */
 async function assertHelpStaysLight(root) {
-  const hookPath = join(temporaryRoot, "record-loads.mjs");
-  await writeFile(
-    hookPath,
-    [
-      'import { registerHooks } from "node:module";',
-      "const loaded = [];",
-      "registerHooks({ load(url, context, nextLoad) { loaded.push(url); return nextLoad(url, context); } });",
-      'process.on("exit", () => { process.stderr.write(`\\n@loaded ${JSON.stringify(loaded)}\\n`); });',
-      "",
-    ].join("\n"),
-  );
-  const cliPath = join(root, "dist/cli.mjs");
-  const { status, stdout, stderr } = spawnSync(
+  const hook = new URL("./record-loads.mjs", import.meta.url).href;
+  const { stdout, stderr } = await execFileAsync(
     process.execPath,
-    ["--import", pathToFileURL(hookPath).href, cliPath, "--help"],
-    { cwd: root, encoding: "utf8" },
+    ["--import", hook, join(root, "dist/cli.mjs"), "--help"],
+    { cwd: root, encoding: "utf8", env: { ...process.env, FORGES_REPORT_LOADS: "1" } },
   );
-  assert.equal(status, 0, `forges --help exited with ${status}: ${stderr}`);
   assert.match(stdout, /forges mcp/u, "usage names the mcp command");
   const recorded = stderr.match(/@loaded (\[.*\])/u);
   assert(recorded, "the load hook reported nothing");
-  const loaded = JSON.parse(recorded[1]);
-  const sdk = loaded.filter((url) => url.includes("@modelcontextprotocol"));
+  const urls = JSON.parse(recorded[1]);
+  const sdk = urls.filter((url) => url.includes("@modelcontextprotocol"));
   assert.deepEqual(sdk, [], "forges --help must not load the MCP SDK");
   const serverEntry = pathToFileURL(join(root, "dist/mcp.mjs")).href;
-  assert(!loaded.includes(serverEntry), "forges --help must not load the server entry");
-  const typebox = loaded.filter((url) => url.startsWith(packageRootUrl) && url.includes("typebox"));
+  assert(!urls.includes(serverEntry), "forges --help must not load the server entry");
+  const typebox = urls.filter((url) => url.startsWith(packageRootUrl) && url.includes("typebox"));
   assert.deepEqual(typebox, [], "forges --help must not load the tool schemas");
 }
 
@@ -222,14 +214,17 @@ try {
     cp(join(root, "packages/omp/extensions/forges.ts"), join(ompExtensionDirectory, "forges.ts")),
   ]);
 
+  const helpStaysLight = assertHelpStaysLight(packageRoot);
   const ompApi = { typebox: OmpTypeBox, pi: { Text: PackedText }, setLabel() {} };
-  const piTools = await registerPackedExtension(join(piExtensionDirectory, "forges.ts"), {});
-  const ompTools = await registerPackedExtension(join(ompExtensionDirectory, "forges.ts"), ompApi);
-  assertNotLoaded(toolOperationsChunk, "registering the extensions must not load the executors");
+  const [piTools, ompTools] = await Promise.all([
+    registerPackedExtension(join(piExtensionDirectory, "forges.ts"), {}),
+    registerPackedExtension(join(ompExtensionDirectory, "forges.ts"), ompApi),
+  ]);
+  assertNotLoaded(executors, "registering the extensions must not load the executors");
   await assertPackedMcpServer(packageRoot);
   await assertDistributionFallback(piTools, {});
   await assertDistributionFallback(ompTools, ompApi);
-  await assertHelpStaysLight(packageRoot);
+  await helpStaysLight;
 } finally {
   for (const [key, value] of originalEnvironment) {
     if (value === undefined) delete process.env[key];

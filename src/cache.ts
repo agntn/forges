@@ -30,7 +30,7 @@ export interface CachedFetchOptions {
  * and credential identity. Without it two clients pointed at different hosts,
  * or at one host with different tokens, read each other's responses.
  */
-export const CACHE_SCOPE: unique symbol = /* @__PURE__ */ Symbol.for("forges.cacheScope");
+export const CACHE_SCOPE: unique symbol = Symbol.for("forges.cacheScope");
 
 type ScopedClient = $Fetch & { [CACHE_SCOPE]?: string };
 

@@ -11,35 +11,26 @@ import {
   renderToolResult,
   type StatusTheme,
 } from "../../shared/tui.ts";
+import { lazy } from "../../shared/lazy.ts";
 
-let toolOperationsPromise: Promise<typeof ForgesTools> | undefined;
-
-/**
- * Load current source in development and fall back to the built package in distributions.
- *
- * Both specifiers stay literal: OMP rewrites bare dependencies only for imports
- * it can see statically. existsSync chooses the branch; it does not build a URL
- * for a single import(). The load is memoized so every tool shares one import,
- * and a rejection clears it so the next call can retry.
- */
-function loadToolOperations(): Promise<typeof ForgesTools> {
-  toolOperationsPromise ??= (async () => {
+export default function forgesOmpExtension(pi: ExtensionAPI): void {
+  const { Type } = pi.typebox;
+  const { Text } = pi.pi;
+  /**
+   * Current source in development, the built package in distributions.
+   *
+   * Both specifiers stay literal: OMP rewrites bare dependencies only for imports
+   * it can see statically. existsSync chooses the branch; it does not build a URL
+   * for a single import().
+   */
+  const loadToolOperations = lazy(async () => {
     const sourceModulePath = fileURLToPath(
       new URL("../../../src/tool-operations.ts", import.meta.url),
     );
     return existsSync(sourceModulePath)
       ? ((await import("../../../src/tool-operations.ts")) as unknown as typeof ForgesTools)
       : ((await import("../../../dist/tool-operations.mjs")) as typeof ForgesTools);
-  })().catch((error: unknown) => {
-    toolOperationsPromise = undefined;
-    throw error;
   });
-  return toolOperationsPromise;
-}
-
-export default function forgesOmpExtension(pi: ExtensionAPI): void {
-  const { Type } = pi.typebox;
-  const { Text } = pi.pi;
   function statusRenderers(name: string, label: string) {
     return {
       renderCall(args: unknown, options: RenderOptions, theme: StatusTheme) {

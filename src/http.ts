@@ -24,7 +24,7 @@ export interface HttpClientConfig {
  */
 export type HttpClient = $Fetch;
 
-const PAYLOAD_METHODS = /* @__PURE__ */ new Set(["PATCH", "POST", "PUT", "DELETE"]);
+const PAYLOAD_METHODS = new Set(["PATCH", "POST", "PUT", "DELETE"]);
 
 /**
  * Response data and metadata returned by {@link rawFetch}.

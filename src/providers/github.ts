@@ -320,90 +320,71 @@ interface GitHubGraphQLThreadMutationData {
   unresolveReviewThread?: { thread: GitHubGraphQLReviewThread | null };
 }
 
-interface GitHubThreadDocuments {
-  readonly listThreads: string;
-  readonly getThread: string;
-  readonly threadScope: string;
-  readonly resolveThread: string;
-  readonly unresolveThread: string;
-}
-
-let threadDocuments: GitHubThreadDocuments | undefined;
-
-/**
- * GraphQL documents for review threads, assembled on first use.
- *
- * The fragments interpolate into each other, and a bundler cannot prove that
- * evaluation pure, so building them here keeps the module free of import-time
- * work.
- */
-function githubThreadDocuments(): GitHubThreadDocuments {
-  if (threadDocuments) return threadDocuments;
-
-  const scopeFields = `
+const THREAD_SCOPE_FIELDS = `
   pullRequest {
     number
     repository { name owner { login } }
   }
 `;
-  const threadFields = `
+
+const THREAD_FIELDS = `
   id
   isResolved
   isOutdated
   path
   line
   startLine
-  ${scopeFields}
+  ${THREAD_SCOPE_FIELDS}
   comments(first: 100, after: $commentsAfter) {
     pageInfo { hasNextPage endCursor }
     nodes { databaseId fullDatabaseId body url createdAt author { login } }
   }
 `;
 
-  threadDocuments = {
-    listThreads: `
+const LIST_THREADS_QUERY = `
   query($owner: String!, $name: String!, $number: Int!, $first: Int!, $after: String, $commentsAfter: String) {
     repository(owner: $owner, name: $name) {
       pullRequest(number: $number) {
         reviewThreads(first: $first, after: $after) {
           pageInfo { hasNextPage endCursor }
-          nodes { ${threadFields} }
+          nodes { ${THREAD_FIELDS} }
         }
       }
     }
   }
-`,
-    getThread: `
+`;
+
+const GET_THREAD_QUERY = `
   query($id: ID!, $commentsAfter: String) {
     node(id: $id) {
-      ... on PullRequestReviewThread { ${threadFields} }
+      ... on PullRequestReviewThread { ${THREAD_FIELDS} }
     }
   }
-`,
-    threadScope: `
+`;
+
+const THREAD_SCOPE_QUERY = `
   query($id: ID!) {
     node(id: $id) {
-      ... on PullRequestReviewThread { ${scopeFields} }
+      ... on PullRequestReviewThread { ${THREAD_SCOPE_FIELDS} }
     }
   }
-`,
-    resolveThread: `
+`;
+
+const RESOLVE_THREAD_MUTATION = `
   mutation($id: ID!, $commentsAfter: String) {
     resolveReviewThread(input: {threadId: $id}) {
-      thread { ${threadFields} }
+      thread { ${THREAD_FIELDS} }
     }
   }
-`,
-    unresolveThread: `
+`;
+
+const UNRESOLVE_THREAD_MUTATION = `
   mutation($id: ID!, $commentsAfter: String) {
     unresolveReviewThread(input: {threadId: $id}) {
-      thread { ${threadFields} }
+      thread { ${THREAD_FIELDS} }
     }
   }
-`,
-  };
-  return threadDocuments;
-}
+`;
 
 function githubGraphqlUrl(restBaseURL: string): string {
   const base = restBaseURL.replace(/\/+$/, "");
@@ -1544,17 +1525,14 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       // Scan one match past the page: with a state filter, a full page says
       // nothing about whether any later thread still matches.
       while (hasMore && matched.length <= skip + perPage) {
-        const data = await this.graphql<GitHubGraphQLThreadListData>(
-          githubThreadDocuments().listThreads,
-          {
-            owner,
-            name: repo,
-            number,
-            first: 50,
-            after: cursor ?? null,
-            commentsAfter: null,
-          },
-        );
+        const data = await this.graphql<GitHubGraphQLThreadListData>(LIST_THREADS_QUERY, {
+          owner,
+          name: repo,
+          number,
+          first: 50,
+          after: cursor ?? null,
+          commentsAfter: null,
+        });
         const pullRequest = data.repository?.pullRequest;
         if (!pullRequest) {
           throw new NotFoundError(
@@ -1597,13 +1575,10 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     threadId: string,
   ): Promise<Thread> {
     try {
-      const data = await this.graphql<GitHubGraphQLThreadNodeData>(
-        githubThreadDocuments().getThread,
-        {
-          id: threadId,
-          commentsAfter: null,
-        },
-      );
+      const data = await this.graphql<GitHubGraphQLThreadNodeData>(GET_THREAD_QUERY, {
+        id: threadId,
+        commentsAfter: null,
+      });
       if (!data.node || !threadMatchesPullRequest(data.node.pullRequest, owner, repo, number)) {
         throw new NotFoundError(
           `Resource not found: thread ${threadId} on ${owner}/${repo}#${number}`,
@@ -1657,7 +1632,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       repo,
       number,
       threadId,
-      githubThreadDocuments().resolveThread,
+      RESOLVE_THREAD_MUTATION,
       "resolveReviewThread",
     );
   }
@@ -1673,7 +1648,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       repo,
       number,
       threadId,
-      githubThreadDocuments().unresolveThread,
+      UNRESOLVE_THREAD_MUTATION,
       "unresolveReviewThread",
     );
   }
@@ -1711,12 +1686,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     number: number,
     threadId: string,
   ): Promise<void> {
-    const data = await this.graphql<GitHubGraphQLThreadScopeData>(
-      githubThreadDocuments().threadScope,
-      {
-        id: threadId,
-      },
-    );
+    const data = await this.graphql<GitHubGraphQLThreadScopeData>(THREAD_SCOPE_QUERY, {
+      id: threadId,
+    });
     if (!threadMatchesPullRequest(data.node?.pullRequest, owner, repo, number)) {
       throw new NotFoundError(
         `Resource not found: thread ${threadId} on ${owner}/${repo}#${number}`,
@@ -1750,13 +1722,10 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     let cursor = thread.comments.pageInfo.endCursor;
     let hasNextPage = thread.comments.pageInfo.hasNextPage;
     while (hasNextPage && cursor) {
-      const data = await this.graphql<GitHubGraphQLThreadNodeData>(
-        githubThreadDocuments().getThread,
-        {
-          id: thread.id,
-          commentsAfter: cursor,
-        },
-      );
+      const data = await this.graphql<GitHubGraphQLThreadNodeData>(GET_THREAD_QUERY, {
+        id: thread.id,
+        commentsAfter: cursor,
+      });
       const connection = data.node?.comments;
       if (!connection) {
         break;

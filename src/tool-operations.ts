@@ -122,18 +122,16 @@ function credentialSetupHint(platform: ForgesPlatform): string {
   }
 }
 
-function authenticatedProvider(platform: ForgesPlatform): Promise<Provider> {
+async function authenticatedProvider(platform: ForgesPlatform): Promise<Provider> {
   const key = providerKey(platform);
   const pinned = pinnedProviders.get(key);
   if (pinned) return pinned;
 
   const token = configuredToken(platform);
   if (token === "") {
-    return Promise.reject(
-      new AuthenticationError(
-        `No auth token found for ${platform}. ${credentialSetupHint(platform)}`,
-        platform,
-      ),
+    throw new AuthenticationError(
+      `No auth token found for ${platform}. ${credentialSetupHint(platform)}`,
+      platform,
     );
   }
 

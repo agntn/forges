@@ -44,9 +44,8 @@ src/
 ├── changed-file.ts       # Changed-file status normalization + GitLab diff line counts
 ├── pagination.ts         # Link header + x-next-page async generator
 ├── version.ts            # Package version — the one source for it in src/
-├── lazy.ts               # lazy(load): one shared in-flight load, retried after a rejection
 ├── tool-operations.ts    # Executors behind every agent surface (MCP, Pi, OMP)
-├── mcp.ts                # createMcpServer() over the low-level MCP Server; schemas, validator and executors load per request
+├── mcp.ts                # createMcpServer() over the low-level MCP Server; tool table on first tools/list, executors on first tools/call
 ├── cli.ts                # citty entry for the `forges` bin
 ├── commands/mcp.ts       # `forges mcp` — stdio transport
 ├── github.ts             # Sub-path re-export for @agntn/forges/github
@@ -59,7 +58,8 @@ src/
     └── gitea.ts          # Class. limit param, null-safe fields
 packages/
 ├── shared/
-│   └── forges-tool-schemas.ts   # ForgesPlatform + TypeBox parameters shared by src/mcp.ts and Pi
+│   ├── forges-tool-schemas.ts   # ForgesPlatform + TypeBox parameters shared by src/mcp.ts and Pi
+│   └── lazy.ts                  # lazy(load): one shared in-flight load, retried after a rejection
 ├── pi/extensions/forges.ts      # Pi extension — imports the shared schemas
 └── omp/extensions/forges.ts     # OMP extension — rebuilds them with the host TypeBox
 test/
@@ -148,7 +148,7 @@ Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 - **No hardcoded URLs** — all providers accept `baseURL` config.
 - **No `execSync`** — use `execFileSync` with arg arrays (command injection prevention).
 - **No CJS** — ESM only everywhere.
-- **Nothing runs at import.** `sideEffects: false` is a claim about every module: no calls, registrations, or `process.env` reads at module scope, and heavy dependencies (provider modules, `typebox/value`, the MCP SDK) load on the call path through literal `import()`. Mark a pure module-scope construction the bundler cannot prove, such as `new Set([...])`, with `/* @__PURE__ */`.
+- **Nothing runs at import.** `sideEffects: false` is a claim about every module: no calls, registrations, or `process.env` reads at module scope, and heavy dependencies (provider modules, `typebox/value`, the MCP SDK) load on the call path through literal `import()`. Literals, `new Set([...])` and `Symbol.for()` need no hint, rolldown drops them unused; a module-scope call to a project helper such as `lazy()` carries `/* @__PURE__ */`.
 
 ## Testing
 
