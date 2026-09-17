@@ -112,17 +112,26 @@ async function registerPackedExtension(extensionPath, api) {
   return tools;
 }
 
-async function assertDistributionFallback(tools, api) {
-  const tool = tools.get("forges_repos_get");
-  assert(tool, "forges_repos_get was not registered");
-  const args = { platform: "github", owner: "agntn", repo: "forges" };
+const repositoryArgs = { platform: "github", owner: "agntn", repo: "forges" };
+
+function requireTool(tools, name) {
+  const tool = tools.get(name);
+  assert(tool, `${name} was not registered`);
+  return tool;
+}
+
+/** Rendering a call row is pure presentation, so it must not reach for the executors. */
+function assertRenderedCall(tool, api) {
   const theme = { fg: (_color, text) => text, bold: (text) => text };
   const component = api.typebox
-    ? tool.renderCall(args, { isPartial: true, spinnerFrame: 0 }, theme)
-    : tool.renderCall(args, theme, { executionStarted: true, isPartial: true });
+    ? tool.renderCall(repositoryArgs, { isPartial: true, spinnerFrame: 0 }, theme)
+    : tool.renderCall(repositoryArgs, theme, { executionStarted: true, isPartial: true });
   assert.match(component.render(120).join("\n"), /Forges Repository agntn\/forges/u);
+}
+
+async function assertDistributionFallback(tool) {
   await assert.rejects(
-    () => tool.execute("packed-test", args, undefined, undefined, {}),
+    () => tool.execute("packed-test", repositoryArgs, undefined, undefined, {}),
     /Failed to parse URL/,
   );
   assertLoaded(gitHubProvider, "a GitHub call loads the GitHub provider");
@@ -221,9 +230,14 @@ try {
     registerPackedExtension(join(ompExtensionDirectory, "forges.ts"), ompApi),
   ]);
   assertNotLoaded(executors, "registering the extensions must not load the executors");
+  const piTool = requireTool(piTools, "forges_repos_get");
+  const ompTool = requireTool(ompTools, "forges_repos_get");
+  assertRenderedCall(piTool, {});
+  assertRenderedCall(ompTool, ompApi);
+  assertNotLoaded(executors, "rendering a call must not load the executors");
   await assertPackedMcpServer(packageRoot);
-  await assertDistributionFallback(piTools, {});
-  await assertDistributionFallback(ompTools, ompApi);
+  await assertDistributionFallback(piTool);
+  await assertDistributionFallback(ompTool);
   await helpStaysLight;
 } finally {
   for (const [key, value] of originalEnvironment) {
