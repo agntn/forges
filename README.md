@@ -9,7 +9,7 @@ One API. Every forge. GitHub, GitLab, Gitea and GitBucket behind one TypeScript 
 
 Every Git platform does the same things and none of them agree on how. GitLab says merge request, GitHub says pull request. GitLab paginates with `x-next-page`, GitHub with `Link`, Gitea wants `limit` where everyone else wants `per_page`. GitLab numbers issues twice and the one you want is the `iid`. Keep one client per platform in an agent and you have four ways to misread a number.
 
-Docs and the live explorer: [forges.agntn.dev](https://forges.agntn.dev). The source lives in [`docs/`](./docs), run `pnpm docs` after `pnpm build` for a local copy.
+Docs and the live explorer: [forges.agntn.dev](https://forges.agntn.dev). The source lives in [`docs/`](./docs), run `pnpm docs` for a local copy, it bundles `src/` itself.
 
 ## Install
 
@@ -154,7 +154,7 @@ Repository content, trees, branches, tags, webhooks and admin. On purpose. The s
 pnpm install
 pnpm test        # vitest in watch mode
 pnpm run build   # obuild
-pnpm docs        # the site, after pnpm build
+pnpm docs        # the site, bundles src/ itself
 ```
 
 ## License

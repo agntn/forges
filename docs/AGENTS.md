@@ -6,7 +6,7 @@ Docus site for `@agntn/forges`. Markdown lives in `content/`. The explorer is a 
 
 ```
 docs/
-├── nuxt.config.ts                 # extends: ['docus'], cloudflare_module preset (Workers)
+├── nuxt.config.ts                 # extends: ['docus'], cloudflare_module preset (Workers), @agntn/forges aliased to ../src
 ├── app/app.config.ts              # title, github, theme
 ├── app/app.css                    # theme tokens (light + .dark), shared `forges-*` classes
 ├── app/components/                # Docus overrides: AppHeaderLogo, AppHeaderCTA (nav), AppFooterLeft, DocsAsideLeftBody
@@ -36,11 +36,11 @@ pnpm generate         # static output only, the /api routes need the worker
 node scripts/record-fixtures.mjs   # record the landing samples again (needs gh logged in for GitHub threads)
 ```
 
-Deployment: Nitro preset `cloudflare_module`. Nuxt Content needs a D1 binding named `DB` and the response cache a KV binding named `CACHE`. `wrangler.jsonc` carries both plus the `NUXT_SITE_URL` var, and Nitro merges it into the generated `.output/server/wrangler.json`. Create them once with `wrangler d1 create agntn-forges` and `wrangler kv namespace create CACHE` and put the ids in `wrangler.jsonc`. Until then the ids are all zeros on purpose, and `pnpm deploy` with zeros would bind nothing, so do not run it before they are replaced.
+Deployment: Workers Builds with root directory `docs`. It installs `docs/` and nothing else, which is enough because the library is bundled from `../src` (see below). Nitro preset `cloudflare_module`. Nuxt Content needs a D1 binding named `DB` and the response cache a KV binding named `CACHE`. `wrangler.jsonc` carries both plus the `NUXT_SITE_URL` var, and Nitro merges it into the generated `.output/server/wrangler.json`. Create them once with `wrangler d1 create agntn-forges` and `wrangler kv namespace create CACHE` and put the ids in `wrangler.jsonc`. Until then the ids are all zeros on purpose, and `pnpm deploy` with zeros would bind nothing, so do not run it before they are replaced.
 
 Platform tokens are Worker secrets, never vars: `wrangler secret put GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`. With `nodejs_compat` the runtime exposes them on `process.env`, which is where `server/utils/forge.ts` reads them. A platform without a secret shows up as `authenticated: false` in `/api/platforms` and its reads go out anonymously: GitLab public projects except discussions and search, Gitea public repositories. GitHub anonymous is sixty requests an hour per address and Cloudflare egress addresses are shared, so from the worker it answers 429 almost always. Set `GITHUB_TOKEN` (a fine grained token with public read access is enough) or every GitHub tab in the explorer is a 429. An optional `FORGES_<PLATFORM>_BASE_URL` var points a platform at a self hosted instance.
 
-The site imports `@agntn/forges` from `file:..`. Build the parent package first.
+`@agntn/forges` is an alias in `nuxt.config.ts` for `../src/index.ts`. Nitro bundles the checkout's sources into the worker, so `dist/` and the root `node_modules` are never touched. The subgraph under `src/index.ts` imports `ofetch` and `unstorage` from npm; both are dependencies of `docs/package.json`, because a bare import in `../src` resolves upwards from the importer and reaches `docs/node_modules` only as Nitro's fallback, once the root has none. A new npm import that `src/index.ts` can reach needs an entry there or the deploy breaks. The CLI, MCP and tool entries stay out of the alias.
 
 Resolution traps, both caused by the repo root being a pnpm workspace:
 
