@@ -6,7 +6,7 @@ const { samples, tick, paused, current, step } = useLandingForge();
 const stats = [
   { value: "4", label: "platforms" },
   { value: "9", label: "resources" },
-  { value: "30", label: "agent tools" },
+  { value: "31", label: "agent tools" },
   { value: "3", label: "agent surfaces" },
 ] as const;
 
