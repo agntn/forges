@@ -291,6 +291,7 @@ function normalizePositiveInteger(value: number | undefined, fallback: number): 
   return Math.floor(value);
 }
 
+/** Guest views and comments: read. Planner and Reporter manage issues, no push: triage. */
 function mapGitLabPermission(
   permissions: GitLabProject["permissions"],
 ): RepositoryPermission | null {
@@ -302,8 +303,8 @@ function mapGitLabPermission(
   if (accessLevel >= 50) return "admin";
   if (accessLevel >= 40) return "maintain";
   if (accessLevel >= 30) return "write";
-  if (accessLevel >= 20) return "read";
-  if (accessLevel >= 10) return "triage";
+  if (accessLevel >= 15) return "triage";
+  if (accessLevel >= 10) return "read";
   return "none";
 }
 

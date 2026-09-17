@@ -686,7 +686,7 @@ describe("GitLabProvider", () => {
       expect(repo.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss");
       expect(repo.isFork).toBe(false);
       expect(repo.parent).toBeNull();
-      expect(repo.viewerPermission).toBe("read");
+      expect(repo.viewerPermission).toBe("triage");
       expect(repo.owner.avatarUrl).toBe(
         "https://gitlab.com/uploads/-/system/group/avatar/9970/logo.png",
       );
@@ -743,6 +743,28 @@ describe("GitLabProvider", () => {
 
       expect(noMembership.viewerPermission).toBe("none");
       expect(unavailable.viewerPermission).toBeNull();
+    });
+
+    it("maps Guest to read and the roles below Developer to triage", async () => {
+      const ladder = [
+        [5, "none"],
+        [10, "read"],
+        [15, "triage"],
+        [20, "triage"],
+        [25, "triage"],
+        [30, "write"],
+      ] as const;
+
+      for (const [accessLevel, expected] of ladder) {
+        mocks.client.mockResolvedValueOnce({
+          ...glProject,
+          permissions: { project_access: { access_level: accessLevel }, group_access: null },
+        });
+
+        const repo = await gl.repos.get("gitlab-org", "gitlab-foss");
+
+        expect(repo.viewerPermission).toBe(expected);
+      }
     });
 
     it("reads current viewer permission on every call", async () => {
