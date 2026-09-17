@@ -1700,6 +1700,34 @@ describe("GitHubProvider", () => {
         nextPage: 3,
       });
     });
+
+    it("reports the route as unsupported on a GitHub-compatible host that 404s it", async () => {
+      const gitbucket = new GitHubProvider({
+        baseURL: "https://gitbucket.example.com/api/v3",
+        token: "gb_test",
+      });
+      mocks.rawFetch
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce({ data: ghRepo, headers: new Headers(), status: 200 });
+
+      const error = await gitbucket.pullRequests
+        .listReviews("octocat", "hello-world", 99)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ForgesError);
+      expect(error).not.toBeInstanceOf(NotFoundError);
+      expect((error as ForgesError).status).toBe(501);
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/repos/octocat/hello-world");
+    });
+
+    it("keeps a GitHub.com 404 as not found without probing the host", async () => {
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(
+        gh.pullRequests.listReviews("octocat", "hello-world", 99),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("pullRequests.search", () => {

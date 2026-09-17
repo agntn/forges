@@ -548,7 +548,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
-  private async supportsOwnerDefaults(owner: string, repo: string): Promise<boolean> {
+  /** GitHub.com and Enterprise serve the whole API, GitBucket and the like do not. */
+  private async isGitHubHost(owner: string, repo: string): Promise<boolean> {
     const hostname = new URL(this.restBaseURL).hostname;
     if (hostname === "api.github.com" || hostname.endsWith(".ghe.com")) return true;
     try {
@@ -728,7 +729,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       if (local.overrides || repository.name.toLowerCase() === ".github") {
         return local.templates;
       }
-      if (!(await this.supportsOwnerDefaults(owner, repo))) return local.templates;
+      if (!(await this.isGitHubHost(owner, repo))) return local.templates;
 
       const defaults = await this.tryRepository(owner, ".github");
       const usableDefaults =
@@ -1168,6 +1169,18 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       const page = buildPageResult(data ?? [], headers, (raw) => this.mapPullRequestReview(raw));
       return { ...page, items: page.items.filter(isPullRequestReview) };
     } catch (error) {
+      if (
+        error instanceof FetchError &&
+        error.status === 404 &&
+        !(await this.isGitHubHost(owner, repo))
+      ) {
+        throw new ForgesError(
+          "Pull request reviews are not supported by this GitHub-compatible host",
+          501,
+          "github",
+          error,
+        );
+      }
       throw normalizeError(error, "github");
     }
   }
