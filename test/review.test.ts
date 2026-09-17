@@ -14,17 +14,15 @@ describe("normalizeReviewState", () => {
     ["DISMISSED", "dismissed"],
     ["unapproved", "dismissed"],
     ["PENDING", "pending"],
+    ["review_started", "pending"],
   ] as const)("maps %s to %s", (raw, state) => {
     expect(normalizeReviewState(raw)).toBe(state);
   });
 
-  it.each(["REQUEST_REVIEW", "unreviewed", "review_started"])(
-    "drops the unanswered request %s",
-    (raw) => {
-      expect(normalizeReviewState(raw)).toBeNull();
-      expect(normalizeReviewState(raw, true)).toBeNull();
-    },
-  );
+  it.each(["REQUEST_REVIEW", "unreviewed"])("drops the unanswered request %s", (raw) => {
+    expect(normalizeReviewState(raw)).toBeNull();
+    expect(normalizeReviewState(raw, true)).toBeNull();
+  });
 
   it("lets a dismissed flag override the recorded verdict", () => {
     expect(normalizeReviewState("REQUEST_CHANGES", true)).toBe("dismissed");

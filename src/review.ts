@@ -11,15 +11,16 @@ const states: Record<string, PullRequestReviewState> = {
   dismissed: "dismissed",
   unapproved: "dismissed",
   pending: "pending",
+  review_started: "pending",
 };
 
 /** A reviewer who was asked and has not answered has given no review. */
-const requested = new Set(["request_review", "unreviewed", "review_started"]);
+const requested = new Set(["request_review", "unreviewed"]);
 
 /**
  * Normalize a GitHub or Gitea review state, or a GitLab reviewer state. A request nobody
- * answered is null, a dismissed flag or a withdrawn approval is dismissed, an unknown state is
- * commented, the one verdict that neither approves nor blocks.
+ * answered is null, a started but unsent review is pending, a dismissed flag or a withdrawn
+ * approval is dismissed, and an unknown state is commented, which neither approves nor blocks.
  */
 export function normalizeReviewState(
   state: string,

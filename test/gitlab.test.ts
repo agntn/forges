@@ -1432,6 +1432,7 @@ describe("GitLabProvider", () => {
       { user: { id: 4, username: "waiting" }, state: "unreviewed" },
       { user: { id: 5, username: "withdrew" }, state: "unapproved" },
       { user: { id: 6, username: "ancient" } },
+      { user: { id: 7, username: "drafting" }, state: "review_started" },
     ];
 
     it("merges approvals with each reviewer's stance, approvals first", async () => {
@@ -1480,8 +1481,17 @@ describe("GitLabProvider", () => {
             submittedAt: "",
             url: "",
           },
+          {
+            id: "7",
+            state: "pending",
+            body: "",
+            author: { login: "drafting" },
+            revision: "",
+            submittedAt: "",
+            url: "",
+          },
         ],
-        totalCount: 4,
+        totalCount: 5,
         hasNextPage: false,
         nextPage: undefined,
       });
@@ -1497,8 +1507,11 @@ describe("GitLabProvider", () => {
       });
 
       expect(result).toMatchObject({
-        items: [expect.objectContaining({ id: "5", state: "dismissed" })],
-        totalCount: 4,
+        items: [
+          expect.objectContaining({ id: "5", state: "dismissed" }),
+          expect.objectContaining({ id: "7", state: "pending" }),
+        ],
+        totalCount: 5,
         hasNextPage: false,
       });
     });
