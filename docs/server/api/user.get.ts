@@ -14,7 +14,8 @@ export default defineEventHandler(async (event) => {
   const params = { platform, username };
   try {
     return await cachedAnswer<UserAnswer>(event, "user", params, TTL.user, async () => {
-      const { email: _email, isAdmin: _admin, ...user } = await forge(platform).users.get(username);
+      const provider = await forge(platform);
+      const { email: _email, isAdmin: _admin, ...user } = await provider.users.get(username);
       return { platform, user, fetchedAt: new Date().toISOString() };
     });
   } catch (error) {

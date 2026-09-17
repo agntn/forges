@@ -13,39 +13,28 @@ import {
   renderToolResult,
   type StatusTheme,
 } from "../../shared/tui.ts";
-import {
-  authenticatedUserParameters,
-  codeSearchParameters,
-  commentParameters,
-  commitParameters,
-  contributionTemplateParameters,
-  createIssueParameters,
-  createPullRequestParameters,
-  listCiRunsParameters,
-  listCommentsParameters,
-  listCommitsParameters,
-  listContributionTemplatesParameters,
-  listPullRequestChecksParameters,
-  listPullRequestFilesParameters,
-  listRepositoriesParameters,
-  listRepositoryItemsParameters,
-  listThreadsParameters,
-  replyThreadParameters,
-  repositoryItemParameters,
-  repositoryParameters,
-  searchRepositoryItemsParameters,
-  threadParameters,
-  userParameters,
-} from "../../shared/forges-tool-schemas.ts";
+import { forgesToolSchemas } from "../../shared/forges-tool-schemas.ts";
 
-const sourceModuleUrl = new URL("../../../src/tool-operations.ts", import.meta.url);
-const distributionModuleUrl = new URL("../../../dist/tool-operations.mjs", import.meta.url);
 let toolOperationsPromise: Promise<typeof ForgesTools> | undefined;
 
+/**
+ * Load current source in development and fall back to the built package in distributions.
+ *
+ * The load is memoized so every tool shares one import, and a rejection clears
+ * it so the next call can retry instead of replaying the failure.
+ */
 function loadToolOperations(): Promise<typeof ForgesTools> {
-  toolOperationsPromise ??= import(
-    existsSync(fileURLToPath(sourceModuleUrl)) ? sourceModuleUrl.href : distributionModuleUrl.href
-  ) as Promise<typeof ForgesTools>;
+  toolOperationsPromise ??= (async () => {
+    const sourceModuleUrl = new URL("../../../src/tool-operations.ts", import.meta.url);
+    const distributionModuleUrl = new URL("../../../dist/tool-operations.mjs", import.meta.url);
+    const moduleUrl = existsSync(fileURLToPath(sourceModuleUrl))
+      ? sourceModuleUrl
+      : distributionModuleUrl;
+    return (await import(moduleUrl.href)) as typeof ForgesTools;
+  })().catch((error: unknown) => {
+    toolOperationsPromise = undefined;
+    throw error;
+  });
   return toolOperationsPromise;
 }
 
@@ -113,6 +102,31 @@ function statusRenderers(name: string, label: string) {
 }
 
 export default function forgesExtension(pi: ExtensionAPI): void {
+  const {
+    authenticatedUserParameters,
+    codeSearchParameters,
+    commentParameters,
+    commitParameters,
+    contributionTemplateParameters,
+    createIssueParameters,
+    createPullRequestParameters,
+    listCiRunsParameters,
+    listCommentsParameters,
+    listCommitsParameters,
+    listContributionTemplatesParameters,
+    listPullRequestChecksParameters,
+    listPullRequestFilesParameters,
+    listRepositoriesParameters,
+    listRepositoryItemsParameters,
+    listThreadsParameters,
+    replyThreadParameters,
+    repositoryItemParameters,
+    repositoryParameters,
+    searchRepositoryItemsParameters,
+    threadParameters,
+    userParameters,
+  } = forgesToolSchemas();
+
   pi.registerTool({
     name: "forges_repos_list",
     label: "Forges Repositories",

@@ -12,7 +12,6 @@ import {
   type StatusTheme,
 } from "../../shared/tui.ts";
 
-const sourceModulePath = fileURLToPath(new URL("../../../src/tool-operations.ts", import.meta.url));
 let toolOperationsPromise: Promise<typeof ForgesTools> | undefined;
 
 /**
@@ -20,12 +19,21 @@ let toolOperationsPromise: Promise<typeof ForgesTools> | undefined;
  *
  * Both specifiers stay literal: OMP rewrites bare dependencies only for imports
  * it can see statically. existsSync chooses the branch; it does not build a URL
- * for a single import().
+ * for a single import(). The load is memoized so every tool shares one import,
+ * and a rejection clears it so the next call can retry.
  */
 function loadToolOperations(): Promise<typeof ForgesTools> {
-  toolOperationsPromise ??= existsSync(sourceModulePath)
-    ? (import("../../../src/tool-operations.ts") as unknown as Promise<typeof ForgesTools>)
-    : (import("../../../dist/tool-operations.mjs") as Promise<typeof ForgesTools>);
+  toolOperationsPromise ??= (async () => {
+    const sourceModulePath = fileURLToPath(
+      new URL("../../../src/tool-operations.ts", import.meta.url),
+    );
+    return existsSync(sourceModulePath)
+      ? ((await import("../../../src/tool-operations.ts")) as unknown as typeof ForgesTools)
+      : ((await import("../../../dist/tool-operations.mjs")) as typeof ForgesTools);
+  })().catch((error: unknown) => {
+    toolOperationsPromise = undefined;
+    throw error;
+  });
   return toolOperationsPromise;
 }
 

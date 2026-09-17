@@ -33,7 +33,7 @@ pnpm vitest run -t "should list repos"
 
 ```
 src/
-├── index.ts              # createProvider() factory — single public entry point
+├── index.ts              # createProvider() factory — async, imports one provider module on demand
 ├── provider.ts           # Runtime abstract Provider base + typed mapper contract
 ├── types.ts              # Resource interfaces and unified data models (type-only)
 ├── auth.ts               # 4-level token detection: explicit → env → CLI → config
@@ -44,8 +44,9 @@ src/
 ├── changed-file.ts       # Changed-file status normalization + GitLab diff line counts
 ├── pagination.ts         # Link header + x-next-page async generator
 ├── version.ts            # Package version — the one source for it in src/
+├── lazy.ts               # lazy(load): one shared in-flight load, retried after a rejection
 ├── tool-operations.ts    # Executors behind every agent surface (MCP, Pi, OMP)
-├── mcp.ts                # createMcpServer() over the low-level MCP Server
+├── mcp.ts                # createMcpServer() over the low-level MCP Server; schemas, validator and executors load per request
 ├── cli.ts                # citty entry for the `forges` bin
 ├── commands/mcp.ts       # `forges mcp` — stdio transport
 ├── github.ts             # Sub-path re-export for @agntn/forges/github
@@ -68,20 +69,20 @@ test/
 
 **Where to put new code:**
 
-| Task                          | Location                            | Notes                                                              |
-| ----------------------------- | ----------------------------------- | ------------------------------------------------------------------ |
-| Add new provider              | `src/providers/`                    | Copy github.ts as template. Extend the abstract `Provider` base    |
-| Add new resource              | `src/types.ts` → provider files     | Define interface in types.ts, implement in each provider           |
-| Change contribution templates | `src/provider.ts` + provider files  | Keep lists metadata-only; `get` must resolve an exact listed key   |
-| Change auth logic             | `src/auth.ts`                       | `resolveToken()` chain: order matters                              |
-| Change cache backend          | `src/cache.ts`                      | `configureStorage()` swaps unstorage driver                        |
-| Fix pagination                | `src/pagination.ts`                 | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab     |
-| Fix error mapping             | `src/errors.ts`                     | `normalizeError()` maps FetchError → ForgesError subtypes          |
-| Add sub-path export           | `build.config.mjs` + `package.json` | Must update both: entries array + exports map                      |
-| Add agent tool                | `src/tool-operations.ts`            | Executor first, then `src/mcp.ts` and both extensions              |
-| Change tool schema            | `packages/shared/`                  | MCP and Pi share it; OMP rebuilds it from `pi.typebox`             |
-| Debug HTTP                    | `src/http.ts`                       | `rawFetch()` returns headers, `createHttpClient()` configures auth |
-| Add tests                     | `test/`                             | Name must match `test/<module>.test.ts`                            |
+| Task                          | Location                            | Notes                                                                                                                    |
+| ----------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Add new provider              | `src/providers/`                    | Copy github.ts as template. Extend the abstract `Provider` base, add its loader to the `providers` map in `src/index.ts` |
+| Add new resource              | `src/types.ts` → provider files     | Define interface in types.ts, implement in each provider                                                                 |
+| Change contribution templates | `src/provider.ts` + provider files  | Keep lists metadata-only; `get` must resolve an exact listed key                                                         |
+| Change auth logic             | `src/auth.ts`                       | `resolveToken()` chain: order matters                                                                                    |
+| Change cache backend          | `src/cache.ts`                      | `configureStorage()` swaps unstorage driver                                                                              |
+| Fix pagination                | `src/pagination.ts`                 | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab                                                           |
+| Fix error mapping             | `src/errors.ts`                     | `normalizeError()` maps FetchError → ForgesError subtypes                                                                |
+| Add sub-path export           | `build.config.mjs` + `package.json` | Must update both: entries array + exports map                                                                            |
+| Add agent tool                | `src/tool-operations.ts`            | Executor first, then `src/mcp.ts` and both extensions                                                                    |
+| Change tool schema            | `packages/shared/`                  | `forgesToolSchemas()` builds them; MCP and Pi call it once, OMP rebuilds from `pi.typebox`                               |
+| Debug HTTP                    | `src/http.ts`                       | `rawFetch()` returns headers, `createHttpClient()` configures auth                                                       |
+| Add tests                     | `test/`                             | Name must match `test/<module>.test.ts`                                                                                  |
 
 ## Code Conventions
 
@@ -147,6 +148,7 @@ Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 - **No hardcoded URLs** — all providers accept `baseURL` config.
 - **No `execSync`** — use `execFileSync` with arg arrays (command injection prevention).
 - **No CJS** — ESM only everywhere.
+- **Nothing runs at import.** `sideEffects: false` is a claim about every module: no calls, registrations, or `process.env` reads at module scope, and heavy dependencies (provider modules, `typebox/value`, the MCP SDK) load on the call path through literal `import()`. Mark a pure module-scope construction the bundler cannot prove, such as `new Set([...])`, with `/* @__PURE__ */`.
 
 ## Testing
 

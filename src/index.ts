@@ -3,11 +3,8 @@
  * Main entry point with factory function and public API exports
  */
 
-import { Provider } from "./provider.ts";
+import type { Provider } from "./provider.ts";
 import type { ProviderConfig } from "./types.ts";
-import { GitHubProvider } from "./providers/github.ts";
-import { GitLabProvider } from "./providers/gitlab.ts";
-import { GiteaProvider } from "./providers/gitea.ts";
 import { resolveToken } from "./auth.ts";
 import type { Platform } from "./auth.ts";
 import { AuthenticationError, ForgesError } from "./errors.ts";
@@ -112,18 +109,44 @@ export {
   type CachedFetchOptions,
 } from "./cache.ts";
 
+type ProviderConstructor = new (config: ProviderConfig) => Provider;
+
+/**
+ * Built-in providers, keyed by platform.
+ *
+ * Each loader imports one provider module on demand, so a process that talks to
+ * GitHub never parses the GitLab or Gitea implementation. The specifiers stay
+ * literal for the bundler to split them into their own chunks.
+ */
+const providers: Record<Platform, () => Promise<ProviderConstructor>> = {
+  github: () => import("./providers/github.ts").then((m) => m.GitHubProvider),
+  gitlab: () => import("./providers/gitlab.ts").then((m) => m.GitLabProvider),
+  gitea: () => import("./providers/gitea.ts").then((m) => m.GiteaProvider),
+};
+
 /**
  * Create a provider instance.
  * If no token is provided, attempts to auto-detect from:
  *   1. Environment variables (GITHUB_TOKEN, GITLAB_TOKEN, etc.)
  *   2. CLI tools (gh, glab)
  *   3. CLI config files (~/.config/gh/hosts.yml, etc.)
+ *
+ * The provider module loads only after a token is resolved, so a missing
+ * credential fails before any platform code is parsed.
  */
-export function createProvider(
-  platform: "github" | "gitlab" | "gitea",
+export async function createProvider(
+  platform: Platform,
   config?: ProviderConfig,
-): Provider {
-  const resolved = resolveToken(platform as Platform, {
+): Promise<Provider> {
+  if (!Object.hasOwn(providers, platform)) {
+    throw new ForgesError(
+      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea`,
+      undefined,
+      platform,
+    );
+  }
+
+  const resolved = resolveToken(platform, {
     token: config?.token,
     baseURL: config?.baseURL,
   });
@@ -137,25 +160,8 @@ export function createProvider(
     );
   }
 
-  const finalConfig: ProviderConfig = {
-    ...config,
-    token: resolved.token,
-  };
-
-  switch (platform) {
-    case "github":
-      return new GitHubProvider(finalConfig);
-    case "gitlab":
-      return new GitLabProvider(finalConfig);
-    case "gitea":
-      return new GiteaProvider(finalConfig);
-    default:
-      throw new ForgesError(
-        `Unsupported platform: ${platform}. Supported: github, gitlab, gitea`,
-        undefined,
-        platform,
-      );
-  }
+  const ProviderClass = await providers[platform]();
+  return new ProviderClass({ ...config, token: resolved.token });
 }
 
 function envHint(platform: string): string {
