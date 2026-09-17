@@ -165,6 +165,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   const listCommentsParameters = closed({ platform, owner, repo, number, page, perPage });
   const listPullRequestFilesParameters = listCommentsParameters;
   const listPullRequestChecksParameters = listCommentsParameters;
+  const listPullRequestReviewsParameters = listCommentsParameters;
   const commentId = Type.String({ description: "Discussion comment id", minLength: 1 });
   const commentParameters = closed({ platform, owner, repo, number, commentId });
   const createIssueParameters = closed({
@@ -446,6 +447,19 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequestChecks(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_reviews",
+    label: "Forges Pull Request Reviews",
+    description:
+      "List normalized reviews given on one pull request: who approved, who asked for changes",
+    parameters: listPullRequestReviewsParameters,
+    ...statusRenderers("forges_pull_requests_reviews", "Forges Pull Request Reviews"),
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listPullRequestReviews(params);
     },
   });
 

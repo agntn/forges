@@ -250,7 +250,7 @@ const activePlatform = computed(() => current.value.platform);
 
     <LandingFeature
       eyebrow="Agents"
-      title="Thirty tools, three hosts"
+      title="Thirty-one tools, three hosts"
       to="/guide/agents"
       link="MCP, Pi and OMP"
       :checks="[

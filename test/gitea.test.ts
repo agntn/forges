@@ -1288,6 +1288,114 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("pullRequests.listReviews", () => {
+    const reviews = [
+      {
+        id: 381751,
+        user: { id: 1, login: "lunny" },
+        state: "APPROVED",
+        body: "",
+        commit_id: "83fb7c0d267cdd409281bd916acbd0a7e48875e8",
+        dismissed: false,
+        submitted_at: "2026-09-10T04:29:28Z",
+        html_url: "https://gitea.com/testowner/test-repo/pulls/5#pullrequestreview-381751",
+      },
+      {
+        id: 381752,
+        user: { id: 2, login: "beowulf" },
+        state: "REQUEST_CHANGES",
+        body: "needs a test",
+        commit_id: "83fb7c0d267cdd409281bd916acbd0a7e48875e8",
+        dismissed: true,
+        submitted_at: "2026-09-11T09:00:00Z",
+        html_url: "https://gitea.com/testowner/test-repo/pulls/5#pullrequestreview-381752",
+      },
+      {
+        id: 381753,
+        user: { id: 3, login: "asked" },
+        state: "REQUEST_REVIEW",
+        body: "",
+        commit_id: "",
+        dismissed: false,
+        submitted_at: "2026-09-11T10:00:00Z",
+        html_url: "",
+      },
+    ];
+
+    it("pages by x-total-count, drops review requests and honours the dismissed flag", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: reviews,
+        headers: makeHeaders({ "x-total-count": "5" }),
+        status: 200,
+      });
+
+      const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
+        perPage: 3,
+      });
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        expect.anything(),
+        "/repos/testowner/test-repo/pulls/5/reviews",
+        { query: { page: "1", limit: "3" } },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            id: "381751",
+            state: "approved",
+            body: "",
+            author: { login: "lunny" },
+            revision: "83fb7c0d267cdd409281bd916acbd0a7e48875e8",
+            submittedAt: "2026-09-10T04:29:28Z",
+            url: "https://gitea.com/testowner/test-repo/pulls/5#pullrequestreview-381751",
+          },
+          {
+            id: "381752",
+            state: "dismissed",
+            body: "needs a test",
+            author: { login: "beowulf" },
+            revision: "83fb7c0d267cdd409281bd916acbd0a7e48875e8",
+            submittedAt: "2026-09-11T09:00:00Z",
+            url: "https://gitea.com/testowner/test-repo/pulls/5#pullrequestreview-381752",
+          },
+        ],
+        hasNextPage: true,
+        nextPage: 2,
+      });
+    });
+
+    it("stops when the count is exhausted and no Link header exists", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: reviews.slice(0, 1),
+        headers: makeHeaders({ "x-total-count": "3" }),
+        status: 200,
+      });
+
+      const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
+        page: 2,
+        perPage: 2,
+      });
+
+      expect(result).toMatchObject({ hasNextPage: false, nextPage: undefined });
+    });
+
+    it("trusts a Link header from a host that sends one", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: reviews.slice(0, 1),
+        headers: makeHeaders({
+          Link: '<https://gitea.com/api/v1/repos/testowner/test-repo/pulls/5/reviews?page=2&limit=1>; rel="next"',
+        }),
+        status: 200,
+      });
+
+      const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
+        perPage: 1,
+      });
+
+      expect(result).toMatchObject({ hasNextPage: true, nextPage: 2 });
+    });
+  });
+
   describe("pullRequests.search", () => {
     it("searches repository pull requests without fetching each result", async () => {
       mockedRawFetch.mockResolvedValueOnce({

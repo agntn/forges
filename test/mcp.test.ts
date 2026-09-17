@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
     list: vi.fn(),
     listFiles: vi.fn(),
     listChecks: vi.fn(),
+    listReviews: vi.fn(),
     search: vi.fn(),
     get: vi.fn(),
     create: vi.fn(),
@@ -81,6 +82,7 @@ const toolNames = [
   "forges_pull_requests_get",
   "forges_pull_requests_files",
   "forges_pull_requests_checks",
+  "forges_pull_requests_reviews",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
   "forges_pull_requests_create",
@@ -480,6 +482,36 @@ describe("forges MCP server", () => {
       perPage: 10,
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: checks });
+  });
+
+  it("lists pull-request reviews with truncated bodies", async () => {
+    const review = {
+      id: "5234466503",
+      state: "changes_requested",
+      body: Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n"),
+      author: { login: "coderabbitai[bot]" },
+      revision: "16d62fd354a4b1c2f5b1a8f68b8b75623b2f9d1e",
+      submittedAt: "2026-09-17T10:42:16Z",
+      url: "https://github.com/agntn/forges/pull/107#pullrequestreview-5234466503",
+    };
+    mocks.pullRequests.listReviews.mockResolvedValue({ items: [review], hasNextPage: false });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_reviews",
+      arguments: { platform: "github", owner: "agntn", repo: "forges", number: 107, perPage: 5 },
+    });
+
+    expect(mocks.pullRequests.listReviews).toHaveBeenCalledWith("agntn", "forges", 107, {
+      page: undefined,
+      perPage: 5,
+    });
+    const parsed = JSON.parse(text(response.content));
+    expect(parsed.result.items[0]).toEqual({
+      ...review,
+      body: Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n"),
+    });
+    expect(parsed.note).toContain("forges_threads_list");
   });
 
   it("reloads the pinned credential and returns the authenticated profile", async () => {

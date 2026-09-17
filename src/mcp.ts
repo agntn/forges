@@ -251,6 +251,15 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       execute: (operations, args) => operations.listPullRequestChecks(args),
     }),
     defineTool({
+      name: "forges_pull_requests_reviews",
+      title: "List Pull Request Reviews",
+      description:
+        "List the reviews given on one pull request, each normalized to approved, changes_requested, commented, dismissed, or pending, with its author, body, reviewed revision, time, and URL. Unanswered review requests are left out, and GitLab entries are its approvals plus each reviewer's stance. Bodies are truncated here; the inline comments of a review are the threads forges_threads_list reads.",
+      inputSchema: schemas.listPullRequestReviewsParameters,
+      annotations: readAnnotations,
+      execute: (operations, args) => operations.listPullRequestReviews(args),
+    }),
+    defineTool({
       name: "forges_pull_requests_comments",
       title: "List Pull Request Comments",
       description:

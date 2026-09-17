@@ -18,6 +18,7 @@ import type {
   Issue,
   PullRequest,
   PullRequestCheck,
+  PullRequestReview,
   PullRequestFile,
   PullRequestSearchItem,
   User,
@@ -29,6 +30,7 @@ import type {
   ListCommentOptions,
   ListCommitOptions,
   ListPullRequestChecksOptions,
+  ListPullRequestReviewsOptions,
   ListPullRequestFilesOptions,
   ListThreadOptions,
   Comment,
@@ -46,6 +48,7 @@ import { parseLinkHeader } from "../pagination.ts";
 import { encodeApiResponsePathSegment, encodePathSegment } from "./base-url.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
+import { isPullRequestReview, normalizeReviewState } from "../review.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
 
 const MAX_COMMIT_FILE_PAGES = 30;
@@ -138,6 +141,16 @@ interface GitHubCheckRun {
 interface GitHubCheckRunsResponse {
   total_count: number;
   check_runs: GitHubCheckRun[];
+}
+
+interface GitHubPullRequestReview {
+  id: number;
+  user: { login: string } | null;
+  body: string | null;
+  state: string;
+  html_url: string;
+  commit_id: string | null;
+  submitted_at?: string | null;
 }
 
 interface GitHubUser {
@@ -811,6 +824,20 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     };
   }
 
+  private mapPullRequestReview(raw: GitHubPullRequestReview): PullRequestReview | null {
+    const state = normalizeReviewState(raw.state);
+    if (state === null) return null;
+    return {
+      id: String(raw.id),
+      state,
+      body: raw.body ?? "",
+      author: { login: raw.user?.login ?? "" },
+      revision: raw.commit_id ?? "",
+      submittedAt: raw.submitted_at ?? "",
+      url: raw.html_url,
+    };
+  }
+
   private mapPullRequestFile(raw: GitHubPullRequestFile): PullRequestFile {
     return {
       path: raw.filename,
@@ -1118,6 +1145,29 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
           error,
         );
       }
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async listPullRequestReviews(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListPullRequestReviewsOptions,
+  ): Promise<PageResult<PullRequestReview>> {
+    try {
+      const query: Record<string, string> = {};
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+
+      const { data, headers } = await rawFetch<GitHubPullRequestReview[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews`,
+        { query },
+      );
+      const page = buildPageResult(data ?? [], headers, (raw) => this.mapPullRequestReview(raw));
+      return { ...page, items: page.items.filter(isPullRequestReview) };
+    } catch (error) {
       throw normalizeError(error, "github");
     }
   }

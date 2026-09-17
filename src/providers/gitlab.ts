@@ -26,6 +26,8 @@ import type {
   Issue,
   PullRequest,
   PullRequestCheck,
+  PullRequestReview,
+  PullRequestReviewState,
   PullRequestFile,
   PullRequestSearchItem,
   User,
@@ -37,6 +39,7 @@ import type {
   ListCommentOptions,
   ListCommitOptions,
   ListPullRequestChecksOptions,
+  ListPullRequestReviewsOptions,
   ListPullRequestFilesOptions,
   ListThreadOptions,
   Comment,
@@ -56,6 +59,7 @@ import {
   normalizeApiBaseURL,
 } from "./base-url.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
+import { normalizeReviewState } from "../review.ts";
 import { countDiffLines } from "../changed-file.ts";
 
 const MAX_COMMIT_DIFF_PAGES = 100;
@@ -217,6 +221,25 @@ interface GitLabNote {
   created_at: string;
   updated_at: string;
   system: boolean;
+}
+
+interface GitLabReviewUser {
+  id: number;
+  username: string;
+}
+
+interface GitLabMergeRequestReviewer {
+  user: GitLabReviewUser;
+  state?: string | null;
+}
+
+interface GitLabMergeRequestApproval {
+  user: GitLabReviewUser;
+  approved_at?: string | null;
+}
+
+interface GitLabMergeRequestApprovals {
+  approved_by?: GitLabMergeRequestApproval[] | null;
 }
 
 interface GitLabRawTypes extends ProviderRawTypes {
@@ -1210,6 +1233,71 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }
+  }
+
+  /**
+   * GitLab keeps no review objects: an approval is a row on the approvals endpoint, a
+   * reviewer's stance a state on the reviewers endpoint, and the two merge per user, approvals
+   * first. Neither endpoint paginates, so the page is cut here.
+   */
+  protected override async listPullRequestReviews(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListPullRequestReviewsOptions,
+  ): Promise<PageResult<PullRequestReview>> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const base = `/projects/${projectId}/merge_requests/${encodePathSegment(number)}`;
+      const [approvals, reviewers] = await Promise.all([
+        this.client<GitLabMergeRequestApprovals>(`${base}/approvals`),
+        this.client<GitLabMergeRequestReviewer[]>(`${base}/reviewers`),
+      ]);
+      const reviews: PullRequestReview[] = [];
+      const approved = new Set<number>();
+      for (const approval of approvals.approved_by ?? []) {
+        approved.add(approval.user.id);
+        reviews.push(
+          this.mapPullRequestReview(approval.user, "approved", approval.approved_at ?? ""),
+        );
+      }
+      for (const reviewer of reviewers ?? []) {
+        if (approved.has(reviewer.user.id) || reviewer.state == null) continue;
+        const state = normalizeReviewState(reviewer.state);
+        if (state === null) continue;
+        reviews.push(this.mapPullRequestReview(reviewer.user, state, ""));
+      }
+
+      const page = options?.page ?? 1;
+      const perPage = options?.perPage ?? 30;
+      const start = (page - 1) * perPage;
+      const items = reviews.slice(start, start + perPage);
+      const hasNextPage = start + items.length < reviews.length;
+      return {
+        items,
+        totalCount: reviews.length,
+        hasNextPage,
+        nextPage: hasNextPage ? page + 1 : undefined,
+      };
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  private mapPullRequestReview(
+    user: GitLabReviewUser,
+    state: PullRequestReviewState,
+    submittedAt: string,
+  ): PullRequestReview {
+    return {
+      id: String(user.id),
+      state,
+      body: "",
+      author: { login: user.username },
+      revision: "",
+      submittedAt,
+      url: "",
+    };
   }
 
   protected override async searchPullRequests(

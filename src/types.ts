@@ -191,6 +191,29 @@ export type PullRequestFileStatus = ChangedFileStatus;
 /** Changed file exposed by pull-request reads. */
 export interface PullRequestFile extends ChangedFile {}
 
+/** Verdict of one pull-request review. */
+export type PullRequestReviewState =
+  | "approved"
+  | "changes_requested"
+  | "commented"
+  | "dismissed"
+  | "pending";
+
+/** One review on a pull request. On GitLab one reviewer's stance, its id that user's id. */
+export interface PullRequestReview {
+  id: string;
+  state: PullRequestReviewState;
+  body: string;
+  author: {
+    login: string;
+  };
+  /** Commit the review was given against, or empty when the platform records none. */
+  revision: string;
+  /** When the review was given, or empty when the platform records no time. */
+  submittedAt: string;
+  url: string;
+}
+
 /** One commit author or committer identity from git metadata. */
 export interface CommitIdentity {
   name: string;
@@ -324,6 +347,12 @@ export interface ListPullRequestFilesOptions {
 
 /** List operation options for pull-request checks. */
 export interface ListPullRequestChecksOptions {
+  page?: number;
+  perPage?: number;
+}
+
+/** List operation options for pull-request reviews. */
+export interface ListPullRequestReviewsOptions {
   page?: number;
   perPage?: number;
 }
@@ -475,6 +504,12 @@ export interface PullRequestResource {
     number: number,
     options?: ListPullRequestChecksOptions,
   ): Promise<PageResult<PullRequestCheck>>;
+  listReviews(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListPullRequestReviewsOptions,
+  ): Promise<PageResult<PullRequestReview>>;
   search(
     owner: string,
     repo: string,

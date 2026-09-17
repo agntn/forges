@@ -1637,6 +1637,71 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("pullRequests.listReviews", () => {
+    it("reads reviews with their verdicts and follows the Link header", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          {
+            id: 5234466503,
+            user: { login: "coderabbitai[bot]" },
+            body: "**Actionable comments posted: 1**",
+            state: "CHANGES_REQUESTED",
+            html_url: "https://github.com/octocat/hello-world/pull/99#pullrequestreview-5234466503",
+            commit_id: "16d62fd354a4b1c2f5b1a8f68b8b75623b2f9d1e",
+            submitted_at: "2026-09-17T10:42:16Z",
+          },
+          {
+            id: 5234330202,
+            user: null,
+            body: null,
+            state: "DISMISSED",
+            html_url: "https://github.com/octocat/hello-world/pull/99#pullrequestreview-5234330202",
+            commit_id: null,
+            submitted_at: null,
+          },
+        ],
+        headers: makeHeaders(
+          '<https://api.github.com/repos/octocat/hello-world/pulls/99/reviews?page=3&per_page=2>; rel="next"',
+        ),
+      });
+
+      const result = await gh.pullRequests.listReviews("octocat", "hello-world", 99, {
+        page: 2,
+        perPage: 2,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/octocat/hello-world/pulls/99/reviews",
+        { query: { page: "2", per_page: "2" } },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            id: "5234466503",
+            state: "changes_requested",
+            body: "**Actionable comments posted: 1**",
+            author: { login: "coderabbitai[bot]" },
+            revision: "16d62fd354a4b1c2f5b1a8f68b8b75623b2f9d1e",
+            submittedAt: "2026-09-17T10:42:16Z",
+            url: "https://github.com/octocat/hello-world/pull/99#pullrequestreview-5234466503",
+          },
+          {
+            id: "5234330202",
+            state: "dismissed",
+            body: "",
+            author: { login: "" },
+            revision: "",
+            submittedAt: "",
+            url: "https://github.com/octocat/hello-world/pull/99#pullrequestreview-5234330202",
+          },
+        ],
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+  });
+
   describe("pullRequests.search", () => {
     it("searches one repository without fetching each pull request", async () => {
       mocks.rawFetch.mockResolvedValueOnce({

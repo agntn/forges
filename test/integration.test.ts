@@ -154,6 +154,7 @@ describe("createProvider factory", () => {
     ["searchCode", "Code search is not supported by this provider"],
     ["listCiRuns", "CI-run listing is not supported by this provider"],
     ["listPullRequestChecks", "Pull request checks are not supported by this provider"],
+    ["listPullRequestReviews", "Pull request reviews are not supported by this provider"],
     ["searchIssues", "Issue search is not supported by this provider"],
     ["searchPullRequests", "Pull-request search is not supported by this provider"],
   ])("keeps a default %s fallback for custom providers", async (method, message) => {
@@ -233,6 +234,7 @@ describe("cross-provider class consistency", () => {
       expect(p.pullRequests).toBeDefined();
       expect(typeof p.pullRequests.list).toBe("function");
       expect(typeof p.pullRequests.listChecks).toBe("function");
+      expect(typeof p.pullRequests.listReviews).toBe("function");
       expect(typeof p.pullRequests.search).toBe("function");
       expect(typeof p.pullRequests.get).toBe("function");
       expect(typeof p.pullRequests.create).toBe("function");
@@ -296,6 +298,7 @@ describe("cross-provider class consistency", () => {
       // pullRequests: same as issues
       expect(p.pullRequests.list.length).toBeGreaterThanOrEqual(2);
       expect(p.pullRequests.listChecks.length).toBeGreaterThanOrEqual(3);
+      expect(p.pullRequests.listReviews.length).toBeGreaterThanOrEqual(3);
       expect(p.pullRequests.search.length).toBeGreaterThanOrEqual(3);
       expect(p.pullRequests.get.length).toBeGreaterThanOrEqual(3);
       expect(p.pullRequests.create.length).toBeGreaterThanOrEqual(3);
