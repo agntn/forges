@@ -1,9 +1,15 @@
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
+
+/** Bundled from the checkout's sources: a deploy needs neither dist/ nor the root node_modules. */
+const librarySource = resolve(import.meta.dirname, "../src");
 
 export default defineNuxtConfig({
   extends: ["docus"],
   /** The repo root is its own pnpm workspace; Nuxt must not treat it as this site's. */
-  workspaceDir: fileURLToPath(new URL("./", import.meta.url)),
+  workspaceDir: import.meta.dirname,
+  alias: {
+    "@agntn/forges": resolve(librarySource, "index.ts"),
+  },
   devtools: { enabled: false },
   telemetry: false,
   site: {
