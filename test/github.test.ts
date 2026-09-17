@@ -1637,6 +1637,99 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("pullRequests.listReviews", () => {
+    it("reads reviews with their verdicts and follows the Link header", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          {
+            id: 5234466503,
+            user: { login: "coderabbitai[bot]" },
+            body: "**Actionable comments posted: 1**",
+            state: "CHANGES_REQUESTED",
+            html_url: "https://github.com/octocat/hello-world/pull/99#pullrequestreview-5234466503",
+            commit_id: "16d62fd354a4b1c2f5b1a8f68b8b75623b2f9d1e",
+            submitted_at: "2026-09-17T10:42:16Z",
+          },
+          {
+            id: 5234330202,
+            user: null,
+            body: null,
+            state: "DISMISSED",
+            html_url: "https://github.com/octocat/hello-world/pull/99#pullrequestreview-5234330202",
+            commit_id: null,
+            submitted_at: null,
+          },
+        ],
+        headers: makeHeaders(
+          '<https://api.github.com/repos/octocat/hello-world/pulls/99/reviews?page=3&per_page=2>; rel="next"',
+        ),
+      });
+
+      const result = await gh.pullRequests.listReviews("octocat", "hello-world", 99, {
+        page: 2,
+        perPage: 2,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/octocat/hello-world/pulls/99/reviews",
+        { query: { page: "2", per_page: "2" } },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            id: "5234466503",
+            state: "changes_requested",
+            body: "**Actionable comments posted: 1**",
+            author: { login: "coderabbitai[bot]" },
+            revision: "16d62fd354a4b1c2f5b1a8f68b8b75623b2f9d1e",
+            submittedAt: "2026-09-17T10:42:16Z",
+            url: "https://github.com/octocat/hello-world/pull/99#pullrequestreview-5234466503",
+          },
+          {
+            id: "5234330202",
+            state: "dismissed",
+            body: "",
+            author: { login: "" },
+            revision: "",
+            submittedAt: "",
+            url: "https://github.com/octocat/hello-world/pull/99#pullrequestreview-5234330202",
+          },
+        ],
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+
+    it("reports the route as unsupported on a GitHub-compatible host that 404s it", async () => {
+      const gitbucket = new GitHubProvider({
+        baseURL: "https://gitbucket.example.com/api/v3",
+        token: "gb_test",
+      });
+      mocks.rawFetch
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce({ data: ghRepo, headers: new Headers(), status: 200 });
+
+      const error = await gitbucket.pullRequests
+        .listReviews("octocat", "hello-world", 99)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ForgesError);
+      expect(error).not.toBeInstanceOf(NotFoundError);
+      expect((error as ForgesError).status).toBe(501);
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/repos/octocat/hello-world");
+    });
+
+    it("keeps a GitHub.com 404 as not found without probing the host", async () => {
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(
+        gh.pullRequests.listReviews("octocat", "hello-world", 99),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("pullRequests.search", () => {
     it("searches one repository without fetching each pull request", async () => {
       mocks.rawFetch.mockResolvedValueOnce({

@@ -378,6 +378,22 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_pull_requests_reviews",
+    label: "Forges Pull Request Reviews",
+    description:
+      "List normalized reviews given on one pull request: who approved, who asked for changes",
+    promptSnippet: "Read the reviews on a pull request on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_pull_requests_reviews to see who approved or requested changes before calling a pull request ready.",
+    ],
+    parameters: schemas.listPullRequestReviewsParameters,
+    ...statusRenderers("forges_pull_requests_reviews", "Forges Pull Request Reviews"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listPullRequestReviews(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_pull_requests_comments",
     label: "Forges Pull Request Comments",
     description: "List the conversation comments under one pull request, oldest first",

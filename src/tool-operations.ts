@@ -24,11 +24,13 @@ import type {
   ListOptions,
   ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
+  ListPullRequestReviewsOptions,
   ListThreadOptions,
   PageResult,
   PullRequest,
   PullRequestCheck,
   PullRequestFile,
+  PullRequestReview,
   PullRequestSearchItem,
   ReplyThreadInput,
   Repository,
@@ -244,6 +246,7 @@ export interface ListCommentsParams extends RepositoryParams {
 
 export type ListPullRequestFilesParams = ListCommentsParams;
 export type ListPullRequestChecksParams = ListCommentsParams;
+export type ListPullRequestReviewsParams = ListCommentsParams;
 
 export interface GetCommentParams extends RepositoryParams {
   number: number;
@@ -313,6 +316,16 @@ function summarizeCommentPage(page: PageResult<Comment>): PageResult<Comment> {
     items: page.items.map((comment) => ({
       ...comment,
       body: summarizeCommentBody(comment.body),
+    })),
+  };
+}
+
+function summarizeReviewPage(page: PageResult<PullRequestReview>): PageResult<PullRequestReview> {
+  return {
+    ...page,
+    items: page.items.map((review) => ({
+      ...review,
+      body: summarizeCommentBody(review.body),
     })),
   };
 }
@@ -560,6 +573,27 @@ export async function listPullRequestChecks(
     options,
   );
   return result(params.platform, checks);
+}
+
+export async function listPullRequestReviews(
+  params: ListPullRequestReviewsParams,
+): Promise<ForgesToolResult<PageResult<PullRequestReview>>> {
+  const options: ListPullRequestReviewsOptions = {
+    page: params.page,
+    perPage: params.perPage,
+  };
+  const provider = await readProvider(params.platform);
+  const reviews = await provider.pullRequests.listReviews(
+    params.owner,
+    params.repo,
+    params.number,
+    options,
+  );
+  return result(
+    params.platform,
+    summarizeReviewPage(reviews),
+    "Review bodies are truncated in list output; the inline comments of a review are the threads forges_threads_list reads.",
+  );
 }
 
 export async function searchPullRequests(

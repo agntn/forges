@@ -71,18 +71,18 @@ forge.code; //                   search(query, { owner?, repo? })
 forge.ciRuns; //                 list(owner, repo, { branch? })
 forge.commits; //                list(owner, repo, { ref?, path?, since?, until? }), get(owner, repo, sha)
 forge.issues; //                 list, search, get, create, listComments, getComment
-forge.pullRequests; //           list, listFiles, listChecks, search, get, create, listComments, getComment
+forge.pullRequests; //           list, listFiles, listChecks, listReviews, search, get, create, listComments, getComment
 forge.users; //                  get(username), authenticated()
 forge.threads; //                list, get, reply, resolve, unresolve
 ```
 
 Every list is a `PageResult<T>`: `items`, `hasNextPage`, `nextPage`, and `totalCount` when the platform bothers to count. Searches add `incomplete`, true when the answer is known to be partial. IDs are always strings, even when the API sends a number. Counts a platform withholds come back as `null`, never as zero.
 
-A few things worth knowing before the docs: GitHub review threads go through GraphQL so `isResolved` and `isOutdated` are real, GitLab and Gitea have no outdated flag so it is always `false` there, and Gitea has no parent id on review comments so every one is its own thread. Pull request search returns less than `get`, call `get` for branches and mergeability. Commit reads carry changed files but never patches. The per resource pages: [Repositories](https://forges.agntn.dev/guide/repositories), [Issues](https://forges.agntn.dev/guide/issues), [Pull requests](https://forges.agntn.dev/guide/pull-requests), [Review threads](https://forges.agntn.dev/guide/threads), [Commits and CI](https://forges.agntn.dev/guide/commits), [Contribution templates](https://forges.agntn.dev/guide/templates), [Code search](https://forges.agntn.dev/guide/code-search).
+A few things worth knowing before the docs: GitHub review threads go through GraphQL so `isResolved` and `isOutdated` are real, GitLab and Gitea have no outdated flag so it is always `false` there, and Gitea has no parent id on review comments so every one is its own thread. Pull request search returns less than `get`, call `get` for branches and mergeability. Commit reads carry changed files but never patches. GitLab has no review objects, so `listReviews` there is the approvals plus each reviewer's stance. The per resource pages: [Repositories](https://forges.agntn.dev/guide/repositories), [Issues](https://forges.agntn.dev/guide/issues), [Pull requests](https://forges.agntn.dev/guide/pull-requests), [Review threads](https://forges.agntn.dev/guide/threads), [Commits and CI](https://forges.agntn.dev/guide/commits), [Contribution templates](https://forges.agntn.dev/guide/templates), [Code search](https://forges.agntn.dev/guide/code-search).
 
 ## Agents
 
-Thirty tools, three surfaces. The MCP server, the Pi extension and the OMP extension call the same executors, so a fix lands once.
+Thirty-one tools, three surfaces. The MCP server, the Pi extension and the OMP extension call the same executors, so a fix lands once.
 
 ```bash
 forges mcp

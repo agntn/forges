@@ -150,6 +150,7 @@ export function forgesToolSchemas() {
   const listCommentsParameters = closed({ platform, owner, repo, number, page, perPage });
   const listPullRequestFilesParameters = listCommentsParameters;
   const listPullRequestChecksParameters = listCommentsParameters;
+  const listPullRequestReviewsParameters = listCommentsParameters;
   const commentParameters = closed({ platform, owner, repo, number, commentId });
   const createIssueParameters = closed({
     platform,
@@ -210,6 +211,7 @@ export function forgesToolSchemas() {
     listCommentsParameters,
     listPullRequestFilesParameters,
     listPullRequestChecksParameters,
+    listPullRequestReviewsParameters,
     commentParameters,
     createIssueParameters,
     createPullRequestParameters,

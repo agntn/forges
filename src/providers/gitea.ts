@@ -28,6 +28,7 @@ import type {
   Issue,
   PullRequest,
   PullRequestCheck,
+  PullRequestReview,
   PullRequestFile,
   PullRequestSearchItem,
   User,
@@ -39,6 +40,7 @@ import type {
   ListCommentOptions,
   ListCommitOptions,
   ListPullRequestChecksOptions,
+  ListPullRequestReviewsOptions,
   ListPullRequestFilesOptions,
   ListThreadOptions,
   Comment,
@@ -49,6 +51,7 @@ import type {
   ThreadComment,
 } from "../types.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
+import { isPullRequestReview, normalizeReviewState } from "../review.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
 
 // -- Raw Gitea API response types --
@@ -233,6 +236,13 @@ interface GiteaRawTypes extends ProviderRawTypes {
 
 interface GiteaPullReview {
   id: number;
+  user?: GiteaUser | null;
+  body?: string | null;
+  state?: string | null;
+  commit_id?: string | null;
+  dismissed?: boolean;
+  submitted_at?: string | null;
+  html_url?: string | null;
   comments_count?: number;
 }
 
@@ -439,6 +449,20 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       name: raw.context || "status",
       ...normalizeCiRunState(raw.status),
       url,
+    };
+  }
+
+  private mapPullRequestReview(raw: GiteaPullReview): PullRequestReview | null {
+    const state = normalizeReviewState(raw.state ?? "", raw.dismissed === true);
+    if (state === null) return null;
+    return {
+      id: String(raw.id),
+      state,
+      body: raw.body ?? "",
+      author: { login: raw.user?.login ?? "" },
+      revision: raw.commit_id ?? "",
+      submittedAt: raw.submitted_at ?? "",
+      url: raw.html_url ?? "",
     };
   }
 
@@ -1014,6 +1038,40 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
 
       return {
         items: statuses.map((raw) => this.mapPullRequestCheck(raw)),
+        hasNextPage,
+        nextPage: hasNextPage ? page + 1 : undefined,
+      };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  /**
+   * Gitea and Forgejo count this list in `x-total-count` and send no Link for it. The count
+   * includes the review requests this list drops, so it is not reported as totalCount.
+   */
+  protected override async listPullRequestReviews(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListPullRequestReviewsOptions,
+  ): Promise<PageResult<PullRequestReview>> {
+    try {
+      const page = options?.page ?? 1;
+      const perPage = options?.perPage ?? 30;
+      const { data, headers } = await rawFetch<GiteaPullReview[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews`,
+        { query: { page: String(page), limit: String(perPage) } },
+      );
+      const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
+      const hasNextPage =
+        !!parseLinkHeader(headers.get("Link")).next ||
+        (Number.isFinite(total) && page * perPage < total);
+      return {
+        items: (data ?? [])
+          .map((raw) => this.mapPullRequestReview(raw))
+          .filter(isPullRequestReview),
         hasNextPage,
         nextPage: hasNextPage ? page + 1 : undefined,
       };

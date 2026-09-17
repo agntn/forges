@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => {
     list: vi.fn(),
     listFiles: vi.fn(),
     listChecks: vi.fn(),
+    listReviews: vi.fn(),
     search: vi.fn(),
     get: vi.fn(),
     create: vi.fn(),
@@ -106,6 +107,7 @@ const toolNames = [
   "forges_pull_requests_get",
   "forges_pull_requests_files",
   "forges_pull_requests_checks",
+  "forges_pull_requests_reviews",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
   "forges_pull_requests_create",
@@ -216,6 +218,7 @@ beforeEach(() => {
   });
   mocks.pullRequests.listFiles.mockResolvedValue({ items: [], hasNextPage: false });
   mocks.pullRequests.listChecks.mockResolvedValue({ items: [], hasNextPage: false });
+  mocks.pullRequests.listReviews.mockResolvedValue({ items: [], hasNextPage: false });
   mocks.issues.create.mockResolvedValue({
     id: "42",
     number: 42,
@@ -551,6 +554,29 @@ describe("Forges Pi extension", () => {
     expect(mocks.pullRequests.listChecks).toHaveBeenCalledWith("agntn", "forges", 53, {
       page: 2,
       perPage: 10,
+    });
+    expect(result.details.result).toEqual({ items: [], hasNextPage: false });
+  });
+
+  it("executes pull-request review listing through the shared provider operation", async () => {
+    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_reviews");
+    const result = await tool.execute(
+      "test",
+      {
+        platform: "gitea",
+        owner: "gitea",
+        repo: "tea",
+        number: 1113,
+        perPage: 5,
+      },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+
+    expect(mocks.pullRequests.listReviews).toHaveBeenCalledWith("gitea", "tea", 1113, {
+      page: undefined,
+      perPage: 5,
     });
     expect(result.details.result).toEqual({ items: [], hasNextPage: false });
   });

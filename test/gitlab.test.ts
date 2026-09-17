@@ -1416,6 +1416,119 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("pullRequests.listReviews", () => {
+    const approvals = {
+      approved_by: [
+        {
+          user: { id: 1758950, username: "iamricecake" },
+          approved_at: "2026-09-17T10:33:05.619Z",
+        },
+      ],
+    };
+    const reviewers = [
+      { user: { id: 1758950, username: "iamricecake" }, state: "reviewed" },
+      { user: { id: 21826781, username: "GitLabDuo" }, state: "reviewed" },
+      { user: { id: 2293, username: "brodock" }, state: "requested_changes" },
+      { user: { id: 4, username: "waiting" }, state: "unreviewed" },
+      { user: { id: 5, username: "withdrew" }, state: "unapproved" },
+      { user: { id: 6, username: "ancient" } },
+      { user: { id: 7, username: "drafting" }, state: "review_started" },
+    ];
+
+    it("merges approvals with each reviewer's stance, approvals first", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(approvals).mockResolvedValueOnce(reviewers);
+
+      const result = await gl.pullRequests.listReviews("gitlab-org", "gitlab-foss", 33);
+
+      expect(mocks.client).toHaveBeenCalledWith("/projects/278964/merge_requests/33/approvals");
+      expect(mocks.client).toHaveBeenCalledWith("/projects/278964/merge_requests/33/reviewers");
+      expect(result).toEqual({
+        items: [
+          {
+            id: "1758950",
+            state: "approved",
+            body: "",
+            author: { login: "iamricecake" },
+            revision: "",
+            submittedAt: "2026-09-17T10:33:05.619Z",
+            url: "",
+          },
+          {
+            id: "21826781",
+            state: "commented",
+            body: "",
+            author: { login: "GitLabDuo" },
+            revision: "",
+            submittedAt: "",
+            url: "",
+          },
+          {
+            id: "2293",
+            state: "changes_requested",
+            body: "",
+            author: { login: "brodock" },
+            revision: "",
+            submittedAt: "",
+            url: "",
+          },
+          {
+            id: "5",
+            state: "dismissed",
+            body: "",
+            author: { login: "withdrew" },
+            revision: "",
+            submittedAt: "",
+            url: "",
+          },
+          {
+            id: "7",
+            state: "pending",
+            body: "",
+            author: { login: "drafting" },
+            revision: "",
+            submittedAt: "",
+            url: "",
+          },
+        ],
+        totalCount: 5,
+        hasNextPage: false,
+        nextPage: undefined,
+      });
+    });
+
+    it("cuts the page locally because neither endpoint paginates", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(approvals).mockResolvedValueOnce(reviewers);
+
+      const result = await gl.pullRequests.listReviews("gitlab-org", "gitlab-foss", 33, {
+        page: 2,
+        perPage: 3,
+      });
+
+      expect(result).toMatchObject({
+        items: [
+          expect.objectContaining({ id: "5", state: "dismissed" }),
+          expect.objectContaining({ id: "7", state: "pending" }),
+        ],
+        totalCount: 5,
+        hasNextPage: false,
+      });
+    });
+
+    it("reports a next page when the stances run past it", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(approvals).mockResolvedValueOnce(reviewers);
+
+      const result = await gl.pullRequests.listReviews("gitlab-org", "gitlab-foss", 33, {
+        perPage: 3,
+      });
+
+      expect(result.items.map((review) => review.id)).toEqual(["1758950", "21826781", "2293"]);
+      expect(result).toMatchObject({ hasNextPage: true, nextPage: 2 });
+    });
+  });
+
   describe("pullRequests.search", () => {
     it("searches project merge requests with text, state, and pagination", async () => {
       mockProjectResolve(278964);

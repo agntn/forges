@@ -18,6 +18,7 @@ import type {
   Issue,
   PullRequest,
   PullRequestCheck,
+  PullRequestReview,
   PullRequestFile,
   PullRequestSearchItem,
   User,
@@ -29,6 +30,7 @@ import type {
   ListCommentOptions,
   ListCommitOptions,
   ListPullRequestChecksOptions,
+  ListPullRequestReviewsOptions,
   ListPullRequestFilesOptions,
   ListThreadOptions,
   Comment,
@@ -46,6 +48,7 @@ import { parseLinkHeader } from "../pagination.ts";
 import { encodeApiResponsePathSegment, encodePathSegment } from "./base-url.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
+import { isPullRequestReview, normalizeReviewState } from "../review.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
 
 const MAX_COMMIT_FILE_PAGES = 30;
@@ -138,6 +141,16 @@ interface GitHubCheckRun {
 interface GitHubCheckRunsResponse {
   total_count: number;
   check_runs: GitHubCheckRun[];
+}
+
+interface GitHubPullRequestReview {
+  id: number;
+  user: { login: string } | null;
+  body: string | null;
+  state: string;
+  html_url: string;
+  commit_id: string | null;
+  submitted_at?: string | null;
 }
 
 interface GitHubUser {
@@ -535,7 +548,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
-  private async supportsOwnerDefaults(owner: string, repo: string): Promise<boolean> {
+  /** GitHub.com and Enterprise serve the whole API, GitBucket and the like do not. */
+  private async isGitHubHost(owner: string, repo: string): Promise<boolean> {
     const hostname = new URL(this.restBaseURL).hostname;
     if (hostname === "api.github.com" || hostname.endsWith(".ghe.com")) return true;
     try {
@@ -715,7 +729,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       if (local.overrides || repository.name.toLowerCase() === ".github") {
         return local.templates;
       }
-      if (!(await this.supportsOwnerDefaults(owner, repo))) return local.templates;
+      if (!(await this.isGitHubHost(owner, repo))) return local.templates;
 
       const defaults = await this.tryRepository(owner, ".github");
       const usableDefaults =
@@ -807,6 +821,20 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       id: String(raw.id),
       name: raw.name,
       ...normalizeCiRunState(raw.status, raw.conclusion),
+      url: raw.html_url,
+    };
+  }
+
+  private mapPullRequestReview(raw: GitHubPullRequestReview): PullRequestReview | null {
+    const state = normalizeReviewState(raw.state);
+    if (state === null) return null;
+    return {
+      id: String(raw.id),
+      state,
+      body: raw.body ?? "",
+      author: { login: raw.user?.login ?? "" },
+      revision: raw.commit_id ?? "",
+      submittedAt: raw.submitted_at ?? "",
       url: raw.html_url,
     };
   }
@@ -1113,6 +1141,41 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       if (error instanceof FetchError && (error.status === 404 || error.status === 405)) {
         throw new ForgesError(
           "Code search is not supported by this GitHub-compatible host",
+          501,
+          "github",
+          error,
+        );
+      }
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async listPullRequestReviews(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListPullRequestReviewsOptions,
+  ): Promise<PageResult<PullRequestReview>> {
+    try {
+      const query: Record<string, string> = {};
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+
+      const { data, headers } = await rawFetch<GitHubPullRequestReview[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews`,
+        { query },
+      );
+      const page = buildPageResult(data ?? [], headers, (raw) => this.mapPullRequestReview(raw));
+      return { ...page, items: page.items.filter(isPullRequestReview) };
+    } catch (error) {
+      if (
+        error instanceof FetchError &&
+        error.status === 404 &&
+        !(await this.isGitHubHost(owner, repo))
+      ) {
+        throw new ForgesError(
+          "Pull request reviews are not supported by this GitHub-compatible host",
           501,
           "github",
           error,
