@@ -5,7 +5,7 @@
  * - Type exports verification
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { beforeAll, describe, it, expect, vi } from "vitest";
 
 // -- Mock HTTP layer before importing providers --
 
@@ -69,8 +69,8 @@ describe("createProvider factory", () => {
     token: "test-token",
   };
 
-  it("creates a GitHub provider", () => {
-    const provider = createProvider("github", baseConfig);
+  it("creates a GitHub provider", async () => {
+    const provider = await createProvider("github", baseConfig);
 
     expect(provider).toBeDefined();
     expect(provider.repos).toBeDefined();
@@ -81,8 +81,8 @@ describe("createProvider factory", () => {
     expect(provider.users).toBeDefined();
   });
 
-  it("creates a GitLab provider", () => {
-    const provider = createProvider("gitlab", baseConfig);
+  it("creates a GitLab provider", async () => {
+    const provider = await createProvider("gitlab", baseConfig);
 
     expect(provider).toBeDefined();
     expect(provider.repos).toBeDefined();
@@ -93,8 +93,8 @@ describe("createProvider factory", () => {
     expect(provider.users).toBeDefined();
   });
 
-  it("creates a Gitea provider", () => {
-    const provider = createProvider("gitea", baseConfig);
+  it("creates a Gitea provider", async () => {
+    const provider = await createProvider("gitea", baseConfig);
 
     expect(provider).toBeDefined();
     expect(provider.repos).toBeDefined();
@@ -105,15 +105,12 @@ describe("createProvider factory", () => {
     expect(provider.users).toBeDefined();
   });
 
-  it("throws ForgesError on unsupported platform", () => {
-    try {
-      // "bitbucket" is invalid by design; cast via never to exercise the runtime guard.
-      createProvider("bitbucket" as never, baseConfig);
-      throw new Error("expected createProvider to throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(ForgesError);
-      expect((e as ForgesError).platform).toBe("bitbucket");
-    }
+  it("throws ForgesError on unsupported platform", async () => {
+    // "bitbucket" is invalid by design; cast via never to exercise the runtime guard.
+    const failure = createProvider("bitbucket" as never, baseConfig);
+
+    await expect(failure).rejects.toBeInstanceOf(ForgesError);
+    await expect(failure).rejects.toMatchObject({ platform: "bitbucket" });
   });
 
   it("throws AuthenticationError when no token is found", async () => {
@@ -121,31 +118,31 @@ describe("createProvider factory", () => {
     const spy = vi.spyOn(auth, "resolveToken").mockReturnValue(null);
 
     try {
-      expect(() => createProvider("github")).toThrow(AuthenticationError);
+      await expect(createProvider("github")).rejects.toThrow(AuthenticationError);
     } finally {
       spy.mockRestore();
     }
   });
 
-  it("GitHub provider is instance of GitHubProvider", () => {
-    const provider = createProvider("github", baseConfig);
+  it("GitHub provider is instance of GitHubProvider", async () => {
+    const provider = await createProvider("github", baseConfig);
     expect(provider).toBeInstanceOf(GitHubProvider);
   });
 
-  it("GitLab provider is instance of GitLabProvider", () => {
-    const provider = createProvider("gitlab", baseConfig);
+  it("GitLab provider is instance of GitLabProvider", async () => {
+    const provider = await createProvider("gitlab", baseConfig);
     expect(provider).toBeInstanceOf(GitLabProvider);
   });
 
-  it("Gitea provider is instance of GiteaProvider", () => {
-    const provider = createProvider("gitea", baseConfig);
+  it("Gitea provider is instance of GiteaProvider", async () => {
+    const provider = await createProvider("gitea", baseConfig);
     expect(provider).toBeInstanceOf(GiteaProvider);
   });
 
-  it("all concrete providers inherit from Provider", () => {
-    expect(createProvider("github", baseConfig)).toBeInstanceOf(Provider);
-    expect(createProvider("gitlab", baseConfig)).toBeInstanceOf(Provider);
-    expect(createProvider("gitea", baseConfig)).toBeInstanceOf(Provider);
+  it("all concrete providers inherit from Provider", async () => {
+    expect(await createProvider("github", baseConfig)).toBeInstanceOf(Provider);
+    expect(await createProvider("gitlab", baseConfig)).toBeInstanceOf(Provider);
+    expect(await createProvider("gitea", baseConfig)).toBeInstanceOf(Provider);
   });
 
   it.each([
@@ -174,12 +171,14 @@ describe("cross-provider class consistency", () => {
   const platforms = ["github", "gitlab", "gitea"] as const;
   const providers: Record<string, Provider> = {};
 
-  for (const platform of platforms) {
-    providers[platform] = createProvider(platform, {
-      baseURL: "https://example.com",
-      token: "test-token",
-    });
-  }
+  beforeAll(async () => {
+    for (const platform of platforms) {
+      providers[platform] = await createProvider(platform, {
+        baseURL: "https://example.com",
+        token: "test-token",
+      });
+    }
+  });
 
   it("all providers have repos resource", () => {
     for (const platform of platforms) {
@@ -455,11 +454,11 @@ describe("direct provider instantiation", () => {
 // --- Type-level consistency (compile-time) ---
 
 describe("type-level consistency", () => {
-  it("all providers satisfy the Provider base class", () => {
+  it("all providers satisfy the Provider base class", async () => {
     // These assignments verify at compile-time that each provider extends Provider.
-    const gh: Provider = createProvider("github", { baseURL: "", token: "" });
-    const gl: Provider = createProvider("gitlab", { baseURL: "", token: "" });
-    const gt: Provider = createProvider("gitea", { baseURL: "", token: "" });
+    const gh: Provider = await createProvider("github", { baseURL: "", token: "" });
+    const gl: Provider = await createProvider("gitlab", { baseURL: "", token: "" });
+    const gt: Provider = await createProvider("gitea", { baseURL: "", token: "" });
 
     // Runtime check to use the variables
     expect(gh).toBeDefined();
@@ -467,8 +466,8 @@ describe("type-level consistency", () => {
     expect(gt).toBeDefined();
   });
 
-  it("Provider resource types are assignable", () => {
-    const provider = createProvider("github", { baseURL: "", token: "" });
+  it("Provider resource types are assignable", async () => {
+    const provider = await createProvider("github", { baseURL: "", token: "" });
 
     // These should compile without errors
     const repos: RepositoryResource = provider.repos;

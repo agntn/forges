@@ -21,7 +21,8 @@ export default defineEventHandler(async (event) => {
   const params = { platform, host, owner, repo, number, perPage };
   try {
     return await cachedAnswer<ThreadsAnswer>(event, "threads", params, TTL.threads, async () => {
-      const page = await forge(platform, host).threads.list(owner, repo, number, {
+      const provider = await forge(platform, host);
+      const page = await provider.threads.list(owner, repo, number, {
         perPage,
         state: "all",
       });

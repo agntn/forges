@@ -339,3 +339,38 @@ describe("configured provider", () => {
     expect(reloaded.details.result.login).toBe("oritwoen");
   });
 });
+
+describe("provider loading", () => {
+  const repositoryParams = { platform: "github", owner: "agntn", repo: "forges" } as const;
+
+  it("shares one provider load between concurrent cold reads", async () => {
+    await Promise.all([getRepository(repositoryParams), getRepository(repositoryParams)]);
+
+    expect(mocks.createProvider).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a provider load that failed", async () => {
+    mocks.createProvider.mockImplementationOnce(() => {
+      throw new Error("provider module failed to load");
+    });
+
+    await expect(getRepository(repositoryParams)).rejects.toThrow("provider module failed to load");
+    await expect(getRepository(repositoryParams)).resolves.toBeDefined();
+
+    expect(mocks.createProvider).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not pin a credential whose provider failed to load", async () => {
+    mocks.createProvider.mockImplementationOnce(() => {
+      throw new Error("provider module failed to load");
+    });
+    await expect(getAuthenticatedUser({ platform: "github" })).rejects.toThrow(
+      "provider module failed to load",
+    );
+    mocks.localLogin.current = "oritwoen";
+
+    const identity = await getAuthenticatedUser({ platform: "github" });
+
+    expect(identity.details.result.login).toBe("oritwoen");
+  });
+});

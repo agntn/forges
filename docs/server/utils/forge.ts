@@ -81,10 +81,16 @@ export function platformStatus(platform: Platform): {
   return { platform, authenticated: workerToken(platform) !== "", host };
 }
 
-const providers = new Map<string, Provider>();
+const providers = new Map<string, Promise<Provider>>();
 
-/** One provider per platform and host. Token always explicit, so nothing shells out to `gh` on a Worker. */
-export function forge(platform: Platform, host?: string): Provider {
+/**
+ * One provider per platform and host. Token always explicit, so nothing shells out to `gh` on a Worker.
+ *
+ * The map keeps the creation promise, so concurrent requests on a cold isolate
+ * share one provider import; a failed creation is dropped so the next request
+ * can try again.
+ */
+export function forge(platform: Platform, host?: string): Promise<Provider> {
   const key = `${platform} ${host ?? ""}`;
   let provider = providers.get(key);
   if (!provider) {
@@ -95,6 +101,9 @@ export function forge(platform: Platform, host?: string): Provider {
       cache: { enabled: false },
     });
     providers.set(key, provider);
+    provider.catch(() => {
+      if (providers.get(key) === provider) providers.delete(key);
+    });
   }
   return provider;
 }

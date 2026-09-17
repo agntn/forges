@@ -25,7 +25,7 @@ If `gh` is installed and logged in, this works with no config at all:
 import { createProvider } from "@agntn/forges";
 
 // Token from GITHUB_TOKEN, then from `gh auth token`
-const github = createProvider("github");
+const github = await createProvider("github");
 
 const repo = await github.repos.get("nitrojs", "nitro");
 console.log(repo.fullName, repo.defaultBranch, repo.isFork);
@@ -35,15 +35,17 @@ const { items, hasNextPage } = await github.pullRequests.list("nitrojs", "nitro"
 });
 ```
 
+`createProvider` resolves the token first and then imports the one provider module it needs, so a process that only talks to GitHub never parses the GitLab or Gitea code. That import is why the call is async.
+
 Same for GitLab with `glab`, and Gitea with `tea` or `GITEA_TOKEN`. The chain is explicit token, then env, then the CLI, then the CLI's config file, and it stops at the first hit. When nothing matches you get an `AuthenticationError` naming the env var to set, never a silent anonymous call. An empty string is a real token and means anonymous on purpose. The whole thing: [Authentication](https://forges.agntn.dev/guide/auth).
 
 ```typescript
-const gitlab = createProvider("gitlab", {
+const gitlab = await createProvider("gitlab", {
   token: "glpat-…",
   baseURL: "https://gitlab.example.com",
 });
-const codeberg = createProvider("gitea", { baseURL: "https://codeberg.org" });
-const gitbucket = createProvider("github", {
+const codeberg = await createProvider("gitea", { baseURL: "https://codeberg.org" });
+const gitbucket = await createProvider("github", {
   token: "…",
   baseURL: "https://gitbucket.example.com/api/v3",
 });
@@ -124,7 +126,7 @@ A 404 from GitHub and a 404 from GitLab are the same `NotFoundError`. 401 is `Au
 Stable reads go through an LRU on [unstorage](https://unstorage.unjs.io), five minutes and five hundred entries by default, scoped to the base URL and a hash of the token. Item reads of repositories, issues, pull requests, comments and users skip it, because a stale answer there is worse than no cache.
 
 ```typescript
-const github = createProvider("github", {
+const github = await createProvider("github", {
   cache: { ttl: 60_000, enabled: false },
 });
 ```

@@ -17,7 +17,8 @@ export default defineEventHandler(async (event) => {
   const params = { platform, host, owner, repo, state, perPage };
   try {
     return await cachedAnswer<PullsAnswer>(event, "pulls", params, TTL.list, async () => {
-      const page = await forge(platform, host).pullRequests.list(owner, repo, { state, perPage });
+      const provider = await forge(platform, host);
+      const page = await provider.pullRequests.list(owner, repo, { state, perPage });
       return {
         platform,
         items: page.items.map(slimPullRequest),

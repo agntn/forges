@@ -16,10 +16,8 @@ export default defineEventHandler(async (event) => {
   const params = { platform, host, owner, repo };
   try {
     return await cachedAnswer<RepoAnswer>(event, "repo", params, TTL.repo, async () => {
-      const { viewerPermission: _viewer, ...repository } = await forge(platform, host).repos.get(
-        owner,
-        repo,
-      );
+      const provider = await forge(platform, host);
+      const { viewerPermission: _viewer, ...repository } = await provider.repos.get(owner, repo);
       return { platform, repository, fetchedAt: new Date().toISOString() };
     });
   } catch (error) {

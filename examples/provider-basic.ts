@@ -1,7 +1,7 @@
 import { createProvider } from "@agntn/forges";
 
 async function main(): Promise<void> {
-  const github = createProvider("github");
+  const github = await createProvider("github");
 
   const repos = await github.repos.list("unjs", { perPage: 5 });
   console.log(
