@@ -155,6 +155,11 @@ async function assertPackedMcpServer(root) {
       arguments: { platform: "bitbucket", owner: "agntn", repo: "forges" },
     });
     assert.equal(rejected.isError, true);
+    assert.match(
+      rejected.content.map((part) => part.text).join(""),
+      /^Invalid arguments at \/platform/u,
+      "the rejection must come from the bundled validator",
+    );
     assertLoaded(toolOperationsChunk, "the first call loads the executors");
     assertNotLoaded(providerChunk, "a call rejected by its schema must not load a provider");
   } finally {

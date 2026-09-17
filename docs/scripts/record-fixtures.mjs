@@ -93,7 +93,7 @@ async function settle(promise, fallback) {
 const samples = [];
 for (const target of TARGETS) {
   console.error(`${target.platform} ${target.owner}/${target.repo}`);
-  const provider = createProvider(target.platform, {
+  const provider = await createProvider(target.platform, {
     token: target.token,
     baseURL: target.baseURL,
     cache: { enabled: false },
