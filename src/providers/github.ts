@@ -837,7 +837,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     };
   }
 
-  /** A status without a target has no page to open; its `url` is the API route. */
+  /** `target_url` is the page a status links, if any. Its `url` is only the API route. */
   private mapCommitStatus(raw: GitHubCommitStatus): PullRequestCheck {
     return {
       id: String(raw.id),
@@ -1371,14 +1371,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   }
 
   /**
-   * GitHub pins two kinds of check to a revision: check runs, which GitHub
-   * Apps such as Actions create, and commit statuses from the older Status
-   * API that CLA bots, Jenkins and Buildkite still report through. Branch
-   * protection can require either, so a page carries both, cut locally like
-   * the GitLab pipelines are. The statuses go first: there are a handful of
-   * them, a required one is exactly the row a reader must not miss, and the
-   * check runs behind them can run to pages. The rows read decide whether a
-   * next page exists; the totals both listings carry only feed totalCount.
+   * CLA bots and Jenkins report commit statuses, not check runs, and branch protection
+   * can require one. Statuses go first: a handful of rows, and a required one is the
+   * row nobody should have to find behind pages of check runs.
    */
   protected override async listPullRequestChecks(
     owner: string,
@@ -1421,12 +1416,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
-  /**
-   * Reads one revision listing until `wanted` rows are in hand, a page comes
-   * back empty or its Link header ends, in pages no larger than that count.
-   * Every page repeats the listing's total, so the last one read is returned
-   * with the rows.
-   */
+  /** Pages one revision listing until `wanted` rows are in hand, a page is empty or Link ends. */
   private async readRevisionRows<TResponse extends { total_count: number }, TRow>(
     path: string,
     rows: (data: TResponse) => TRow[],
