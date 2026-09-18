@@ -1432,6 +1432,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     return comments;
   }
 
+  /** The reviews route sends no Link, so the walk ends when `x-total-count` reviews were read. */
   private async groupedReviewThreads(
     owner: string,
     repo: string,
@@ -1439,6 +1440,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<GiteaReviewThread[]> {
     const comments: GiteaPullReviewComment[] = [];
     let page = 1;
+    let seen = 0;
     let hasNextPage = true;
     while (hasNextPage) {
       const { data, headers } = await rawFetch<GiteaPullReview[]>(
@@ -1456,7 +1458,10 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         }
         comments.push(...(await this.reviewComments(owner, repo, number, review.id)));
       }
-      hasNextPage = !!parseLinkHeader(headers.get("Link")).next;
+      seen += reviews.length;
+      const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
+      hasNextPage =
+        !!parseLinkHeader(headers.get("Link")).next || (Number.isFinite(total) && seen < total);
       page += 1;
     }
 

@@ -2041,6 +2041,41 @@ describe("Gitea Provider", () => {
       expect(result.items).toEqual([]);
     });
 
+    it("walks every review page by x-total-count when no Link header exists", async () => {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [{ id: 1, comments_count: 1 }],
+          headers: makeHeaders({ "x-total-count": "2" }),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaReviewComment({ id: 11 })],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [{ id: 2, comments_count: 1 }],
+          headers: makeHeaders({ "x-total-count": "2" }),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaReviewComment({ id: 21, body: "Second page review" })],
+          headers: makeHeaders(),
+          status: 200,
+        });
+
+      const result = await provider.threads.list("testowner", "test-repo", 5);
+
+      expect(result.items.map((thread) => thread.id)).toEqual(["11", "21"]);
+      expect(mockedRawFetch).toHaveBeenCalledTimes(4);
+      expect(mockedRawFetch).toHaveBeenNthCalledWith(
+        3,
+        expect.anything(),
+        "/repos/testowner/test-repo/pulls/5/reviews",
+        { query: { page: "2", limit: "50" } },
+      );
+    });
+
     it("replies through the review-comment replies endpoint without scanning reviews", async () => {
       mockClient.mockResolvedValueOnce(giteaReviewComment({ id: 13, body: "Renamed." }));
 
