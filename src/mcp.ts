@@ -245,7 +245,7 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       name: "forges_pull_requests_checks",
       title: "List Pull Request Checks",
       description:
-        "List the checks or pipelines associated with one pull request head revision, normalized to name, lifecycle status, terminal conclusion, and URL.",
+        "List the checks or pipelines associated with one pull request head revision, normalized to name, lifecycle status, terminal conclusion, and URL. On GitHub the rows are the commit statuses followed by the check runs, so a CLA bot or a Jenkins job that branch protection requires is listed too.",
       inputSchema: schemas.listPullRequestChecksParameters,
       annotations: readAnnotations,
       execute: (operations, args) => operations.listPullRequestChecks(args),

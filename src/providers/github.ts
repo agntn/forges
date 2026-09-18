@@ -143,6 +143,18 @@ interface GitHubCheckRunsResponse {
   check_runs: GitHubCheckRun[];
 }
 
+interface GitHubCommitStatus {
+  id: number;
+  context: string;
+  state: string;
+  target_url: string | null;
+}
+
+interface GitHubCombinedStatus {
+  total_count: number;
+  statuses: GitHubCommitStatus[];
+}
+
 interface GitHubPullRequestReview {
   id: number;
   user: { login: string } | null;
@@ -825,6 +837,16 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     };
   }
 
+  /** A status without a target has no page to open; its `url` is the API route. */
+  private mapCommitStatus(raw: GitHubCommitStatus): PullRequestCheck {
+    return {
+      id: String(raw.id),
+      name: raw.context,
+      ...normalizeCiRunState(raw.state),
+      url: raw.target_url ?? "",
+    };
+  }
+
   private mapPullRequestReview(raw: GitHubPullRequestReview): PullRequestReview | null {
     const state = normalizeReviewState(raw.state);
     if (state === null) return null;
@@ -1348,6 +1370,16 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
+  /**
+   * GitHub pins two kinds of check to a revision: check runs, which GitHub
+   * Apps such as Actions create, and commit statuses from the older Status
+   * API that CLA bots, Jenkins and Buildkite still report through. Branch
+   * protection can require either, so a page carries both, cut locally like
+   * the GitLab pipelines are. The statuses go first: there are a handful of
+   * them, a required one is exactly the row a reader must not miss, and the
+   * check runs behind them can run to pages. Both listings carry their own
+   * total, so hasNextPage and totalCount cover both.
+   */
   protected override async listPullRequestChecks(
     owner: string,
     repo: string,
@@ -1356,22 +1388,68 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   ): Promise<PageResult<PullRequestCheck>> {
     try {
       const pullRequest = await this.getPullRequest(owner, repo, number);
-      const query: Record<string, string> = {};
-      if (options?.page) query.page = String(options.page);
-      if (options?.perPage) query.per_page = String(options.perPage);
+      const perPage = options?.perPage ?? 30;
+      const page = options?.page ?? 1;
+      const skip = (page - 1) * perPage;
+      const wanted = skip + perPage + 1;
+      const revision = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodePathSegment(pullRequest.headSha)}`;
 
-      const { data, headers } = await rawFetch<GitHubCheckRunsResponse>(
-        this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodePathSegment(pullRequest.headSha)}/check-runs`,
-        { query },
+      const statuses = await this.readRevisionRows<GitHubCombinedStatus, GitHubCommitStatus>(
+        `${revision}/status`,
+        (data) => data.statuses,
+        wanted,
       );
+      const runs = await this.readRevisionRows<GitHubCheckRunsResponse, GitHubCheckRun>(
+        `${revision}/check-runs`,
+        (data) => data.check_runs,
+        Math.max(1, wanted - statuses.total),
+      );
+      const checks = [
+        ...statuses.rows.map((raw) => this.mapCommitStatus(raw)),
+        ...runs.rows.map((raw) => this.mapPullRequestCheck(raw)),
+      ];
+      const totalCount = statuses.total + runs.total;
+      const items = checks.slice(skip, skip + perPage);
+      const hasNextPage = skip + items.length < totalCount;
       return {
-        ...buildPageResult(data?.check_runs ?? [], headers, (raw) => this.mapPullRequestCheck(raw)),
-        totalCount: data?.total_count,
+        items,
+        totalCount,
+        hasNextPage,
+        nextPage: hasNextPage ? page + 1 : undefined,
       };
     } catch (error) {
       throw normalizeError(error, "github");
     }
+  }
+
+  /**
+   * Reads one revision listing until `wanted` rows are in hand, a page comes
+   * back empty or its Link header ends, in pages no larger than that count.
+   * Every page repeats the listing's total, so the last one read is returned
+   * with the rows.
+   */
+  private async readRevisionRows<TResponse extends { total_count: number }, TRow>(
+    path: string,
+    rows: (data: TResponse) => TRow[],
+    wanted: number,
+  ): Promise<{ rows: TRow[]; total: number }> {
+    const collected: TRow[] = [];
+    const perPage = String(Math.min(100, wanted));
+    let total = 0;
+    let page = 1;
+    while (collected.length < wanted) {
+      const { data, headers } = await rawFetch<TResponse>(this.client, path, {
+        query: { page: String(page), per_page: perPage },
+      });
+      if (data) total = data.total_count;
+      const batch = data ? rows(data) : [];
+      if (batch.length === 0) break;
+      collected.push(...batch);
+      const { hasNextPage, nextPage } = paginationFromLink(headers);
+      if (!hasNextPage || nextPage === undefined || nextPage <= page) break;
+      page = nextPage;
+    }
+    return { rows: collected, total };
   }
 
   protected override async searchPullRequests(

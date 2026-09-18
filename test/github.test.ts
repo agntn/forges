@@ -1592,44 +1592,218 @@ describe("GitHubProvider", () => {
   });
 
   describe("pullRequests.listChecks", () => {
-    it("reads check runs for the pull-request head revision", async () => {
+    const revision = "/repos/octocat/hello-world/commits/cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+
+    function ghCheckRun(id: number) {
+      return {
+        id,
+        name: `test ${id}`,
+        status: "completed",
+        conclusion: "success",
+        html_url: `https://github.com/octocat/hello-world/runs/${id}`,
+      };
+    }
+
+    function checkRun(id: number) {
+      return {
+        id: String(id),
+        name: `test ${id}`,
+        status: "completed",
+        conclusion: "success",
+        url: `https://github.com/octocat/hello-world/runs/${id}`,
+      };
+    }
+
+    const ghStatuses = [
+      {
+        id: 54007639968,
+        context: "CLA Signing",
+        state: "failure",
+        target_url: null,
+        url: "https://api.github.com/repos/octocat/hello-world/statuses/cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+      },
+      {
+        id: 54007639969,
+        context: "ci/jenkins",
+        state: "pending",
+        target_url: "https://ci.example.com/job/hello-world/12",
+        url: "https://api.github.com/repos/octocat/hello-world/statuses/cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+      },
+    ];
+
+    const statuses = [
+      {
+        id: "54007639968",
+        name: "CLA Signing",
+        status: "completed",
+        conclusion: "failure",
+        url: "",
+      },
+      {
+        id: "54007639969",
+        name: "ci/jenkins",
+        status: "queued",
+        conclusion: null,
+        url: "https://ci.example.com/job/hello-world/12",
+      },
+    ];
+
+    it("lists the commit statuses of the head revision before its check runs", async () => {
       mocks.client.mockResolvedValueOnce(ghPullRequest);
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: {
-          total_count: 1,
-          check_runs: [
-            {
-              id: 6001,
-              name: "test",
-              status: "completed",
-              conclusion: "success",
-              html_url: "https://github.com/octocat/hello-world/runs/6001",
-            },
-          ],
-        },
-        headers: makeHeaders(),
-      });
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: { total_count: 2, statuses: ghStatuses },
+          headers: makeHeaders(),
+        })
+        .mockResolvedValueOnce({
+          data: { total_count: 1, check_runs: [ghCheckRun(6001)] },
+          headers: makeHeaders(),
+        });
 
       const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
-        page: 2,
         perPage: 10,
       });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/octocat/hello-world/commits/cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38/check-runs",
-        { query: { page: "2", per_page: "10" } },
-      );
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, `${revision}/status`, {
+        query: { page: "1", per_page: "11" },
+      });
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${revision}/check-runs`, {
+        query: { page: "1", per_page: "9" },
+      });
       expect(result).toEqual({
-        items: [
-          {
-            id: "6001",
-            name: "test",
-            status: "completed",
-            conclusion: "success",
-            url: "https://github.com/octocat/hello-world/runs/6001",
-          },
-        ],
+        items: [...statuses, checkRun(6001)],
+        totalCount: 3,
+        hasNextPage: false,
+        nextPage: undefined,
+      });
+    });
+
+    it("cuts one page across the end of the statuses and the start of the check runs", async () => {
+      mocks.client.mockResolvedValueOnce(ghPullRequest);
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: { total_count: 2, statuses: ghStatuses },
+          headers: makeHeaders(),
+        })
+        .mockResolvedValueOnce({
+          data: { total_count: 3, check_runs: [6001, 6002].map(ghCheckRun) },
+          headers: makeHeaders(
+            `<https://api.github.com${revision}/check-runs?per_page=2&page=2>; rel="next"`,
+          ),
+        });
+
+      const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
+        perPage: 3,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, `${revision}/status`, {
+        query: { page: "1", per_page: "4" },
+      });
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${revision}/check-runs`, {
+        query: { page: "1", per_page: "2" },
+      });
+      expect(result).toEqual({
+        items: [...statuses, checkRun(6001)],
+        totalCount: 5,
+        hasNextPage: true,
+        nextPage: 2,
+      });
+    });
+
+    it("reads only the check runs a page needs and still counts the rest", async () => {
+      mocks.client.mockResolvedValueOnce(ghPullRequest);
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: { total_count: 2, statuses: ghStatuses },
+          headers: makeHeaders(),
+        })
+        .mockResolvedValueOnce({
+          data: { total_count: 5, check_runs: [6001, 6002, 6003].map(ghCheckRun) },
+          headers: makeHeaders(
+            `<https://api.github.com${revision}/check-runs?per_page=3&page=2>; rel="next"`,
+          ),
+        });
+
+      const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
+        page: 2,
+        perPage: 2,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${revision}/check-runs`, {
+        query: { page: "1", per_page: "3" },
+      });
+      expect(result).toEqual({
+        items: [checkRun(6001), checkRun(6002)],
+        totalCount: 7,
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+
+    it("follows the Link header when a page needs more than one hundred check runs", async () => {
+      const ids = Array.from({ length: 120 }, (_, index) => 7001 + index);
+      mocks.client.mockResolvedValueOnce(ghPullRequest);
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: { total_count: 2, statuses: ghStatuses },
+          headers: makeHeaders(),
+        })
+        .mockResolvedValueOnce({
+          data: { total_count: 120, check_runs: ids.slice(0, 100).map(ghCheckRun) },
+          headers: makeHeaders(
+            `<https://api.github.com${revision}/check-runs?per_page=100&page=2>; rel="next"`,
+          ),
+        })
+        .mockResolvedValueOnce({
+          data: { total_count: 120, check_runs: ids.slice(100).map(ghCheckRun) },
+          headers: makeHeaders(),
+        });
+
+      const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
+        page: 60,
+        perPage: 2,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, `${revision}/status`, {
+        query: { page: "1", per_page: "100" },
+      });
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${revision}/check-runs`, {
+        query: { page: "1", per_page: "100" },
+      });
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(3, mocks.client, `${revision}/check-runs`, {
+        query: { page: "2", per_page: "100" },
+      });
+      expect(result).toEqual({
+        items: [checkRun(7117), checkRun(7118)],
+        totalCount: 122,
+        hasNextPage: true,
+        nextPage: 61,
+      });
+    });
+
+    it("stops at an empty page even when its Link header promises another", async () => {
+      mocks.client.mockResolvedValueOnce(ghPullRequest);
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: { total_count: 0, statuses: [] },
+          headers: makeHeaders(
+            `<https://api.github.com${revision}/status?per_page=31&page=2>; rel="next"`,
+          ),
+        })
+        .mockResolvedValueOnce({
+          data: { total_count: 1, check_runs: [ghCheckRun(6001)] },
+          headers: makeHeaders(),
+        });
+
+      const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99);
+
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${revision}/check-runs`, {
+        query: { page: "1", per_page: "31" },
+      });
+      expect(result).toEqual({
+        items: [checkRun(6001)],
         totalCount: 1,
         hasNextPage: false,
         nextPage: undefined,
