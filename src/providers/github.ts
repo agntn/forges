@@ -1377,8 +1377,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
    * protection can require either, so a page carries both, cut locally like
    * the GitLab pipelines are. The statuses go first: there are a handful of
    * them, a required one is exactly the row a reader must not miss, and the
-   * check runs behind them can run to pages. Both listings carry their own
-   * total, so hasNextPage and totalCount cover both.
+   * check runs behind them can run to pages. The rows read decide whether a
+   * next page exists; the totals both listings carry only feed totalCount.
    */
   protected override async listPullRequestChecks(
     owner: string,
@@ -1402,18 +1402,17 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       const runs = await this.readRevisionRows<GitHubCheckRunsResponse, GitHubCheckRun>(
         `${revision}/check-runs`,
         (data) => data.check_runs,
-        Math.max(1, wanted - statuses.total),
+        Math.max(1, wanted - statuses.rows.length),
       );
       const checks = [
         ...statuses.rows.map((raw) => this.mapCommitStatus(raw)),
         ...runs.rows.map((raw) => this.mapPullRequestCheck(raw)),
       ];
-      const totalCount = statuses.total + runs.total;
       const items = checks.slice(skip, skip + perPage);
-      const hasNextPage = skip + items.length < totalCount;
+      const hasNextPage = checks.length > skip + perPage;
       return {
         items,
-        totalCount,
+        totalCount: statuses.total + runs.total,
         hasNextPage,
         nextPage: hasNextPage ? page + 1 : undefined,
       };

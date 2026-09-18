@@ -1782,6 +1782,35 @@ describe("GitHubProvider", () => {
       });
     });
 
+    it("reads one check run for its total when the statuses fill the page", async () => {
+      mocks.client.mockResolvedValueOnce(ghPullRequest);
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: { total_count: 2, statuses: ghStatuses },
+          headers: makeHeaders(),
+        })
+        .mockResolvedValueOnce({
+          data: { total_count: 3, check_runs: [ghCheckRun(6001)] },
+          headers: makeHeaders(
+            `<https://api.github.com${revision}/check-runs?per_page=1&page=2>; rel="next"`,
+          ),
+        });
+
+      const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
+        perPage: 1,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${revision}/check-runs`, {
+        query: { page: "1", per_page: "1" },
+      });
+      expect(result).toEqual({
+        items: [statuses[0]],
+        totalCount: 5,
+        hasNextPage: true,
+        nextPage: 2,
+      });
+    });
+
     it("stops at an empty page even when its Link header promises another", async () => {
       mocks.client.mockResolvedValueOnce(ghPullRequest);
       mocks.rawFetch
