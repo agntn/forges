@@ -2042,10 +2042,14 @@ describe("Gitea Provider", () => {
     });
 
     it("walks every review page by x-total-count when no Link header exists", async () => {
+      const firstPage = Array.from({ length: 50 }, (_, index) => ({
+        id: index + 1,
+        comments_count: index === 0 ? 1 : 0,
+      }));
       mockedRawFetch
         .mockResolvedValueOnce({
-          data: [{ id: 1, comments_count: 1 }],
-          headers: makeHeaders({ "x-total-count": "2" }),
+          data: firstPage,
+          headers: makeHeaders({ "x-total-count": "51" }),
           status: 200,
         })
         .mockResolvedValueOnce({
@@ -2054,8 +2058,8 @@ describe("Gitea Provider", () => {
           status: 200,
         })
         .mockResolvedValueOnce({
-          data: [{ id: 2, comments_count: 1 }],
-          headers: makeHeaders({ "x-total-count": "2" }),
+          data: [{ id: 51, comments_count: 1 }],
+          headers: makeHeaders({ "x-total-count": "51" }),
           status: 200,
         })
         .mockResolvedValueOnce({
