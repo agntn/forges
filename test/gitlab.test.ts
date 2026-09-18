@@ -1414,6 +1414,29 @@ describe("GitLabProvider", () => {
 
       expect(result.items[0]).toMatchObject({ name: "pipeline", url: "" });
     });
+
+    it("keeps the merged results pipeline GitLab evaluates for the head", async () => {
+      const mergeRef = "refs/merge-requests/33/merge";
+      const headPipeline = { ...glPipeline, id: 9003, sha: "merge-commit-revision", ref: mergeRef };
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce({ ...glMergeRequest, head_pipeline: headPipeline });
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          { ...headPipeline, status: "success" },
+          { ...glPipeline, id: 9002, sha: "previous-merge-commit", ref: mergeRef },
+          { ...glPipeline, sha: glMergeRequest.sha, status: "running" },
+        ],
+        headers: glHeaders(),
+      });
+
+      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+
+      expect(mocks.client).toHaveBeenCalledWith("/projects/278964/merge_requests/33");
+      expect(result.items.map((check) => [check.id, check.conclusion])).toEqual([
+        ["9003", "success"],
+        ["9001", null],
+      ]);
+    });
   });
 
   describe("pullRequests.listReviews", () => {

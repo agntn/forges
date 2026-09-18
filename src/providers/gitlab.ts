@@ -167,6 +167,7 @@ interface GitLabMergeRequest {
   sha?: string | null;
   merge_status?: string | null;
   detailed_merge_status?: string | null;
+  head_pipeline?: GitLabPipeline | null;
 }
 
 interface GitLabMergeRequestDiff {
@@ -1180,6 +1181,11 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     }
   }
 
+  /**
+   * A merged results or merge train pipeline runs on a merge commit GitLab builds, and its
+   * REST row carries only that sha, so the one GitLab still evaluates for the merge request
+   * is matched as `head_pipeline` next to the pipelines on the head sha itself.
+   */
   protected override async listPullRequestChecks(
     owner: string,
     repo: string,
@@ -1187,8 +1193,11 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     options?: ListPullRequestChecksOptions,
   ): Promise<PageResult<PullRequestCheck>> {
     try {
-      const pullRequest = await this.getPullRequest(owner, repo, number);
       const projectId = await this.resolveProjectId(owner, repo);
+      const base = `/projects/${projectId}/merge_requests/${encodePathSegment(number)}`;
+      const mergeRequest = await this.client<GitLabMergeRequest>(base);
+      const headSha = mergeRequest.sha ?? "";
+      const headPipelineId = mergeRequest.head_pipeline?.id;
       const perPage = options?.perPage ?? 30;
       const page = options?.page ?? 1;
       const skip = (page - 1) * perPage;
@@ -1201,8 +1210,10 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       while (hasMore && matched.length <= skip + perPage) {
         const { data, headers } = await rawFetch<GitLabPipeline[]>(
           this.client,
-          `/projects/${projectId}/merge_requests/${encodePathSegment(number)}/pipelines`,
-          { query: { page: remotePage, per_page: 100 } },
+          `${base}/pipelines`,
+          {
+            query: { page: remotePage, per_page: 100 },
+          },
         );
         const batch = data ?? [];
         if (batch.length === 0) {
@@ -1211,7 +1222,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         }
         matched.push(
           ...batch
-            .filter((raw) => raw.sha === pullRequest.headSha)
+            .filter((raw) => raw.sha === headSha || raw.id === headPipelineId)
             .map((raw) => this.mapPullRequestCheck(raw)),
         );
         const nextPage = headers.get("x-next-page");
