@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.3.1
+
+[compare changes](https://github.com/agntn/forges/compare/v0.3.0...v0.3.1)
+
+### 🩹 Fixes
+
+- **github:** Read commit statuses as checks ([#114](https://github.com/agntn/forges/pull/114))
+- **gitea:** List threads past 50 reviews ([#117](https://github.com/agntn/forges/pull/117))
+
+### 📖 Documentation
+
+- Walk four forges in one README ([#113](https://github.com/agntn/forges/pull/113))
+
+### 🏡 Chore
+
+- Add `renovate.json` ([9e0571b](https://github.com/agntn/forges/commit/9e0571b))
+
+### ❤️ Contributors
+
+- Ori ([@oritwoen](https://github.com/oritwoen))
+- Aeitwoen ([@aeitwoen](https://github.com/aeitwoen))
+
 ## v0.3.0
 
 [compare changes](https://github.com/agntn/forges/compare/v0.2.3...v0.3.0)
