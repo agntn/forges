@@ -143,6 +143,18 @@ interface GitHubCheckRunsResponse {
   check_runs: GitHubCheckRun[];
 }
 
+interface GitHubCommitStatus {
+  id: number;
+  context: string;
+  state: string;
+  target_url: string | null;
+}
+
+interface GitHubCombinedStatus {
+  total_count: number;
+  statuses: GitHubCommitStatus[];
+}
+
 interface GitHubPullRequestReview {
   id: number;
   user: { login: string } | null;
@@ -825,6 +837,16 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     };
   }
 
+  /** `target_url` is the page a status links, if any. Its `url` is only the API route. */
+  private mapCommitStatus(raw: GitHubCommitStatus): PullRequestCheck {
+    return {
+      id: String(raw.id),
+      name: raw.context,
+      ...normalizeCiRunState(raw.state),
+      url: raw.target_url ?? "",
+    };
+  }
+
   private mapPullRequestReview(raw: GitHubPullRequestReview): PullRequestReview | null {
     const state = normalizeReviewState(raw.state);
     if (state === null) return null;
@@ -1348,6 +1370,11 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
+  /**
+   * CLA bots and Jenkins report commit statuses, not check runs, and branch protection
+   * can require one. Statuses go first: a handful of rows, and a required one is the
+   * row nobody should have to find behind pages of check runs.
+   */
   protected override async listPullRequestChecks(
     owner: string,
     repo: string,
@@ -1356,22 +1383,62 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   ): Promise<PageResult<PullRequestCheck>> {
     try {
       const pullRequest = await this.getPullRequest(owner, repo, number);
-      const query: Record<string, string> = {};
-      if (options?.page) query.page = String(options.page);
-      if (options?.perPage) query.per_page = String(options.perPage);
+      const perPage = options?.perPage ?? 30;
+      const page = options?.page ?? 1;
+      const skip = (page - 1) * perPage;
+      const wanted = skip + perPage + 1;
+      const revision = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodePathSegment(pullRequest.headSha)}`;
 
-      const { data, headers } = await rawFetch<GitHubCheckRunsResponse>(
-        this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodePathSegment(pullRequest.headSha)}/check-runs`,
-        { query },
+      const statuses = await this.readRevisionRows<GitHubCombinedStatus, GitHubCommitStatus>(
+        `${revision}/status`,
+        (data) => data.statuses,
+        wanted,
       );
+      const runs = await this.readRevisionRows<GitHubCheckRunsResponse, GitHubCheckRun>(
+        `${revision}/check-runs`,
+        (data) => data.check_runs,
+        Math.max(1, wanted - statuses.rows.length),
+      );
+      const checks = [
+        ...statuses.rows.map((raw) => this.mapCommitStatus(raw)),
+        ...runs.rows.map((raw) => this.mapPullRequestCheck(raw)),
+      ];
+      const items = checks.slice(skip, skip + perPage);
+      const hasNextPage = checks.length > skip + perPage;
       return {
-        ...buildPageResult(data?.check_runs ?? [], headers, (raw) => this.mapPullRequestCheck(raw)),
-        totalCount: data?.total_count,
+        items,
+        totalCount: statuses.total + runs.total,
+        hasNextPage,
+        nextPage: hasNextPage ? page + 1 : undefined,
       };
     } catch (error) {
       throw normalizeError(error, "github");
     }
+  }
+
+  /** Pages one revision listing until `wanted` rows are in hand, a page is empty or Link ends. */
+  private async readRevisionRows<TResponse extends { total_count: number }, TRow>(
+    path: string,
+    rows: (data: TResponse) => TRow[],
+    wanted: number,
+  ): Promise<{ rows: TRow[]; total: number }> {
+    const collected: TRow[] = [];
+    const perPage = String(Math.min(100, wanted));
+    let total = 0;
+    let page = 1;
+    while (collected.length < wanted) {
+      const { data, headers } = await rawFetch<TResponse>(this.client, path, {
+        query: { page: String(page), per_page: perPage },
+      });
+      if (data) total = data.total_count;
+      const batch = data ? rows(data) : [];
+      if (batch.length === 0) break;
+      collected.push(...batch);
+      const { hasNextPage, nextPage } = paginationFromLink(headers);
+      if (!hasNextPage || nextPage === undefined || nextPage <= page) break;
+      page = nextPage;
+    }
+    return { rows: collected, total };
   }
 
   protected override async searchPullRequests(
