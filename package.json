@@ -98,8 +98,8 @@
     "@types/node": "24.11.0",
     "changelogen": "0.6.2",
     "obuild": "0.4.31",
-    "oxfmt": "^0.36.0",
-    "oxlint": "^1.80.0",
+    "oxfmt": "0.36.0",
+    "oxlint": "1.80.0",
     "typescript": "5.9.3",
     "vitest": "^3.2.0"
   },
