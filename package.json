@@ -101,7 +101,7 @@
     "oxfmt": "0.36.0",
     "oxlint": "1.80.0",
     "typescript": "5.9.3",
-    "vitest": "^3.2.0"
+    "vitest": "3.2.4"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.84.1 <1",
