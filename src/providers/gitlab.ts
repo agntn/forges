@@ -468,12 +468,23 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     };
   }
 
-  /** Merge request pipeline rows carry no `name`; the project the pipeline ran in serves it. */
+  /**
+   * Merge request pipeline rows carry no `name`, so the project the pipeline ran in serves it; a
+   * pipeline gone or closed to the caller since the listing keeps its row and the fallback name.
+   */
   private async readPullRequestCheck(raw: GitLabPipeline): Promise<PullRequestCheck> {
-    const pipeline = await this.client<GitLabPipeline>(
-      `/projects/${raw.project_id}/pipelines/${raw.id}`,
-    );
-    return this.mapPullRequestCheck({ ...raw, name: pipeline.name });
+    try {
+      const pipeline = await this.client<GitLabPipeline>(
+        `/projects/${raw.project_id}/pipelines/${raw.id}`,
+      );
+      return this.mapPullRequestCheck({ ...raw, name: pipeline.name });
+    } catch (error: unknown) {
+      const normalized = normalizeError(error, "gitlab");
+      if (normalized.status === 404 || normalized.status === 403) {
+        return this.mapPullRequestCheck(raw);
+      }
+      throw normalized;
+    }
   }
 
   private mapPullRequestFile(raw: GitLabMergeRequestDiff): PullRequestFile {

@@ -1445,6 +1445,45 @@ describe("GitLabProvider", () => {
       ]);
     });
 
+    it("keeps a listed pipeline whose detail is gone or closed to the caller", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          { ...glPipeline, sha: glMergeRequest.sha },
+          { ...glPipeline, id: 9002, project_id: 41372369, sha: glMergeRequest.sha },
+          { ...glPipeline, id: 9003, sha: glMergeRequest.sha },
+        ],
+        headers: glHeaders(),
+      });
+      mocks.client
+        .mockResolvedValueOnce({ ...glPipeline, name: "Ruby 3.3.12 MR" })
+        .mockRejectedValueOnce(makeFetchError(403))
+        .mockRejectedValueOnce(makeFetchError(404));
+
+      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+
+      expect(result.items.map((check) => [check.id, check.name])).toEqual([
+        ["9001", "Ruby 3.3.12 MR"],
+        ["9002", "pipeline"],
+        ["9003", "pipeline"],
+      ]);
+    });
+
+    it("surfaces a failed name lookup that is not a missing pipeline", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [{ ...glPipeline, sha: glMergeRequest.sha }],
+        headers: glHeaders(),
+      });
+      mocks.client.mockRejectedValueOnce(makeFetchError(500));
+
+      await expect(gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33)).rejects.toThrow(
+        ForgesError,
+      );
+    });
+
     it("keeps the merged results pipeline GitLab evaluates for the head", async () => {
       const mergeRef = "refs/merge-requests/33/merge";
       const headPipeline = { ...glPipeline, id: 9003, sha: "merge-commit-revision", ref: mergeRef };
