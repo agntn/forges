@@ -69,6 +69,7 @@ import { countDiffLines } from "../changed-file.ts";
 
 const MAX_COMMIT_DIFF_PAGES = 100;
 const MAX_CODE_SEARCH_PROJECT_REQUESTS = 5;
+const MAX_PIPELINE_NAME_REQUESTS = 5;
 const MAX_CONTRIBUTION_TEMPLATE_PAGES = 100;
 
 // GitLab API response types (internal)
@@ -127,6 +128,7 @@ interface GitLabProject {
 
 interface GitLabPipeline {
   id: number;
+  project_id: number;
   ref: string | null;
   sha: string;
   status: string;
@@ -465,6 +467,22 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       ...normalizeCiRunState(raw.status),
       url: raw.web_url ?? "",
     };
+  }
+
+  /**
+   * Merge request pipeline rows carry no `name`, so the project the pipeline ran in serves it, read
+   * fresh because a pipeline can be renamed; a failed read keeps the check under the fallback name.
+   */
+  private async readPullRequestCheck(raw: GitLabPipeline): Promise<PullRequestCheck> {
+    try {
+      const pipeline = await this.client<GitLabPipeline>(
+        `/projects/${raw.project_id}/pipelines/${raw.id}`,
+      );
+      return this.mapPullRequestCheck({ ...raw, name: pipeline.name });
+    } catch (error: unknown) {
+      console.warn(`[forges] Could not read the name of pipeline ${raw.id}: ${String(error)}`);
+      return this.mapPullRequestCheck(raw);
+    }
   }
 
   private mapPullRequestFile(raw: GitLabMergeRequestDiff): PullRequestFile {
@@ -1217,7 +1235,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       const perPage = options?.perPage ?? 30;
       const page = options?.page ?? 1;
       const skip = (page - 1) * perPage;
-      const matched: PullRequestCheck[] = [];
+      const matched: GitLabPipeline[] = [];
       let remotePage = 1;
       let hasMore = true;
 
@@ -1236,11 +1254,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
           hasMore = false;
           continue;
         }
-        matched.push(
-          ...batch
-            .filter((raw) => raw.sha === headSha || raw.id === headPipelineId)
-            .map((raw) => this.mapPullRequestCheck(raw)),
-        );
+        matched.push(...batch.filter((raw) => raw.sha === headSha || raw.id === headPipelineId));
         const nextPage = headers.get("x-next-page");
         if (nextPage === null || nextPage === "") {
           hasMore = false;
@@ -1250,7 +1264,12 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         }
       }
 
-      const items = matched.slice(skip, skip + perPage);
+      const listed = matched.slice(skip, skip + perPage);
+      const items: PullRequestCheck[] = [];
+      for (let offset = 0; offset < listed.length; offset += MAX_PIPELINE_NAME_REQUESTS) {
+        const batch = listed.slice(offset, offset + MAX_PIPELINE_NAME_REQUESTS);
+        items.push(...(await Promise.all(batch.map((raw) => this.readPullRequestCheck(raw)))));
+      }
       const hasNextPage = matched.length > skip + perPage;
       return {
         items,

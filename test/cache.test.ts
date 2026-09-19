@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   createCache,
   configureStorage,
@@ -21,6 +21,10 @@ describe("cachedFetch", () => {
     configureStorage(createCache({ max: 100, ttl: 60_000 }));
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("fetches from client on cache miss", async () => {
     const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
 
@@ -38,6 +42,35 @@ describe("cachedFetch", () => {
 
     expect(client).toHaveBeenCalledOnce();
     expect(result).toEqual({ id: 1, name: "forges" });
+  });
+
+  it("returns the fetched value when the cache write fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const storage = createCache({ max: 100, ttl: 60_000 });
+    vi.spyOn(storage, "setItem").mockRejectedValue(new Error("storage backend down"));
+    configureStorage(storage);
+    const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
+
+    const result = await cachedFetch(client as any, "/repos/unjs/ugp");
+
+    expect(result).toEqual({ id: 1, name: "forges" });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Could not cache /repos/unjs/ugp"));
+  });
+
+  it("fetches when the cache read fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const storage = createCache({ max: 100, ttl: 60_000 });
+    vi.spyOn(storage, "getItem").mockRejectedValue(new Error("storage backend down"));
+    configureStorage(storage);
+    const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
+
+    const result = await cachedFetch(client as any, "/repos/unjs/ugp");
+
+    expect(client).toHaveBeenCalledOnce();
+    expect(result).toEqual({ id: 1, name: "forges" });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("Could not read the cache for /repos/unjs/ugp"),
+    );
   });
 
   it("does not cache non-GET requests", async () => {
