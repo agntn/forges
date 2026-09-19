@@ -121,7 +121,7 @@ function paginateContributionTemplates(
 }
 
 function assertReleaseTag(tag: string): void {
-  if (tag.length === 0) {
+  if (tag.trim() === "") {
     throw new ForgesError("Release tag must not be empty", 400);
   }
 }

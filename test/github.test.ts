@@ -2021,8 +2021,8 @@ describe("GitHubProvider", () => {
       expect(result).toEqual(release);
     });
 
-    it("rejects an empty tag before any request", async () => {
-      await expect(gh.releases.get("agntn", "forges", "")).rejects.toMatchObject({
+    it.each(["", "  "])("rejects the blank tag %j before any request", async (tag) => {
+      await expect(gh.releases.get("agntn", "forges", tag)).rejects.toMatchObject({
         status: 400,
       });
       expect(mocks.client).not.toHaveBeenCalled();
