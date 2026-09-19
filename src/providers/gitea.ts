@@ -13,6 +13,7 @@ import { ForgesError, normalizeError, NotFoundError } from "../errors.ts";
 import {
   encodeApiResponsePathSegment,
   encodePathSegment,
+  encodeRefPathSegment,
   normalizeApiBaseURL,
 } from "./base-url.ts";
 import { Provider, type ProviderRawTypes } from "../provider.ts";
@@ -46,9 +47,13 @@ import type {
   Comment,
   CreateIssueInput,
   CreatePullRequestInput,
+  CreateReleaseInput,
+  ListReleasesOptions,
+  Release,
   ReplyThreadInput,
   Thread,
   ThreadComment,
+  UpdateReleaseInput,
 } from "../types.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
 import { isPullRequestReview, normalizeReviewState } from "../review.ts";
@@ -222,6 +227,19 @@ interface GiteaComment {
   pull_request_url?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface GiteaRelease {
+  id: number;
+  tag_name: string;
+  name?: string | null;
+  body?: string | null;
+  draft: boolean;
+  prerelease: boolean;
+  author?: GiteaUser | null;
+  created_at: string;
+  published_at?: string | null;
+  html_url?: string | null;
 }
 
 interface GiteaRawTypes extends ProviderRawTypes {
@@ -462,6 +480,21 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       author: { login: raw.user?.login ?? "" },
       revision: raw.commit_id ?? "",
       submittedAt: raw.submitted_at ?? "",
+      url: raw.html_url ?? "",
+    };
+  }
+
+  private mapRelease(raw: GiteaRelease): Release {
+    return {
+      id: String(raw.id),
+      tag: raw.tag_name,
+      name: raw.name ?? "",
+      body: raw.body ?? "",
+      draft: raw.draft,
+      prerelease: raw.prerelease,
+      author: { login: raw.author?.login ?? "" },
+      createdAt: raw.created_at,
+      publishedAt: raw.published_at ?? "",
       url: raw.html_url ?? "",
     };
   }
@@ -816,6 +849,105 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         files: (commit.files ?? []).map((file) => this.mapPullRequestFile(file)),
         filesComplete: null,
       };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  // --- Releases ---
+
+  private releasesRoute(owner: string, repo: string): string {
+    return `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/releases`;
+  }
+
+  protected override async listReleases(
+    owner: string,
+    repo: string,
+    options?: ListReleasesOptions,
+  ): Promise<PageResult<Release>> {
+    try {
+      const page = options?.page ?? 1;
+      const perPage = options?.perPage ?? 30;
+      const { data, headers } = await rawFetch<GiteaRelease[]>(
+        this.client,
+        this.releasesRoute(owner, repo),
+        { query: { page: String(page), limit: String(perPage) } },
+      );
+      const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
+      const result = buildPageResult(data ?? [], headers, (raw) => this.mapRelease(raw));
+      const hasNextPage = result.hasNextPage || (Number.isFinite(total) && page * perPage < total);
+      return {
+        ...result,
+        totalCount: Number.isFinite(total) ? total : undefined,
+        hasNextPage,
+        nextPage: hasNextPage ? (result.nextPage ?? page + 1) : undefined,
+      };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  private async readRelease(owner: string, repo: string, tag: string): Promise<GiteaRelease> {
+    try {
+      return await this.client<GiteaRelease>(
+        `${this.releasesRoute(owner, repo)}/tags/${encodeRefPathSegment(tag)}`,
+      );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async getRelease(owner: string, repo: string, tag: string): Promise<Release> {
+    return this.mapRelease(await this.readRelease(owner, repo, tag));
+  }
+
+  protected override async createRelease(
+    owner: string,
+    repo: string,
+    input: CreateReleaseInput,
+  ): Promise<Release> {
+    try {
+      return this.mapRelease(
+        await this.client<GiteaRelease>(this.releasesRoute(owner, repo), {
+          method: "POST",
+          body: {
+            tag_name: input.tag,
+            target_commitish: input.ref,
+            name: input.name,
+            body: input.body,
+            draft: input.draft,
+            prerelease: input.prerelease,
+          },
+        }),
+      );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  /** Gitea edits by id, so the tag is read first. */
+  protected override async updateRelease(
+    owner: string,
+    repo: string,
+    tag: string,
+    input: UpdateReleaseInput,
+  ): Promise<Release> {
+    const release = await this.readRelease(owner, repo, tag);
+    try {
+      return this.mapRelease(
+        await this.client<GiteaRelease>(
+          `${this.releasesRoute(owner, repo)}/${encodePathSegment(release.id)}`,
+          {
+            method: "PATCH",
+            body: {
+              name: input.name,
+              body: input.body,
+              draft: input.draft,
+              prerelease: input.prerelease,
+            },
+          },
+        ),
+      );
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }

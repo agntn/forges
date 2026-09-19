@@ -36,22 +36,31 @@ import type {
   Comment,
   CreateIssueInput,
   CreatePullRequestInput,
+  CreateReleaseInput,
   IssueState,
+  ListReleasesOptions,
+  Release,
   ReplyThreadInput,
   Thread,
   ThreadComment,
+  UpdateReleaseInput,
 } from "../types.ts";
 import { FetchError } from "ofetch";
 import { ForgesError, NotFoundError, normalizeError } from "../errors.ts";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
 import { parseLinkHeader } from "../pagination.ts";
-import { encodeApiResponsePathSegment, encodePathSegment } from "./base-url.ts";
+import {
+  encodeApiResponsePathSegment,
+  encodePathSegment,
+  encodeRefPathSegment,
+} from "./base-url.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
 import { isPullRequestReview, normalizeReviewState } from "../review.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
 
 const MAX_COMMIT_FILE_PAGES = 30;
+const MAX_DRAFT_RELEASE_PAGES = 5;
 const GITHUB_SEARCH_RESULT_LIMIT = 1000;
 const GITHUB_ISSUE_TEMPLATE_DIRECTORY = ".github/ISSUE_TEMPLATE";
 const GITHUB_COMMUNITY_FILE_DIRECTORIES = [".github", "", "docs"] as const;
@@ -256,6 +265,19 @@ interface GitHubComment {
   issue_url?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface GitHubRelease {
+  id: number;
+  tag_name: string;
+  name: string | null;
+  body: string | null;
+  draft: boolean;
+  prerelease: boolean;
+  author: { login: string } | null;
+  created_at: string;
+  published_at: string | null;
+  html_url: string;
 }
 
 interface GitHubRawTypes extends ProviderRawTypes {
@@ -499,6 +521,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   private client: HttpClient;
   private readonly restBaseURL: string;
   private readonly authenticated: boolean;
+  private gitHubHost: boolean | undefined;
 
   constructor(config: ProviderConfig) {
     super();
@@ -560,8 +583,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
-  /** GitHub.com and Enterprise serve the whole API, GitBucket and the like do not. */
+  /** GitHub.com and Enterprise serve the whole API, GitBucket and the like do not. Probed once per instance. */
   private async isGitHubHost(owner: string, repo: string): Promise<boolean> {
+    if (this.gitHubHost !== undefined) return this.gitHubHost;
     const hostname = new URL(this.restBaseURL).hostname;
     if (hostname === "api.github.com" || hostname.endsWith(".ghe.com")) return true;
     try {
@@ -569,7 +593,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         this.client,
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
       );
-      return headers.has("x-github-enterprise-version");
+      this.gitHubHost = headers.has("x-github-enterprise-version");
+      return this.gitHubHost;
     } catch (error) {
       throw normalizeError(error, "github");
     }
@@ -867,6 +892,21 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       status: normalizeChangedFileStatus(raw.status),
       additions: raw.additions ?? null,
       deletions: raw.deletions ?? null,
+    };
+  }
+
+  private mapRelease(raw: GitHubRelease): Release {
+    return {
+      id: String(raw.id),
+      tag: raw.tag_name,
+      name: raw.name ?? "",
+      body: raw.body ?? "",
+      draft: raw.draft,
+      prerelease: raw.prerelease,
+      author: { login: raw.author?.login ?? "" },
+      createdAt: raw.created_at,
+      publishedAt: raw.published_at ?? "",
+      url: raw.html_url,
     };
   }
 
@@ -1203,6 +1243,141 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
           error,
         );
       }
+      throw normalizeError(error, "github");
+    }
+  }
+
+  // --- Releases ---
+
+  private releasesRoute(owner: string, repo: string): string {
+    return `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/releases`;
+  }
+
+  /** A 404 from a host without the releases API, GitBucket for one, is a 501, not a missing release. */
+  private async releaseError(owner: string, repo: string, error: unknown): Promise<ForgesError> {
+    if (
+      error instanceof FetchError &&
+      error.status === 404 &&
+      !(await this.isGitHubHost(owner, repo))
+    ) {
+      return new ForgesError(
+        "Releases are not supported by this GitHub-compatible host",
+        501,
+        "github",
+        error,
+      );
+    }
+    return normalizeError(error, "github");
+  }
+
+  protected override async listReleases(
+    owner: string,
+    repo: string,
+    options?: ListReleasesOptions,
+  ): Promise<PageResult<Release>> {
+    try {
+      const query: Record<string, string> = {};
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+
+      const { data, headers } = await rawFetch<GitHubRelease[]>(
+        this.client,
+        this.releasesRoute(owner, repo),
+        { query },
+      );
+      return buildPageResult(data ?? [], headers, (raw) => this.mapRelease(raw));
+    } catch (error) {
+      throw await this.releaseError(owner, repo, error);
+    }
+  }
+
+  /** A draft has no tag in git yet, the tag route serves published releases only, and only a token sees drafts. */
+  private async findDraftRelease(
+    owner: string,
+    repo: string,
+    tag: string,
+  ): Promise<GitHubRelease | null> {
+    try {
+      for (let page = 1; page <= MAX_DRAFT_RELEASE_PAGES; page += 1) {
+        const { data, headers } = await rawFetch<GitHubRelease[]>(
+          this.client,
+          this.releasesRoute(owner, repo),
+          { query: { page: String(page), per_page: "100" } },
+        );
+        const draft = (data ?? []).find((release) => release.draft && release.tag_name === tag);
+        if (draft) return draft;
+        if (!paginationFromLink(headers).hasNextPage) break;
+      }
+      return null;
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  private async readRelease(owner: string, repo: string, tag: string): Promise<GitHubRelease> {
+    try {
+      return await this.client<GitHubRelease>(
+        `${this.releasesRoute(owner, repo)}/tags/${encodeRefPathSegment(tag)}`,
+      );
+    } catch (error) {
+      const normalized = await this.releaseError(owner, repo, error);
+      if (normalized.status !== 404 || !this.authenticated) throw normalized;
+      const draft = await this.findDraftRelease(owner, repo, tag);
+      if (draft) return draft;
+      throw normalized;
+    }
+  }
+
+  protected override async getRelease(owner: string, repo: string, tag: string): Promise<Release> {
+    return this.mapRelease(await this.readRelease(owner, repo, tag));
+  }
+
+  protected override async createRelease(
+    owner: string,
+    repo: string,
+    input: CreateReleaseInput,
+  ): Promise<Release> {
+    try {
+      const data = await this.client<GitHubRelease>(this.releasesRoute(owner, repo), {
+        method: "POST",
+        body: {
+          tag_name: input.tag,
+          target_commitish: input.ref,
+          name: input.name,
+          body: input.body,
+          draft: input.draft,
+          prerelease: input.prerelease,
+        },
+      });
+      return this.mapRelease(data);
+    } catch (error) {
+      throw await this.releaseError(owner, repo, error);
+    }
+  }
+
+  /** The tag names the release, but GitHub edits by id, so the read comes first. */
+  protected override async updateRelease(
+    owner: string,
+    repo: string,
+    tag: string,
+    input: UpdateReleaseInput,
+  ): Promise<Release> {
+    const release = await this.readRelease(owner, repo, tag);
+    try {
+      const data = await this.client<GitHubRelease>(
+        `${this.releasesRoute(owner, repo)}/${encodePathSegment(release.id)}`,
+        {
+          method: "PATCH",
+          body: {
+            name: input.name,
+            body: input.body,
+            draft: input.draft,
+            prerelease: input.prerelease,
+          },
+        },
+      );
+      return this.mapRelease(data);
+    } catch (error) {
       throw normalizeError(error, "github");
     }
   }

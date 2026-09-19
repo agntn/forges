@@ -1552,6 +1552,143 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("releases", () => {
+    const glRelease = {
+      tag_name: "v1.118.0",
+      name: "v1.118.0",
+      description: "## Changelog",
+      created_at: "2026-09-15T12:29:10.343Z",
+      released_at: "2026-09-15T12:29:10.343Z",
+      upcoming_release: false,
+      author: { id: 40269453, username: "service-code-review-glab" },
+      commit: { id: "570955d4252f860d6b0cbf3fd2ec44f86a7e6957" },
+      _links: { self: "https://gitlab.com/gitlab-org/cli/-/releases/v1.118.0" },
+    };
+    const release = {
+      id: "v1.118.0",
+      tag: "v1.118.0",
+      name: "v1.118.0",
+      body: "## Changelog",
+      draft: false,
+      prerelease: false,
+      author: { login: "service-code-review-glab" },
+      createdAt: "2026-09-15T12:29:10.343Z",
+      publishedAt: "2026-09-15T12:29:10.343Z",
+      url: "https://gitlab.com/gitlab-org/cli/-/releases/v1.118.0",
+    };
+
+    it("lists releases keyed by tag and pages by x-next-page", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glRelease, { ...glRelease, tag_name: "v1.117.0", name: null, description: null }],
+        headers: glHeaders({ nextPage: "2", total: "157" }),
+      });
+
+      const result = await gl.releases.list("gitlab-org", "cli", { perPage: 2 });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/projects/278964/releases", {
+        query: { page: 1, per_page: 2 },
+      });
+      expect(result).toEqual({
+        items: [release, { ...release, id: "v1.117.0", tag: "v1.117.0", name: "", body: "" }],
+        totalCount: 157,
+        hasNextPage: true,
+        nextPage: 2,
+      });
+    });
+
+    it("reads one release by its tag, slash and all", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce({
+        ...glRelease,
+        tag_name: "release/1.118",
+        author: null,
+        _links: null,
+      });
+
+      const result = await gl.releases.get("gitlab-org", "cli", "release/1.118");
+
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/releases/release%2F1.118");
+      expect(result).toEqual({
+        ...release,
+        id: "release/1.118",
+        tag: "release/1.118",
+        author: { login: "" },
+        url: "",
+      });
+    });
+
+    it("creates a release with description and ref", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glRelease);
+
+      await gl.releases.create("gitlab-org", "cli", {
+        tag: "v1.118.0",
+        name: "v1.118.0",
+        body: "## Changelog",
+        ref: "main",
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/releases", {
+        method: "POST",
+        body: { tag_name: "v1.118.0", ref: "main", name: "v1.118.0", description: "## Changelog" },
+      });
+    });
+
+    it("updates a release by tag with PUT, slash encoded", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce({
+        ...glRelease,
+        tag_name: "release/1.118",
+        description: "edited",
+      });
+
+      const result = await gl.releases.update("gitlab-org", "cli", "release/1.118", {
+        body: "edited",
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/releases/release%2F1.118", {
+        method: "PUT",
+        body: { name: undefined, description: "edited" },
+      });
+      expect(result).toEqual({
+        ...release,
+        id: "release/1.118",
+        tag: "release/1.118",
+        body: "edited",
+      });
+    });
+
+    it.each([
+      ["draft", { draft: true }],
+      ["prerelease", { prerelease: true }],
+    ])("refuses a %s release instead of publishing it", async (_flag, flags) => {
+      const error = await gl.releases
+        .create("gitlab-org", "cli", { tag: "v2.0.0", ...flags })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ForgesError);
+      expect((error as ForgesError).status).toBe(501);
+      await expect(gl.releases.update("gitlab-org", "cli", "v2.0.0", flags)).rejects.toMatchObject({
+        status: 501,
+      });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("answers an update that only clears absent flags with a read", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glRelease);
+
+      const result = await gl.releases.update("gitlab-org", "cli", "v1.118.0", {
+        draft: false,
+        prerelease: false,
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/releases/v1.118.0");
+      expect(result).toEqual(release);
+    });
+  });
+
   describe("pullRequests.search", () => {
     it("searches project merge requests with text, state, and pagination", async () => {
       mockProjectResolve(278964);

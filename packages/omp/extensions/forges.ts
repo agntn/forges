@@ -65,6 +65,15 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     minLength: 1,
   });
   const sha = Type.String({ description: "Commit SHA", minLength: 1 });
+  const tag = Type.String({ description: "Release tag name", minLength: 1 });
+  const releaseName = Type.Optional(Type.String({ description: "Release title" }));
+  const releaseBody = Type.Optional(Type.String({ description: "Release notes" }));
+  const draft = Type.Optional(
+    Type.Boolean({ description: "Keep the release an unpublished draft. GitLab rejects true." }),
+  );
+  const prerelease = Type.Optional(
+    Type.Boolean({ description: "Mark the release a pre-release. GitLab rejects true." }),
+  );
   const branch = Type.Optional(Type.String({ description: "Filter by branch", minLength: 1 }));
   const ref = Type.Optional(
     Type.String({ description: "Branch, tag, or commit reference", minLength: 1 }),
@@ -141,6 +150,34 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     perPage,
   });
   const listCiRunsParameters = closed({ platform, owner, repo, branch, page, perPage });
+  const listReleasesParameters = closed({ platform, owner, repo, page, perPage });
+  const releaseParameters = closed({ platform, owner, repo, tag });
+  const createReleaseParameters = closed({
+    platform,
+    owner,
+    repo,
+    tag,
+    name: releaseName,
+    body: releaseBody,
+    ref: Type.Optional(
+      Type.String({
+        description: "Branch or commit to tag when the tag does not exist yet",
+        minLength: 1,
+      }),
+    ),
+    draft,
+    prerelease,
+  });
+  const updateReleaseParameters = closed({
+    platform,
+    owner,
+    repo,
+    tag,
+    name: releaseName,
+    body: releaseBody,
+    draft,
+    prerelease,
+  });
   const listRepositoryItemsParameters = closed({
     platform,
     owner,
@@ -315,6 +352,55 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getCommit(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_releases_list",
+    label: "Forges Releases",
+    description: "List repository releases, newest first, without their notes",
+    parameters: listReleasesParameters,
+    ...statusRenderers("forges_releases_list", "Forges Releases"),
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listReleases(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_releases_get",
+    label: "Forges Release",
+    description: "Get one release by tag with its full notes",
+    parameters: releaseParameters,
+    ...statusRenderers("forges_releases_get", "Forges Release"),
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getRelease(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_releases_create",
+    label: "Create Forges Release",
+    description: "Create a release for a tag; this mutates the selected Git platform",
+    parameters: createReleaseParameters,
+    ...statusRenderers("forges_releases_create", "Create Forges Release"),
+    approval: "write",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).createRelease(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_releases_update",
+    label: "Update Forges Release",
+    description:
+      "Update the title, notes or flags of the release behind a tag; this mutates the selected Git platform",
+    parameters: updateReleaseParameters,
+    ...statusRenderers("forges_releases_update", "Update Forges Release"),
+    approval: "write",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).updateRelease(params);
     },
   });
 

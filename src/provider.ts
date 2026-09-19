@@ -20,6 +20,7 @@ import type {
   CommitSummary,
   CreateIssueInput,
   CreatePullRequestInput,
+  CreateReleaseInput,
   Issue,
   IssueResource,
   ListCiRunsOptions,
@@ -30,6 +31,7 @@ import type {
   ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
   ListPullRequestReviewsOptions,
+  ListReleasesOptions,
   ListThreadOptions,
   Owner,
   PageResult,
@@ -39,6 +41,8 @@ import type {
   PullRequestResource,
   PullRequestReview,
   PullRequestSearchItem,
+  Release,
+  ReleaseResource,
   ReplyThreadInput,
   Repository,
   RepositoryResource,
@@ -47,6 +51,7 @@ import type {
   ThreadComment,
   ThreadResource,
   ThreadState,
+  UpdateReleaseInput,
   User,
   UserResource,
 } from "./types.ts";
@@ -115,6 +120,12 @@ function paginateContributionTemplates(
   };
 }
 
+function assertReleaseTag(tag: string): void {
+  if (tag.trim() === "") {
+    throw new ForgesError("Release tag must not be empty", 400);
+  }
+}
+
 /**
  * Abstract base for every git provider.
  *
@@ -127,6 +138,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   public readonly code: CodeSearchResource;
   public readonly ciRuns: CiRunResource;
   public readonly commits: CommitResource;
+  public readonly releases: ReleaseResource;
   public readonly issues: IssueResource;
   public readonly pullRequests: PullRequestResource;
   public readonly users: UserResource;
@@ -173,6 +185,24 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     this.commits = {
       list: (owner, repo, options) => this.listCommits(owner, repo, options),
       get: (owner, repo, sha) => this.getCommit(owner, repo, sha),
+    };
+    this.releases = {
+      list: (owner, repo, options) => this.listReleases(owner, repo, options),
+      get: async (owner, repo, tag) => {
+        assertReleaseTag(tag);
+        return this.getRelease(owner, repo, tag);
+      },
+      create: async (owner, repo, input) => {
+        assertReleaseTag(input.tag);
+        return this.createRelease(owner, repo, input);
+      },
+      update: async (owner, repo, tag, input) => {
+        assertReleaseTag(tag);
+        if (Object.values(input).every((value) => value === undefined)) {
+          throw new ForgesError("Release update needs at least one field", 400);
+        }
+        return this.updateRelease(owner, repo, tag, input);
+      },
     };
     this.issues = {
       list: (owner, repo, options) => this.listIssues(owner, repo, options),
@@ -283,6 +313,35 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     return Promise.reject(new ForgesError("Commit listing is not supported by this provider", 501));
   }
   protected abstract getCommit(owner: string, repo: string, sha: string): Promise<Commit>;
+  protected listReleases(
+    _owner: string,
+    _repo: string,
+    _options?: ListReleasesOptions,
+  ): Promise<PageResult<Release>> {
+    return Promise.reject(new ForgesError("Releases are not supported by this provider", 501));
+  }
+  protected getRelease(_owner: string, _repo: string, _tag: string): Promise<Release> {
+    return Promise.reject(new ForgesError("Releases are not supported by this provider", 501));
+  }
+  protected createRelease(
+    _owner: string,
+    _repo: string,
+    _input: CreateReleaseInput,
+  ): Promise<Release> {
+    return Promise.reject(
+      new ForgesError("Release creation is not supported by this provider", 501),
+    );
+  }
+  protected updateRelease(
+    _owner: string,
+    _repo: string,
+    _tag: string,
+    _input: UpdateReleaseInput,
+  ): Promise<Release> {
+    return Promise.reject(
+      new ForgesError("Release updates are not supported by this provider", 501),
+    );
+  }
   protected abstract listIssues(
     owner: string,
     repo: string,

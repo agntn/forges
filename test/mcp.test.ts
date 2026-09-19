@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
   const code = { search: vi.fn() };
   const ciRuns = { list: vi.fn() };
   const commits = { list: vi.fn(), get: vi.fn() };
+  const releases = { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn() };
   const issues = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
   const pullRequests = {
     list: vi.fn(),
@@ -36,6 +37,7 @@ const mocks = vi.hoisted(() => {
     code,
     ciRuns,
     commits,
+    releases,
     issues,
     pullRequests,
     users,
@@ -50,6 +52,7 @@ const mocks = vi.hoisted(() => {
     code,
     ciRuns,
     commits,
+    releases,
     issues,
     pullRequests,
     users,
@@ -71,6 +74,10 @@ const toolNames = [
   "forges_ci_runs_list",
   "forges_commits_list",
   "forges_commits_get",
+  "forges_releases_list",
+  "forges_releases_get",
+  "forges_releases_create",
+  "forges_releases_update",
   "forges_issues_list",
   "forges_issues_search",
   "forges_issues_get",
@@ -99,6 +106,8 @@ const toolNames = [
 const writingTools = new Set([
   "forges_issues_create",
   "forges_pull_requests_create",
+  "forges_releases_create",
+  "forges_releases_update",
   "forges_auth_reload",
   "forges_threads_reply",
   "forges_threads_resolve",
@@ -164,7 +173,8 @@ describe("forges MCP server", () => {
       expect(tool.annotations).toMatchObject({
         title: tool.title,
         readOnlyHint: !writingTools.has(tool.name),
-        destructiveHint: false,
+        // A release edit replaces the title and notes that were there; nothing else overwrites.
+        destructiveHint: tool.name === "forges_releases_update",
         openWorldHint: true,
       });
       expect(tool.title).not.toBe(tool.name);
@@ -671,6 +681,126 @@ describe("forges MCP server", () => {
     expect(JSON.parse(answer)).toMatchObject({
       note: "Pull-request bodies and revision details are omitted from search output; use forges_pull_requests_get to read one in full.",
       result: { items: [{ number: 82, merged: true }], incomplete: false },
+    });
+  });
+
+  it("lists releases without their notes and says where to read one", async () => {
+    const release = {
+      id: "391667800",
+      tag: "v0.3.1",
+      name: "v0.3.1",
+      body: "[compare changes](https://github.com/agntn/forges/compare/v0.3.0...v0.3.1)",
+      draft: false,
+      prerelease: false,
+      author: { login: "aeitwoen" },
+      createdAt: "2026-09-18T17:45:29Z",
+      publishedAt: "2026-09-18T17:45:32Z",
+      url: "https://github.com/agntn/forges/releases/tag/v0.3.1",
+    };
+    mocks.releases.list.mockResolvedValue({ items: [release], hasNextPage: false });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_releases_list",
+      arguments: { platform: "github", owner: "agntn", repo: "forges", perPage: 5 },
+    });
+
+    expect(mocks.releases.list).toHaveBeenCalledWith("agntn", "forges", {
+      page: undefined,
+      perPage: 5,
+    });
+    const parsed = JSON.parse(text(response.content));
+    const { body: _body, ...summary } = release;
+    expect(parsed.result.items[0]).toEqual(summary);
+    expect(parsed.result.items[0]).not.toHaveProperty("body");
+    expect(parsed.note).toContain("forges_releases_get");
+  });
+
+  it("reads one release by tag with its notes", async () => {
+    const release = {
+      id: "v1.118.0",
+      tag: "v1.118.0",
+      name: "v1.118.0",
+      body: "## Changelog",
+      draft: false,
+      prerelease: false,
+      author: { login: "service-code-review-glab" },
+      createdAt: "2026-09-15T12:29:10.343Z",
+      publishedAt: "2026-09-15T12:29:10.343Z",
+      url: "https://gitlab.com/gitlab-org/cli/-/releases/v1.118.0",
+    };
+    mocks.releases.get.mockResolvedValue(release);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_releases_get",
+      arguments: { platform: "gitlab", owner: "gitlab-org", repo: "cli", tag: "v1.118.0" },
+    });
+
+    expect(mocks.releases.get).toHaveBeenCalledWith("gitlab-org", "cli", "v1.118.0");
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "gitlab", result: release });
+  });
+
+  it("creates and updates a release through the shared operations", async () => {
+    const release = {
+      id: "945509",
+      tag: "v0.17.0",
+      name: "v0.17.0",
+      body: "notes",
+      draft: true,
+      prerelease: false,
+      author: { login: "aeitwoen" },
+      createdAt: "2026-09-19T10:00:00Z",
+      publishedAt: "",
+      url: "https://gitea.com/gitea/tea/releases/tag/v0.17.0",
+    };
+    mocks.releases.create.mockResolvedValue(release);
+    mocks.releases.update.mockResolvedValue({ ...release, body: "final notes", draft: false });
+    const client = await connectTestClient();
+
+    const created = await client.callTool({
+      name: "forges_releases_create",
+      arguments: {
+        platform: "gitea",
+        owner: "gitea",
+        repo: "tea",
+        tag: "v0.17.0",
+        name: "v0.17.0",
+        body: "notes",
+        ref: "main",
+        draft: true,
+      },
+    });
+    const updated = await client.callTool({
+      name: "forges_releases_update",
+      arguments: {
+        platform: "gitea",
+        owner: "gitea",
+        repo: "tea",
+        tag: "v0.17.0",
+        body: "final notes",
+        draft: false,
+      },
+    });
+
+    expect(mocks.releases.create).toHaveBeenCalledWith("gitea", "tea", {
+      tag: "v0.17.0",
+      name: "v0.17.0",
+      body: "notes",
+      ref: "main",
+      draft: true,
+      prerelease: undefined,
+    });
+    expect(mocks.releases.update).toHaveBeenCalledWith("gitea", "tea", "v0.17.0", {
+      name: undefined,
+      body: "final notes",
+      draft: false,
+      prerelease: undefined,
+    });
+    expect(JSON.parse(text(created.content))).toEqual({ platform: "gitea", result: release });
+    expect(JSON.parse(text(updated.content)).result).toMatchObject({
+      body: "final notes",
+      draft: false,
     });
   });
 

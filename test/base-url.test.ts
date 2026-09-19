@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { encodeApiResponsePathSegment, encodePathSegment } from "../src/providers/base-url.ts";
+import {
+  encodeApiResponsePathSegment,
+  encodePathSegment,
+  encodeRefPathSegment,
+} from "../src/providers/base-url.ts";
 
 describe("encodePathSegment", () => {
   it.each([
@@ -23,6 +27,50 @@ describe("encodePathSegment", () => {
       expect(() => encodePathSegment(value)).toThrow("Invalid API path segment");
     },
   );
+});
+
+describe("encodeRefPathSegment", () => {
+  it.each([
+    ["v1.2.3", "v1.2.3"],
+    ["v1.0-rc.1", "v1.0-rc.1"],
+    ["release/1.2", "release%2F1.2"],
+    ["100%", "100%25"],
+    ["@scope/pkg@1.0.0", "%40scope%2Fpkg%401.0.0"],
+    ["a.lockfile", "a.lockfile"],
+    ["@", "%40"],
+  ])("encodes the ref %j as one segment", (value, expected) => {
+    expect(encodeRefPathSegment(value)).toBe(expected);
+  });
+
+  it.each([
+    "",
+    " v1.0",
+    "v1 0",
+    ".",
+    "..",
+    "x..y",
+    "v1.0.",
+    ".hidden",
+    "a/.b",
+    "v1.lock",
+    "v1.lock/x",
+    "a@{b",
+    "a:b",
+    "a~b",
+    "a^b",
+    "a?b",
+    "a*b",
+    "a[b",
+    "a\\b",
+    "/v1",
+    "v1/",
+    "a//b",
+    "\0",
+    "\n",
+    "\x7f",
+  ])("rejects %j, which git check-ref-format refuses too", (value) => {
+    expect(() => encodeRefPathSegment(value)).toThrow("Invalid git ref path segment");
+  });
 });
 
 describe("encodeApiResponsePathSegment", () => {

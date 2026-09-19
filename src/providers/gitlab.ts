@@ -45,10 +45,14 @@ import type {
   Comment,
   CreateIssueInput,
   CreatePullRequestInput,
+  CreateReleaseInput,
   IssueState,
+  ListReleasesOptions,
+  Release,
   ReplyThreadInput,
   Thread,
   ThreadComment,
+  UpdateReleaseInput,
 } from "../types.ts";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
 import { cachedFetch, invalidateCache } from "../cache.ts";
@@ -56,6 +60,7 @@ import { ForgesError, normalizeError, NotFoundError } from "../errors.ts";
 import {
   encodeApiResponsePathSegment,
   encodePathSegment,
+  encodeRefPathSegment,
   normalizeApiBaseURL,
 } from "./base-url.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
@@ -241,6 +246,17 @@ interface GitLabMergeRequestApproval {
 
 interface GitLabMergeRequestApprovals {
   approved_by?: GitLabMergeRequestApproval[] | null;
+}
+
+/** GitLab releases carry no id; the tag is the whole identity. */
+interface GitLabRelease {
+  tag_name: string;
+  name: string | null;
+  description: string | null;
+  author?: { username: string } | null;
+  created_at: string;
+  released_at: string | null;
+  _links?: { self?: string | null } | null;
 }
 
 interface GitLabRawTypes extends ProviderRawTypes {
@@ -1309,6 +1325,123 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       submittedAt,
       url: "",
     };
+  }
+
+  // --- Releases ---
+
+  private mapRelease(raw: GitLabRelease): Release {
+    return {
+      id: raw.tag_name,
+      tag: raw.tag_name,
+      name: raw.name ?? "",
+      body: raw.description ?? "",
+      draft: false,
+      prerelease: false,
+      author: { login: raw.author?.username ?? "" },
+      createdAt: raw.created_at,
+      publishedAt: raw.released_at ?? "",
+      url: raw._links?.self ?? "",
+    };
+  }
+
+  /** A draft or pre-release asked of GitLab would silently publish, so it is refused instead. */
+  private assertReleaseFlags(input: { draft?: boolean; prerelease?: boolean }): void {
+    if (input.draft === true) {
+      throw new ForgesError("GitLab releases have no draft state", 501, "gitlab");
+    }
+    if (input.prerelease === true) {
+      throw new ForgesError("GitLab releases have no pre-release flag", 501, "gitlab");
+    }
+  }
+
+  protected override async listReleases(
+    owner: string,
+    repo: string,
+    options?: ListReleasesOptions,
+  ): Promise<PageResult<Release>> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const { data, headers } = await rawFetch<GitLabRelease[]>(
+        this.client,
+        `/projects/${projectId}/releases`,
+        {
+          query: {
+            page: options?.page ?? 1,
+            per_page: options?.perPage ?? 30,
+          },
+        },
+      );
+      return this.parsePagination(
+        (data ?? []).map((raw) => this.mapRelease(raw)),
+        headers,
+      );
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async getRelease(owner: string, repo: string, tag: string): Promise<Release> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const release = await this.client<GitLabRelease>(
+        `/projects/${projectId}/releases/${encodeRefPathSegment(tag)}`,
+      );
+      return this.mapRelease(release);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async createRelease(
+    owner: string,
+    repo: string,
+    input: CreateReleaseInput,
+  ): Promise<Release> {
+    this.assertReleaseFlags(input);
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const release = await this.client<GitLabRelease>(`/projects/${projectId}/releases`, {
+        method: "POST",
+        body: {
+          tag_name: input.tag,
+          ref: input.ref,
+          name: input.name,
+          description: input.body,
+        },
+      });
+      return this.mapRelease(release);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  /** Clearing a flag GitLab never had leaves nothing to send, so that update is a read. */
+  protected override async updateRelease(
+    owner: string,
+    repo: string,
+    tag: string,
+    input: UpdateReleaseInput,
+  ): Promise<Release> {
+    this.assertReleaseFlags(input);
+    if (input.name === undefined && input.body === undefined) {
+      return this.getRelease(owner, repo, tag);
+    }
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const release = await this.client<GitLabRelease>(
+        `/projects/${projectId}/releases/${encodeRefPathSegment(tag)}`,
+        {
+          method: "PUT",
+          body: {
+            name: input.name,
+            description: input.body,
+          },
+        },
+      );
+      return this.mapRelease(release);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
   }
 
   protected override async searchPullRequests(

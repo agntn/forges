@@ -15,6 +15,7 @@ import type {
   CommitSummary,
   CreateIssueInput,
   CreatePullRequestInput,
+  CreateReleaseInput,
   Issue,
   IssueState,
   ListCiRunsOptions,
@@ -25,6 +26,7 @@ import type {
   ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
   ListPullRequestReviewsOptions,
+  ListReleasesOptions,
   ListThreadOptions,
   PageResult,
   PullRequest,
@@ -32,12 +34,14 @@ import type {
   PullRequestFile,
   PullRequestReview,
   PullRequestSearchItem,
+  Release,
   ReplyThreadInput,
   Repository,
   SearchPageResult,
   Thread,
   ThreadComment,
   ThreadState,
+  UpdateReleaseInput,
   User,
 } from "./types.ts";
 
@@ -216,6 +220,19 @@ export interface ListCiRunsParams extends RepositoryParams {
   page?: number;
   perPage?: number;
 }
+
+export interface ListReleasesParams extends RepositoryParams {
+  page?: number;
+  perPage?: number;
+}
+
+export interface GetReleaseParams extends RepositoryParams {
+  tag: string;
+}
+
+export type CreateReleaseParams = RepositoryParams & CreateReleaseInput;
+
+export type UpdateReleaseParams = GetReleaseParams & UpdateReleaseInput;
 
 export interface ListRepositoryItemsParams extends RepositoryParams {
   page?: number;
@@ -437,6 +454,63 @@ export async function getCommit(params: GetCommitParams): Promise<ForgesToolResu
   const provider = await readProvider(params.platform);
   const commit = await provider.commits.get(params.owner, params.repo, params.sha);
   return result(params.platform, commit);
+}
+
+function summarizeReleasePage(page: PageResult<Release>): PageResult<Omit<Release, "body">> {
+  return {
+    ...page,
+    items: page.items.map(({ body: _body, ...summary }) => summary),
+  };
+}
+
+export async function listReleases(
+  params: ListReleasesParams,
+): Promise<ForgesToolResult<PageResult<Omit<Release, "body">>>> {
+  const options: ListReleasesOptions = {
+    page: params.page,
+    perPage: params.perPage,
+  };
+  const provider = await readProvider(params.platform);
+  const releases = await provider.releases.list(params.owner, params.repo, options);
+  return result(
+    params.platform,
+    summarizeReleasePage(releases),
+    "Release notes are omitted from list output; use forges_releases_get with the tag to read one in full.",
+  );
+}
+
+export async function getRelease(params: GetReleaseParams): Promise<ForgesToolResult<Release>> {
+  const provider = await readProvider(params.platform);
+  const release = await provider.releases.get(params.owner, params.repo, params.tag);
+  return result(params.platform, release);
+}
+
+export function createRelease(params: CreateReleaseParams): Promise<ForgesToolResult<Release>> {
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform);
+    const release = await provider.releases.create(params.owner, params.repo, {
+      tag: params.tag,
+      name: params.name,
+      body: params.body,
+      ref: params.ref,
+      draft: params.draft,
+      prerelease: params.prerelease,
+    });
+    return result(params.platform, release);
+  });
+}
+
+export function updateRelease(params: UpdateReleaseParams): Promise<ForgesToolResult<Release>> {
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform);
+    const release = await provider.releases.update(params.owner, params.repo, params.tag, {
+      name: params.name,
+      body: params.body,
+      draft: params.draft,
+      prerelease: params.prerelease,
+    });
+    return result(params.platform, release);
+  });
 }
 
 export async function listIssues(

@@ -56,6 +56,13 @@ const createAnnotations: Tool["annotations"] = {
   idempotentHint: false,
   openWorldHint: true,
 };
+/** Sending the same edit twice leaves one release, but the old title and notes are gone. */
+const updateAnnotations: Tool["annotations"] = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: true,
+  openWorldHint: true,
+};
 /** A repeated reload can adopt a different local account, so clients must not retry it blindly. */
 const credentialStateAnnotations: Tool["annotations"] = {
   readOnlyHint: false,
@@ -150,6 +157,42 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       inputSchema: schemas.commitParameters,
       annotations: readAnnotations,
       execute: (operations, args) => operations.getCommit(args),
+    }),
+    defineTool({
+      name: "forges_releases_list",
+      title: "List Releases",
+      description:
+        "List the releases of one repository, newest first, each with its tag, title, draft and pre-release flags, author, creation and publication time, and URL. Release notes are omitted here; read one with forges_releases_get. Drafts appear only for a token with push access, and GitLab has neither drafts nor pre-releases, so both flags are false there.",
+      inputSchema: schemas.listReleasesParameters,
+      annotations: readAnnotations,
+      execute: (operations, args) => operations.listReleases(args),
+    }),
+    defineTool({
+      name: "forges_releases_get",
+      title: "Get Release",
+      description:
+        "Get one release by its tag name with the full release notes. The tag is the key on every platform, because GitLab releases have no id of their own; the id field is the platform id on GitHub and Gitea and the tag on GitLab. A GitHub draft is found among the 500 newest releases when the token may see drafts.",
+      inputSchema: schemas.releaseParameters,
+      annotations: readAnnotations,
+      execute: (operations, args) => operations.getRelease(args),
+    }),
+    defineTool({
+      name: "forges_releases_create",
+      title: "Create Release",
+      description:
+        "Create a release for a tag, creating the tag from ref when it does not exist yet. A release that is not a draft is public the moment it lands and notifies watchers, so confirm the tag, the notes, and the target with the user first; this writes as the account the local credentials belong to. GitLab has no drafts or pre-releases and rejects either flag set to true instead of publishing.",
+      inputSchema: schemas.createReleaseParameters,
+      annotations: createAnnotations,
+      execute: (operations, args) => operations.createRelease(args),
+    }),
+    defineTool({
+      name: "forges_releases_update",
+      title: "Update Release",
+      description:
+        "Update the title, notes, draft or pre-release flag of the release behind one tag. Pass at least one of them; omitted fields keep their value. This overwrites what is there and writes as the account the local credentials belong to, so read the release first and confirm the new text with the user. A GitHub draft is found the way forges_releases_get finds it, among the 500 newest releases. GitLab rejects draft or prerelease set to true.",
+      inputSchema: schemas.updateReleaseParameters,
+      annotations: updateAnnotations,
+      execute: (operations, args) => operations.updateRelease(args),
     }),
     defineTool({
       name: "forges_issues_list",

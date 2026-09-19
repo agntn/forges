@@ -5,8 +5,8 @@ const { samples, tick, paused, current, step } = useLandingForge();
 
 const stats = [
   { value: "4", label: "platforms" },
-  { value: "9", label: "resources" },
-  { value: "31", label: "agent tools" },
+  { value: "10", label: "resources" },
+  { value: "35", label: "agent tools" },
   { value: "3", label: "agent surfaces" },
 ] as const;
 
@@ -106,7 +106,7 @@ const activePlatform = computed(() => current.value.platform);
     >
       <code class="font-mono text-[13px] text-highlighted">createProvider("github")</code> finds the
       token in env, then asks <code class="font-mono text-[13px] text-highlighted">gh</code>, and
-      hands you nine resources with the same method shapes. Change the string, nothing else moves.
+      hands you ten resources with the same method shapes. Change the string, nothing else moves.
       This panel walks through {{ samples.length }} repositories on three hosts and swaps each
       recorded sample for the live answer from the docs worker as it arrives.
       <template #visual>
@@ -250,7 +250,7 @@ const activePlatform = computed(() => current.value.platform);
 
     <LandingFeature
       eyebrow="Agents"
-      title="Thirty-one tools, three hosts"
+      title="Thirty-five tools, three hosts"
       to="/guide/agents"
       link="MCP, Pi and OMP"
       :checks="[
@@ -262,7 +262,7 @@ const activePlatform = computed(() => current.value.platform);
     >
       <code class="font-mono text-[13px] text-highlighted">forges mcp</code> serves the tools over
       stdio, the Pi and OMP extensions render them in the terminal. All three call the same
-      executors, so they answer identically and a fix lands once. Five tools write, and they say so
+      executors, so they answer identically and a fix lands once. Seven tools write, and they say so
       in their annotations, so a client can gate them before a model gets creative.
       <template #visual>
         <LandingToolCall :sample="current" />
@@ -275,13 +275,13 @@ const activePlatform = computed(() => current.value.platform);
       to="/guide"
       link="Getting started"
       :checks="[
-        'repos, contributionTemplates, code, ciRuns, commits, issues, pullRequests, users, threads',
+        'repos, contributionTemplates, code, ciRuns, commits, releases, issues, pullRequests, users, threads',
         'NotFoundError, AuthenticationError, PermissionError, RateLimitError with retryAfter',
         'Stable reads cached with an LRU keyed by host and token hash, item reads always fresh',
       ]"
     >
       <code class="font-mono text-[13px] text-highlighted">Provider</code> is the abstract base with
-      the nine resource accessors. Concrete classes implement the typed mappers and the platform
+      the ten resource accessors. Concrete classes implement the typed mappers and the platform
       calls, nothing else leaks upward. Sub path imports give you one provider without dragging in
       the other two.
       <template #visual>

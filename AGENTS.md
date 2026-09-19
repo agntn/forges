@@ -116,7 +116,7 @@ try {
 }
 ```
 
-Use `cachedFetch` only for stable item reads. Repository, issue, pull request, discussion comment, and user item reads use the client directly because callers rely on current state.
+Use `cachedFetch` only for stable item reads. Repository, issue, pull request, release, discussion comment, and user item reads use the client directly because callers rely on current state.
 
 ### Mapper methods
 
@@ -143,7 +143,7 @@ Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 
 - **Token check:** use `!== undefined` not falsy check. Empty string is intentional (allow unauthenticated).
 - **Agent auth boundary:** read executors may fall back to an isolated empty-token provider; writes and `users.authenticated` must use the credentialed provider map.
-- **List vs Get:** list operations use `rawFetch` for pagination headers. Stable item reads use `cachedFetch`; repository, issue, pull request, discussion comment, and user item reads use the client directly.
+- **List vs Get:** list operations use `rawFetch` for pagination headers. Stable item reads use `cachedFetch`; repository, issue, pull request, release, discussion comment, and user item reads use the client directly.
 - **No raw error throws** — always `throw normalizeError(error, platform)`.
 - **No cache for mutations** — `cachedFetch` rejects non-GET automatically.
 - **No hardcoded URLs** — all providers accept `baseURL` config.
@@ -216,6 +216,7 @@ vi.mock("../src/cache.ts", () => ({ cachedFetch: mocks.cachedFetch }));
 - **GitHub `/issues` returns PRs** — filtered by absence of `pull_request` key.
 - **GitHub template scope is explicit:** repository files and inherited owner `.github` defaults are different scopes; local overrides apply independently to issue and pull-request templates.
 - **GitLab uses `iid`** (project-scoped) not `id` (global) for issue/MR numbers.
+- **Releases are keyed by tag** because GitLab releases have no id; GitHub and Gitea update by the id a tag read returns. GitLab has no draft or prerelease flag, so `true` for either is a 501 there, never a silent publish.
 - **GitLab template provenance can be hidden:** use the effective template API and leave inherited source fields unknown rather than guessing a group or instance source.
 - **Gitea uses `limit`** param, not `per_page`.
 - **Gitea templates are repository-scoped:** do not claim GitHub-style owner inheritance.

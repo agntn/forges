@@ -155,6 +155,10 @@ describe("createProvider factory", () => {
     ["listCiRuns", "CI-run listing is not supported by this provider"],
     ["listPullRequestChecks", "Pull request checks are not supported by this provider"],
     ["listPullRequestReviews", "Pull request reviews are not supported by this provider"],
+    ["listReleases", "Releases are not supported by this provider"],
+    ["getRelease", "Releases are not supported by this provider"],
+    ["createRelease", "Release creation is not supported by this provider"],
+    ["updateRelease", "Release updates are not supported by this provider"],
     ["searchIssues", "Issue search is not supported by this provider"],
     ["searchPullRequests", "Pull-request search is not supported by this provider"],
   ])("keeps a default %s fallback for custom providers", async (method, message) => {
@@ -212,6 +216,17 @@ describe("cross-provider class consistency", () => {
       const p = providers[platform];
       expect(p.ciRuns).toBeDefined();
       expect(typeof p.ciRuns.list).toBe("function");
+    }
+  });
+
+  it("all providers have releases resource", () => {
+    for (const platform of platforms) {
+      const p = providers[platform];
+      expect(p.releases).toBeDefined();
+      expect(typeof p.releases.list).toBe("function");
+      expect(typeof p.releases.get).toBe("function");
+      expect(typeof p.releases.create).toBe("function");
+      expect(typeof p.releases.update).toBe("function");
     }
   });
 
@@ -287,6 +302,10 @@ describe("cross-provider class consistency", () => {
       expect(p.ciRuns.list.length).toBeGreaterThanOrEqual(2);
       expect(p.commits.list.length).toBeGreaterThanOrEqual(2);
       expect(p.commits.get.length).toBeGreaterThanOrEqual(3);
+      expect(p.releases.list.length).toBeGreaterThanOrEqual(2);
+      expect(p.releases.get.length).toBeGreaterThanOrEqual(3);
+      expect(p.releases.create.length).toBeGreaterThanOrEqual(3);
+      expect(p.releases.update.length).toBeGreaterThanOrEqual(4);
 
       expect(p.issues.list.length).toBeGreaterThanOrEqual(2);
       expect(p.issues.search.length).toBeGreaterThanOrEqual(3);

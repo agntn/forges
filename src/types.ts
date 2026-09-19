@@ -237,6 +237,55 @@ export interface Commit extends CommitSummary {
   filesComplete: boolean | null;
 }
 
+/** One release: a tag with notes. Keyed by tag everywhere, because GitLab releases have no id. */
+export interface Release {
+  /** Platform id, or the tag name on GitLab. */
+  id: string;
+  tag: string;
+  name: string;
+  body: string;
+  /** GitLab has no drafts, so always false there. */
+  draft: boolean;
+  /** GitLab has no pre-releases, so always false there. */
+  prerelease: boolean;
+  author: {
+    login: string;
+  };
+  createdAt: string;
+  /** Empty for a GitHub draft, which has no publication yet. */
+  publishedAt: string;
+  url: string;
+}
+
+/** List options for repository releases. */
+export interface ListReleasesOptions {
+  page?: number;
+  perPage?: number;
+}
+
+/** Input for creating a release. */
+export interface CreateReleaseInput {
+  tag: string;
+  name?: string;
+  body?: string;
+  /** Branch or commit to tag when the tag does not exist yet. */
+  ref?: string;
+  /** GitLab has no drafts and rejects true. */
+  draft?: boolean;
+  /** GitLab has no pre-releases and rejects true. */
+  prerelease?: boolean;
+}
+
+/** Input for updating a release. Omitted fields keep their value. */
+export interface UpdateReleaseInput {
+  name?: string;
+  body?: string;
+  /** GitLab has no drafts and rejects true. */
+  draft?: boolean;
+  /** GitLab has no pre-releases and rejects true. */
+  prerelease?: boolean;
+}
+
 /**
  * Paginated result wrapper
  */
@@ -463,6 +512,14 @@ export interface CommitResource {
     options?: ListCommitOptions,
   ): Promise<PageResult<CommitSummary>>;
   get(owner: string, repo: string, sha: string): Promise<Commit>;
+}
+
+/** Resource accessor for releases. */
+export interface ReleaseResource {
+  list(owner: string, repo: string, options?: ListReleasesOptions): Promise<PageResult<Release>>;
+  get(owner: string, repo: string, tag: string): Promise<Release>;
+  create(owner: string, repo: string, input: CreateReleaseInput): Promise<Release>;
+  update(owner: string, repo: string, tag: string, input: UpdateReleaseInput): Promise<Release>;
 }
 
 /**
