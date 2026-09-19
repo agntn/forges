@@ -132,6 +132,7 @@
   "pi": {
     "extensions": [
       "./packages/pi/extensions/forges.ts"
-    ]
+    ],
+    "image": "https://forges.agntn.dev/image.png"
   }
 }
