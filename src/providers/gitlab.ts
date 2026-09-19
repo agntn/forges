@@ -127,6 +127,7 @@ interface GitLabProject {
 
 interface GitLabPipeline {
   id: number;
+  project_id: number;
   ref: string | null;
   sha: string;
   status: string;
@@ -465,6 +466,14 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       ...normalizeCiRunState(raw.status),
       url: raw.web_url ?? "",
     };
+  }
+
+  /** Merge request pipeline rows carry no `name`; the project the pipeline ran in serves it. */
+  private async readPullRequestCheck(raw: GitLabPipeline): Promise<PullRequestCheck> {
+    const pipeline = await this.client<GitLabPipeline>(
+      `/projects/${raw.project_id}/pipelines/${raw.id}`,
+    );
+    return this.mapPullRequestCheck({ ...raw, name: pipeline.name });
   }
 
   private mapPullRequestFile(raw: GitLabMergeRequestDiff): PullRequestFile {
@@ -1217,7 +1226,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       const perPage = options?.perPage ?? 30;
       const page = options?.page ?? 1;
       const skip = (page - 1) * perPage;
-      const matched: PullRequestCheck[] = [];
+      const matched: GitLabPipeline[] = [];
       let remotePage = 1;
       let hasMore = true;
 
@@ -1236,11 +1245,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
           hasMore = false;
           continue;
         }
-        matched.push(
-          ...batch
-            .filter((raw) => raw.sha === headSha || raw.id === headPipelineId)
-            .map((raw) => this.mapPullRequestCheck(raw)),
-        );
+        matched.push(...batch.filter((raw) => raw.sha === headSha || raw.id === headPipelineId));
         const nextPage = headers.get("x-next-page");
         if (nextPage === null || nextPage === "") {
           hasMore = false;
@@ -1250,7 +1255,9 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         }
       }
 
-      const items = matched.slice(skip, skip + perPage);
+      const items = await Promise.all(
+        matched.slice(skip, skip + perPage).map((raw) => this.readPullRequestCheck(raw)),
+      );
       const hasNextPage = matched.length > skip + perPage;
       return {
         items,

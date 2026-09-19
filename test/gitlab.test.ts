@@ -77,6 +77,7 @@ const glCodeSearchItem = {
 
 const glPipeline = {
   id: 9001,
+  project_id: 278964,
   ref: "main",
   sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
   status: "failed",
@@ -1333,11 +1334,12 @@ describe("GitLabProvider", () => {
       mocks.client.mockResolvedValueOnce(glMergeRequest);
       mocks.rawFetch.mockResolvedValueOnce({
         data: [
-          { ...glPipeline, id: 8999, sha: "stale-revision", name: "stale" },
-          { ...glPipeline, sha: glMergeRequest.sha, name: "verify", status: "running" },
+          { ...glPipeline, id: 8999, sha: "stale-revision" },
+          { ...glPipeline, sha: glMergeRequest.sha, status: "running" },
         ],
         headers: glHeaders(),
       });
+      mocks.client.mockResolvedValueOnce({ ...glPipeline, name: "verify", status: "running" });
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33, {
         perPage: 2,
@@ -1348,6 +1350,8 @@ describe("GitLabProvider", () => {
         "/projects/278964/merge_requests/33/pipelines",
         { query: { page: 1, per_page: 100 } },
       );
+      expect(mocks.client).toHaveBeenCalledWith("/projects/278964/pipelines/9001");
+      expect(mocks.client).not.toHaveBeenCalledWith("/projects/278964/pipelines/8999");
       expect(result).toEqual({
         items: [
           {
@@ -1378,6 +1382,7 @@ describe("GitLabProvider", () => {
           ],
           headers: glHeaders(),
         });
+      mocks.client.mockResolvedValueOnce({ ...glPipeline, name: null });
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33, {
         perPage: 1,
@@ -1402,17 +1407,42 @@ describe("GitLabProvider", () => {
       });
     });
 
-    it("uses stable fallbacks when the pipeline response omits name and URL", async () => {
+    it("uses stable fallbacks when the pipeline has no name and no URL", async () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glMergeRequest);
       mocks.rawFetch.mockResolvedValueOnce({
-        data: [{ ...glPipeline, sha: glMergeRequest.sha, name: null, web_url: null }],
+        data: [{ ...glPipeline, sha: glMergeRequest.sha, web_url: null }],
         headers: glHeaders(),
       });
+      mocks.client.mockResolvedValueOnce({ ...glPipeline, name: null, web_url: null });
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
 
       expect(result.items[0]).toMatchObject({ name: "pipeline", url: "" });
+    });
+
+    it("reads the name of a fork pipeline from the fork", async () => {
+      const forkPipeline = { ...glPipeline, project_id: 41372369, sha: glMergeRequest.sha };
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      mocks.rawFetch.mockResolvedValueOnce({ data: [forkPipeline], headers: glHeaders() });
+      mocks.client.mockResolvedValueOnce({
+        ...forkPipeline,
+        name: "Ruby 3.3.12 MR (community contribution)",
+      });
+
+      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+
+      expect(mocks.client).toHaveBeenCalledWith("/projects/41372369/pipelines/9001");
+      expect(result.items).toEqual([
+        {
+          id: "9001",
+          name: "Ruby 3.3.12 MR (community contribution)",
+          status: "completed",
+          conclusion: "failure",
+          url: "https://gitlab.com/gitlab-org/gitlab-foss/-/pipelines/9001",
+        },
+      ]);
     });
 
     it("keeps the merged results pipeline GitLab evaluates for the head", async () => {
@@ -1428,10 +1458,15 @@ describe("GitLabProvider", () => {
         ],
         headers: glHeaders(),
       });
+      mocks.client
+        .mockResolvedValueOnce({ ...headPipeline, name: "Ruby 3.3.12 MR" })
+        .mockResolvedValueOnce({ ...glPipeline, name: null });
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
 
       expect(mocks.client).toHaveBeenCalledWith("/projects/278964/merge_requests/33");
+      expect(mocks.client).toHaveBeenCalledWith("/projects/278964/pipelines/9003");
+      expect(mocks.client).toHaveBeenCalledWith("/projects/278964/pipelines/9001");
       expect(result.items.map((check) => [check.id, check.conclusion])).toEqual([
         ["9003", "success"],
         ["9001", null],
