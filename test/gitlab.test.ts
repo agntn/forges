@@ -1445,7 +1445,8 @@ describe("GitLabProvider", () => {
       ]);
     });
 
-    it("keeps a listed pipeline whose detail is gone or closed to the caller", async () => {
+    it("keeps every listed pipeline whose name lookup fails", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glMergeRequest);
       mocks.rawFetch.mockResolvedValueOnce({
@@ -1453,13 +1454,15 @@ describe("GitLabProvider", () => {
           { ...glPipeline, sha: glMergeRequest.sha },
           { ...glPipeline, id: 9002, project_id: 41372369, sha: glMergeRequest.sha },
           { ...glPipeline, id: 9003, sha: glMergeRequest.sha },
+          { ...glPipeline, id: 9004, sha: glMergeRequest.sha },
         ],
         headers: glHeaders(),
       });
       mocks.client
         .mockResolvedValueOnce({ ...glPipeline, name: "Ruby 3.3.12 MR" })
         .mockRejectedValueOnce(makeFetchError(403))
-        .mockRejectedValueOnce(makeFetchError(404));
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockRejectedValueOnce(makeFetchError(429));
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
 
@@ -1467,21 +1470,11 @@ describe("GitLabProvider", () => {
         ["9001", "Ruby 3.3.12 MR"],
         ["9002", "pipeline"],
         ["9003", "pipeline"],
+        ["9004", "pipeline"],
       ]);
-    });
-
-    it("surfaces a failed name lookup that is not a missing pipeline", async () => {
-      mockProjectResolve(278964);
-      mocks.client.mockResolvedValueOnce(glMergeRequest);
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [{ ...glPipeline, sha: glMergeRequest.sha }],
-        headers: glHeaders(),
-      });
-      mocks.client.mockRejectedValueOnce(makeFetchError(500));
-
-      await expect(gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33)).rejects.toThrow(
-        ForgesError,
-      );
+      expect(warn).toHaveBeenCalledTimes(3);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("pipeline 9004"));
+      warn.mockRestore();
     });
 
     it("keeps the merged results pipeline GitLab evaluates for the head", async () => {

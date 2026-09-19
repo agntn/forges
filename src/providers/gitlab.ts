@@ -469,8 +469,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   }
 
   /**
-   * Merge request pipeline rows carry no `name`, so the project the pipeline ran in serves it; a
-   * pipeline gone or closed to the caller since the listing keeps its row and the fallback name.
+   * Merge request pipeline rows carry no `name`, so the project the pipeline ran in serves it; the
+   * name only decorates the row, so a failed detail read keeps the check under the fallback name.
    */
   private async readPullRequestCheck(raw: GitLabPipeline): Promise<PullRequestCheck> {
     try {
@@ -479,11 +479,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       );
       return this.mapPullRequestCheck({ ...raw, name: pipeline.name });
     } catch (error: unknown) {
-      const normalized = normalizeError(error, "gitlab");
-      if (normalized.status === 404 || normalized.status === 403) {
-        return this.mapPullRequestCheck(raw);
-      }
-      throw normalized;
+      console.warn(`[forges] Could not read the name of pipeline ${raw.id}: ${String(error)}`);
+      return this.mapPullRequestCheck(raw);
     }
   }
 
