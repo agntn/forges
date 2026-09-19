@@ -69,6 +69,7 @@ import { countDiffLines } from "../changed-file.ts";
 
 const MAX_COMMIT_DIFF_PAGES = 100;
 const MAX_CODE_SEARCH_PROJECT_REQUESTS = 5;
+const MAX_PIPELINE_NAME_REQUESTS = 5;
 const MAX_CONTRIBUTION_TEMPLATE_PAGES = 100;
 
 // GitLab API response types (internal)
@@ -1264,9 +1265,12 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         }
       }
 
-      const items = await Promise.all(
-        matched.slice(skip, skip + perPage).map((raw) => this.readPullRequestCheck(raw)),
-      );
+      const listed = matched.slice(skip, skip + perPage);
+      const items: PullRequestCheck[] = [];
+      for (let offset = 0; offset < listed.length; offset += MAX_PIPELINE_NAME_REQUESTS) {
+        const batch = listed.slice(offset, offset + MAX_PIPELINE_NAME_REQUESTS);
+        items.push(...(await Promise.all(batch.map((raw) => this.readPullRequestCheck(raw)))));
+      }
       const hasNextPage = matched.length > skip + perPage;
       return {
         items,

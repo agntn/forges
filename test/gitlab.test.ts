@@ -1489,6 +1489,32 @@ describe("GitLabProvider", () => {
       expect(warn).toHaveBeenCalledWith(expect.stringContaining("pipeline 9004"));
     });
 
+    it("reads at most five pipeline names at a time", async () => {
+      const rows = Array.from({ length: 7 }, (_, index) => ({
+        ...glPipeline,
+        id: 9100 + index,
+        sha: glMergeRequest.sha,
+      }));
+      let inFlight = 0;
+      let peak = 0;
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      mocks.rawFetch.mockResolvedValueOnce({ data: rows, headers: glHeaders() });
+      mocks.cachedFetch.mockImplementation(async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        inFlight -= 1;
+        return { ...glPipeline, name: null };
+      });
+
+      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+
+      expect(mocks.cachedFetch).toHaveBeenCalledTimes(7);
+      expect(peak).toBe(5);
+      expect(result.items.map((check) => check.id)).toEqual(rows.map((row) => String(row.id)));
+    });
+
     it("keeps the merged results pipeline GitLab evaluates for the head", async () => {
       const mergeRef = "refs/merge-requests/33/merge";
       const headPipeline = { ...glPipeline, id: 9003, sha: "merge-commit-revision", ref: mergeRef };
