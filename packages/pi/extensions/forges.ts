@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 
 import type * as ForgesTools from "../../../dist/tool-operations.d.mts";
@@ -57,6 +57,50 @@ function pullRequestApprovalMessage(params: ForgesTools.CreatePullRequestParams)
     "Description",
     body || "(none)",
   ].join("\n");
+}
+
+/** On a create an omitted flag is the platform default; on an update it stays as it is. */
+function releaseApprovalMessage(
+  params: ForgesTools.CreateReleaseParams | ForgesTools.UpdateReleaseParams,
+  creating: boolean,
+): string {
+  const flag = (value: boolean | undefined, on: string, off: string) =>
+    value === undefined && !creating ? "Unchanged" : value === true ? on : off;
+  const text = (value: string | undefined, clean: (value: string) => string) =>
+    value === undefined ? (creating ? "(none)" : "(unchanged)") : clean(value) || "(none)";
+  const target =
+    "ref" in params && params.ref !== undefined ? ` (from ${approvalField(params.ref)})` : "";
+  return [
+    `Repository  ${approvalField(params.owner)}/${approvalField(params.repo)} on ${platformLabels[params.platform]}`,
+    `Tag         ${approvalField(params.tag)}${target}`,
+    `Draft       ${flag(params.draft, "Yes", "No, public at once")}`,
+    `Pre-release ${flag(params.prerelease, "Yes", "No")}`,
+    "",
+    "Title",
+    text(params.name, approvalField),
+    "",
+    "Notes",
+    text(params.body, sanitizeApprovalText),
+  ].join("\n");
+}
+
+/** Release writes go public or overwrite public text, so Pi asks before either one. */
+async function confirmReleaseWrite(
+  ctx: ExtensionContext,
+  signal: AbortSignal | undefined,
+  question: string,
+  message: string,
+  verb: string,
+): Promise<void> {
+  if (!ctx.hasUI) {
+    throw new Error(`Release ${verb} requires interactive approval in Pi TUI or RPC mode`);
+  }
+  const approved = await ctx.ui.confirm(question, message, { signal });
+  if (!approved) {
+    throw new Error(
+      `Release ${verb} was cancelled by the user. Do not retry unless the user asks again.`,
+    );
+  }
 }
 
 function statusRenderers(name: string, label: string) {
@@ -256,7 +300,14 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     ],
     parameters: schemas.createReleaseParameters,
     ...statusRenderers("forges_releases_create", "Create Forges Release"),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      await confirmReleaseWrite(
+        ctx,
+        signal,
+        "Create release?",
+        releaseApprovalMessage(params, true),
+        "creation",
+      );
       return (await loadToolOperations()).createRelease(params);
     },
   });
@@ -272,7 +323,14 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     ],
     parameters: schemas.updateReleaseParameters,
     ...statusRenderers("forges_releases_update", "Update Forges Release"),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      await confirmReleaseWrite(
+        ctx,
+        signal,
+        "Update release?",
+        releaseApprovalMessage(params, false),
+        "update",
+      );
       return (await loadToolOperations()).updateRelease(params);
     },
   });

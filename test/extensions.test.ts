@@ -625,7 +625,7 @@ describe("Forges Pi extension", () => {
       { platform: "github", owner: "agntn", repo: "forges", tag: "v0.3.1", body: "edited" },
       undefined,
       undefined,
-      unusedPiContext,
+      approvalPiContext(vi.fn().mockResolvedValue(true)),
     );
 
     expect(mocks.releases.list).toHaveBeenCalledWith("agntn", "forges", {
@@ -642,6 +642,115 @@ describe("Forges Pi extension", () => {
       prerelease: undefined,
     });
     expect(updated.details.result).toMatchObject({ body: "edited" });
+  });
+
+  it.each([
+    ["forges_releases_create", "creation", { ref: "main", name: "v0.4.0", body: "notes" }],
+    ["forges_releases_update", "update", { body: "edited" }],
+  ] as const)("fails closed when %s has no approval UI", async (name, verb, extra) => {
+    const confirm = vi.fn();
+    const tool = requirePiTool(registerPiTools(), name);
+
+    await expect(
+      tool.execute(
+        "test",
+        { platform: "github", owner: "agntn", repo: "forges", tag: "v0.4.0", ...extra },
+        undefined,
+        undefined,
+        approvalPiContext(confirm, false),
+      ),
+    ).rejects.toThrow(`Release ${verb} requires interactive approval`);
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(mocks.releases.create).not.toHaveBeenCalled();
+    expect(mocks.releases.update).not.toHaveBeenCalled();
+  });
+
+  it("shows the release before creating it and stops when Pi approval is declined", async () => {
+    const confirm = vi.fn().mockResolvedValue(false);
+    const tool = requirePiTool(registerPiTools(), "forges_releases_create");
+
+    await expect(
+      tool.execute(
+        "test",
+        {
+          platform: "github",
+          owner: "agntn",
+          repo: "forges",
+          tag: "v0.4.0",
+          ref: "main",
+          name: "v0.4.0",
+          body: "Line one\nLine two",
+          prerelease: true,
+        },
+        undefined,
+        undefined,
+        approvalPiContext(confirm),
+      ),
+    ).rejects.toThrow("cancelled by the user");
+
+    expect(confirm).toHaveBeenCalledWith(
+      "Create release?",
+      [
+        "Repository  agntn/forges on GitHub",
+        "Tag         v0.4.0 (from main)",
+        "Draft       No, public at once",
+        "Pre-release Yes",
+        "",
+        "Title",
+        "v0.4.0",
+        "",
+        "Notes",
+        "Line one\nLine two",
+      ].join("\n"),
+      { signal: undefined },
+    );
+    expect(mocks.releases.create).not.toHaveBeenCalled();
+  });
+
+  it("updates a release after Pi approval, naming what stays unchanged", async () => {
+    const confirm = vi.fn().mockResolvedValue(true);
+    mocks.releases.update.mockResolvedValue({ tag: "v0.4.0", body: "edited", draft: false });
+    const tool = requirePiTool(registerPiTools(), "forges_releases_update");
+
+    const result = await tool.execute(
+      "test",
+      {
+        platform: "gitea",
+        owner: "gitea",
+        repo: "tea",
+        tag: "v0.4.0",
+        body: "edited",
+        draft: false,
+      },
+      undefined,
+      undefined,
+      approvalPiContext(confirm),
+    );
+
+    expect(confirm).toHaveBeenCalledWith(
+      "Update release?",
+      [
+        "Repository  gitea/tea on Gitea",
+        "Tag         v0.4.0",
+        "Draft       No, public at once",
+        "Pre-release Unchanged",
+        "",
+        "Title",
+        "(unchanged)",
+        "",
+        "Notes",
+        "edited",
+      ].join("\n"),
+      { signal: undefined },
+    );
+    expect(mocks.releases.update).toHaveBeenCalledWith("gitea", "tea", "v0.4.0", {
+      name: undefined,
+      body: "edited",
+      draft: false,
+      prerelease: undefined,
+    });
+    expect(result.details.result).toMatchObject({ body: "edited" });
   });
 
   it("fails closed when pull-request creation has no approval UI", async () => {
