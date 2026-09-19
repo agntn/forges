@@ -469,12 +469,13 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   }
 
   /**
-   * Merge request pipeline rows carry no `name`, so the project the pipeline ran in serves it; the
-   * name only decorates the row, so a failed detail read keeps the check under the fallback name.
+   * Merge request pipeline rows carry no `name`, so the project the pipeline ran in serves it, once
+   * per pipeline since a name never changes; a failed read keeps the check under the fallback name.
    */
   private async readPullRequestCheck(raw: GitLabPipeline): Promise<PullRequestCheck> {
     try {
-      const pipeline = await this.client<GitLabPipeline>(
+      const pipeline = await cachedFetch<GitLabPipeline>(
+        this.client,
         `/projects/${raw.project_id}/pipelines/${raw.id}`,
       );
       return this.mapPullRequestCheck({ ...raw, name: pipeline.name });

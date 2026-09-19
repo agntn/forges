@@ -1339,7 +1339,7 @@ describe("GitLabProvider", () => {
         ],
         headers: glHeaders(),
       });
-      mocks.client.mockResolvedValueOnce({ ...glPipeline, name: "verify", status: "running" });
+      mocks.cachedFetch.mockResolvedValueOnce({ ...glPipeline, name: "verify", status: "running" });
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33, {
         perPage: 2,
@@ -1350,8 +1350,14 @@ describe("GitLabProvider", () => {
         "/projects/278964/merge_requests/33/pipelines",
         { query: { page: 1, per_page: 100 } },
       );
-      expect(mocks.client).toHaveBeenCalledWith("/projects/278964/pipelines/9001");
-      expect(mocks.client).not.toHaveBeenCalledWith("/projects/278964/pipelines/8999");
+      expect(mocks.cachedFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/pipelines/9001",
+      );
+      expect(mocks.cachedFetch).not.toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/pipelines/8999",
+      );
       expect(result).toEqual({
         items: [
           {
@@ -1382,7 +1388,7 @@ describe("GitLabProvider", () => {
           ],
           headers: glHeaders(),
         });
-      mocks.client.mockResolvedValueOnce({ ...glPipeline, name: null });
+      mocks.cachedFetch.mockResolvedValueOnce({ ...glPipeline, name: null });
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33, {
         perPage: 1,
@@ -1414,7 +1420,7 @@ describe("GitLabProvider", () => {
         data: [{ ...glPipeline, sha: glMergeRequest.sha, web_url: null }],
         headers: glHeaders(),
       });
-      mocks.client.mockResolvedValueOnce({ ...glPipeline, name: null, web_url: null });
+      mocks.cachedFetch.mockResolvedValueOnce({ ...glPipeline, name: null, web_url: null });
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
 
@@ -1426,14 +1432,17 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glMergeRequest);
       mocks.rawFetch.mockResolvedValueOnce({ data: [forkPipeline], headers: glHeaders() });
-      mocks.client.mockResolvedValueOnce({
+      mocks.cachedFetch.mockResolvedValueOnce({
         ...forkPipeline,
         name: "Ruby 3.3.12 MR (community contribution)",
       });
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
 
-      expect(mocks.client).toHaveBeenCalledWith("/projects/41372369/pipelines/9001");
+      expect(mocks.cachedFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/41372369/pipelines/9001",
+      );
       expect(result.items).toEqual([
         {
           id: "9001",
@@ -1458,7 +1467,7 @@ describe("GitLabProvider", () => {
         ],
         headers: glHeaders(),
       });
-      mocks.client
+      mocks.cachedFetch
         .mockResolvedValueOnce({ ...glPipeline, name: "Ruby 3.3.12 MR" })
         .mockRejectedValueOnce(makeFetchError(403))
         .mockRejectedValueOnce(makeFetchError(404))
@@ -1490,15 +1499,21 @@ describe("GitLabProvider", () => {
         ],
         headers: glHeaders(),
       });
-      mocks.client
+      mocks.cachedFetch
         .mockResolvedValueOnce({ ...headPipeline, name: "Ruby 3.3.12 MR" })
         .mockResolvedValueOnce({ ...glPipeline, name: null });
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
 
       expect(mocks.client).toHaveBeenCalledWith("/projects/278964/merge_requests/33");
-      expect(mocks.client).toHaveBeenCalledWith("/projects/278964/pipelines/9003");
-      expect(mocks.client).toHaveBeenCalledWith("/projects/278964/pipelines/9001");
+      expect(mocks.cachedFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/pipelines/9003",
+      );
+      expect(mocks.cachedFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/pipelines/9001",
+      );
       expect(result.items.map((check) => [check.id, check.conclusion])).toEqual([
         ["9003", "success"],
         ["9001", null],
