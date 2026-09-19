@@ -1933,6 +1933,233 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("releases", () => {
+    const ghRelease = {
+      id: 391667800,
+      tag_name: "v0.3.1",
+      target_commitish: "main",
+      name: "v0.3.1",
+      body: "[compare changes](https://github.com/agntn/forges/compare/v0.3.0...v0.3.1)",
+      draft: false,
+      prerelease: false,
+      author: { login: "aeitwoen" },
+      created_at: "2026-09-18T17:45:29Z",
+      published_at: "2026-09-18T17:45:32Z",
+      html_url: "https://github.com/agntn/forges/releases/tag/v0.3.1",
+    };
+    const release = {
+      id: "391667800",
+      tag: "v0.3.1",
+      name: "v0.3.1",
+      body: "[compare changes](https://github.com/agntn/forges/compare/v0.3.0...v0.3.1)",
+      draft: false,
+      prerelease: false,
+      author: { login: "aeitwoen" },
+      createdAt: "2026-09-18T17:45:29Z",
+      publishedAt: "2026-09-18T17:45:32Z",
+      url: "https://github.com/agntn/forges/releases/tag/v0.3.1",
+    };
+
+    it("lists releases and follows the Link header", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          ghRelease,
+          {
+            ...ghRelease,
+            id: 391667801,
+            tag_name: "v0.4.0-rc.1",
+            name: null,
+            body: null,
+            draft: true,
+            prerelease: true,
+            author: null,
+            published_at: null,
+          },
+        ],
+        headers: makeHeaders(
+          '<https://api.github.com/repositories/1173537090/releases?per_page=2&page=2>; rel="next"',
+        ),
+      });
+
+      const result = await gh.releases.list("agntn", "forges", { perPage: 2 });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/repos/agntn/forges/releases", {
+        query: { per_page: "2" },
+      });
+      expect(result).toEqual({
+        items: [
+          release,
+          {
+            ...release,
+            id: "391667801",
+            tag: "v0.4.0-rc.1",
+            name: "",
+            body: "",
+            draft: true,
+            prerelease: true,
+            author: { login: "" },
+            publishedAt: "",
+          },
+        ],
+        hasNextPage: true,
+        nextPage: 2,
+      });
+    });
+
+    it("reads one release by its tag", async () => {
+      mocks.client.mockResolvedValueOnce(ghRelease);
+
+      const result = await gh.releases.get("agntn", "forges", "v0.3.1");
+
+      expect(mocks.client).toHaveBeenCalledWith("/repos/agntn/forges/releases/tags/v0.3.1");
+      expect(result).toEqual(release);
+    });
+
+    it("rejects an empty tag before any request", async () => {
+      await expect(gh.releases.get("agntn", "forges", "")).rejects.toMatchObject({
+        status: 400,
+      });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("creates a release from the tag, target and flags", async () => {
+      mocks.client.mockResolvedValueOnce({ ...ghRelease, draft: true, published_at: null });
+
+      const result = await gh.releases.create("agntn", "forges", {
+        tag: "v0.3.1",
+        name: "v0.3.1",
+        body: "notes",
+        ref: "main",
+        draft: true,
+      });
+
+      expect(mocks.client).toHaveBeenCalledWith("/repos/agntn/forges/releases", {
+        method: "POST",
+        body: {
+          tag_name: "v0.3.1",
+          target_commitish: "main",
+          name: "v0.3.1",
+          body: "notes",
+          draft: true,
+          prerelease: undefined,
+        },
+      });
+      expect(result).toEqual({ ...release, draft: true, publishedAt: "" });
+    });
+
+    it("updates by the id behind the tag and sends only the given fields", async () => {
+      mocks.client
+        .mockResolvedValueOnce(ghRelease)
+        .mockResolvedValueOnce({ ...ghRelease, body: "edited" });
+
+      const result = await gh.releases.update("agntn", "forges", "v0.3.1", { body: "edited" });
+
+      expect(mocks.client).toHaveBeenNthCalledWith(1, "/repos/agntn/forges/releases/tags/v0.3.1");
+      expect(mocks.client).toHaveBeenNthCalledWith(2, "/repos/agntn/forges/releases/391667800", {
+        method: "PATCH",
+        body: { name: undefined, body: "edited", draft: undefined, prerelease: undefined },
+      });
+      expect(result).toEqual({ ...release, body: "edited" });
+    });
+
+    it("refuses an update with nothing to change before reading the release", async () => {
+      await expect(gh.releases.update("agntn", "forges", "v0.3.1", {})).rejects.toMatchObject({
+        status: 400,
+      });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("finds a draft behind a tag the tag route does not serve yet", async () => {
+      const draft = {
+        ...ghRelease,
+        id: 391667802,
+        tag_name: "v0.4.0",
+        draft: true,
+        published_at: null,
+      };
+      mocks.client
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce({ ...draft, draft: false, published_at: "2026-09-19T12:00:00Z" });
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [{ ...ghRelease, tag_name: "v0.4.0-beta" }, draft],
+        headers: makeHeaders(),
+      });
+
+      const result = await gh.releases.update("agntn", "forges", "v0.4.0", { draft: false });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/repos/agntn/forges/releases", {
+        query: { page: "1", per_page: "100" },
+      });
+      expect(mocks.client).toHaveBeenLastCalledWith("/repos/agntn/forges/releases/391667802", {
+        method: "PATCH",
+        body: { name: undefined, body: undefined, draft: false, prerelease: undefined },
+      });
+      expect(result).toMatchObject({ tag: "v0.4.0", draft: false });
+    });
+
+    it("keeps a GitHub.com 404 as not found once the newest releases hold no such draft", async () => {
+      mocks.client.mockRejectedValueOnce(makeFetchError(404));
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: [ghRelease],
+          headers: makeHeaders(
+            '<https://api.github.com/repos/agntn/forges/releases?per_page=100&page=2>; rel="next"',
+          ),
+        })
+        .mockResolvedValueOnce({ data: [], headers: makeHeaders() });
+
+      await expect(gh.releases.get("agntn", "forges", "v9.9.9")).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("stops the draft walk at five pages", async () => {
+      mocks.client.mockRejectedValueOnce(makeFetchError(404));
+      mocks.rawFetch.mockResolvedValue({
+        data: [ghRelease],
+        headers: makeHeaders(
+          '<https://api.github.com/repos/agntn/forges/releases?per_page=100&page=2>; rel="next"',
+        ),
+      });
+
+      await expect(gh.releases.get("agntn", "forges", "v9.9.9")).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(5);
+    });
+
+    it("normalizes a failure of the draft walk", async () => {
+      mocks.client.mockRejectedValueOnce(makeFetchError(404));
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(403));
+
+      const error = await gh.releases.get("agntn", "forges", "v9.9.9").catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ForgesError);
+      expect((error as ForgesError).status).toBe(403);
+    });
+
+    it("reports the route as unsupported on a GitHub-compatible host that 404s it", async () => {
+      const gitbucket = new GitHubProvider({
+        baseURL: "https://gitbucket.example.com/api/v3",
+        token: "gb_test",
+      });
+      mocks.rawFetch
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce({ data: ghRepo, headers: new Headers(), status: 200 });
+
+      const error = await gitbucket.releases
+        .list("octocat", "hello-world")
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ForgesError);
+      expect(error).not.toBeInstanceOf(NotFoundError);
+      expect((error as ForgesError).status).toBe(501);
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/repos/octocat/hello-world");
+    });
+  });
+
   describe("pullRequests.search", () => {
     it("searches one repository without fetching each pull request", async () => {
       mocks.rawFetch.mockResolvedValueOnce({

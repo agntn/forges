@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
   const code = { search: vi.fn() };
   const ciRuns = { list: vi.fn() };
   const commits = { list: vi.fn(), get: vi.fn() };
+  const releases = { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn() };
   const issues = {
     list: vi.fn(),
     search: vi.fn(),
@@ -53,6 +54,7 @@ const mocks = vi.hoisted(() => {
     code,
     ciRuns,
     commits,
+    releases,
     issues,
     pullRequests,
     users,
@@ -67,6 +69,7 @@ const mocks = vi.hoisted(() => {
     code,
     ciRuns,
     commits,
+    releases,
     issues,
     pullRequests,
     users,
@@ -96,6 +99,10 @@ const toolNames = [
   "forges_ci_runs_list",
   "forges_commits_list",
   "forges_commits_get",
+  "forges_releases_list",
+  "forges_releases_get",
+  "forges_releases_create",
+  "forges_releases_update",
   "forges_issues_list",
   "forges_issues_search",
   "forges_issues_get",
@@ -581,6 +588,62 @@ describe("Forges Pi extension", () => {
     expect(result.details.result).toEqual({ items: [], hasNextPage: false });
   });
 
+  it("executes release reads and writes through the shared provider operations", async () => {
+    const release = {
+      id: "391667800",
+      tag: "v0.3.1",
+      name: "v0.3.1",
+      body: "notes",
+      draft: false,
+      prerelease: false,
+      author: { login: "aeitwoen" },
+      createdAt: "2026-09-18T17:45:29Z",
+      publishedAt: "2026-09-18T17:45:32Z",
+      url: "https://github.com/agntn/forges/releases/tag/v0.3.1",
+    };
+    mocks.releases.list.mockResolvedValue({ items: [release], hasNextPage: false });
+    mocks.releases.get.mockResolvedValue(release);
+    mocks.releases.update.mockResolvedValue({ ...release, body: "edited" });
+    const tools = registerPiTools();
+
+    const listed = await requirePiTool(tools, "forges_releases_list").execute(
+      "test",
+      { platform: "github", owner: "agntn", repo: "forges", perPage: 5 },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+    const read = await requirePiTool(tools, "forges_releases_get").execute(
+      "test",
+      { platform: "github", owner: "agntn", repo: "forges", tag: "v0.3.1" },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+    const updated = await requirePiTool(tools, "forges_releases_update").execute(
+      "test",
+      { platform: "github", owner: "agntn", repo: "forges", tag: "v0.3.1", body: "edited" },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+
+    expect(mocks.releases.list).toHaveBeenCalledWith("agntn", "forges", {
+      page: undefined,
+      perPage: 5,
+    });
+    expect(listed.details.result.items[0]).not.toHaveProperty("body");
+    expect(mocks.releases.get).toHaveBeenCalledWith("agntn", "forges", "v0.3.1");
+    expect(read.details.result).toEqual(release);
+    expect(mocks.releases.update).toHaveBeenCalledWith("agntn", "forges", "v0.3.1", {
+      name: undefined,
+      body: "edited",
+      draft: undefined,
+      prerelease: undefined,
+    });
+    expect(updated.details.result).toMatchObject({ body: "edited" });
+  });
+
   it("fails closed when pull-request creation has no approval UI", async () => {
     const confirm = vi.fn();
     const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
@@ -988,6 +1051,8 @@ describe("Forges OMP extension", () => {
     const mutationTools: Record<string, true> = {
       forges_issues_create: true,
       forges_pull_requests_create: true,
+      forges_releases_create: true,
+      forges_releases_update: true,
       forges_auth_reload: true,
       forges_threads_reply: true,
       forges_threads_resolve: true,
@@ -1013,6 +1078,50 @@ describe("Forges OMP extension", () => {
       "page",
       "perPage",
     ]);
+  });
+
+  it("executes release creation through the shared provider operation", async () => {
+    const release = {
+      id: "945509",
+      tag: "v0.17.0",
+      name: "v0.17.0",
+      body: "notes",
+      draft: true,
+      prerelease: false,
+      author: { login: "aeitwoen" },
+      createdAt: "2026-09-19T10:00:00Z",
+      publishedAt: "",
+      url: "https://gitea.com/gitea/tea/releases/tag/v0.17.0",
+    };
+    mocks.releases.create.mockResolvedValue(release);
+    const tool = requireOmpTool(registerOmpTools().tools, "forges_releases_create");
+    const result = await tool.execute(
+      "test",
+      {
+        platform: "gitea",
+        owner: "gitea",
+        repo: "tea",
+        tag: "v0.17.0",
+        name: "v0.17.0",
+        body: "notes",
+        ref: "main",
+        draft: true,
+      },
+      undefined,
+      undefined,
+      unusedOmpContext,
+    );
+
+    expect(mocks.createProvider).toHaveBeenCalledWith("gitea", { token: "test-token" });
+    expect(mocks.releases.create).toHaveBeenCalledWith("gitea", "tea", {
+      tag: "v0.17.0",
+      name: "v0.17.0",
+      body: "notes",
+      ref: "main",
+      draft: true,
+      prerelease: undefined,
+    });
+    expect(result.details).toEqual({ platform: "gitea", result: release });
   });
 
   it("executes issue creation through the shared provider operation", async () => {

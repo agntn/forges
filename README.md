@@ -5,7 +5,7 @@
 [![license](https://npmx.dev/api/registry/badge/license/@agntn/forges)](https://npmx.dev/package/@agntn/forges)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/agntn/forges)
 
-⚒️ Four forges, nine resources, thirty-one agent tools. You ask for a pull request, you get a pull request.
+⚒️ Four forges, ten resources, thirty-five agent tools. You ask for a pull request, you get a pull request.
 
 ## Why?
 
@@ -20,7 +20,7 @@ Docs, and an explorer that runs the same calls: [forges.agntn.dev](https://forge
 - 📦 **Loads one platform.** `createProvider("github")` is async. It imports GitHub and leaves GitLab on disk.
 - 🆔 **IDs are strings.** Even when the API sent a number. A count the forge withholds is missing, not `0`.
 - 🫥 **Empty string is guest.** `{ token: "" }` is anonymous on purpose. Leave `token` out and you get `AuthenticationError`, not a quiet guest session.
-- 🤖 **Thirty-one tools, three surfaces.** MCP, Pi and OMP share the executors. Five tools write to the host.
+- 🤖 **Thirty-five tools, three surfaces.** MCP, Pi and OMP share the executors. Seven tools write to the host.
 - 🚫 **Missing is 501.** Code search on Gitea is not an empty page. You get a `ForgesError` with status 501.
 - 🧭 **GitBucket is GitHub plus `baseURL`.** Forgejo and Codeberg are Gitea plus `baseURL`. Same class, different host.
 
@@ -96,7 +96,7 @@ const gitbucket = await createProvider("github", {
 });
 ```
 
-Nine resources on every provider. `repos`, `issues`, `pullRequests`, `threads`. Then `commits`, `ciRuns`, `contributionTemplates`, `code`, `users`. Lists come back as `items` plus `hasNextPage`. `totalCount` only when the forge counted. Search adds `incomplete` when the answer is known to be partial. Guides: [Authentication](https://forges.agntn.dev/guide/auth), [Repositories](https://forges.agntn.dev/guide/repositories), [Issues](https://forges.agntn.dev/guide/issues), [Pull requests](https://forges.agntn.dev/guide/pull-requests), [Review threads](https://forges.agntn.dev/guide/threads), [Commits and CI](https://forges.agntn.dev/guide/commits), [Templates](https://forges.agntn.dev/guide/templates), [Code search](https://forges.agntn.dev/guide/code-search).
+Ten resources on every provider. `repos`, `issues`, `pullRequests`, `threads`. Then `commits`, `ciRuns`, `releases`, `contributionTemplates`, `code`, `users`. Lists come back as `items` plus `hasNextPage`. `totalCount` only when the forge counted. Search adds `incomplete` when the answer is known to be partial. Guides: [Authentication](https://forges.agntn.dev/guide/auth), [Repositories](https://forges.agntn.dev/guide/repositories), [Issues](https://forges.agntn.dev/guide/issues), [Pull requests](https://forges.agntn.dev/guide/pull-requests), [Review threads](https://forges.agntn.dev/guide/threads), [Commits, CI and releases](https://forges.agntn.dev/guide/commits), [Templates](https://forges.agntn.dev/guide/templates), [Code search](https://forges.agntn.dev/guide/code-search).
 
 ## 🗺️ Providers
 
@@ -125,11 +125,11 @@ omp install @agntn/forges
 }
 ```
 
-MCP, Pi and OMP all hit the same 31 tools. Five write to the host, so ask `forges_users_authenticated` who you are before a model does, details in the [Agents](https://forges.agntn.dev/guide/agents) guide.
+MCP, Pi and OMP all hit the same 35 tools. Seven write to the host, so ask `forges_users_authenticated` who you are before a model does, details in the [Agents](https://forges.agntn.dev/guide/agents) guide.
 
 ## 🚫 What this does not do
 
-Files, trees, branches, tags, webhooks, org admin. The review loop is the scope: what was proposed, what was said, whether it passed.
+Files, trees, branches, plain tags, release assets, webhooks, org admin. The review loop is the scope: what was proposed, what was said, whether it passed, what shipped.
 
 ## 🧩 Adding a provider
 

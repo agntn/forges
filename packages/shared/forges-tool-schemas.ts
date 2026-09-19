@@ -39,6 +39,15 @@ export function forgesToolSchemas() {
     minLength: 1,
   });
   const sha = Type.String({ description: "Commit SHA", minLength: 1 });
+  const tag = Type.String({ description: "Release tag name", minLength: 1 });
+  const releaseName = Type.Optional(Type.String({ description: "Release title" }));
+  const releaseBody = Type.Optional(Type.String({ description: "Release notes" }));
+  const draft = Type.Optional(
+    Type.Boolean({ description: "Keep the release an unpublished draft. GitLab rejects true." }),
+  );
+  const prerelease = Type.Optional(
+    Type.Boolean({ description: "Mark the release a pre-release. GitLab rejects true." }),
+  );
   const branch = Type.Optional(Type.String({ description: "Filter by branch", minLength: 1 }));
   const ref = Type.Optional(
     Type.String({ description: "Branch, tag, or commit reference", minLength: 1 }),
@@ -126,6 +135,34 @@ export function forgesToolSchemas() {
     perPage,
   });
   const listCiRunsParameters = closed({ platform, owner, repo, branch, page, perPage });
+  const listReleasesParameters = closed({ platform, owner, repo, page, perPage });
+  const releaseParameters = closed({ platform, owner, repo, tag });
+  const createReleaseParameters = closed({
+    platform,
+    owner,
+    repo,
+    tag,
+    name: releaseName,
+    body: releaseBody,
+    ref: Type.Optional(
+      Type.String({
+        description: "Branch or commit to tag when the tag does not exist yet",
+        minLength: 1,
+      }),
+    ),
+    draft,
+    prerelease,
+  });
+  const updateReleaseParameters = closed({
+    platform,
+    owner,
+    repo,
+    tag,
+    name: releaseName,
+    body: releaseBody,
+    draft,
+    prerelease,
+  });
   const listRepositoryItemsParameters = closed({
     platform,
     owner,
@@ -205,6 +242,10 @@ export function forgesToolSchemas() {
     commitParameters,
     listCommitsParameters,
     listCiRunsParameters,
+    listReleasesParameters,
+    releaseParameters,
+    createReleaseParameters,
+    updateReleaseParameters,
     listRepositoryItemsParameters,
     searchRepositoryItemsParameters,
     repositoryItemParameters,

@@ -31,6 +31,8 @@ const MALFORMED_SURROGATE = /\p{Cs}/gu;
 const WRITE_TOOLS = new Set([
   "forges_issues_create",
   "forges_pull_requests_create",
+  "forges_releases_create",
+  "forges_releases_update",
   "forges_auth_reload",
   "forges_threads_reply",
   "forges_threads_resolve",
@@ -81,6 +83,7 @@ export function forgeToolSymbol(name: string): string {
   if (name.startsWith("forges_pull_requests_")) return "↗";
   if (name.startsWith("forges_threads_")) return "◌";
   if (name.startsWith("forges_commits_")) return "●";
+  if (name.startsWith("forges_releases_")) return "⚑";
   if (name.startsWith("forges_issues_")) return "◈";
   if (name.startsWith("forges_users_")) return "♙";
   if (name.startsWith("forges_code_")) return "⌕";
@@ -104,7 +107,7 @@ function repositoryTarget(record: Readonly<Record<string, unknown>>): string | u
 }
 
 function callSubject(record: Readonly<Record<string, unknown>>): string | undefined {
-  for (const key of ["query", "title", "username", "sha", "key", "threadId", "commentId"]) {
+  for (const key of ["query", "title", "username", "sha", "tag", "key", "threadId", "commentId"]) {
     const value = scalar(record, key);
     if (value) return sanitizeTerminalText(value);
   }
@@ -188,7 +191,7 @@ function resultPayload(details: unknown): Readonly<Record<string, unknown>> {
 function resultIdentity(payload: Readonly<Record<string, unknown>>): string | undefined {
   const number = scalar(payload, "number");
   if (number) return `#${sanitizeTerminalText(number, META_WIDTH)}`;
-  for (const key of ["fullName", "login", "path", "sourcePath", "name", "sha", "id"]) {
+  for (const key of ["fullName", "login", "path", "sourcePath", "tag", "name", "sha", "id"]) {
     const value = scalar(payload, key);
     if (value) return sanitizeTerminalText(value, META_WIDTH);
   }

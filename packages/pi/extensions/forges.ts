@@ -217,6 +217,67 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_releases_list",
+    label: "Forges Releases",
+    description: "List repository releases, newest first, without their notes",
+    promptSnippet: "List releases from GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_releases_list to see which tags have a release; notes come from forges_releases_get.",
+    ],
+    parameters: schemas.listReleasesParameters,
+    ...statusRenderers("forges_releases_list", "Forges Releases"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listReleases(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_releases_get",
+    label: "Forges Release",
+    description: "Get one release by tag with its full notes",
+    promptSnippet: "Read one release by tag from GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_releases_get with the tag name; releases are keyed by tag on every platform.",
+    ],
+    parameters: schemas.releaseParameters,
+    ...statusRenderers("forges_releases_get", "Forges Release"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getRelease(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_releases_create",
+    label: "Create Forges Release",
+    description: "Create a release for a tag; this mutates the selected Git platform",
+    promptSnippet: "Create a release on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_releases_create only when the user explicitly asks to publish a release; a non-draft release is public at once.",
+    ],
+    parameters: schemas.createReleaseParameters,
+    ...statusRenderers("forges_releases_create", "Create Forges Release"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).createRelease(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_releases_update",
+    label: "Update Forges Release",
+    description:
+      "Update the title, notes or flags of the release behind a tag; this mutates the selected Git platform",
+    promptSnippet: "Edit a release's title or notes on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_releases_update only when the user explicitly asks to change a release; read it with forges_releases_get first, the new text replaces the old.",
+    ],
+    parameters: schemas.updateReleaseParameters,
+    ...statusRenderers("forges_releases_update", "Update Forges Release"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).updateRelease(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_issues_list",
     label: "Forges Issues",
     description: "List normalized issues for a repository, optionally filtered by state",

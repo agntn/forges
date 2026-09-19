@@ -1396,6 +1396,134 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("releases", () => {
+    const giteaRelease = {
+      id: 945508,
+      tag_name: "v0.16.0",
+      target_commitish: "9c12138d6273ba8feb6e7578833cc330c0cd6461",
+      name: "v0.16.0",
+      body: "## What's Changed",
+      url: "https://gitea.com/api/v1/repos/testowner/test-repo/releases/945508",
+      html_url: "https://gitea.com/testowner/test-repo/releases/tag/v0.16.0",
+      draft: false,
+      prerelease: false,
+      created_at: "2026-09-10T04:29:39Z",
+      published_at: "2026-09-10T11:34:12Z",
+      author: giteaUser({ login: "bircni" }),
+    };
+    const release = {
+      id: "945508",
+      tag: "v0.16.0",
+      name: "v0.16.0",
+      body: "## What's Changed",
+      draft: false,
+      prerelease: false,
+      author: { login: "bircni" },
+      createdAt: "2026-09-10T04:29:39Z",
+      publishedAt: "2026-09-10T11:34:12Z",
+      url: "https://gitea.com/testowner/test-repo/releases/tag/v0.16.0",
+    };
+
+    it("lists releases with limit and pages by x-total-count", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [giteaRelease, { ...giteaRelease, id: 945507, tag_name: "v0.15.0", author: null }],
+        headers: makeHeaders({ "x-total-count": "27" }),
+        status: 200,
+      });
+
+      const result = await provider.releases.list("testowner", "test-repo", { perPage: 2 });
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        expect.anything(),
+        "/repos/testowner/test-repo/releases",
+        { query: { page: "1", limit: "2" } },
+      );
+      expect(result).toEqual({
+        items: [release, { ...release, id: "945507", tag: "v0.15.0", author: { login: "" } }],
+        totalCount: 27,
+        hasNextPage: true,
+        nextPage: 2,
+      });
+    });
+
+    it("stops when the count is exhausted", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [giteaRelease],
+        headers: makeHeaders({ "x-total-count": "3" }),
+        status: 200,
+      });
+
+      const result = await provider.releases.list("testowner", "test-repo", {
+        page: 2,
+        perPage: 2,
+      });
+
+      expect(result).toMatchObject({ totalCount: 3, hasNextPage: false, nextPage: undefined });
+    });
+
+    it("reads one release by its tag", async () => {
+      mockClient.mockResolvedValueOnce({ ...giteaRelease, name: null, body: null, html_url: null });
+
+      const result = await provider.releases.get("testowner", "test-repo", "v0.16.0");
+
+      expect(mockClient).toHaveBeenCalledWith("/repos/testowner/test-repo/releases/tags/v0.16.0");
+      expect(result).toEqual({ ...release, name: "", body: "", url: "" });
+    });
+
+    it("creates a release with the Gitea field names", async () => {
+      mockClient.mockResolvedValueOnce({ ...giteaRelease, draft: true, published_at: null });
+
+      const result = await provider.releases.create("testowner", "test-repo", {
+        tag: "v0.16.0",
+        body: "## What's Changed",
+        ref: "main",
+        draft: true,
+      });
+
+      expect(mockClient).toHaveBeenCalledWith("/repos/testowner/test-repo/releases", {
+        method: "POST",
+        body: {
+          tag_name: "v0.16.0",
+          target_commitish: "main",
+          name: undefined,
+          body: "## What's Changed",
+          draft: true,
+          prerelease: undefined,
+        },
+      });
+      expect(result).toEqual({ ...release, draft: true, publishedAt: "" });
+    });
+
+    it("updates by the id behind the tag", async () => {
+      mockClient
+        .mockResolvedValueOnce(giteaRelease)
+        .mockResolvedValueOnce({ ...giteaRelease, prerelease: true });
+
+      const result = await provider.releases.update("testowner", "test-repo", "v0.16.0", {
+        prerelease: true,
+      });
+
+      expect(mockClient).toHaveBeenNthCalledWith(
+        1,
+        "/repos/testowner/test-repo/releases/tags/v0.16.0",
+      );
+      expect(mockClient).toHaveBeenNthCalledWith(2, "/repos/testowner/test-repo/releases/945508", {
+        method: "PATCH",
+        body: { name: undefined, body: undefined, draft: undefined, prerelease: true },
+      });
+      expect(result).toEqual({ ...release, prerelease: true });
+    });
+
+    it("maps a missing tag to NotFoundError", async () => {
+      mockClient.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(
+        provider.releases.update("testowner", "test-repo", "v9.9.9", { body: "x" }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      expect(mockClient).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("pullRequests.search", () => {
     it("searches repository pull requests without fetching each result", async () => {
       mockedRawFetch.mockResolvedValueOnce({
