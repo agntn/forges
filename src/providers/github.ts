@@ -1284,7 +1284,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
-  /** A draft has no tag in git yet and the tag route serves published releases only. */
+  /** A draft has no tag in git yet, the tag route serves published releases only, and only a token sees drafts. */
   private async findDraftRelease(
     owner: string,
     repo: string,
@@ -1314,7 +1314,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       );
     } catch (error) {
       const normalized = await this.releaseError(owner, repo, error);
-      if (normalized.status !== 404) throw normalized;
+      if (normalized.status !== 404 || !this.authenticated) throw normalized;
       const draft = await this.findDraftRelease(owner, repo, tag);
       if (draft) return draft;
       throw normalized;

@@ -1959,6 +1959,12 @@ describe("GitHubProvider", () => {
       publishedAt: "2026-09-18T17:45:32Z",
       url: "https://github.com/agntn/forges/releases/tag/v0.3.1",
     };
+    /** A page the draft walk asks for: a hundred published releases, none with the wanted tag. */
+    const fullReleasePage = Array.from({ length: 100 }, (_, index) => ({
+      ...ghRelease,
+      id: 391000000 + index,
+      tag_name: `v0.0.${index}`,
+    }));
 
     it("lists releases and follows the Link header", async () => {
       mocks.rawFetch.mockResolvedValueOnce({
@@ -2101,7 +2107,7 @@ describe("GitHubProvider", () => {
       mocks.client.mockRejectedValueOnce(makeFetchError(404));
       mocks.rawFetch
         .mockResolvedValueOnce({
-          data: [ghRelease],
+          data: fullReleasePage,
           headers: makeHeaders(
             '<https://api.github.com/repos/agntn/forges/releases?per_page=100&page=2>; rel="next"',
           ),
@@ -2118,7 +2124,7 @@ describe("GitHubProvider", () => {
     it("stops the draft walk at five pages", async () => {
       mocks.client.mockRejectedValueOnce(makeFetchError(404));
       mocks.rawFetch.mockResolvedValue({
-        data: [ghRelease],
+        data: fullReleasePage,
         headers: makeHeaders(
           '<https://api.github.com/repos/agntn/forges/releases?per_page=100&page=2>; rel="next"',
         ),
@@ -2128,6 +2134,16 @@ describe("GitHubProvider", () => {
         NotFoundError,
       );
       expect(mocks.rawFetch).toHaveBeenCalledTimes(5);
+    });
+
+    it("skips the draft walk without a token, because drafts are never listed anonymously", async () => {
+      const anonymous = new GitHubProvider({ baseURL: "https://api.github.com", token: "" });
+      mocks.client.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(anonymous.releases.get("agntn", "forges", "v9.9.9")).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
 
     it("normalizes a failure of the draft walk", async () => {
