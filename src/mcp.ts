@@ -189,7 +189,7 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       name: "forges_releases_update",
       title: "Update Release",
       description:
-        "Update the title, notes, draft or pre-release flag of the release behind one tag; omitted fields keep their value. This overwrites what is there and writes as the account the local credentials belong to, so read the release first and confirm the new text with the user. GitLab rejects draft or prerelease set to true.",
+        "Update the title, notes, draft or pre-release flag of the release behind one tag. Pass at least one of them; omitted fields keep their value. This overwrites what is there and writes as the account the local credentials belong to, so read the release first and confirm the new text with the user. A GitHub draft is found the way forges_releases_get finds it, among the 500 newest releases. GitLab rejects draft or prerelease set to true.",
       inputSchema: schemas.updateReleaseParameters,
       annotations: updateAnnotations,
       execute: (operations, args) => operations.updateRelease(args),
