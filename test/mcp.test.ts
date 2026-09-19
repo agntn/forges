@@ -967,6 +967,24 @@ describe("forges MCP server", () => {
     expect(mocks.createProvider).not.toHaveBeenCalled();
   });
 
+  it("names every unknown argument, more than TypeBox's error cap lists", async () => {
+    const client = await connectTestClient();
+    const stray = Object.fromEntries(
+      Array.from({ length: 9 }, (_, index) => [`stray_${index}`, index]),
+    );
+
+    const response = await client.callTool({
+      name: "forges_issues_list",
+      arguments: { platform: "github", owner: "agntn", repo: "forges", ...stray },
+    });
+
+    expect(response.isError).toBe(true);
+    expect(text(response.content)).toBe(
+      `Invalid arguments at /: unknown property ${Object.keys(stray).join(", ")}`,
+    );
+    expect(mocks.createProvider).not.toHaveBeenCalled();
+  });
+
   it("rejects prototype property names as unknown tools", async () => {
     const client = await connectTestClient();
 

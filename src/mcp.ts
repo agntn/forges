@@ -5,7 +5,7 @@ import {
   type CallToolResult,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { Static, TSchema } from "typebox";
+import type { Static, TObject } from "typebox";
 import type { ForgesToolSchemas } from "../packages/shared/forges-tool-schemas.ts";
 import type * as ToolOperations from "./tool-operations.ts";
 import type { ForgesToolResult } from "./tool-operations.ts";
@@ -16,7 +16,7 @@ import { forgeToolTitle } from "../packages/shared/tui.ts";
 /** The executors every tool binds to, loaded on the first call rather than at import. */
 type Operations = typeof ToolOperations;
 
-interface ToolDefinition<S extends TSchema = TSchema> {
+interface ToolDefinition<S extends TObject = TObject> {
   name: string;
   title: string;
   description: string;
@@ -38,7 +38,7 @@ interface ToolDefinition<S extends TSchema = TSchema> {
  * executor and only fail when a provider receives an undefined field. The single
  * cast here is where that schema type is erased for the uniform tool table.
  */
-function defineTool<S extends TSchema>(tool: ToolDefinition<S>): ToolDefinition {
+function defineTool<S extends TObject>(tool: ToolDefinition<S>): ToolDefinition {
   return tool as ToolDefinition;
 }
 
@@ -407,16 +407,16 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
 type ValueModule = typeof import("typebox/value");
 type ErrorsModule = typeof import("./errors.ts");
 
-/** Formats the first TypeBox validation failure for an MCP client. */
-function validationError(Value: ValueModule["Value"], schema: TSchema, value: unknown): string {
+/**
+ * Formats the first TypeBox validation failure for an MCP client. A stray key is
+ * named from the schema itself, since TypeBox 1.3.24 reports it as `schema is false`.
+ */
+function validationError(Value: ValueModule["Value"], schema: TObject, value: object): string {
+  const unknown = Object.keys(value).filter((key) => !Object.hasOwn(schema.properties, key));
+  if (unknown.length > 0) return `Invalid arguments at /: unknown property ${unknown.join(", ")}`;
   const first = Value.Errors(schema, value)[0];
   if (!first) return "Invalid arguments";
-  const location = first.instancePath || "/";
-  if (first.keyword === "additionalProperties") {
-    const names = first.params.additionalProperties.join(", ");
-    return `Invalid arguments at ${location}: unknown property ${names}`;
-  }
-  return `Invalid arguments at ${location}: ${first.message}`;
+  return `Invalid arguments at ${first.instancePath || "/"}: ${first.message}`;
 }
 
 /**
@@ -493,7 +493,7 @@ const tools = /* @__PURE__ */ lazy(async () => {
         name: tool.name,
         title,
         description: tool.description,
-        inputSchema: tool.inputSchema as Tool["inputSchema"],
+        inputSchema: { ...tool.inputSchema },
         annotations: { ...tool.annotations, title },
       };
     }),
