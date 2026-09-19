@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   createCache,
   configureStorage,
@@ -19,6 +19,10 @@ function scopedClient(scope: string, ...values: unknown[]) {
 describe("cachedFetch", () => {
   beforeEach(() => {
     configureStorage(createCache({ max: 100, ttl: 60_000 }));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("fetches from client on cache miss", async () => {
@@ -51,7 +55,6 @@ describe("cachedFetch", () => {
 
     expect(result).toEqual({ id: 1, name: "forges" });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("Could not cache /repos/unjs/ugp"));
-    warn.mockRestore();
   });
 
   it("fetches when the cache read fails", async () => {
@@ -68,7 +71,6 @@ describe("cachedFetch", () => {
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("Could not read the cache for /repos/unjs/ugp"),
     );
-    warn.mockRestore();
   });
 
   it("does not cache non-GET requests", async () => {

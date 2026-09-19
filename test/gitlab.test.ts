@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { FetchError } from "ofetch";
 import { NotFoundError, AuthenticationError, RateLimitError, ForgesError } from "../src/errors.ts";
 
@@ -279,6 +279,10 @@ describe("GitLabProvider", () => {
       baseURL: "https://gitlab.com/api/v4",
       token: "glpat-test",
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe("code.search", () => {
@@ -1483,7 +1487,6 @@ describe("GitLabProvider", () => {
       ]);
       expect(warn).toHaveBeenCalledTimes(3);
       expect(warn).toHaveBeenCalledWith(expect.stringContaining("pipeline 9004"));
-      warn.mockRestore();
     });
 
     it("keeps the merged results pipeline GitLab evaluates for the head", async () => {
