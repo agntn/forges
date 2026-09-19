@@ -44,6 +44,25 @@ export function encodeApiResponsePathSegment(value: string): string {
   return encodeURIComponent(value);
 }
 
+/**
+ * Encode a git ref name as one URL path segment. A tag may carry `/` or `%`,
+ * so both are percent-encoded instead of refused; what git itself forbids in a
+ * ref, an empty or dot-only name and control characters, is still refused.
+ */
+export function encodeRefPathSegment(value: string): string {
+  if (
+    value.trim().length === 0 ||
+    value === "." ||
+    value === ".." ||
+    /* oxlint-disable-next-line no-control-regex */
+    /[\u0000-\u001F\u007F]/.test(value)
+  ) {
+    throw new TypeError("Invalid git ref path segment");
+  }
+
+  return encodeURIComponent(value);
+}
+
 export function normalizeApiBaseURL(
   baseURL: string | undefined,
   fallbackBaseURL: string,

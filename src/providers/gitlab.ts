@@ -60,6 +60,7 @@ import { ForgesError, normalizeError, NotFoundError } from "../errors.ts";
 import {
   encodeApiResponsePathSegment,
   encodePathSegment,
+  encodeRefPathSegment,
   normalizeApiBaseURL,
 } from "./base-url.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
@@ -1383,7 +1384,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const release = await this.client<GitLabRelease>(
-        `/projects/${projectId}/releases/${encodePathSegment(tag)}`,
+        `/projects/${projectId}/releases/${encodeRefPathSegment(tag)}`,
       );
       return this.mapRelease(release);
     } catch (error: unknown) {
@@ -1428,7 +1429,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const release = await this.client<GitLabRelease>(
-        `/projects/${projectId}/releases/${encodePathSegment(tag)}`,
+        `/projects/${projectId}/releases/${encodeRefPathSegment(tag)}`,
         {
           method: "PUT",
           body: {

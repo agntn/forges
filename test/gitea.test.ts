@@ -1470,6 +1470,16 @@ describe("Gitea Provider", () => {
       expect(result).toEqual({ ...release, name: "", body: "", url: "" });
     });
 
+    it("encodes a slash in the tag instead of refusing it", async () => {
+      mockClient.mockResolvedValueOnce({ ...giteaRelease, tag_name: "release/0.16" });
+
+      await provider.releases.get("testowner", "test-repo", "release/0.16");
+
+      expect(mockClient).toHaveBeenCalledWith(
+        "/repos/testowner/test-repo/releases/tags/release%2F0.16",
+      );
+    });
+
     it("creates a release with the Gitea field names", async () => {
       mockClient.mockResolvedValueOnce({ ...giteaRelease, draft: true, published_at: null });
 

@@ -13,6 +13,7 @@ import { ForgesError, normalizeError, NotFoundError } from "../errors.ts";
 import {
   encodeApiResponsePathSegment,
   encodePathSegment,
+  encodeRefPathSegment,
   normalizeApiBaseURL,
 } from "./base-url.ts";
 import { Provider, type ProviderRawTypes } from "../provider.ts";
@@ -889,7 +890,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   private async readRelease(owner: string, repo: string, tag: string): Promise<GiteaRelease> {
     try {
       return await this.client<GiteaRelease>(
-        `${this.releasesRoute(owner, repo)}/tags/${encodePathSegment(tag)}`,
+        `${this.releasesRoute(owner, repo)}/tags/${encodeRefPathSegment(tag)}`,
       );
     } catch (error) {
       throw normalizeError(error, PLATFORM);

@@ -1597,14 +1597,25 @@ describe("GitLabProvider", () => {
       });
     });
 
-    it("reads one release by its encoded tag", async () => {
+    it("reads one release by its tag, slash and all", async () => {
       mockProjectResolve(278964);
-      mocks.client.mockResolvedValueOnce({ ...glRelease, author: null, _links: null });
+      mocks.client.mockResolvedValueOnce({
+        ...glRelease,
+        tag_name: "release/1.118",
+        author: null,
+        _links: null,
+      });
 
-      const result = await gl.releases.get("gitlab-org", "cli", "v1.118.0");
+      const result = await gl.releases.get("gitlab-org", "cli", "release/1.118");
 
-      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/releases/v1.118.0");
-      expect(result).toEqual({ ...release, author: { login: "" }, url: "" });
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/releases/release%2F1.118");
+      expect(result).toEqual({
+        ...release,
+        id: "release/1.118",
+        tag: "release/1.118",
+        author: { login: "" },
+        url: "",
+      });
     });
 
     it("creates a release with description and ref", async () => {

@@ -49,7 +49,11 @@ import { FetchError } from "ofetch";
 import { ForgesError, NotFoundError, normalizeError } from "../errors.ts";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
 import { parseLinkHeader } from "../pagination.ts";
-import { encodeApiResponsePathSegment, encodePathSegment } from "./base-url.ts";
+import {
+  encodeApiResponsePathSegment,
+  encodePathSegment,
+  encodeRefPathSegment,
+} from "./base-url.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
 import { isPullRequestReview, normalizeReviewState } from "../review.ts";
@@ -1310,7 +1314,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   private async readRelease(owner: string, repo: string, tag: string): Promise<GitHubRelease> {
     try {
       return await this.client<GitHubRelease>(
-        `${this.releasesRoute(owner, repo)}/tags/${encodePathSegment(tag)}`,
+        `${this.releasesRoute(owner, repo)}/tags/${encodeRefPathSegment(tag)}`,
       );
     } catch (error) {
       const normalized = await this.releaseError(owner, repo, error);

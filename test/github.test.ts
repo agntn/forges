@@ -2021,6 +2021,17 @@ describe("GitHubProvider", () => {
       expect(result).toEqual(release);
     });
 
+    it("encodes a slash in the tag instead of refusing it", async () => {
+      mocks.client.mockResolvedValueOnce({ ...ghRelease, tag_name: "storage/v1.30.0" });
+
+      const result = await gh.releases.get("googleapis", "google-cloud-go", "storage/v1.30.0");
+
+      expect(mocks.client).toHaveBeenCalledWith(
+        "/repos/googleapis/google-cloud-go/releases/tags/storage%2Fv1.30.0",
+      );
+      expect(result.tag).toBe("storage/v1.30.0");
+    });
+
     it.each(["", "  "])("rejects the blank tag %j before any request", async (tag) => {
       await expect(gh.releases.get("agntn", "forges", tag)).rejects.toMatchObject({
         status: 400,
