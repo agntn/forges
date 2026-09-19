@@ -1343,7 +1343,7 @@ describe("GitLabProvider", () => {
         ],
         headers: glHeaders(),
       });
-      mocks.cachedFetch.mockResolvedValueOnce({ ...glPipeline, name: "verify", status: "running" });
+      mocks.client.mockResolvedValueOnce({ ...glPipeline, name: "verify", status: "running" });
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33, {
         perPage: 2,
@@ -1354,14 +1354,8 @@ describe("GitLabProvider", () => {
         "/projects/278964/merge_requests/33/pipelines",
         { query: { page: 1, per_page: 100 } },
       );
-      expect(mocks.cachedFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/projects/278964/pipelines/9001",
-      );
-      expect(mocks.cachedFetch).not.toHaveBeenCalledWith(
-        mocks.client,
-        "/projects/278964/pipelines/8999",
-      );
+      expect(mocks.client).toHaveBeenCalledWith("/projects/278964/pipelines/9001");
+      expect(mocks.client).not.toHaveBeenCalledWith("/projects/278964/pipelines/8999");
       expect(result).toEqual({
         items: [
           {
@@ -1392,7 +1386,7 @@ describe("GitLabProvider", () => {
           ],
           headers: glHeaders(),
         });
-      mocks.cachedFetch.mockResolvedValueOnce({ ...glPipeline, name: null });
+      mocks.client.mockResolvedValueOnce({ ...glPipeline, name: null });
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33, {
         perPage: 1,
@@ -1424,7 +1418,7 @@ describe("GitLabProvider", () => {
         data: [{ ...glPipeline, sha: glMergeRequest.sha, web_url: null }],
         headers: glHeaders(),
       });
-      mocks.cachedFetch.mockResolvedValueOnce({ ...glPipeline, name: null, web_url: null });
+      mocks.client.mockResolvedValueOnce({ ...glPipeline, name: null, web_url: null });
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
 
@@ -1436,17 +1430,14 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glMergeRequest);
       mocks.rawFetch.mockResolvedValueOnce({ data: [forkPipeline], headers: glHeaders() });
-      mocks.cachedFetch.mockResolvedValueOnce({
+      mocks.client.mockResolvedValueOnce({
         ...forkPipeline,
         name: "Ruby 3.3.12 MR (community contribution)",
       });
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
 
-      expect(mocks.cachedFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/projects/41372369/pipelines/9001",
-      );
+      expect(mocks.client).toHaveBeenCalledWith("/projects/41372369/pipelines/9001");
       expect(result.items).toEqual([
         {
           id: "9001",
@@ -1471,7 +1462,7 @@ describe("GitLabProvider", () => {
         ],
         headers: glHeaders(),
       });
-      mocks.cachedFetch
+      mocks.client
         .mockResolvedValueOnce({ ...glPipeline, name: "Ruby 3.3.12 MR" })
         .mockRejectedValueOnce(makeFetchError(403))
         .mockRejectedValueOnce(makeFetchError(404))
@@ -1489,6 +1480,23 @@ describe("GitLabProvider", () => {
       expect(warn).toHaveBeenCalledWith(expect.stringContaining("pipeline 9004"));
     });
 
+    it("reads the pipeline name again on every call", async () => {
+      mockProjectResolve(278964);
+      for (const name of ["Ruby 3.3.12 MR", "Ruby 3.3.12 MR [renamed]"]) {
+        mocks.client.mockResolvedValueOnce(glMergeRequest);
+        mocks.rawFetch.mockResolvedValueOnce({
+          data: [{ ...glPipeline, sha: glMergeRequest.sha }],
+          headers: glHeaders(),
+        });
+        mocks.client.mockResolvedValueOnce({ ...glPipeline, name });
+
+        const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+
+        expect(result.items[0]?.name).toBe(name);
+      }
+      expect(mocks.cachedFetch).not.toHaveBeenCalled();
+    });
+
     it("reads at most five pipeline names at a time", async () => {
       const rows = Array.from({ length: 7 }, (_, index) => ({
         ...glPipeline,
@@ -1500,7 +1508,7 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glMergeRequest);
       mocks.rawFetch.mockResolvedValueOnce({ data: rows, headers: glHeaders() });
-      mocks.cachedFetch.mockImplementation(async () => {
+      mocks.client.mockImplementation(async () => {
         inFlight += 1;
         peak = Math.max(peak, inFlight);
         await new Promise((resolve) => setTimeout(resolve, 1));
@@ -1510,7 +1518,7 @@ describe("GitLabProvider", () => {
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
 
-      expect(mocks.cachedFetch).toHaveBeenCalledTimes(7);
+      expect(mocks.client).toHaveBeenCalledTimes(9);
       expect(peak).toBe(5);
       expect(result.items.map((check) => check.id)).toEqual(rows.map((row) => String(row.id)));
     });
@@ -1528,21 +1536,15 @@ describe("GitLabProvider", () => {
         ],
         headers: glHeaders(),
       });
-      mocks.cachedFetch
+      mocks.client
         .mockResolvedValueOnce({ ...headPipeline, name: "Ruby 3.3.12 MR" })
         .mockResolvedValueOnce({ ...glPipeline, name: null });
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
 
       expect(mocks.client).toHaveBeenCalledWith("/projects/278964/merge_requests/33");
-      expect(mocks.cachedFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/projects/278964/pipelines/9003",
-      );
-      expect(mocks.cachedFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/projects/278964/pipelines/9001",
-      );
+      expect(mocks.client).toHaveBeenCalledWith("/projects/278964/pipelines/9003");
+      expect(mocks.client).toHaveBeenCalledWith("/projects/278964/pipelines/9001");
       expect(result.items.map((check) => [check.id, check.conclusion])).toEqual([
         ["9003", "success"],
         ["9001", null],
