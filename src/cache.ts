@@ -144,7 +144,8 @@ function compareQueryEntries(
 }
 
 /**
- * Wrapper around HTTP client that caches GET requests
+ * Wrapper around HTTP client that caches GET requests. A storage that fails to
+ * read or write costs the call its cache, never the platform's answer.
  * @param client ofetch instance
  * @param url Request URL
  * @param options Request options
@@ -166,7 +167,7 @@ export async function cachedFetch<T>(
   const cacheKey = generateCacheKey(clientCacheScope(client), url, options);
 
   // Check cache first
-  const cached = await storage.getItem<T>(cacheKey);
+  const cached = await readCached<T>(storage, cacheKey, url);
   if (cached !== null && cached !== undefined) {
     return cached;
   }
@@ -175,9 +176,33 @@ export async function cachedFetch<T>(
   const result = options ? await client<T>(url, options) : await client<T>(url);
 
   // Store in cache
-  await storage.setItem(cacheKey, result as Record<string, unknown>);
+  await writeCached(storage, cacheKey, url, result);
 
   return result;
+}
+
+/** A storage read that rejects is a miss with a warning, so an outage costs one fetch. */
+async function readCached<T>(storage: Storage, cacheKey: string, url: string): Promise<T | null> {
+  try {
+    return await storage.getItem<T>(cacheKey);
+  } catch (error) {
+    console.warn(`[forges] Could not read the cache for ${url}: ${String(error)}`);
+    return null;
+  }
+}
+
+/** A storage write that rejects is dropped with a warning; the response is already in hand. */
+async function writeCached(
+  storage: Storage,
+  cacheKey: string,
+  url: string,
+  value: unknown,
+): Promise<void> {
+  try {
+    await storage.setItem(cacheKey, value as Record<string, unknown>);
+  } catch (error) {
+    console.warn(`[forges] Could not cache ${url}: ${String(error)}`);
+  }
 }
 
 /**
