@@ -469,8 +469,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   }
 
   /**
-   * Merge request pipeline rows carry no `name`, so the project the pipeline ran in serves it, once
-   * per pipeline since a name never changes; a failed read keeps the check under the fallback name.
+   * Merge request pipeline rows carry no `name`, so the project the pipeline ran in serves it, from
+   * the cache while its entry lives; a failed read keeps the check under the fallback name.
    */
   private async readPullRequestCheck(raw: GitLabPipeline): Promise<PullRequestCheck> {
     try {
