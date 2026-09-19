@@ -1182,9 +1182,9 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   }
 
   /**
-   * A merged results or merge train pipeline runs on a merge commit GitLab builds, and its
-   * REST row carries only that sha, so the one GitLab still evaluates for the merge request
-   * is matched as `head_pipeline` next to the pipelines on the head sha itself.
+   * Merged results and merge train pipelines run on a merge commit GitLab builds, and the REST
+   * row has no source sha, so `head_pipeline` stands in. GitLab moves that pointer only once a
+   * pipeline for the new head exists, so right after a push it can still name the previous one.
    */
   protected override async listPullRequestChecks(
     owner: string,
