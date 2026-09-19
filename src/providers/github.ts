@@ -521,6 +521,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   private client: HttpClient;
   private readonly restBaseURL: string;
   private readonly authenticated: boolean;
+  private gitHubHost: boolean | undefined;
 
   constructor(config: ProviderConfig) {
     super();
@@ -582,8 +583,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
-  /** GitHub.com and Enterprise serve the whole API, GitBucket and the like do not. */
+  /** GitHub.com and Enterprise serve the whole API, GitBucket and the like do not. Probed once per instance. */
   private async isGitHubHost(owner: string, repo: string): Promise<boolean> {
+    if (this.gitHubHost !== undefined) return this.gitHubHost;
     const hostname = new URL(this.restBaseURL).hostname;
     if (hostname === "api.github.com" || hostname.endsWith(".ghe.com")) return true;
     try {
@@ -591,7 +593,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         this.client,
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
       );
-      return headers.has("x-github-enterprise-version");
+      this.gitHubHost = headers.has("x-github-enterprise-version");
+      return this.gitHubHost;
     } catch (error) {
       throw normalizeError(error, "github");
     }

@@ -2167,7 +2167,7 @@ describe("GitHubProvider", () => {
       expect((error as ForgesError).status).toBe(403);
     });
 
-    it("reports the route as unsupported on a GitHub-compatible host that 404s it", async () => {
+    it("reports the route as unsupported on a GitHub-compatible host that 404s it, probing the host once", async () => {
       const gitbucket = new GitHubProvider({
         baseURL: "https://gitbucket.example.com/api/v3",
         token: "gb_test",
@@ -2184,6 +2184,12 @@ describe("GitHubProvider", () => {
       expect(error).not.toBeInstanceOf(NotFoundError);
       expect((error as ForgesError).status).toBe(501);
       expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/repos/octocat/hello-world");
+
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+      await expect(gitbucket.releases.list("octocat", "hello-world")).rejects.toMatchObject({
+        status: 501,
+      });
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(3);
     });
   });
 
