@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.3.2
+
+[compare changes](https://github.com/agntn/forges/compare/v0.3.1...v0.3.2)
+
+### 🚀 Enhancements
+
+- Manage releases by tag ([#126](https://github.com/agntn/forges/pull/126))
+
+### 🩹 Fixes
+
+- **gitlab:** List the merged results pipeline ([#120](https://github.com/agntn/forges/pull/120))
+
+### 🏡 Chore
+
+- Add `pi` image ([2a01c11](https://github.com/agntn/forges/commit/2a01c11))
+
+### ❤️ Contributors
+
+- Ori ([@oritwoen](https://github.com/oritwoen))
+- Aeitwoen ([@aeitwoen](https://github.com/aeitwoen))
+
 ## v0.3.1
 
 [compare changes](https://github.com/agntn/forges/compare/v0.3.0...v0.3.1)
