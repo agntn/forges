@@ -45,18 +45,21 @@ export function encodeApiResponsePathSegment(value: string): string {
 }
 
 /**
+ * What `git check-ref-format` refuses: control characters, space, `~ ^ : ? * [ \`,
+ * `..`, `@{`, a leading or trailing or doubled `/`, a trailing `.`, a component
+ * starting with `.` or ending in `.lock`.
+ */
+const INVALID_REF_NAME =
+  /* oxlint-disable-next-line no-control-regex */
+  /[\u0000-\u0020\u007F~^:?*[\\]|\.\.|@\{|^\/|\/$|\/\/|\.$|(?:^|\/)\.|\.lock(?:$|\/)/;
+
+/**
  * Encode a git ref name as one URL path segment. A tag may carry `/` or `%`,
- * so both are percent-encoded instead of refused; what git itself forbids in a
- * ref, an empty or dot-only name and control characters, is still refused.
+ * so both are percent-encoded instead of refused; a name git itself would not
+ * accept as a ref is refused before any request goes out.
  */
 export function encodeRefPathSegment(value: string): string {
-  if (
-    value.trim().length === 0 ||
-    value === "." ||
-    value === ".." ||
-    /* oxlint-disable-next-line no-control-regex */
-    /[\u0000-\u001F\u007F]/.test(value)
-  ) {
+  if (value.length === 0 || INVALID_REF_NAME.test(value)) {
     throw new TypeError("Invalid git ref path segment");
   }
 

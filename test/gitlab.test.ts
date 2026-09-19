@@ -1635,17 +1635,28 @@ describe("GitLabProvider", () => {
       });
     });
 
-    it("updates a release by tag with PUT", async () => {
+    it("updates a release by tag with PUT, slash encoded", async () => {
       mockProjectResolve(278964);
-      mocks.client.mockResolvedValueOnce({ ...glRelease, description: "edited" });
+      mocks.client.mockResolvedValueOnce({
+        ...glRelease,
+        tag_name: "release/1.118",
+        description: "edited",
+      });
 
-      const result = await gl.releases.update("gitlab-org", "cli", "v1.118.0", { body: "edited" });
+      const result = await gl.releases.update("gitlab-org", "cli", "release/1.118", {
+        body: "edited",
+      });
 
-      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/releases/v1.118.0", {
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/releases/release%2F1.118", {
         method: "PUT",
         body: { name: undefined, description: "edited" },
       });
-      expect(result).toEqual({ ...release, body: "edited" });
+      expect(result).toEqual({
+        ...release,
+        id: "release/1.118",
+        tag: "release/1.118",
+        body: "edited",
+      });
     });
 
     it.each([
