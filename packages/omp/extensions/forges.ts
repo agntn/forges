@@ -137,6 +137,17 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     page,
     perPage,
   });
+  const commitSearchParameters = closed({
+    platform,
+    query: Type.String({
+      description: "Native commit query, including author-date: or committer-date: qualifiers",
+      minLength: 1,
+    }),
+    owner: Type.Optional(owner),
+    repo: Type.Optional(repo),
+    page,
+    perPage,
+  });
   const commitParameters = closed({ platform, owner, repo, sha });
   const listCommitsParameters = closed({
     platform,
@@ -334,6 +345,19 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listCiRuns(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_commits_search",
+    label: "Search Forges Commits",
+    description:
+      "Search commits across repositories with optional owner and repository scope. GitHub returns repository identity, author and committer dates, totalCount, incomplete, and resultLimit (1000). Results are paged; follow nextPage while hasNextPage is true. incomplete means the search is known to be partial; narrow the query when it is true. Other providers report unsupported search.",
+    parameters: commitSearchParameters,
+    ...statusRenderers("forges_commits_search", "Search Forges Commits"),
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).searchCommits(params);
     },
   });
 

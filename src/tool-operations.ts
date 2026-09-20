@@ -19,6 +19,8 @@ import type {
   ContributionTemplateKind,
   ContributionTemplateSummary,
   CommitSummary,
+  CommitSearchOptions,
+  CommitSearchResult,
   CreateIssueInput,
   CreatePullRequestInput,
   CreateReleaseInput,
@@ -209,6 +211,10 @@ export interface ListContributionTemplatesParams extends RepositoryParams {
 export interface GetContributionTemplateParams extends RepositoryParams {
   readonly kind: ContributionTemplateKind;
   readonly key: string;
+}
+
+export interface SearchCommitsParams extends PlatformParams, CommitSearchOptions {
+  query: string;
 }
 
 export interface SearchCodeParams extends PlatformParams, CodeSearchOptions {
@@ -447,6 +453,19 @@ export async function listCiRuns(
   const provider = await readProvider(params.platform);
   const runs = await provider.ciRuns.list(params.owner, params.repo, options);
   return result(params.platform, runs);
+}
+
+export async function searchCommits(
+  params: SearchCommitsParams,
+): Promise<ForgesToolResult<CommitSearchResult>> {
+  const provider = await readProvider(params.platform);
+  const search = await provider.commits.search(params.query, {
+    owner: params.owner,
+    repo: params.repo,
+    page: params.page,
+    perPage: params.perPage,
+  });
+  return result(params.platform, search);
 }
 
 export async function listCommits(

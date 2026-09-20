@@ -122,6 +122,17 @@ export function forgesToolSchemas() {
     page,
     perPage,
   });
+  const commitSearchParameters = closed({
+    platform,
+    query: Type.String({
+      description: "Native commit query, including author-date: or committer-date: qualifiers",
+      minLength: 1,
+    }),
+    owner: Type.Optional(owner),
+    repo: Type.Optional(repo),
+    page,
+    perPage,
+  });
   const commitParameters = closed({ platform, owner, repo, sha });
   const listCommitsParameters = closed({
     platform,
@@ -283,6 +294,7 @@ export function forgesToolSchemas() {
     codeSearchParameters,
     commitParameters,
     listCommitsParameters,
+    commitSearchParameters,
     listCiRunsParameters,
     listReleasesParameters,
     releaseParameters,

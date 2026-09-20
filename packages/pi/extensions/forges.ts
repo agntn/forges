@@ -230,6 +230,22 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_commits_search",
+    label: "Search Forges Commits",
+    description:
+      "Search commits across repositories with optional owner and repository scope. GitHub returns repository identity, author and committer dates, totalCount, incomplete, and resultLimit (1000). Results are paged; follow nextPage while hasNextPage is true. incomplete means the search is known to be partial; narrow the query when it is true. Other providers report unsupported search.",
+    parameters: schemas.commitSearchParameters,
+    ...statusRenderers("forges_commits_search", "Search Forges Commits"),
+    promptSnippet: "Find commits without knowing their repository first.",
+    promptGuidelines: [
+      "Use forges_commits_search for native GitHub commit queries, including author-date: and committer-date: qualifiers; narrow the query when incomplete is true or totalCount exceeds resultLimit.",
+    ],
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).searchCommits(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_commits_list",
     label: "Forges Commits",
     description: "List paged commits, optionally filtered by ref, path, or date range",
