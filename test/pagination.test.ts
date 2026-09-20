@@ -223,6 +223,43 @@ describe("paginate", () => {
     expect(seenUrls[1]).toContain("https://api.github.com/repos?page=2");
   });
 
+  it.each([
+    ["?page=2", "https://forge.example/api/v1/repos?page=2&per_page=30"],
+    ["users?page=2", "https://forge.example/api/v1/users?page=2&per_page=30"],
+  ])("resolves relative next link %s against the current request", async (next, expected) => {
+    const seen: string[] = [];
+    const fetcher = async (url: string) => {
+      seen.push(url);
+      return {
+        data: [seen.length],
+        headers: new Headers(seen.length === 1 ? { Link: `<${next}>; rel="next"` } : {}),
+      };
+    };
+
+    expect(await fetchAllPages(fetcher, "https://forge.example/api/v1/repos")).toEqual([1, 2]);
+    expect(seen[1]).toBe(expected);
+  });
+
+  it("resolves each link against the latest request path", async () => {
+    const seen: string[] = [];
+    const links = ["../other/repos?page=2", "?page=3"];
+    const fetcher = async (url: string) => {
+      const next = links[seen.length];
+      seen.push(url);
+      return {
+        data: [seen.length],
+        headers: new Headers(next ? { Link: `<${next}>; rel="next"` } : {}),
+      };
+    };
+
+    expect(await fetchAllPages(fetcher, "https://forge.example/api/v1/repos")).toEqual([1, 2, 3]);
+    expect(seen).toEqual([
+      "https://forge.example/api/v1/repos?per_page=30",
+      "https://forge.example/api/other/repos?page=2&per_page=30",
+      "https://forge.example/api/other/repos?page=3&per_page=30",
+    ]);
+  });
+
   it("detects loops when Link next URL only reorders query params", async () => {
     let callCount = 0;
     const fetcher = async (_url: string) => {

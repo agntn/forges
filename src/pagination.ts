@@ -148,7 +148,7 @@ export async function* paginate<T>(
     let nextUrl: string | null = null;
     let canonicalNextUrl: string | null = null;
     if (links.next) {
-      const linkNextUrl = new URL(links.next, baseURL);
+      const linkNextUrl = new URL(links.next, requestUrl);
       if (linkNextUrl.origin !== baseURL) {
         throwPaginationError(
           `Cross-origin pagination URL rejected: ${redactPaginationUrl(linkNextUrl.toString(), baseURL)}`,
