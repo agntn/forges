@@ -526,6 +526,7 @@ describe("forges MCP server", () => {
       body: Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n"),
     });
     expect(parsed.note).toContain("forges_pull_requests_reviews_get");
+    expect(parsed.note).toContain("forges_threads_list");
     mocks.pullRequests.getReview.mockResolvedValue(review);
     const full = await client.callTool({
       name: "forges_pull_requests_reviews_get",

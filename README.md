@@ -20,7 +20,7 @@ Docs, and an explorer that runs the same calls: [forges.agntn.dev](https://forge
 - 📦 **Loads one platform.** `createProvider("github")` is async. It imports GitHub and leaves GitLab on disk.
 - 🆔 **IDs are strings.** Even when the API sent a number. A count the forge withholds is missing, not `0`.
 - 🫥 **Empty string is guest.** `{ token: "" }` is anonymous on purpose. Leave `token` out and you get `AuthenticationError`, not a quiet guest session.
-- 🤖 **Thirty-six tools, three surfaces.** MCP, Pi and OMP share the executors. Seven tools write to the host.
+- 🤖 **38 tools, three surfaces.** MCP, Pi and OMP share the executors. Seven tools write to the host.
 - 🚫 **Missing is 501.** Code search on Gitea is not an empty page. You get a `ForgesError` with status 501.
 - 🧭 **GitBucket is GitHub plus `baseURL`.** Forgejo and Codeberg are Gitea plus `baseURL`. Same class, different host.
 

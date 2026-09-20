@@ -680,7 +680,7 @@ export async function listPullRequestReviews(
   return result(
     params.platform,
     summarizeReviewPage(reviews),
-    "Review bodies are truncated in list output; use forges_pull_requests_reviews_get to read one in full on GitHub or Gitea. GitLab entries are reviewer stances, not review bodies.",
+    "Review bodies are truncated in list output; use forges_pull_requests_reviews_get to read one in full on GitHub or Gitea. GitLab entries are reviewer stances, not review bodies. Inline review comments are the threads forges_threads_list reads.",
   );
 }
 

@@ -569,6 +569,22 @@ describe("Forges Pi extension", () => {
     expect(result.details.result).toEqual({ items: [], hasNextPage: false });
   });
 
+  it("keeps both review continuation routes in Pi and OMP output", async () => {
+    const args = { platform: "github", owner: "agntn", repo: "forges", number: 5 };
+    const piTool = requirePiTool(registerPiTools(), "forges_pull_requests_reviews");
+    const ompTool = requireOmpTool(registerOmpTools().tools, "forges_pull_requests_reviews");
+    const results = [
+      await piTool.execute("test", args, undefined, undefined, unusedPiContext),
+      await ompTool.execute("test", args, undefined, undefined, unusedOmpContext),
+    ];
+    for (const result of results) {
+      const content = result.content[0];
+      if (content?.type !== "text") throw new Error("Expected review text");
+      expect(content.text).toContain("forges_pull_requests_reviews_get");
+      expect(content.text).toContain("forges_threads_list");
+    }
+  });
+
   it("reads full review bodies through both extensions", async () => {
     const review = {
       id: "123",
