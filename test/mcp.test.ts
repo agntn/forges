@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -162,6 +163,28 @@ afterEach(async () => {
 });
 
 describe("forges MCP server", () => {
+  it("keeps documentation tool counts aligned with discovery", async () => {
+    const client = await connectTestClient();
+    const { tools } = await client.listTools();
+    const pages = [
+      "../README.md",
+      "../docs/content/1.guide/01.index.md",
+      "../docs/content/1.guide/10.agents.md",
+      "../docs/app/components/content/LandingHome.vue",
+    ];
+    for (const page of pages) {
+      const source = await readFile(new URL(page, import.meta.url), "utf8");
+      const counts = [
+        ...source.matchAll(/(?:\b(\d+) (?:agent )?tools\b|value: "(\d+)", label: "agent tools")/g),
+      ];
+      expect(counts.length, page).toBeGreaterThan(0);
+      expect(source, page).not.toMatch(/thirty[- ](?:six|seven)/i);
+      for (const match of counts) {
+        expect(Number(match[1] ?? match[2]), `${page}: ${match[0]}`).toBe(tools.length);
+      }
+    }
+  });
+
   it("advertises the complete tool set and marks the writing tools as writes", async () => {
     const client = await connectTestClient();
 
