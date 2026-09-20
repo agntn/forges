@@ -698,6 +698,39 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
       maxItems: 100,
     }),
   });
+  const localInspectParameters = Type.Object(
+    {
+      cwd: Type.String({ description: "Local checkout directory", minLength: 1 }),
+      paths: Type.Optional(
+        Type.Array(Type.String({ minLength: 1 }), {
+          description:
+            "Git pathspecs relative to the repository root; omitted means all paths. Wildcards and :(literal) are supported.",
+          maxItems: 100,
+        }),
+      ),
+      historyLimit: Type.Optional(
+        Type.Integer({
+          description: "Maximum HEAD commits to return, including message bodies; defaults to 3",
+          minimum: 1,
+          maximum: 100,
+        }),
+      ),
+    },
+    { additionalProperties: false },
+  );
+
+  pi.registerTool({
+    name: "forges_local_inspect",
+    label: "Inspect Local Repository",
+    description:
+      "Read local Git status, tracked paths and recent HEAD commit messages in one call. Supports Git pathspecs. No fetch or writes; the reads are not an atomic snapshot.",
+    parameters: localInspectParameters,
+    ...statusRenderers("forges_local_inspect", "Inspect Local Repository"),
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).inspectLocal(params);
+    },
+  });
   pi.registerTool({
     name: "forges_local_merge_verify",
     label: "Verify Local Merge",

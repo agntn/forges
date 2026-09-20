@@ -248,7 +248,26 @@ export function forgesToolSchemas() {
     }),
   });
 
+  const localInspectParameters = closed({
+    cwd: Type.String({ description: "Local checkout directory", minLength: 1 }),
+    paths: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description:
+          "Git pathspecs relative to the repository root; omitted means all paths. Wildcards and :(literal) are supported.",
+        maxItems: 100,
+      }),
+    ),
+    historyLimit: Type.Optional(
+      Type.Integer({
+        description: "Maximum HEAD commits to return, including message bodies; defaults to 3",
+        minimum: 1,
+        maximum: 100,
+      }),
+    ),
+  });
+
   return {
+    localInspectParameters,
     localMergeParameters,
     listRepositoriesParameters,
     repositoryParameters,

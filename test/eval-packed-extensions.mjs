@@ -101,6 +101,7 @@ const expectedToolNames = [
   "forges_threads_reply",
   "forges_threads_resolve",
   "forges_threads_unresolve",
+  "forges_local_inspect",
   "forges_local_merge_verify",
 ];
 
@@ -192,6 +193,17 @@ async function assertPackedMcpServer(root) {
     assert.notEqual(verified.isError, true);
     assert.equal(JSON.parse(verified.content[0].text).result.pathsMatch, false);
     assert.equal(JSON.parse(verified.content[0].text).result.mergeReachable, false);
+    const inspected = await client.callTool({
+      name: "forges_local_inspect",
+      arguments: { cwd: localMergeArgs.cwd, paths: ["file.txt"], historyLimit: 1 },
+    });
+    assert.notEqual(inspected.isError, true);
+    const inspection = JSON.parse(inspected.content[0].text);
+    assert.equal(inspection.platform, "local");
+    assert.deepEqual(inspection.result.trackedFiles, ["file.txt"]);
+    assert.deepEqual(inspection.result.status, []);
+    assert.equal(inspection.result.commits.length, 1);
+    assert.equal(inspection.result.commits[0].subject, "after");
     assertNotLoaded(anyProvider, "local Git verification must not load a provider");
   } finally {
     await Promise.all([client.close(), server.close()]);
@@ -283,6 +295,19 @@ try {
     assert.equal(answer.details.platform, "local");
     assert.equal(answer.details.result.pathsMatch, false);
     assert.equal(answer.details.result.mergeReachable, false);
+    const inspection = await requireTool(tools, "forges_local_inspect").execute(
+      "inspect",
+      { cwd: localMergeArgs.cwd, paths: ["file.txt"], historyLimit: 1 },
+      undefined,
+      undefined,
+      {},
+    );
+    assert.equal(inspection.details.platform, "local");
+    assert.deepEqual(inspection.details.result.trackedFiles, ["file.txt"]);
+    assert.deepEqual(inspection.details.result.status, []);
+    assert.equal(inspection.details.result.commits.length, 1);
+    assert.equal(inspection.details.result.commits[0].subject, "after");
+    assert.deepEqual(JSON.parse(inspection.content[0].text), inspection.details);
   }
   assertNotLoaded(anyProvider, "local extension calls must not load a provider");
   await assertDistributionFallback(piTool);

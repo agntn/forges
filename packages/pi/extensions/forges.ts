@@ -697,6 +697,21 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     },
   });
   pi.registerTool({
+    name: "forges_local_inspect",
+    label: "Inspect Local Repository",
+    description:
+      "Read local Git status, tracked paths and recent HEAD commit messages in one call. Supports Git pathspecs. No fetch or writes; the reads are not an atomic snapshot.",
+    parameters: schemas.localInspectParameters,
+    ...statusRenderers("forges_local_inspect", "Inspect Local Repository"),
+    promptSnippet: "Read local status, tracked files and path history without shell chains.",
+    promptGuidelines: [
+      "Use forges_local_inspect for local Git status and path history; paths are Git pathspecs, not shell commands.",
+    ],
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).inspectLocal(params);
+    },
+  });
+  pi.registerTool({
     name: "forges_local_merge_verify",
     label: "Verify Local Merge",
     description:

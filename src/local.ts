@@ -30,11 +30,20 @@ function git(
   cwd: string,
   args: string[],
   predicate = false,
+  pathspecs: "literal" | "git" = "literal",
 ): Promise<{ output: string; ok: boolean }> {
   return new Promise((resolve, reject) => {
     execFile(
       "git",
-      ["--no-pager", "--no-replace-objects", "--no-lazy-fetch", "--literal-pathspecs", ...args],
+      [
+        "--no-pager",
+        "-c",
+        "core.fsmonitor=false",
+        "--no-replace-objects",
+        "--no-lazy-fetch",
+        pathspecs === "literal" ? "--literal-pathspecs" : "--no-literal-pathspecs",
+        ...args,
+      ],
       {
         cwd,
         env: {
@@ -137,4 +146,128 @@ export async function verifyLocalMerge(
     )
   ).ok;
   return { headSha, mergeSha, targetSha, mergeReachable, pathsMatch, paths };
+}
+
+export interface InspectLocalOptions {
+  cwd: string;
+  /** Git pathspecs relative to the repository root; omitted means all paths. */
+  paths?: string[];
+  historyLimit?: number;
+}
+
+export interface LocalStatusEntry {
+  index: string;
+  worktree: string;
+  path: string;
+  originalPath?: string;
+}
+
+export interface LocalInspection {
+  root: string;
+  headSha: string | null;
+  status: LocalStatusEntry[];
+  trackedFiles: string[];
+  commits: { sha: string; subject: string; body: string }[];
+}
+
+function parseStatus(output: string): LocalStatusEntry[] {
+  const fields = output.split("\0");
+  fields.pop();
+  const entries: LocalStatusEntry[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    const field = fields[i]!;
+    const entry: LocalStatusEntry = {
+      index: field[0]!,
+      worktree: field[1]!,
+      path: field.slice(3),
+    };
+    if (
+      entry.index === "R" ||
+      entry.index === "C" ||
+      entry.worktree === "R" ||
+      entry.worktree === "C"
+    ) {
+      entry.originalPath = fields[++i]!;
+    }
+    entries.push(entry);
+  }
+  return entries;
+}
+
+/** Local reads only; concurrent edits can change the checkout between reads. */
+export async function inspectLocal(options: InspectLocalOptions): Promise<LocalInspection> {
+  assertText(options.cwd, "cwd");
+  if (
+    options.paths !== undefined &&
+    (!Array.isArray(options.paths) || options.paths.length > 100)
+  ) {
+    throw new TypeError("paths must contain at most 100 Git pathspecs");
+  }
+  const paths = [...(options.paths ?? [])];
+  for (const path of paths) assertText(path, "pathspec");
+  const historyLimit = options.historyLimit ?? 3;
+  if (!Number.isInteger(historyLimit) || historyLimit < 1 || historyLimit > 100) {
+    throw new TypeError("historyLimit must be an integer between 1 and 100");
+  }
+  const root = (await git(options.cwd, ["rev-parse", "--show-toplevel"])).output.replace(/\n$/, "");
+  const head = await git(root, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], true);
+  if (!head.ok) {
+    const branch = (await git(root, ["symbolic-ref", "HEAD"])).output.replace(/\n$/, "");
+    if ((await git(root, ["show-ref", "--verify", "--quiet", branch], true)).ok) {
+      throw new LocalGitError("HEAD does not resolve to a commit");
+    }
+  }
+  const headSha = head.ok ? head.output.trim() : null;
+  const [status, files, history] = await Promise.all([
+    git(
+      root,
+      [
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--ignore-submodules=none",
+        "--renames",
+        "--",
+        ...paths,
+      ],
+      false,
+      "git",
+    ),
+    git(root, ["ls-files", "--cached", "--deduplicate", "-z", "--", ...paths], false, "git"),
+    headSha === null
+      ? Promise.resolve({ output: "" })
+      : git(
+          root,
+          [
+            "log",
+            "--no-show-signature",
+            "--no-notes",
+            "--encoding=UTF-8",
+            "-z",
+            `--max-count=${historyLimit}`,
+            "--format=format:%H%x00%s%x00%b",
+            headSha,
+            "--",
+            ...paths,
+          ],
+          false,
+          "git",
+        ),
+  ]);
+  const fields = history.output.split("\0");
+  const commits: LocalInspection["commits"] = [];
+  if (history.output) {
+    if (fields.length % 3 !== 0) throw new LocalGitError("Malformed Git log output");
+    for (let i = 0; i < fields.length; i += 3) {
+      commits.push({ sha: fields[i]!, subject: fields[i + 1]!, body: fields[i + 2]! });
+    }
+  }
+  return {
+    root,
+    headSha,
+    status: parseStatus(status.output),
+    trackedFiles: files.output ? files.output.split("\0").slice(0, -1) : [],
+    commits,
+  };
 }
