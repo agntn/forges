@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -101,6 +101,7 @@ const expectedToolNames = [
   "forges_threads_reply",
   "forges_threads_resolve",
   "forges_threads_unresolve",
+  "forges_local_merge_verify",
 ];
 
 async function registerPackedExtension(extensionPath, api) {
@@ -118,6 +119,13 @@ async function registerPackedExtension(extensionPath, api) {
 }
 
 const repositoryArgs = { platform: "github", owner: "agntn", repo: "forges" };
+const localMergeArgs = {
+  cwd: join(temporaryRoot, "checkout"),
+  head: "HEAD~1",
+  mergeCommit: "HEAD",
+  target: "HEAD~1",
+  paths: ["file.txt"],
+};
 
 function requireTool(tools, name) {
   const tool = tools.get(name);
@@ -177,6 +185,14 @@ async function assertPackedMcpServer(root) {
     );
     assertLoaded(executors, "the first call loads the executors");
     assertNotLoaded(anyProvider, "a call rejected by its schema must not load a provider");
+    const verified = await client.callTool({
+      name: "forges_local_merge_verify",
+      arguments: localMergeArgs,
+    });
+    assert.notEqual(verified.isError, true);
+    assert.equal(JSON.parse(verified.content[0].text).result.pathsMatch, false);
+    assert.equal(JSON.parse(verified.content[0].text).result.mergeReachable, false);
+    assertNotLoaded(anyProvider, "local Git verification must not load a provider");
   } finally {
     await Promise.all([client.close(), server.close()]);
   }
@@ -213,6 +229,21 @@ process.env.GH_TOKEN = "";
 delete process.env.GITHUB_TOKEN;
 
 try {
+  await mkdir(localMergeArgs.cwd);
+  const git = (args) =>
+    execFileAsync(
+      "git",
+      ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", ...args],
+      { cwd: localMergeArgs.cwd },
+    );
+  await git(["init", "-q"]);
+  await git(["config", "user.name", "Test"]);
+  await git(["config", "user.email", "test@example.com"]);
+  for (const value of ["before", "after"]) {
+    await writeFile(join(localMergeArgs.cwd, "file.txt"), value);
+    await git(["add", "file.txt"]);
+    await git(["commit", "-qm", value]);
+  }
   const piExtensionDirectory = join(packageRoot, "packages/pi/extensions");
   const ompExtensionDirectory = join(packageRoot, "packages/omp/extensions");
   await Promise.all([
@@ -241,6 +272,19 @@ try {
   assertRenderedCall(ompTool, ompApi);
   assertNotLoaded(executors, "rendering a call must not load the executors");
   await assertPackedMcpServer(packageRoot);
+  for (const tools of [piTools, ompTools]) {
+    const answer = await requireTool(tools, "forges_local_merge_verify").execute(
+      "local",
+      localMergeArgs,
+      undefined,
+      undefined,
+      {},
+    );
+    assert.equal(answer.details.platform, "local");
+    assert.equal(answer.details.result.pathsMatch, false);
+    assert.equal(answer.details.result.mergeReachable, false);
+  }
+  assertNotLoaded(anyProvider, "local extension calls must not load a provider");
   await assertDistributionFallback(piTool);
   await assertDistributionFallback(ompTool);
   await helpStaysLight;

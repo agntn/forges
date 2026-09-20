@@ -684,4 +684,30 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
       return (await loadToolOperations()).unresolveThread(params);
     },
   });
+  const localMergeParameters = closed({
+    cwd: Type.String({ description: "Local checkout directory", minLength: 1 }),
+    head: Type.String({ description: "PR head commit or ref", minLength: 1 }),
+    mergeCommit: Type.String({
+      description: "Merge or squash commit reported by the forge",
+      minLength: 1,
+    }),
+    target: Type.String({ description: "Local target ref, fetched by the caller", minLength: 1 }),
+    paths: Type.Array(Type.String({ minLength: 1 }), {
+      description: "Literal paths relative to the repository root",
+      minItems: 1,
+      maxItems: 100,
+    }),
+  });
+  pi.registerTool({
+    name: "forges_local_merge_verify",
+    label: "Verify Local Merge",
+    description:
+      "Read local Git ancestry and compare selected paths between a PR head and its merge commit. No fetch or writes. This is not permission to delete a branch.",
+    parameters: localMergeParameters,
+    ...statusRenderers("forges_local_merge_verify", "Verify Local Merge"),
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).verifyLocalMerge(params);
+    },
+  });
 }

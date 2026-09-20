@@ -233,7 +233,23 @@ export function forgesToolSchemas() {
     body: Type.String({ description: "Reply body", minLength: 1 }),
   });
 
+  const localMergeParameters = closed({
+    cwd: Type.String({ description: "Local checkout directory", minLength: 1 }),
+    head: Type.String({ description: "PR head commit or ref", minLength: 1 }),
+    mergeCommit: Type.String({
+      description: "Merge or squash commit reported by the forge",
+      minLength: 1,
+    }),
+    target: Type.String({ description: "Local target ref, fetched by the caller", minLength: 1 }),
+    paths: Type.Array(Type.String({ minLength: 1 }), {
+      description: "Literal paths relative to the repository root",
+      minItems: 1,
+      maxItems: 100,
+    }),
+  });
+
   return {
+    localMergeParameters,
     listRepositoriesParameters,
     repositoryParameters,
     listContributionTemplatesParameters,
