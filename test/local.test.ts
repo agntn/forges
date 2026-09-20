@@ -42,6 +42,31 @@ describe("verifyLocalMerge", () => {
     ).rejects.toThrow("must exist");
   });
 
+  it("checks a large directory without enumerating its descendants", async () => {
+    const base = commit("base");
+    const blob = git("rev-parse", `${base}:file.txt`);
+    const entries = Array.from(
+      { length: 9000 },
+      (_, i) => `100644 blob ${blob}\t${String(i).padStart(5, "0")}${"x".repeat(120)}\n`,
+    ).join("");
+    const tree = execFileSync("git", ["mktree"], { cwd, input: entries, encoding: "utf8" }).trim();
+    const root = execFileSync("git", ["mktree"], {
+      cwd,
+      input: `040000 tree ${tree}\tvendor\n`,
+      encoding: "utf8",
+    }).trim();
+    const head = git("commit-tree", root, "-p", base, "-m", "large directory");
+    expect(
+      await verifyLocalMerge({
+        cwd,
+        head,
+        mergeCommit: head,
+        target: head,
+        paths: ["vendor", `vendor/00000${"x".repeat(120)}`],
+      }),
+    ).toMatchObject({ pathsMatch: true, mergeReachable: true });
+  });
+
   it("ignores inherited Git repository selectors", async () => {
     const head = commit("base");
     vi.stubEnv("GIT_DIR", join(cwd, "missing.git"));

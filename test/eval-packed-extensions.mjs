@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -120,11 +120,11 @@ async function registerPackedExtension(extensionPath, api) {
 
 const repositoryArgs = { platform: "github", owner: "agntn", repo: "forges" };
 const localMergeArgs = {
-  cwd: root,
-  head: "HEAD",
+  cwd: join(temporaryRoot, "checkout"),
+  head: "HEAD~1",
   mergeCommit: "HEAD",
-  target: "HEAD",
-  paths: ["package.json"],
+  target: "HEAD~1",
+  paths: ["file.txt"],
 };
 
 function requireTool(tools, name) {
@@ -190,7 +190,8 @@ async function assertPackedMcpServer(root) {
       arguments: localMergeArgs,
     });
     assert.notEqual(verified.isError, true);
-    assert.equal(JSON.parse(verified.content[0].text).result.pathsMatch, true);
+    assert.equal(JSON.parse(verified.content[0].text).result.pathsMatch, false);
+    assert.equal(JSON.parse(verified.content[0].text).result.mergeReachable, false);
     assertNotLoaded(anyProvider, "local Git verification must not load a provider");
   } finally {
     await Promise.all([client.close(), server.close()]);
@@ -228,6 +229,21 @@ process.env.GH_TOKEN = "";
 delete process.env.GITHUB_TOKEN;
 
 try {
+  await mkdir(localMergeArgs.cwd);
+  const git = (args) =>
+    execFileAsync(
+      "git",
+      ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", ...args],
+      { cwd: localMergeArgs.cwd },
+    );
+  await git(["init", "-q"]);
+  await git(["config", "user.name", "Test"]);
+  await git(["config", "user.email", "test@example.com"]);
+  for (const value of ["before", "after"]) {
+    await writeFile(join(localMergeArgs.cwd, "file.txt"), value);
+    await git(["add", "file.txt"]);
+    await git(["commit", "-qm", value]);
+  }
   const piExtensionDirectory = join(packageRoot, "packages/pi/extensions");
   const ompExtensionDirectory = join(packageRoot, "packages/omp/extensions");
   await Promise.all([
@@ -265,8 +281,8 @@ try {
       {},
     );
     assert.equal(answer.details.platform, "local");
-    assert.equal(answer.details.result.pathsMatch, true);
-    assert.equal(answer.details.result.mergeReachable, true);
+    assert.equal(answer.details.result.pathsMatch, false);
+    assert.equal(answer.details.result.mergeReachable, false);
   }
   assertNotLoaded(anyProvider, "local extension calls must not load a provider");
   await assertDistributionFallback(piTool);

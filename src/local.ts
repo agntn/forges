@@ -100,16 +100,16 @@ export async function verifyLocalMerge(
   const headSha = await resolveCommit(head);
   const mergeSha = await resolveCommit(mergeCommit);
   const targetSha = await resolveCommit(target);
-  const files: string[] = [];
-  for (const sha of [headSha, mergeSha]) {
-    files.push(
-      ...(
-        await git(root, ["ls-tree", "-r", "--name-only", "-z", sha, "--", ...paths])
-      ).output.split("\0"),
-    );
-  }
-  if (paths.some((path) => !files.some((file) => file === path || file.startsWith(`${path}/`)))) {
-    throw new TypeError("Every selected path must exist in the head or merge tree");
+  for (const path of paths) {
+    let exists = false;
+    for (const sha of [headSha, mergeSha]) {
+      const { output } = await git(root, ["ls-tree", "--name-only", "-z", sha, "--", path]);
+      if (output.split("\0").includes(path)) {
+        exists = true;
+        break;
+      }
+    }
+    if (!exists) throw new TypeError("Every selected path must exist in the head or merge tree");
   }
   const mergeReachable = (
     await git(root, ["merge-base", "--is-ancestor", mergeSha, targetSha], true)

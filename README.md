@@ -108,14 +108,14 @@ import { verifyLocalMerge } from "@agntn/forges/local";
 const evidence = await verifyLocalMerge({
   cwd: "/path/to/checkout",
   head: "topic",
-  mergeCommit: "origin/main",
+  mergeCommit: "66c39f4bccd275e930420f408b7c311b9c494af8",
   target: "origin/main",
   paths: ["package.json", "README.md"],
 });
 console.log(evidence.mergeReachable, evidence.pathsMatch);
 ```
 
-Use the forge's actual merge or squash SHA as `mergeCommit` when the target has advanced. The two booleans answer different questions: is that commit in the target's local history, and do the selected paths match the PR head? Neither authorizes deleting a branch. Details and limits: [Agents](https://forges.agntn.dev/guide/agents#local-merge-verification).
+Replace the sample `mergeCommit` with the forge's actual merge or squash SHA for that PR, not the current target tip. The two booleans answer different questions: is that commit in the target's local history, and do the selected paths match the PR head? Neither authorizes deleting a branch. Details and limits: [Agents](https://forges.agntn.dev/guide/agents#local-merge-verification).
 
 ## 🗺️ Providers
 
