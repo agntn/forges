@@ -39,7 +39,7 @@ function git(
         cwd,
         env: {
           ...Object.fromEntries(
-            Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")),
+            Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith("GIT_")),
           ),
           GIT_TERMINAL_PROMPT: "0",
           GIT_OPTIONAL_LOCKS: "0",

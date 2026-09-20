@@ -1,9 +1,15 @@
+import * as childProcess from "node:child_process";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocalGitError, verifyLocalMerge } from "../src/local.ts";
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:child_process")>();
+  return { ...original, execFile: vi.fn(original.execFile) };
+});
 
 let cwd: string;
 function git(...args: string[]): string {
@@ -21,6 +27,7 @@ function commit(text: string): string {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   cwd = mkdtempSync(join(tmpdir(), "forges-local-"));
   git("init", "-q", "-b", "main");
   git("config", "user.name", "Test");
@@ -30,19 +37,23 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   rmSync(cwd, { recursive: true, force: true });
 });
 
 describe("verifyLocalMerge", () => {
-  it("preserves a carriage return at the end of the checkout directory", async () => {
-    const head = commit("base");
-    renameSync(cwd, `${cwd}\r`);
-    cwd += "\r";
-    expect(
-      await verifyLocalMerge({ cwd, head, mergeCommit: head, target: head, paths: ["file.txt"] }),
-    ).toMatchObject({ mergeReachable: true, pathsMatch: true });
-  });
+  it.skipIf(process.platform === "win32")(
+    "preserves a carriage return at the end of the checkout directory",
+    async () => {
+      const head = commit("base");
+      renameSync(cwd, `${cwd}\r`);
+      cwd += "\r";
+      expect(
+        await verifyLocalMerge({ cwd, head, mergeCommit: head, target: head, paths: ["file.txt"] }),
+      ).toMatchObject({ mergeReachable: true, pathsMatch: true });
+    },
+  );
 
   it("verifies a deletion shared by the PR head and squash result", async () => {
     commit("base");
@@ -94,6 +105,20 @@ describe("verifyLocalMerge", () => {
         paths: ["vendor", `vendor/00000${"x".repeat(120)}`],
       }),
     ).toMatchObject({ pathsMatch: true, mergeReachable: true });
+  });
+
+  it("removes Git environment keys regardless of case before spawning", async () => {
+    const head = commit("base");
+    vi.stubEnv("git_dir", join(cwd, "missing.git"));
+    vi.stubEnv("Git_Work_Tree", "/missing");
+    const spawn = vi.mocked(childProcess.execFile);
+    await verifyLocalMerge({ cwd, head, mergeCommit: head, target: head, paths: ["file.txt"] });
+    expect(spawn).toHaveBeenCalled();
+    for (const call of spawn.mock.calls) {
+      expect(call[2]).toHaveProperty("env.GIT_OPTIONAL_LOCKS", "0");
+      expect(call[2]).not.toHaveProperty("env.git_dir");
+      expect(call[2]).not.toHaveProperty("env.Git_Work_Tree");
+    }
   });
 
   it("ignores inherited Git repository selectors", async () => {
