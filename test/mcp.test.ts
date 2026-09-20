@@ -101,6 +101,7 @@ const toolNames = [
   "forges_threads_reply",
   "forges_threads_resolve",
   "forges_threads_unresolve",
+  "forges_local_inspect",
   "forges_local_merge_verify",
 ];
 
@@ -176,7 +177,7 @@ describe("forges MCP server", () => {
         readOnlyHint: !writingTools.has(tool.name),
         // A release edit replaces the title and notes that were there; nothing else overwrites.
         destructiveHint: tool.name === "forges_releases_update",
-        openWorldHint: tool.name !== "forges_local_merge_verify",
+        openWorldHint: !tool.name.startsWith("forges_local_"),
       });
       expect(tool.title).not.toBe(tool.name);
     }

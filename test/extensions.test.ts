@@ -126,6 +126,7 @@ const toolNames = [
   "forges_threads_reply",
   "forges_threads_resolve",
   "forges_threads_unresolve",
+  "forges_local_inspect",
   "forges_local_merge_verify",
 ];
 

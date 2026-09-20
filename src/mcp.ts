@@ -402,6 +402,15 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       execute: (operations, args) => operations.unresolveThread(args),
     }),
     defineTool({
+      name: "forges_local_inspect",
+      title: "Inspect Local Repository",
+      description:
+        "Read local Git status, tracked paths and recent HEAD commit messages in one call. Supports Git pathspecs. No fetch or writes; the reads are not an atomic snapshot.",
+      inputSchema: schemas.localInspectParameters,
+      annotations: { ...readAnnotations, openWorldHint: false },
+      execute: (operations, args) => operations.inspectLocal(args),
+    }),
+    defineTool({
       name: "forges_local_merge_verify",
       title: "Verify Local Merge",
       description:

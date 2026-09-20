@@ -98,12 +98,18 @@ const gitbucket = await createProvider("github", {
 
 Ten resources on every provider. `repos`, `issues`, `pullRequests`, `threads`. Then `commits`, `ciRuns`, `releases`, `contributionTemplates`, `code`, `users`. Lists come back as `items` plus `hasNextPage`. `totalCount` only when the forge counted. Search adds `incomplete` when the answer is known to be partial. Guides: [Authentication](https://forges.agntn.dev/guide/auth), [Repositories](https://forges.agntn.dev/guide/repositories), [Issues](https://forges.agntn.dev/guide/issues), [Pull requests](https://forges.agntn.dev/guide/pull-requests), [Review threads](https://forges.agntn.dev/guide/threads), [Commits, CI and releases](https://forges.agntn.dev/guide/commits), [Templates](https://forges.agntn.dev/guide/templates), [Code search](https://forges.agntn.dev/guide/code-search).
 
-### Local merge verification
+### Local Git
 
-`@agntn/forges/local` checks a fetched checkout without changing it. Git with `--no-lazy-fetch` support must be on `PATH`.
+`@agntn/forges/local` checks a fetched checkout without changing it. Git with `--no-lazy-fetch` support must be on `PATH`; inspection also needs `ls-files --deduplicate`.
 
 ```ts
-import { verifyLocalMerge } from "@agntn/forges/local";
+import { inspectLocal, verifyLocalMerge } from "@agntn/forges/local";
+
+const inspection = await inspectLocal({
+  cwd: "/path/to/checkout",
+  paths: ["*AGENTS.md"],
+  historyLimit: 3,
+});
 
 const evidence = await verifyLocalMerge({
   cwd: "/path/to/checkout",

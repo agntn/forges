@@ -1,10 +1,18 @@
 import * as childProcess from "node:child_process";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LocalGitError, verifyLocalMerge } from "../src/local.ts";
+import { inspectLocal, LocalGitError, verifyLocalMerge } from "../src/local.ts";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:child_process")>();
@@ -245,4 +253,134 @@ describe("verifyLocalMerge", () => {
       ).rejects.toBeInstanceOf(TypeError);
     },
   );
+});
+
+describe("inspectLocal", () => {
+  it("returns filtered status, tracked paths and full commit messages", async () => {
+    mkdirSync(join(cwd, "nested"));
+    writeFileSync(join(cwd, "nested/AGENTS.md"), "rules");
+    const first = commit("base");
+    writeFileSync(join(cwd, "nested/AGENTS.md"), "new rules");
+    git("add", "nested/AGENTS.md");
+    git("commit", "-qm", "update rules", "-m", "Reason line one.\nReason line two.");
+    const second = git("rev-parse", "HEAD");
+    writeFileSync(join(cwd, "nested/AGENTS.md"), "staged");
+    git("add", "nested/AGENTS.md");
+    writeFileSync(join(cwd, "nested/AGENTS.md"), "unstaged");
+    writeFileSync(join(cwd, "file.txt"), "unrelated");
+    const result = await inspectLocal({ cwd: join(cwd, "nested"), paths: ["*AGENTS.md"] });
+    expect(result).toEqual({
+      root: cwd,
+      headSha: second,
+      status: [{ index: "M", worktree: "M", path: "nested/AGENTS.md" }],
+      trackedFiles: ["nested/AGENTS.md"],
+      commits: [
+        { sha: second, subject: "update rules", body: "Reason line one.\nReason line two.\n" },
+        { sha: first, subject: "base", body: "" },
+      ],
+    });
+    expect((await inspectLocal({ cwd, paths: ["*AGENTS.md"], historyLimit: 1 })).commits).toEqual(
+      result.commits.slice(0, 1),
+    );
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "preserves unusual paths and separates rename source from destination",
+    async () => {
+      const original = "old\nname.txt";
+      const destination = "new\tname.txt";
+      writeFileSync(join(cwd, original), "rename me");
+      commit("base");
+      git("mv", "--", original, destination);
+      const untracked = "--flag $(not-a-command).txt";
+      writeFileSync(join(cwd, untracked), "untracked");
+      const result = await inspectLocal({ cwd });
+      expect(result.status).toEqual([
+        { index: "R", worktree: " ", path: destination, originalPath: original },
+        { index: "?", worktree: "?", path: untracked },
+      ]);
+      expect(result.trackedFiles).toEqual(["file.txt", destination]);
+    },
+  );
+
+  it("supports literal pathspecs, exclusions and empty matches", async () => {
+    writeFileSync(join(cwd, "[a].txt"), "literal");
+    writeFileSync(join(cwd, "a.txt"), "pattern");
+    commit("base");
+    expect((await inspectLocal({ cwd, paths: [":(literal)[a].txt"] })).trackedFiles).toEqual([
+      "[a].txt",
+    ]);
+    expect(
+      (await inspectLocal({ cwd, paths: ["*.txt", ":(exclude)file.txt"] })).trackedFiles,
+    ).toEqual(["[a].txt", "a.txt"]);
+    expect(await inspectLocal({ cwd, paths: ["missing"] })).toMatchObject({
+      status: [],
+      trackedFiles: [],
+      commits: [],
+    });
+  });
+
+  it("reads an unborn branch without treating it as a command failure", async () => {
+    writeFileSync(join(cwd, "staged.txt"), "staged");
+    git("add", "staged.txt");
+    expect(await inspectLocal({ cwd })).toEqual({
+      root: cwd,
+      headSha: null,
+      status: [{ index: "A", worktree: " ", path: "staged.txt" }],
+      trackedFiles: ["staged.txt"],
+      commits: [],
+    });
+  });
+
+  it("preserves the index and ignores ambient Git overrides", async () => {
+    commit("base");
+    writeFileSync(join(cwd, "file.txt"), "dirty");
+    const index = readFileSync(join(cwd, ".git/index"));
+    vi.stubEnv("GIT_DIR", "/missing");
+    const result = await inspectLocal({ cwd });
+    expect(result.status).toEqual([{ index: " ", worktree: "M", path: "file.txt" }]);
+    expect(readFileSync(join(cwd, ".git/index"))).toEqual(index);
+    for (const call of vi.mocked(childProcess.execFile).mock.calls) {
+      expect(call[1]).toContain("--no-lazy-fetch");
+    }
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "does not invoke a configured fsmonitor hook",
+    async () => {
+      commit("base");
+      git("config", "core.fsmonitor", "echo invoked > fsmonitor-ran; false");
+      await inspectLocal({ cwd });
+      expect(existsSync(join(cwd, "fsmonitor-ran"))).toBe(false);
+    },
+  );
+
+  it("does not mistake a broken detached HEAD for an unborn branch", async () => {
+    commit("base");
+    writeFileSync(join(cwd, ".git/HEAD"), `${"1".repeat(40)}\n`);
+    await expect(inspectLocal({ cwd })).rejects.toBeInstanceOf(LocalGitError);
+  });
+
+  it("defaults to three commits and fails instead of truncating oversized output", async () => {
+    for (const text of ["one", "two", "three", "four"]) commit(text);
+    expect((await inspectLocal({ cwd })).commits.map((entry) => entry.subject)).toEqual([
+      "four",
+      "three",
+      "two",
+    ]);
+    const message = join(cwd, ".git/message");
+    writeFileSync(message, `large\n\n${"x".repeat(1024 * 1024)}`);
+    git("commit", "--allow-empty", "-q", "-F", message);
+    await expect(inspectLocal({ cwd })).rejects.toBeInstanceOf(LocalGitError);
+  });
+
+  it.each([0, 101, 1.5, NaN])("rejects historyLimit %s", async (historyLimit) => {
+    await expect(inspectLocal({ cwd, historyLimit })).rejects.toThrow("historyLimit");
+  });
+
+  it("rejects invalid paths and reports Git failures instead of empty results", async () => {
+    await expect(inspectLocal({ cwd, paths: ["bad\0path"] })).rejects.toThrow("NUL");
+    await expect(inspectLocal({ cwd, paths: Array(101).fill("a") })).rejects.toThrow("at most 100");
+    await expect(inspectLocal({ cwd: join(cwd, "missing") })).rejects.toBeInstanceOf(LocalGitError);
+  });
 });

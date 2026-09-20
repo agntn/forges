@@ -1,5 +1,10 @@
 import { createProvider, resolveToken } from "./index.ts";
-import type { LocalMergeVerification, VerifyLocalMergeOptions } from "./local.ts";
+import type {
+  InspectLocalOptions,
+  LocalInspection,
+  LocalMergeVerification,
+  VerifyLocalMergeOptions,
+} from "./local.ts";
 import { assertAssignees } from "./assignees.ts";
 import { AuthenticationError } from "./errors.ts";
 import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
@@ -883,4 +888,11 @@ export async function verifyLocalMerge(
 ): Promise<ForgesToolResult<LocalMergeVerification>> {
   const local = await import("./local.ts");
   return result("local", await local.verifyLocalMerge(params));
+}
+
+export async function inspectLocal(
+  params: InspectLocalOptions,
+): Promise<ForgesToolResult<LocalInspection>> {
+  const local = await import("./local.ts");
+  return result("local", await local.inspectLocal(params));
 }
