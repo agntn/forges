@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => {
   const contributionTemplates = { list: vi.fn(), get: vi.fn() };
   const code = { search: vi.fn() };
   const ciRuns = { list: vi.fn() };
-  const commits = { list: vi.fn(), get: vi.fn() };
+  const commits = { search: vi.fn(), list: vi.fn(), get: vi.fn() };
   const releases = { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn() };
   const issues = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
   const pullRequests = {
@@ -74,6 +74,7 @@ const toolNames = [
   "forges_contribution_templates_get",
   "forges_code_search",
   "forges_ci_runs_list",
+  "forges_commits_search",
   "forges_commits_list",
   "forges_commits_get",
   "forges_releases_list",
@@ -353,6 +354,35 @@ describe("forges MCP server", () => {
     expect(mocks.code.search).toHaveBeenCalledWith("Provider", {
       owner: "agntn",
       repo: "forges",
+      page: 2,
+      perPage: 10,
+    });
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: search });
+  });
+
+  it("searches commits with completeness metadata through the shared operation", async () => {
+    const search = {
+      items: [],
+      totalCount: 1200,
+      incomplete: true,
+      resultLimit: 1000,
+      hasNextPage: false,
+    };
+    mocks.commits.search.mockResolvedValue(search);
+    const client = await connectTestClient();
+    const response = await client.callTool({
+      name: "forges_commits_search",
+      arguments: {
+        platform: "github",
+        query: "author:octocat",
+        owner: "other",
+        page: 2,
+        perPage: 10,
+      },
+    });
+    expect(mocks.commits.search).toHaveBeenCalledWith("author:octocat", {
+      owner: "other",
+      repo: undefined,
       page: 2,
       perPage: 10,
     });

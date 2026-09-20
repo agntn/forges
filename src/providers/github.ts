@@ -13,6 +13,8 @@ import type {
   CiRun,
   Commit,
   CommitSummary,
+  CommitSearchOptions,
+  CommitSearchResult,
   ContributionTemplateKind,
   ContributionTemplateSummary,
   Issue,
@@ -255,6 +257,12 @@ interface GitHubCommit {
   html_url: string;
   parents: Array<{ sha: string }>;
   files?: GitHubPullRequestFile[];
+}
+
+interface GitHubCommitSearchResponse {
+  total_count: number;
+  incomplete_results: boolean;
+  items: Array<GitHubCommit & { repository: { full_name: string } }>;
 }
 
 interface GitHubComment {
@@ -1078,6 +1086,81 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         totalCount: data?.total_count,
       };
     } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async searchCommits(
+    searchQuery: string,
+    options?: CommitSearchOptions,
+  ): Promise<CommitSearchResult> {
+    try {
+      const page = options?.page ?? 1;
+      const perPage = options?.perPage ?? 30;
+      if (
+        !Number.isSafeInteger(page) ||
+        page < 1 ||
+        !Number.isSafeInteger(perPage) ||
+        perPage < 1 ||
+        perPage > 100
+      ) {
+        throw new ForgesError(
+          "Commit search requires a positive page and perPage from 1 to 100",
+          400,
+        );
+      }
+      const offset = (page - 1) * perPage;
+      if (offset >= GITHUB_SEARCH_RESULT_LIMIT) {
+        throw new ForgesError("GitHub commit search only exposes the first 1000 results", 400);
+      }
+      let query = searchQuery;
+      if (options?.owner !== undefined) {
+        const owner = githubSearchQualifierSegment(options.owner);
+        query +=
+          options.repo === undefined
+            ? ` user:${owner}`
+            : ` repo:${owner}/${githubSearchQualifierSegment(options.repo)}`;
+      }
+      const { data, headers } = await rawFetch<GitHubCommitSearchResponse>(
+        this.client,
+        "/search/commits",
+        { query: { q: query, page: String(page), per_page: String(perPage) } },
+      );
+      const rawItems = data?.items ?? [];
+      const expectedOwner = options?.owner?.toLowerCase();
+      const expectedRepository =
+        options?.repo === undefined ? undefined : `${options.owner}/${options.repo}`.toLowerCase();
+      const scopedItems = rawItems.slice(0, GITHUB_SEARCH_RESULT_LIMIT - offset).filter((item) => {
+        const repository = item.repository.full_name.toLowerCase();
+        if (expectedRepository !== undefined) return repository === expectedRepository;
+        return expectedOwner === undefined || repository.startsWith(`${expectedOwner}/`);
+      });
+      const result = buildPageResult(scopedItems, headers, (raw) => ({
+        ...this.mapCommitSummary(raw),
+        repository: raw.repository.full_name,
+      }));
+      if (page * perPage >= GITHUB_SEARCH_RESULT_LIMIT) {
+        result.hasNextPage = false;
+        delete result.nextPage;
+      }
+      return {
+        ...result,
+        totalCount: data?.total_count,
+        incomplete:
+          (data?.incomplete_results ?? false) ||
+          (data?.total_count ?? 0) > GITHUB_SEARCH_RESULT_LIMIT ||
+          scopedItems.length !== rawItems.length,
+        resultLimit: GITHUB_SEARCH_RESULT_LIMIT,
+      };
+    } catch (error) {
+      if (error instanceof FetchError && (error.status === 404 || error.status === 405)) {
+        throw new ForgesError(
+          "Commit search is not supported by this GitHub-compatible host",
+          501,
+          "github",
+          error,
+        );
+      }
       throw normalizeError(error, "github");
     }
   }

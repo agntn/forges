@@ -18,6 +18,8 @@ import type {
   ContributionTemplateSummary,
   CommitResource,
   CommitSummary,
+  CommitSearchOptions,
+  CommitSearchResult,
   CreateIssueInput,
   CreatePullRequestInput,
   CreateReleaseInput,
@@ -183,6 +185,15 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       list: (owner, repo, options) => this.listCiRuns(owner, repo, options),
     };
     this.commits = {
+      search: async (query, options) => {
+        if (query.trim() === "") {
+          throw new ForgesError("Commit search query must not be empty", 400);
+        }
+        if (options?.repo !== undefined && options.owner === undefined) {
+          throw new ForgesError("Commit search repository scope requires an owner", 400);
+        }
+        return this.searchCommits(query, options);
+      },
       list: (owner, repo, options) => this.listCommits(owner, repo, options),
       get: (owner, repo, sha) => this.getCommit(owner, repo, sha),
     };
@@ -306,6 +317,12 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _options?: ListCiRunsOptions,
   ): Promise<PageResult<CiRun>> {
     return Promise.reject(new ForgesError("CI-run listing is not supported by this provider", 501));
+  }
+  protected searchCommits(
+    _query: string,
+    _options?: CommitSearchOptions,
+  ): Promise<CommitSearchResult> {
+    return Promise.reject(new ForgesError("Commit search is not supported by this provider", 501));
   }
   protected listCommits(
     _owner: string,

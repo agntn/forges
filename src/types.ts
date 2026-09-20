@@ -231,6 +231,24 @@ export interface CommitSummary {
   url: string;
 }
 
+/** A commit search hit identifies its repository so it can be opened with commits.get. */
+export interface CommitSearchItem extends CommitSummary {
+  repository: string;
+}
+
+/** Native commit query scope and pagination. Date qualifiers stay in the query. */
+export interface CommitSearchOptions {
+  owner?: string;
+  repo?: string;
+  page?: number;
+  perPage?: number;
+}
+
+/** Search may match more commits than the provider allows callers to retrieve. */
+export interface CommitSearchResult extends SearchPageResult<CommitSearchItem> {
+  resultLimit: number;
+}
+
 /** One commit with normalized metadata and changed-file rows. filesComplete is null when provider or safety limits prevent certainty. */
 export interface Commit extends CommitSummary {
   files: ChangedFile[];
@@ -506,6 +524,7 @@ export interface CiRunResource {
 
 /** Resource accessor for commits. */
 export interface CommitResource {
+  search(query: string, options?: CommitSearchOptions): Promise<CommitSearchResult>;
   list(
     owner: string,
     repo: string,

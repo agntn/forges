@@ -98,6 +98,7 @@ const toolNames = [
   "forges_contribution_templates_get",
   "forges_code_search",
   "forges_ci_runs_list",
+  "forges_commits_search",
   "forges_commits_list",
   "forges_commits_get",
   "forges_releases_list",
