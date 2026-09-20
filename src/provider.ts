@@ -230,6 +230,8 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         this.listPullRequestChecks(owner, repo, number, options),
       listReviews: (owner, repo, number, options) =>
         this.listPullRequestReviews(owner, repo, number, options),
+      getReview: (owner, repo, number, reviewId) =>
+        this.getPullRequestReview(owner, repo, number, reviewId),
       search: async (owner, repo, query, options) => {
         if (query.trim() === "") {
           throw new ForgesError("Pull-request search query must not be empty", 400);
@@ -394,6 +396,16 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   ): Promise<PageResult<PullRequestReview>> {
     return Promise.reject(
       new ForgesError("Pull request reviews are not supported by this provider", 501),
+    );
+  }
+  protected getPullRequestReview(
+    _owner: string,
+    _repo: string,
+    _number: number,
+    _reviewId: string,
+  ): Promise<PullRequestReview> {
+    return Promise.reject(
+      new ForgesError("Individual pull request reviews are not supported by this provider", 501),
     );
   }
   protected searchPullRequests(

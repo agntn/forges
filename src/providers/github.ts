@@ -1212,6 +1212,42 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
+  protected override async getPullRequestReview(
+    owner: string,
+    repo: string,
+    number: number,
+    reviewId: string,
+  ): Promise<PullRequestReview> {
+    try {
+      const raw = await this.client<GitHubPullRequestReview>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews/${encodePathSegment(reviewId)}`,
+      );
+      const review = this.mapPullRequestReview(raw);
+      if (review === null) {
+        throw new ForgesError(
+          "This review state cannot be represented as a pull request review",
+          501,
+          "github",
+        );
+      }
+      return review;
+    } catch (error) {
+      if (
+        error instanceof FetchError &&
+        error.status === 404 &&
+        !(await this.isGitHubHost(owner, repo))
+      ) {
+        throw new ForgesError(
+          "Pull request reviews are not supported by this GitHub-compatible host",
+          501,
+          "github",
+          error,
+        );
+      }
+      throw normalizeError(error, "github");
+    }
+  }
+
   protected override async listPullRequestReviews(
     owner: string,
     repo: string,

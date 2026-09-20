@@ -1281,6 +1281,21 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     }
   }
 
+  protected override getPullRequestReview(
+    _owner: string,
+    _repo: string,
+    _number: number,
+    _reviewId: string,
+  ): Promise<PullRequestReview> {
+    return Promise.reject(
+      new ForgesError(
+        "GitLab exposes reviewer stances, not individual review bodies",
+        501,
+        "gitlab",
+      ),
+    );
+  }
+
   /**
    * GitLab keeps no review objects: an approval is a row on the approvals endpoint, a
    * reviewer's stance a state on the reviewers endpoint, and the two merge per user, approvals

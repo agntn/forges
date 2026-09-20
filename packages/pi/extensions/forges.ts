@@ -513,6 +513,22 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_pull_requests_reviews_get",
+    label: "Forges Pull Request Review",
+    description:
+      "Get one GitHub or Gitea review with its full body and verdict. GitLab reviewer stances are unsupported.",
+    promptSnippet: "Read a complete review by its id on GitHub or Gitea.",
+    promptGuidelines: [
+      "Use forges_pull_requests_reviews_get when the reviews list truncates a body; GitLab reviewer stances have no full review to read.",
+    ],
+    parameters: schemas.pullRequestReviewParameters,
+    ...statusRenderers("forges_pull_requests_reviews_get", "Forges Pull Request Review"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getPullRequestReview(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_pull_requests_comments",
     label: "Forges Pull Request Comments",
     description: "List the conversation comments under one pull request, oldest first",

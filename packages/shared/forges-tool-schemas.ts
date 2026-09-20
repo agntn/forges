@@ -188,6 +188,13 @@ export function forgesToolSchemas() {
   const listPullRequestFilesParameters = listCommentsParameters;
   const listPullRequestChecksParameters = listCommentsParameters;
   const listPullRequestReviewsParameters = listCommentsParameters;
+  const pullRequestReviewParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    reviewId: Type.String({ description: "Review id returned by the reviews list", minLength: 1 }),
+  });
   const commentParameters = closed({ platform, owner, repo, number, commentId });
   const createIssueParameters = closed({
     platform,
@@ -288,6 +295,7 @@ export function forgesToolSchemas() {
     listPullRequestFilesParameters,
     listPullRequestChecksParameters,
     listPullRequestReviewsParameters,
+    pullRequestReviewParameters,
     commentParameters,
     createIssueParameters,
     createPullRequestParameters,

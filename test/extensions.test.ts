@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => {
     listFiles: vi.fn(),
     listChecks: vi.fn(),
     listReviews: vi.fn(),
+    getReview: vi.fn(),
     search: vi.fn(),
     get: vi.fn(),
     create: vi.fn(),
@@ -115,6 +116,7 @@ const toolNames = [
   "forges_pull_requests_files",
   "forges_pull_requests_checks",
   "forges_pull_requests_reviews",
+  "forges_pull_requests_reviews_get",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
   "forges_pull_requests_create",
@@ -565,6 +567,49 @@ describe("Forges Pi extension", () => {
       perPage: 10,
     });
     expect(result.details.result).toEqual({ items: [], hasNextPage: false });
+  });
+
+  it("keeps both review continuation routes in Pi and OMP output", async () => {
+    const args = { platform: "github", owner: "agntn", repo: "forges", number: 5 };
+    const piTool = requirePiTool(registerPiTools(), "forges_pull_requests_reviews");
+    const ompTool = requireOmpTool(registerOmpTools().tools, "forges_pull_requests_reviews");
+    const results = [
+      await piTool.execute("test", args, undefined, undefined, unusedPiContext),
+      await ompTool.execute("test", args, undefined, undefined, unusedOmpContext),
+    ];
+    for (const result of results) {
+      const content = result.content[0];
+      if (content?.type !== "text") throw new Error("Expected review text");
+      expect(content.text).toContain("forges_pull_requests_reviews_get");
+      expect(content.text).toContain("forges_threads_list");
+    }
+  });
+
+  it("reads full review bodies through both extensions", async () => {
+    const review = {
+      id: "123",
+      state: "commented",
+      body: `${"context\n".repeat(20)}Important finding`,
+      author: { login: "reviewer" },
+      revision: "abc",
+      submittedAt: "",
+      url: "",
+    };
+    mocks.pullRequests.getReview.mockResolvedValue(review);
+    const args = { platform: "github", owner: "agntn", repo: "forges", number: 5, reviewId: "123" };
+    const piTool = requirePiTool(registerPiTools(), "forges_pull_requests_reviews_get");
+    const ompTool = requireOmpTool(registerOmpTools().tools, "forges_pull_requests_reviews_get");
+    const results = [
+      await piTool.execute("test", args, undefined, undefined, unusedPiContext),
+      await ompTool.execute("test", args, undefined, undefined, unusedOmpContext),
+    ];
+    for (const result of results) {
+      expect(result.details).toMatchObject({ result: review });
+      const content = result.content[0];
+      if (content?.type !== "text") throw new Error("Expected review text");
+      expect(JSON.parse(content.text).result.body).toBe(review.body);
+    }
+    expect(mocks.pullRequests.getReview).toHaveBeenCalledWith("agntn", "forges", 5, "123");
   });
 
   it("executes pull-request review listing through the shared provider operation", async () => {

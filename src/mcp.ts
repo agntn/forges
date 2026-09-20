@@ -297,10 +297,19 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       name: "forges_pull_requests_reviews",
       title: "List Pull Request Reviews",
       description:
-        "List the reviews given on one pull request, each normalized to approved, changes_requested, commented, dismissed, or pending, with its author, body, reviewed revision, time, and URL. Unanswered review requests are left out, and GitLab entries are its approvals plus each reviewer's stance. Bodies are truncated here; the inline comments of a review are the threads forges_threads_list reads.",
+        "List the reviews given on one pull request, each normalized to approved, changes_requested, commented, dismissed, or pending, with its author, body, reviewed revision, time, and URL. Unanswered review requests are left out, and GitLab entries are its approvals plus each reviewer's stance. Bodies are truncated here; use forges_pull_requests_reviews_get for a full GitHub or Gitea review. Inline comments are the threads forges_threads_list reads.",
       inputSchema: schemas.listPullRequestReviewsParameters,
       annotations: readAnnotations,
       execute: (operations, args) => operations.listPullRequestReviews(args),
+    }),
+    defineTool({
+      name: "forges_pull_requests_reviews_get",
+      title: "Get Pull Request Review",
+      description:
+        "Get one pull request review with its full body, author, verdict, revision, time and URL. Use a review id from forges_pull_requests_reviews. GitHub and Gitea support this read; GitLab reviewer stances have no individual review body and return an unsupported error.",
+      inputSchema: schemas.pullRequestReviewParameters,
+      annotations: readAnnotations,
+      execute: (operations, args) => operations.getPullRequestReview(args),
     }),
     defineTool({
       name: "forges_pull_requests_comments",

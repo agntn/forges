@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => {
     listFiles: vi.fn(),
     listChecks: vi.fn(),
     listReviews: vi.fn(),
+    getReview: vi.fn(),
     search: vi.fn(),
     get: vi.fn(),
     create: vi.fn(),
@@ -90,6 +92,7 @@ const toolNames = [
   "forges_pull_requests_files",
   "forges_pull_requests_checks",
   "forges_pull_requests_reviews",
+  "forges_pull_requests_reviews_get",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
   "forges_pull_requests_create",
@@ -160,6 +163,43 @@ afterEach(async () => {
 });
 
 describe("forges MCP server", () => {
+  it("keeps documentation tool counts aligned with discovery", async () => {
+    const client = await connectTestClient();
+    const { tools } = await client.listTools();
+    const pages = [
+      {
+        path: "../README.md",
+        claims: [
+          /Four forges, ten resources, (\d+) agent tools\./,
+          /\*\*(\d+) tools, three surfaces\.\*\*/,
+          /MCP, Pi and OMP all hit the same (\d+) tools\./,
+        ],
+      },
+      {
+        path: "../docs/content/1.guide/01.index.md",
+        claims: [/\[Agents\]\(\/guide\/agents\): (\d+) tools over MCP, Pi and OMP\./],
+      },
+      {
+        path: "../docs/content/1.guide/10.agents.md",
+        claims: [/description: The same (\d+) tools over MCP/, /^## (\d+) tools, three surfaces$/m],
+      },
+      {
+        path: "../docs/app/components/content/LandingHome.vue",
+        claims: [/value: "(\d+)", label: "agent tools"/, /title="(\d+) tools, three hosts"/],
+      },
+    ];
+    for (const { path, claims } of pages) {
+      const source = await readFile(new URL(path, import.meta.url), "utf8");
+      for (const variant of [source, source.replaceAll("Seven tools write", "7 tools write")]) {
+        for (const claim of claims) {
+          const match = variant.match(claim);
+          expect(match, `${path}: ${claim}`).not.toBeNull();
+          expect(Number(match?.[1]), `${path}: ${claim}`).toBe(tools.length);
+        }
+      }
+    }
+  });
+
   it("advertises the complete tool set and marks the writing tools as writes", async () => {
     const client = await connectTestClient();
 
@@ -523,7 +563,21 @@ describe("forges MCP server", () => {
       ...review,
       body: Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n"),
     });
+    expect(parsed.note).toContain("forges_pull_requests_reviews_get");
     expect(parsed.note).toContain("forges_threads_list");
+    mocks.pullRequests.getReview.mockResolvedValue(review);
+    const full = await client.callTool({
+      name: "forges_pull_requests_reviews_get",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        number: 107,
+        reviewId: review.id,
+      },
+    });
+    expect(mocks.pullRequests.getReview).toHaveBeenCalledWith("agntn", "forges", 107, review.id);
+    expect(JSON.parse(text(full.content))).toEqual({ platform: "github", result: review });
   });
 
   it("reloads the pinned credential and returns the authenticated profile", async () => {
