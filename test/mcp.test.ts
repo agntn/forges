@@ -360,6 +360,15 @@ describe("forges MCP server", () => {
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: search });
   });
 
+  it("explains commit search pagination and partial results in discovery", async () => {
+    const client = await connectTestClient();
+    const { tools } = await client.listTools();
+    const tool = tools.find((entry) => entry.name === "forges_commits_search");
+    expect(tool?.description).toContain("follow nextPage while hasNextPage is true");
+    expect(tool?.description).toContain("incomplete means the search is known to be partial");
+    expect(tool?.description).toContain("narrow the query");
+  });
+
   it("searches commits with completeness metadata through the shared operation", async () => {
     const search = {
       items: [],

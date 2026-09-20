@@ -144,7 +144,7 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       name: "forges_commits_search",
       title: "Search Commits",
       description:
-        "Search commits across repositories with optional owner and repository scope. GitHub returns repository identity, author and committer dates, totalCount, incomplete, and resultLimit (1000). Other providers report unsupported search.",
+        "Search commits across repositories with optional owner and repository scope. GitHub returns repository identity, author and committer dates, totalCount, incomplete, and resultLimit (1000). Results are paged; follow nextPage while hasNextPage is true. incomplete means the search is known to be partial; narrow the query when it is true. Other providers report unsupported search.",
       inputSchema: schemas.commitSearchParameters,
       annotations: readAnnotations,
       execute: (operations, args) => operations.searchCommits(args),

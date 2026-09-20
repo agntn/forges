@@ -239,7 +239,7 @@ async function assertHelpStaysLight(root) {
   assert.deepEqual(typebox, [], "forges --help must not load the tool schemas");
 }
 
-async function assertPackedCommitSearch(piTools, ompTools) {
+async function assertPackedCommitSearch(piTools, ompTools, root = packageRoot) {
   const identity = { name: "Contributor", email: "test@example.com", date: "2026-09-20T00:00:00Z" };
   const raw = {
     sha: "abc123",
@@ -255,59 +255,60 @@ async function assertPackedCommitSearch(piTools, ompTools) {
     response.end(JSON.stringify({ items: [raw], total_count: 1200, incomplete_results: false }));
   });
   await new Promise((resolve) => http.listen(0, "127.0.0.1", resolve));
-  const address = http.address();
-  assert(address && typeof address !== "string");
-  process.env.FORGES_GITHUB_BASE_URL = `http://127.0.0.1:${address.port}`;
-  const operations = await import(
-    pathToFileURL(join(packageRoot, "dist/tool-operations.mjs")).href
-  );
-  operations.resetPinnedProviders();
-  const { createProvider } = await import(pathToFileURL(join(packageRoot, "dist/index.mjs")).href);
-  const { createMcpServer } = await import(pathToFileURL(join(packageRoot, "dist/mcp.mjs")).href);
-  const server = createMcpServer();
-  const client = new Client({ name: "commit-search", version: "1.0.0" });
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   try {
-    const provider = await createProvider("github", {
-      token: "",
-      baseURL: process.env.FORGES_GITHUB_BASE_URL,
-    });
-    const expected = await provider.commits.search("author:contributor", { perPage: 1 });
-    assert.equal(expected.items[0].repository, "other/project");
-    assert.equal(expected.totalCount, 1200);
-    assert.equal(expected.incomplete, true);
-    assert.equal(expected.resultLimit, 1000);
-    const args = { platform: "github", query: "author:contributor", perPage: 1 };
-    for (const tools of [piTools, ompTools]) {
-      const answer = await requireTool(tools, "forges_commits_search").execute(
-        "search",
-        args,
-        undefined,
-        undefined,
-        {},
-      );
-      assert.deepEqual(answer.details.result, expected);
+    const address = http.address();
+    assert(address && typeof address !== "string");
+    process.env.FORGES_GITHUB_BASE_URL = `http://127.0.0.1:${address.port}`;
+    const operations = await import(pathToFileURL(join(root, "dist/tool-operations.mjs")).href);
+    operations.resetPinnedProviders();
+    const { createProvider } = await import(pathToFileURL(join(root, "dist/index.mjs")).href);
+    const { createMcpServer } = await import(pathToFileURL(join(root, "dist/mcp.mjs")).href);
+    const server = createMcpServer();
+    const client = new Client({ name: "commit-search", version: "1.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    try {
+      const provider = await createProvider("github", {
+        token: "",
+        baseURL: process.env.FORGES_GITHUB_BASE_URL,
+      });
+      const expected = await provider.commits.search("author:contributor", { perPage: 1 });
+      assert.equal(expected.items[0].repository, "other/project");
+      assert.equal(expected.totalCount, 1200);
+      assert.equal(expected.incomplete, true);
+      assert.equal(expected.resultLimit, 1000);
+      const args = { platform: "github", query: "author:contributor", perPage: 1 };
+      for (const tools of [piTools, ompTools]) {
+        const answer = await requireTool(tools, "forges_commits_search").execute(
+          "search",
+          args,
+          undefined,
+          undefined,
+          {},
+        );
+        assert.deepEqual(answer.details.result, expected);
+        assert.deepEqual(
+          JSON.parse(answer.content[0].text).result,
+          JSON.parse(JSON.stringify(expected)),
+        );
+      }
+      await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+      const answer = await client.callTool({ name: "forges_commits_search", arguments: args });
+      assert.notEqual(answer.isError, true);
       assert.deepEqual(
         JSON.parse(answer.content[0].text).result,
         JSON.parse(JSON.stringify(expected)),
       );
-    }
-    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
-    const answer = await client.callTool({ name: "forges_commits_search", arguments: args });
-    assert.notEqual(answer.isError, true);
-    assert.deepEqual(
-      JSON.parse(answer.content[0].text).result,
-      JSON.parse(JSON.stringify(expected)),
-    );
-    assert.equal(requests.length, 4);
-    for (const request of requests) {
-      const url = new URL(request, process.env.FORGES_GITHUB_BASE_URL);
-      assert.equal(url.pathname, "/search/commits");
-      assert.equal(url.searchParams.get("q"), "author:contributor");
+      assert.equal(requests.length, 4);
+      for (const request of requests) {
+        const url = new URL(request, process.env.FORGES_GITHUB_BASE_URL);
+        assert.equal(url.pathname, "/search/commits");
+        assert.equal(url.searchParams.get("q"), "author:contributor");
+      }
+    } finally {
+      await Promise.all([client.close(), server.close()]);
+      operations.resetPinnedProviders();
     }
   } finally {
-    await Promise.all([client.close(), server.close()]);
-    operations.resetPinnedProviders();
     await new Promise((resolve, reject) =>
       http.close((error) => (error ? reject(error) : resolve())),
     );
@@ -392,6 +393,9 @@ try {
   await assertDistributionFallback(ompTool);
   await helpStaysLight;
   await assertPackedCommitSearch(piTools, ompTools);
+  await assert.rejects(assertPackedCommitSearch(piTools, ompTools, join(packageRoot, "missing")), {
+    code: "ERR_MODULE_NOT_FOUND",
+  });
 } finally {
   for (const [key, value] of originalEnvironment) {
     if (value === undefined) delete process.env[key];

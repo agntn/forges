@@ -503,11 +503,16 @@ function paginationFromLink(headers: Headers): {
 }
 
 function githubSearchQualifierSegment(value: string): string {
-  encodePathSegment(value);
-  if (/[\s:'"]/u.test(value)) {
-    throw new TypeError("Invalid GitHub search qualifier segment");
+  try {
+    encodePathSegment(value);
+    if (/[\s:'"]/u.test(value)) {
+      throw new TypeError("Invalid GitHub search qualifier segment");
+    }
+    return value;
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error;
+    throw new ForgesError(error.message, 400, "github", error);
   }
-  return value;
 }
 
 function buildPageResult<TRaw, TMapped>(

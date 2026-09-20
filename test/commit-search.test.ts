@@ -162,6 +162,22 @@ describe("commit search", () => {
     expect(mocks.rawFetch).not.toHaveBeenCalled();
   });
 
+  it.each(["bad owner", "bad:owner", "bad/repo", "bad%repo", 'bad"name'])(
+    "returns 400 for invalid scope %s before transport",
+    async (value) => {
+      const provider = new GitHubProvider({ token: "" });
+      for (const resource of [provider.commits, provider.code]) {
+        await expect(resource.search("snapshot", { owner: value })).rejects.toMatchObject({
+          status: 400,
+        });
+        await expect(
+          resource.search("snapshot", { owner: "valid", repo: value }),
+        ).rejects.toMatchObject({ status: 400 });
+      }
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    },
+  );
+
   it("preserves authentication failures instead of reporting unsupported search", async () => {
     const error = new FetchError("Unauthorized");
     Object.defineProperty(error, "status", { value: 401 });
