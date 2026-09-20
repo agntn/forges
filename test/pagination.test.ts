@@ -225,7 +225,7 @@ describe("paginate", () => {
 
   it.each([
     ["?page=2", "https://forge.example/api/v1/repos?page=2&per_page=30"],
-    ["repos?page=2", "https://forge.example/api/v1/repos?page=2&per_page=30"],
+    ["users?page=2", "https://forge.example/api/v1/users?page=2&per_page=30"],
   ])("resolves relative next link %s against the current request", async (next, expected) => {
     const seen: string[] = [];
     const fetcher = async (url: string) => {
