@@ -92,7 +92,7 @@ export async function verifyLocalMerge(
       throw new TypeError("paths must be relative to the repository root without dot segments");
     }
   }
-  const root = (await git(cwd, ["rev-parse", "--show-toplevel"])).output.replace(/\r?\n$/, "");
+  const root = (await git(cwd, ["rev-parse", "--show-toplevel"])).output.replace(/\n$/, "");
   const resolveCommit = async (ref: string) =>
     (
       await git(root, ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`])
@@ -100,16 +100,21 @@ export async function verifyLocalMerge(
   const headSha = await resolveCommit(head);
   const mergeSha = await resolveCommit(mergeCommit);
   const targetSha = await resolveCommit(target);
+  const mergeParent = (await git(root, ["rev-list", "--parents", "-n", "1", mergeSha])).output
+    .trim()
+    .split(" ")
+    .slice(1, 2);
   for (const path of paths) {
     let exists = false;
-    for (const sha of [headSha, mergeSha]) {
+    for (const sha of [headSha, mergeSha, ...mergeParent]) {
       const { output } = await git(root, ["ls-tree", "--name-only", "-z", sha, "--", path]);
       if (output.split("\0").includes(path)) {
         exists = true;
         break;
       }
     }
-    if (!exists) throw new TypeError("Every selected path must exist in the head or merge tree");
+    if (!exists)
+      throw new TypeError("Every selected path must exist in the head, merge or first-parent tree");
   }
   const mergeReachable = (
     await git(root, ["merge-base", "--is-ancestor", mergeSha, targetSha], true)

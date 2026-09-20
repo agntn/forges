@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -35,6 +35,35 @@ afterEach(() => {
 });
 
 describe("verifyLocalMerge", () => {
+  it("preserves a carriage return at the end of the checkout directory", async () => {
+    const head = commit("base");
+    renameSync(cwd, `${cwd}\r`);
+    cwd += "\r";
+    expect(
+      await verifyLocalMerge({ cwd, head, mergeCommit: head, target: head, paths: ["file.txt"] }),
+    ).toMatchObject({ mergeReachable: true, pathsMatch: true });
+  });
+
+  it("verifies a deletion shared by the PR head and squash result", async () => {
+    commit("base");
+    git("switch", "-qc", "topic");
+    git("rm", "file.txt");
+    git("commit", "-qm", "remove file");
+    const head = git("rev-parse", "HEAD");
+    git("switch", "-q", "main");
+    git("merge", "--squash", "topic");
+    git("commit", "-qm", "squash deletion");
+    expect(
+      await verifyLocalMerge({
+        cwd,
+        head,
+        mergeCommit: "main",
+        target: "main",
+        paths: ["file.txt"],
+      }),
+    ).toMatchObject({ mergeReachable: true, pathsMatch: true });
+  });
+
   it("rejects paths absent from both trees rather than returning a vacuous match", async () => {
     const head = commit("base");
     await expect(
