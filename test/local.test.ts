@@ -284,21 +284,24 @@ describe("inspectLocal", () => {
     );
   });
 
-  it("preserves unusual paths and separates rename source from destination", async () => {
-    const original = "old\nname.txt";
-    const destination = "new\tname.txt";
-    writeFileSync(join(cwd, original), "rename me");
-    commit("base");
-    git("mv", "--", original, destination);
-    const untracked = "--flag $(not-a-command).txt";
-    writeFileSync(join(cwd, untracked), "untracked");
-    const result = await inspectLocal({ cwd });
-    expect(result.status).toEqual([
-      { index: "R", worktree: " ", path: destination, originalPath: original },
-      { index: "?", worktree: "?", path: untracked },
-    ]);
-    expect(result.trackedFiles).toEqual(["file.txt", destination]);
-  });
+  it.skipIf(process.platform === "win32")(
+    "preserves unusual paths and separates rename source from destination",
+    async () => {
+      const original = "old\nname.txt";
+      const destination = "new\tname.txt";
+      writeFileSync(join(cwd, original), "rename me");
+      commit("base");
+      git("mv", "--", original, destination);
+      const untracked = "--flag $(not-a-command).txt";
+      writeFileSync(join(cwd, untracked), "untracked");
+      const result = await inspectLocal({ cwd });
+      expect(result.status).toEqual([
+        { index: "R", worktree: " ", path: destination, originalPath: original },
+        { index: "?", worktree: "?", path: untracked },
+      ]);
+      expect(result.trackedFiles).toEqual(["file.txt", destination]);
+    },
+  );
 
   it("supports literal pathspecs, exclusions and empty matches", async () => {
     writeFileSync(join(cwd, "[a].txt"), "literal");

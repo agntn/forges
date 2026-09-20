@@ -100,7 +100,7 @@ Ten resources on every provider. `repos`, `issues`, `pullRequests`, `threads`. T
 
 ### Local Git
 
-`@agntn/forges/local` checks a fetched checkout without changing it. Git with `--no-lazy-fetch` support must be on `PATH`.
+`@agntn/forges/local` checks a fetched checkout without changing it. Git with `--no-lazy-fetch` support must be on `PATH`; inspection also needs `ls-files --deduplicate`.
 
 ```ts
 import { inspectLocal, verifyLocalMerge } from "@agntn/forges/local";
