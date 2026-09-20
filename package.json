@@ -41,6 +41,10 @@
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
     },
+    "./local": {
+      "types": "./dist/local.d.mts",
+      "import": "./dist/local.mjs"
+    },
     "./mcp": {
       "types": "./dist/mcp.d.mts",
       "import": "./dist/mcp.mjs"

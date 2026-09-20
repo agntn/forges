@@ -696,4 +696,19 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       return (await loadToolOperations()).unresolveThread(params);
     },
   });
+  pi.registerTool({
+    name: "forges_local_merge_verify",
+    label: "Verify Local Merge",
+    description:
+      "Read local Git ancestry and compare selected paths between a PR head and its merge commit. No fetch or writes. This is not permission to delete a branch.",
+    parameters: schemas.localMergeParameters,
+    ...statusRenderers("forges_local_merge_verify", "Verify Local Merge"),
+    promptSnippet: "Verify merge ancestry and selected file contents in a local checkout.",
+    promptGuidelines: [
+      "Use forges_local_merge_verify after fetching the target ref; matching paths alone never authorizes branch deletion.",
+    ],
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).verifyLocalMerge(params);
+    },
+  });
 }

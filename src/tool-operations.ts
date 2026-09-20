@@ -1,4 +1,5 @@
 import { createProvider, resolveToken } from "./index.ts";
+import type { LocalMergeVerification, VerifyLocalMergeOptions } from "./local.ts";
 import { assertAssignees } from "./assignees.ts";
 import { AuthenticationError } from "./errors.ts";
 import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
@@ -275,7 +276,7 @@ export interface GetUserParams extends PlatformParams {
 }
 
 export interface ForgesToolDetails<T> {
-  platform: ForgesPlatform;
+  platform: ForgesPlatform | "local";
   result: T;
 }
 
@@ -284,7 +285,11 @@ export interface ForgesToolResult<T> {
   details: ForgesToolDetails<T>;
 }
 
-function result<T>(platform: ForgesPlatform, value: T, note?: string): ForgesToolResult<T> {
+function result<T>(
+  platform: ForgesPlatform | "local",
+  value: T,
+  note?: string,
+): ForgesToolResult<T> {
   const details = { platform, result: value };
   const modelDetails = note ? { ...details, note } : details;
   return {
@@ -871,4 +876,11 @@ export function unresolveThread(params: GetThreadParams): Promise<ForgesToolResu
     );
     return result(params.platform, thread);
   });
+}
+
+export async function verifyLocalMerge(
+  params: VerifyLocalMergeOptions,
+): Promise<ForgesToolResult<LocalMergeVerification>> {
+  const local = await import("./local.ts");
+  return result("local", await local.verifyLocalMerge(params));
 }

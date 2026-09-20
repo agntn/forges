@@ -101,6 +101,7 @@ const expectedToolNames = [
   "forges_threads_reply",
   "forges_threads_resolve",
   "forges_threads_unresolve",
+  "forges_local_merge_verify",
 ];
 
 async function registerPackedExtension(extensionPath, api) {
@@ -118,6 +119,13 @@ async function registerPackedExtension(extensionPath, api) {
 }
 
 const repositoryArgs = { platform: "github", owner: "agntn", repo: "forges" };
+const localMergeArgs = {
+  cwd: root,
+  head: "HEAD",
+  mergeCommit: "HEAD",
+  target: "HEAD",
+  paths: ["package.json"],
+};
 
 function requireTool(tools, name) {
   const tool = tools.get(name);
@@ -177,6 +185,13 @@ async function assertPackedMcpServer(root) {
     );
     assertLoaded(executors, "the first call loads the executors");
     assertNotLoaded(anyProvider, "a call rejected by its schema must not load a provider");
+    const verified = await client.callTool({
+      name: "forges_local_merge_verify",
+      arguments: localMergeArgs,
+    });
+    assert.notEqual(verified.isError, true);
+    assert.equal(JSON.parse(verified.content[0].text).result.pathsMatch, true);
+    assertNotLoaded(anyProvider, "local Git verification must not load a provider");
   } finally {
     await Promise.all([client.close(), server.close()]);
   }
@@ -241,6 +256,19 @@ try {
   assertRenderedCall(ompTool, ompApi);
   assertNotLoaded(executors, "rendering a call must not load the executors");
   await assertPackedMcpServer(packageRoot);
+  for (const tools of [piTools, ompTools]) {
+    const answer = await requireTool(tools, "forges_local_merge_verify").execute(
+      "local",
+      localMergeArgs,
+      undefined,
+      undefined,
+      {},
+    );
+    assert.equal(answer.details.platform, "local");
+    assert.equal(answer.details.result.pathsMatch, true);
+    assert.equal(answer.details.result.mergeReachable, true);
+  }
+  assertNotLoaded(anyProvider, "local extension calls must not load a provider");
   await assertDistributionFallback(piTool);
   await assertDistributionFallback(ompTool);
   await helpStaysLight;

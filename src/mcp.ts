@@ -42,7 +42,7 @@ function defineTool<S extends TObject>(tool: ToolDefinition<S>): ToolDefinition 
   return tool as ToolDefinition;
 }
 
-/** Every operation crosses the network to a hosted Git platform, so nothing is closed-world. */
+/** Hosted reads cross the network; local Git overrides openWorldHint. */
 const readAnnotations: Tool["annotations"] = {
   readOnlyHint: true,
   destructiveHint: false,
@@ -400,6 +400,15 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       inputSchema: schemas.threadParameters,
       annotations: threadStateAnnotations,
       execute: (operations, args) => operations.unresolveThread(args),
+    }),
+    defineTool({
+      name: "forges_local_merge_verify",
+      title: "Verify Local Merge",
+      description:
+        "Read local Git ancestry and compare selected paths between a PR head and its merge commit. No fetch or writes. This is not permission to delete a branch.",
+      inputSchema: schemas.localMergeParameters,
+      annotations: { ...readAnnotations, openWorldHint: false },
+      execute: (operations, args) => operations.verifyLocalMerge(args),
     }),
   ];
 }
