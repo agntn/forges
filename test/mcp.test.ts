@@ -167,20 +167,35 @@ describe("forges MCP server", () => {
     const client = await connectTestClient();
     const { tools } = await client.listTools();
     const pages = [
-      "../README.md",
-      "../docs/content/1.guide/01.index.md",
-      "../docs/content/1.guide/10.agents.md",
-      "../docs/app/components/content/LandingHome.vue",
+      {
+        path: "../README.md",
+        claims: [
+          /Four forges, ten resources, (\d+) agent tools\./,
+          /\*\*(\d+) tools, three surfaces\.\*\*/,
+          /MCP, Pi and OMP all hit the same (\d+) tools\./,
+        ],
+      },
+      {
+        path: "../docs/content/1.guide/01.index.md",
+        claims: [/\[Agents\]\(\/guide\/agents\): (\d+) tools over MCP, Pi and OMP\./],
+      },
+      {
+        path: "../docs/content/1.guide/10.agents.md",
+        claims: [/description: The same (\d+) tools over MCP/, /^## (\d+) tools, three surfaces$/m],
+      },
+      {
+        path: "../docs/app/components/content/LandingHome.vue",
+        claims: [/value: "(\d+)", label: "agent tools"/, /title="(\d+) tools, three hosts"/],
+      },
     ];
-    for (const page of pages) {
-      const source = await readFile(new URL(page, import.meta.url), "utf8");
-      const counts = [
-        ...source.matchAll(/(?:\b(\d+) (?:agent )?tools\b|value: "(\d+)", label: "agent tools")/g),
-      ];
-      expect(counts.length, page).toBeGreaterThan(0);
-      expect(source, page).not.toMatch(/thirty[- ](?:six|seven)/i);
-      for (const match of counts) {
-        expect(Number(match[1] ?? match[2]), `${page}: ${match[0]}`).toBe(tools.length);
+    for (const { path, claims } of pages) {
+      const source = await readFile(new URL(path, import.meta.url), "utf8");
+      for (const variant of [source, source.replaceAll("Seven tools write", "7 tools write")]) {
+        for (const claim of claims) {
+          const match = variant.match(claim);
+          expect(match, `${path}: ${claim}`).not.toBeNull();
+          expect(Number(match?.[1]), `${path}: ${claim}`).toBe(tools.length);
+        }
       }
     }
   });
