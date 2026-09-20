@@ -1178,6 +1178,30 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     }
   }
 
+  protected override async getPullRequestReview(
+    owner: string,
+    repo: string,
+    number: number,
+    reviewId: string,
+  ): Promise<PullRequestReview> {
+    try {
+      const raw = await this.client<GiteaPullReview>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews/${encodePathSegment(reviewId)}`,
+      );
+      const review = this.mapPullRequestReview(raw);
+      if (review === null) {
+        throw new ForgesError(
+          "This review state cannot be represented as a pull request review",
+          501,
+          PLATFORM,
+        );
+      }
+      return review;
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
   /**
    * Gitea and Forgejo count this list in `x-total-count` and send no Link for it. The count
    * includes the review requests this list drops, so it is not reported as totalCount.

@@ -5,7 +5,7 @@
 [![license](https://npmx.dev/api/registry/badge/license/@agntn/forges)](https://npmx.dev/package/@agntn/forges)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/agntn/forges)
 
-⚒️ Four forges, ten resources, thirty-six agent tools. You ask for a pull request, you get a pull request.
+⚒️ Four forges, ten resources, 38 agent tools. You ask for a pull request, you get a pull request.
 
 ## Why?
 
@@ -150,7 +150,7 @@ omp install @agntn/forges
 }
 ```
 
-MCP, Pi and OMP all hit the same 36 tools. Seven write to the host, so ask `forges_users_authenticated` who you are before a model does, details in the [Agents](https://forges.agntn.dev/guide/agents) guide.
+MCP, Pi and OMP all hit the same 38 tools. Seven write to the host, so ask `forges_users_authenticated` who you are before a model does, details in the [Agents](https://forges.agntn.dev/guide/agents) guide.
 
 ## 🚫 What this does not do
 

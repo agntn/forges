@@ -203,6 +203,13 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   const listPullRequestFilesParameters = listCommentsParameters;
   const listPullRequestChecksParameters = listCommentsParameters;
   const listPullRequestReviewsParameters = listCommentsParameters;
+  const pullRequestReviewParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    reviewId: Type.String({ description: "Review id returned by the reviews list", minLength: 1 }),
+  });
   const commentId = Type.String({ description: "Discussion comment id", minLength: 1 });
   const commentParameters = closed({ platform, owner, repo, number, commentId });
   const createIssueParameters = closed({
@@ -546,6 +553,19 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: "read",
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequestReviews(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_reviews_get",
+    label: "Forges Pull Request Review",
+    description:
+      "Get one GitHub or Gitea review with its full body and verdict. GitLab reviewer stances are unsupported.",
+    parameters: pullRequestReviewParameters,
+    ...statusRenderers("forges_pull_requests_reviews_get", "Forges Pull Request Review"),
+    approval: "read",
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).getPullRequestReview(params);
     },
   });
 

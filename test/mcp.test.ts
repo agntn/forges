@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
     listFiles: vi.fn(),
     listChecks: vi.fn(),
     listReviews: vi.fn(),
+    getReview: vi.fn(),
     search: vi.fn(),
     get: vi.fn(),
     create: vi.fn(),
@@ -90,6 +91,7 @@ const toolNames = [
   "forges_pull_requests_files",
   "forges_pull_requests_checks",
   "forges_pull_requests_reviews",
+  "forges_pull_requests_reviews_get",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
   "forges_pull_requests_create",
@@ -523,7 +525,20 @@ describe("forges MCP server", () => {
       ...review,
       body: Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n"),
     });
-    expect(parsed.note).toContain("forges_threads_list");
+    expect(parsed.note).toContain("forges_pull_requests_reviews_get");
+    mocks.pullRequests.getReview.mockResolvedValue(review);
+    const full = await client.callTool({
+      name: "forges_pull_requests_reviews_get",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        number: 107,
+        reviewId: review.id,
+      },
+    });
+    expect(mocks.pullRequests.getReview).toHaveBeenCalledWith("agntn", "forges", 107, review.id);
+    expect(JSON.parse(text(full.content))).toEqual({ platform: "github", result: review });
   });
 
   it("reloads the pinned credential and returns the authenticated profile", async () => {

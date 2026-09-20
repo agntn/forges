@@ -271,6 +271,10 @@ export type ListPullRequestFilesParams = ListCommentsParams;
 export type ListPullRequestChecksParams = ListCommentsParams;
 export type ListPullRequestReviewsParams = ListCommentsParams;
 
+export interface GetPullRequestReviewParams extends GetRepositoryItemParams {
+  reviewId: string;
+}
+
 export interface GetCommentParams extends RepositoryParams {
   number: number;
   commentId: string;
@@ -676,8 +680,21 @@ export async function listPullRequestReviews(
   return result(
     params.platform,
     summarizeReviewPage(reviews),
-    "Review bodies are truncated in list output; the inline comments of a review are the threads forges_threads_list reads.",
+    "Review bodies are truncated in list output; use forges_pull_requests_reviews_get to read one in full on GitHub or Gitea. GitLab entries are reviewer stances, not review bodies.",
   );
+}
+
+export async function getPullRequestReview(
+  params: GetPullRequestReviewParams,
+): Promise<ForgesToolResult<PullRequestReview>> {
+  const provider = await readProvider(params.platform);
+  const review = await provider.pullRequests.getReview(
+    params.owner,
+    params.repo,
+    params.number,
+    params.reviewId,
+  );
+  return result(params.platform, review);
 }
 
 export async function searchPullRequests(

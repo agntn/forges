@@ -90,6 +90,7 @@ const expectedToolNames = [
   "forges_pull_requests_files",
   "forges_pull_requests_checks",
   "forges_pull_requests_reviews",
+  "forges_pull_requests_reviews_get",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
   "forges_pull_requests_create",

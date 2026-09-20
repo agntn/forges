@@ -567,6 +567,12 @@ export interface PullRequestResource {
     number: number,
     options?: ListPullRequestReviewsOptions,
   ): Promise<PageResult<PullRequestReview>>;
+  getReview(
+    owner: string,
+    repo: string,
+    number: number,
+    reviewId: string,
+  ): Promise<PullRequestReview>;
   search(
     owner: string,
     repo: string,
