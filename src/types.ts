@@ -255,6 +255,37 @@ export interface Commit extends CommitSummary {
   filesComplete: boolean | null;
 }
 
+/** Availability of one provider patch. */
+export type CommitPatchState = "included" | "binary" | "unavailable";
+
+/** Provider patch material before it is rendered into a bounded stream. */
+export interface CommitPatchFile {
+  path: string;
+  previousPath: string | null;
+  status: ChangedFileStatus;
+  state: CommitPatchState;
+  patch: string;
+}
+
+/** Selection and continuation options for a commit patch read. */
+export interface CommitPatchOptions {
+  path?: string;
+  offset?: number;
+  maxChars?: number;
+}
+
+/** One bounded slice of a commit patch stream. Continue with sha and nextOffset. */
+export interface CommitPatch {
+  sha: string;
+  path: string | null;
+  content: string;
+  offset: number;
+  nextOffset: number | null;
+  truncated: boolean;
+  filesComplete: boolean | null;
+  states: Record<CommitPatchState, number>;
+}
+
 /** One release: a tag with notes. Keyed by tag everywhere, because GitLab releases have no id. */
 export interface Release {
   /** Platform id, or the tag name on GitLab. */
@@ -531,6 +562,12 @@ export interface CommitResource {
     options?: ListCommitOptions,
   ): Promise<PageResult<CommitSummary>>;
   get(owner: string, repo: string, sha: string): Promise<Commit>;
+  readPatch(
+    owner: string,
+    repo: string,
+    sha: string,
+    options?: CommitPatchOptions,
+  ): Promise<CommitPatch>;
 }
 
 /** Resource accessor for releases. */

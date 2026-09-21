@@ -20,6 +20,9 @@ import type {
   CodeSearchOptions,
   CiRun,
   Commit,
+  CommitPatch,
+  CommitPatchFile,
+  CommitPatchOptions,
   CommitSummary,
   ContributionTemplateKind,
   ContributionTemplateSummary,
@@ -66,6 +69,7 @@ import {
 import { normalizeCiRunState } from "../ci-run.ts";
 import { normalizeReviewState } from "../review.ts";
 import { countDiffLines } from "../changed-file.ts";
+import { buildCommitPatch } from "../commit-patch.ts";
 
 const MAX_COMMIT_DIFF_PAGES = 100;
 const MAX_CODE_SEARCH_PROJECT_REQUESTS = 5;
@@ -981,6 +985,62 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         files,
         filesComplete: null,
       };
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async readCommitPatch(
+    owner: string,
+    repo: string,
+    sha: string,
+    options?: CommitPatchOptions,
+  ): Promise<CommitPatch> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const encodedSha = encodePathSegment(sha);
+      const commit = await this.client<GitLabCommit>(
+        `/projects/${projectId}/repository/commits/${encodedSha}`,
+      );
+      if ((options?.offset ?? 0) > 0 && sha !== commit.id) {
+        throw new ForgesError(
+          "Continue commit patches with the resolved SHA from the first page",
+          409,
+        );
+      }
+
+      const files: CommitPatchFile[] = [];
+      let filesComplete: boolean | null = true;
+      let page = 1;
+      while (page <= MAX_COMMIT_DIFF_PAGES) {
+        const { data, headers } = await rawFetch<GitLabMergeRequestDiff[]>(
+          this.client,
+          `/projects/${projectId}/repository/commits/${encodePathSegment(commit.id)}/diff`,
+          { query: { page, per_page: 100 } },
+        );
+        files.push(
+          ...(data ?? []).map((diff) => {
+            const unavailable = diff.too_large === true || diff.collapsed === true;
+            return {
+              path: diff.new_path,
+              previousPath: diff.renamed_file ? diff.old_path : null,
+              status: this.mapPullRequestFile(diff).status,
+              state: unavailable ? "unavailable" : diff.diff === "" ? "binary" : "included",
+              patch: unavailable ? "" : diff.diff,
+            } satisfies CommitPatchFile;
+          }),
+        );
+
+        const next = headers.get("x-next-page");
+        if (next === null || next === "") break;
+        const nextPage = Number.parseInt(next, 10);
+        if (!Number.isInteger(nextPage) || nextPage <= page || nextPage > MAX_COMMIT_DIFF_PAGES) {
+          filesComplete = null;
+          break;
+        }
+        page = nextPage;
+      }
+      return buildCommitPatch(commit.id, files, filesComplete, options);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }

@@ -23,6 +23,9 @@ import type {
   Repository,
   CiRun,
   Commit,
+  CommitPatch,
+  CommitPatchFile,
+  CommitPatchOptions,
   CommitSummary,
   ContributionTemplateKind,
   ContributionTemplateSummary,
@@ -58,6 +61,7 @@ import type {
 import { normalizeCiRunState } from "../ci-run.ts";
 import { isPullRequestReview, normalizeReviewState } from "../review.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
+import { buildCommitPatch } from "../commit-patch.ts";
 
 // -- Raw Gitea API response types --
 
@@ -198,6 +202,7 @@ interface GiteaPullRequestFile {
   status: string;
   additions?: number;
   deletions?: number;
+  patch?: string;
 }
 
 interface GiteaCommitIdentity {
@@ -854,6 +859,34 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     }
   }
 
+  protected override async readCommitPatch(
+    owner: string,
+    repo: string,
+    sha: string,
+    options?: CommitPatchOptions,
+  ): Promise<CommitPatch> {
+    try {
+      const commit = await this.client<GiteaCommit>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodePathSegment(sha)}`,
+      );
+      if ((options?.offset ?? 0) > 0 && sha !== commit.sha) {
+        throw new ForgesError(
+          "Continue commit patches with the resolved SHA from the first page",
+          409,
+        );
+      }
+      const files: CommitPatchFile[] = (commit.files ?? []).map((file) => ({
+        path: file.filename,
+        previousPath: null,
+        status: normalizeChangedFileStatus(file.status),
+        state: file.patch === undefined ? "unavailable" : "included",
+        patch: file.patch ?? "",
+      }));
+      return buildCommitPatch(commit.sha, files, null, options);
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
   // --- Releases ---
 
   private releasesRoute(owner: string, repo: string): string {

@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => {
   const contributionTemplates = { list: vi.fn(), get: vi.fn() };
   const code = { search: vi.fn() };
   const ciRuns = { list: vi.fn() };
-  const commits = { search: vi.fn(), list: vi.fn(), get: vi.fn() };
+  const commits = { search: vi.fn(), list: vi.fn(), get: vi.fn(), readPatch: vi.fn() };
   const releases = { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn() };
   const issues = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
   const pullRequests = {
@@ -78,6 +78,7 @@ const toolNames = [
   "forges_commits_search",
   "forges_commits_list",
   "forges_commits_get",
+  "forges_commits_patch",
   "forges_releases_list",
   "forges_releases_get",
   "forges_releases_create",
@@ -513,6 +514,41 @@ describe("forges MCP server", () => {
 
     expect(mocks.commits.get).toHaveBeenCalledWith("agntn", "forges", commit.sha);
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: commit });
+  });
+
+  it("reads bounded commit patches through the shared operation", async () => {
+    const patch = {
+      sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+      path: "src/provider.ts",
+      content: "@@ -1 +1 @@\n-old\n+new\n",
+      offset: 20,
+      nextOffset: null,
+      truncated: false,
+      filesComplete: true,
+      states: { included: 1, binary: 0, unavailable: 0 },
+    };
+    mocks.commits.readPatch.mockResolvedValue(patch);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_commits_patch",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        sha: patch.sha,
+        path: patch.path,
+        offset: 20,
+        maxChars: 1000,
+      },
+    });
+
+    expect(mocks.commits.readPatch).toHaveBeenCalledWith("agntn", "forges", patch.sha, {
+      path: patch.path,
+      offset: 20,
+      maxChars: 1000,
+    });
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: patch });
   });
 
   it("lists pull-request changed files through the shared operation", async () => {

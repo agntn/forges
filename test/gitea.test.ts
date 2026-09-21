@@ -813,6 +813,30 @@ describe("Gitea Provider", () => {
       });
       expect(JSON.stringify(result)).not.toContain("patch");
     });
+
+    it("reports Gitea commit patches as unavailable", async () => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      mockClient.mockResolvedValueOnce({
+        sha,
+        html_url: `https://gitea.com/testowner/test-repo/commit/${sha}`,
+        commit: {
+          message: "patch",
+          author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+        },
+        parents: [],
+        files: [{ filename: "src/provider.ts", status: "modified" }],
+      });
+
+      const result = await provider.commits.readPatch("testowner", "test-repo", sha);
+
+      expect(result).toMatchObject({
+        sha,
+        filesComplete: null,
+        states: { included: 0, binary: 0, unavailable: 1 },
+      });
+      expect(result.content).toContain("[patch unavailable from provider]");
+    });
   });
 
   // --- issues ---

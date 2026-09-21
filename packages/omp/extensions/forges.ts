@@ -150,6 +150,28 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     perPage,
   });
   const commitParameters = closed({ platform, owner, repo, sha });
+  const commitPatchParameters = closed({
+    platform,
+    owner,
+    repo,
+    sha,
+    path: Type.Optional(
+      Type.String({ description: "Only return the patch stream for this file path", minLength: 1 }),
+    ),
+    offset: Type.Optional(
+      Type.Integer({
+        description: "Character offset returned by the previous patch slice; defaults to 0",
+        minimum: 0,
+      }),
+    ),
+    maxChars: Type.Optional(
+      Type.Integer({
+        description: "Maximum patch characters to return; defaults to 20000",
+        minimum: 1,
+        maximum: 200000,
+      }),
+    ),
+  });
   const listCommitsParameters = closed({
     platform,
     owner,
@@ -384,6 +406,19 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: toolApproval("forges_commits_get"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getCommit(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_commits_patch",
+    label: "Forges Commit Patch",
+    description:
+      "Read a bounded commit patch slice with resolved-SHA continuation and explicit binary, unavailable, and truncated states",
+    parameters: commitPatchParameters,
+    ...statusRenderers("forges_commits_patch", "Forges Commit Patch"),
+    approval: toolApproval("forges_commits_patch"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).readCommitPatch(params);
     },
   });
 

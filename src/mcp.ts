@@ -123,6 +123,14 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       execute: (operations, args) => operations.getCommit(args),
     }),
     defineTool({
+      name: "forges_commits_patch",
+      title: "Read Commit Patch",
+      description:
+        "Read one bounded slice of a known commit's patch stream. Continue only with the resolved sha and nextOffset returned by the previous slice. Binary files, provider-omitted patches, and output truncation are labeled separately.",
+      inputSchema: schemas.commitPatchParameters,
+      execute: (operations, args) => operations.readCommitPatch(args),
+    }),
+    defineTool({
       name: "forges_releases_list",
       title: "List Releases",
       description:

@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => {
   const contributionTemplates = { list: vi.fn(), get: vi.fn() };
   const code = { search: vi.fn() };
   const ciRuns = { list: vi.fn() };
-  const commits = { list: vi.fn(), get: vi.fn() };
+  const commits = { list: vi.fn(), get: vi.fn(), readPatch: vi.fn() };
   const releases = { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn() };
   const issues = {
     list: vi.fn(),
@@ -102,6 +102,7 @@ const toolNames = [
   "forges_commits_search",
   "forges_commits_list",
   "forges_commits_get",
+  "forges_commits_patch",
   "forges_releases_list",
   "forges_releases_get",
   "forges_releases_create",
