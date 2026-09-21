@@ -280,7 +280,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     name: "forges_commits_patch",
     label: "Forges Commit Patch",
     description:
-      "Read a bounded commit patch slice with resolved-SHA continuation and explicit binary, unavailable, and truncated states",
+      "Read one bounded commit patch slice. Continue with the returned sha and nextOffset; binary, unavailable, and truncated states stay distinct",
     promptSnippet:
       "Read code changes from one known commit without materializing an unbounded diff.",
     promptGuidelines: [

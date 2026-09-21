@@ -43,11 +43,14 @@ describe("buildCommitPatch", () => {
   });
 
   it("distinguishes renamed, binary, unavailable, and truncated patch content", () => {
-    const result = buildCommitPatch("resolved", files, null, { maxChars: 80 });
+    const full = buildCommitPatch("resolved", files, null, { maxChars: 200_000 });
+    const bounded = buildCommitPatch("resolved", files, null, { maxChars: 80 });
 
-    expect(result.content).toContain("--- renamed src/renamed.ts from src/old.ts");
-    expect(result.truncated).toBe(true);
-    expect(result.states).toEqual({ included: 1, binary: 1, unavailable: 1 });
+    expect(full.content).toContain("--- renamed src/renamed.ts from src/old.ts");
+    expect(full.content).toContain("[binary patch omitted]");
+    expect(full.content).toContain("[patch unavailable from provider]");
+    expect(full.states).toEqual({ included: 1, binary: 1, unavailable: 1 });
+    expect(bounded.truncated).toBe(true);
   });
 
   it("filters one file before applying the output budget", () => {

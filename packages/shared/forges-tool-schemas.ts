@@ -144,13 +144,13 @@ export function forgesToolSchemas() {
     ),
     offset: Type.Optional(
       Type.Integer({
-        description: "Character offset returned by the previous patch slice; defaults to 0",
+        description: "UTF-16 code-unit offset returned by the previous patch slice; defaults to 0",
         minimum: 0,
       }),
     ),
     maxChars: Type.Optional(
       Type.Integer({
-        description: "Maximum patch characters to return; defaults to 20000",
+        description: "Maximum patch UTF-16 code units to return; defaults to 20000",
         minimum: 1,
         maximum: 200000,
       }),

@@ -1261,6 +1261,13 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
           query: { page: String(page), per_page: "100" },
         });
         if (!data) throw new ForgesError("GitHub returned no commit data", 502, "github");
+        if (resolvedSha !== undefined && data.sha !== resolvedSha) {
+          throw new ForgesError(
+            "GitHub changed commit identity during patch pagination",
+            502,
+            "github",
+          );
+        }
         resolvedSha ??= data.sha;
         files.push(
           ...(data.files ?? []).map(

@@ -1032,7 +1032,8 @@ describe("GitLabProvider", () => {
       expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
     });
 
-    it("distinguishes binary and unavailable GitLab diffs", async () => {
+    it("keeps GitLab patch states and completeness conservative", async () => {
+      const ref = "feature/my-change";
       const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce({
@@ -1050,12 +1051,20 @@ describe("GitLabProvider", () => {
       mocks.rawFetch.mockResolvedValueOnce({
         data: [
           {
+            old_path: "old.ts",
+            new_path: "new.ts",
+            new_file: false,
+            renamed_file: true,
+            deleted_file: false,
+            diff: "",
+          },
+          {
             old_path: "logo.png",
             new_path: "logo.png",
             new_file: false,
             renamed_file: false,
             deleted_file: false,
-            diff: "",
+            diff: "Binary files a/logo.png and b/logo.png differ",
           },
           {
             old_path: "generated.js",
@@ -1070,9 +1079,14 @@ describe("GitLabProvider", () => {
         headers: glHeaders(),
       });
 
-      const result = await gl.commits.readPatch("gitlab-org", "gitlab-foss", sha);
+      const result = await gl.commits.readPatch("gitlab-org", "gitlab-foss", ref);
 
-      expect(result.states).toEqual({ included: 0, binary: 1, unavailable: 1 });
+      expect(mocks.client).toHaveBeenLastCalledWith(
+        "/projects/278964/repository/commits/feature%2Fmy-change",
+      );
+      expect(result.filesComplete).toBeNull();
+      expect(result.states).toEqual({ included: 1, binary: 1, unavailable: 1 });
+      expect(result.content).toContain("--- renamed new.ts from old.ts");
       expect(result.content).toContain("[binary patch omitted]");
       expect(result.content).toContain("[patch unavailable from provider]");
     });

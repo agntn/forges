@@ -1172,6 +1172,10 @@ describe("GitHubProvider", () => {
         truncated: true,
         states: { included: 1, binary: 0, unavailable: 1 },
       });
+      const continued = await gh.commits.readPatch("octocat", "hello-world", first.sha, {
+        offset: first.nextOffset ?? 0,
+      });
+      expect(continued).toMatchObject({ offset: 30, nextOffset: null, truncated: false });
       await expect(
         gh.commits.readPatch("octocat", "hello-world", "main", { offset: first.nextOffset ?? 0 }),
       ).rejects.toMatchObject({ status: 409 });

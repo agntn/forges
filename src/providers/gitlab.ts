@@ -998,7 +998,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   ): Promise<CommitPatch> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const encodedSha = encodePathSegment(sha);
+      const encodedSha = encodeRefPathSegment(sha);
       const commit = await this.client<GitLabCommit>(
         `/projects/${projectId}/repository/commits/${encodedSha}`,
       );
@@ -1010,7 +1010,6 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       }
 
       const files: CommitPatchFile[] = [];
-      let filesComplete: boolean | null = true;
       let page = 1;
       while (page <= MAX_COMMIT_DIFF_PAGES) {
         const { data, headers } = await rawFetch<GitLabMergeRequestDiff[]>(
@@ -1021,12 +1020,14 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         files.push(
           ...(data ?? []).map((diff) => {
             const unavailable = diff.too_large === true || diff.collapsed === true;
+            const binary = /^Binary files .+ differ$/mu.test(diff.diff);
+            const state = unavailable ? "unavailable" : binary ? "binary" : "included";
             return {
               path: diff.new_path,
               previousPath: diff.renamed_file ? diff.old_path : null,
               status: this.mapPullRequestFile(diff).status,
-              state: unavailable ? "unavailable" : diff.diff === "" ? "binary" : "included",
-              patch: unavailable ? "" : diff.diff,
+              state,
+              patch: state === "included" ? diff.diff : "",
             } satisfies CommitPatchFile;
           }),
         );
@@ -1035,12 +1036,11 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         if (next === null || next === "") break;
         const nextPage = Number.parseInt(next, 10);
         if (!Number.isInteger(nextPage) || nextPage <= page || nextPage > MAX_COMMIT_DIFF_PAGES) {
-          filesComplete = null;
           break;
         }
         page = nextPage;
       }
-      return buildCommitPatch(commit.id, files, filesComplete, options);
+      return buildCommitPatch(commit.id, files, null, options);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }

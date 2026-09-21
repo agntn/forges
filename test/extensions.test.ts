@@ -224,6 +224,16 @@ beforeEach(() => {
   mocks.ciRuns.list.mockResolvedValue({ items: [], hasNextPage: false });
   mocks.commits.list.mockResolvedValue({ items: [], hasNextPage: false });
   mocks.commits.get.mockResolvedValue({ sha: "abc", files: [], filesComplete: true });
+  mocks.commits.readPatch.mockResolvedValue({
+    sha: "abc",
+    path: "src/provider.ts",
+    content: "patch",
+    offset: 20,
+    nextOffset: null,
+    truncated: false,
+    filesComplete: true,
+    states: { included: 1, binary: 0, unavailable: 0 },
+  });
   mocks.issues.search.mockResolvedValue({ items: [], incomplete: false, hasNextPage: false });
   mocks.pullRequests.search.mockResolvedValue({
     items: [],
@@ -463,6 +473,32 @@ describe("Forges Pi extension", () => {
       "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
     );
     expect(result.details.result).toEqual({ sha: "abc", files: [], filesComplete: true });
+  });
+
+  it("executes commit patch reads through the shared provider operation", async () => {
+    const tool = requirePiTool(registerPiTools(), "forges_commits_patch");
+    const result = await tool.execute(
+      "test",
+      {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        sha: "abc",
+        path: "src/provider.ts",
+        offset: 20,
+        maxChars: 1000,
+      },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+
+    expect(mocks.commits.readPatch).toHaveBeenCalledWith("agntn", "forges", "abc", {
+      path: "src/provider.ts",
+      offset: 20,
+      maxChars: 1000,
+    });
+    expect(result.details.result).toMatchObject({ sha: "abc", offset: 20 });
   });
 
   it("executes issue search through the shared provider operation", async () => {
@@ -1239,6 +1275,31 @@ describe("Forges OMP extension", () => {
       "page",
       "perPage",
     ]);
+  });
+
+  it("executes commit patch reads through the shared provider operation", async () => {
+    const tool = requireOmpTool(registerOmpTools().tools, "forges_commits_patch");
+    const result = await tool.execute(
+      "test",
+      {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        sha: "abc",
+        offset: 20,
+        maxChars: 1000,
+      },
+      undefined,
+      undefined,
+      unusedOmpContext,
+    );
+
+    expect(mocks.commits.readPatch).toHaveBeenCalledWith("agntn", "forges", "abc", {
+      path: undefined,
+      offset: 20,
+      maxChars: 1000,
+    });
+    expect(result.details.result).toMatchObject({ sha: "abc", offset: 20 });
   });
 
   it("executes release creation through the shared provider operation", async () => {

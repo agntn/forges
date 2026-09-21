@@ -829,6 +829,7 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.commits.readPatch("testowner", "test-repo", sha);
+      expect(mockClient).toHaveBeenCalledWith(`/repos/testowner/test-repo/git/commits/${sha}`);
 
       expect(result).toMatchObject({
         sha,
