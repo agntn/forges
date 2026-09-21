@@ -1,3 +1,4 @@
+import { toolEffects } from "../packages/shared/tool-effects.ts";
 import * as OmpTypeBox from "@oh-my-pi/omptype/typebox";
 import type {
   ExtensionAPI as OmpExtensionAPI,
@@ -270,6 +271,7 @@ describe("Forges Pi extension", () => {
     const tools = registerPiTools();
 
     expect([...tools.keys()]).toEqual(toolNames);
+    expect([...tools.keys()].sort()).toEqual(Object.keys(toolEffects).sort());
     for (const tool of tools.values()) {
       expect(tool.promptGuidelines).not.toHaveLength(0);
       for (const guideline of tool.promptGuidelines ?? []) expect(guideline).toContain(tool.name);
@@ -1125,6 +1127,7 @@ describe("Forges OMP extension", () => {
 
     expect(label).toBe("Forges");
     expect([...tools.keys()]).toEqual(toolNames);
+    expect([...tools.keys()].sort()).toEqual(Object.keys(toolEffects).sort());
     for (const tool of tools.values()) {
       expect(tool.renderCall).toBeTypeOf("function");
       expect(tool.renderResult).toBeTypeOf("function");

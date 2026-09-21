@@ -1,4 +1,5 @@
 import { stripVTControlCharacters } from "node:util";
+import { toolApproval } from "./tool-effects.ts";
 
 export interface StatusTheme {
   fg?(color: string, text: string): string;
@@ -27,17 +28,6 @@ const PREVIEW_WIDTH = 200;
 const FIELD_SCAN_LIMIT = 2048;
 const TERMINAL_UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
 const MALFORMED_SURROGATE = /\p{Cs}/gu;
-
-const WRITE_TOOLS = new Set([
-  "forges_issues_create",
-  "forges_pull_requests_create",
-  "forges_releases_create",
-  "forges_releases_update",
-  "forges_auth_reload",
-  "forges_threads_reply",
-  "forges_threads_resolve",
-  "forges_threads_unresolve",
-]);
 
 function cutAt(text: string, end: number): string {
   const last = text.codePointAt(end - 1);
@@ -169,7 +159,7 @@ export function renderToolCall(
   ];
   const subject = callSubject(record);
   if (subject) parts.push(paint(theme, "dim", subject));
-  if (WRITE_TOOLS.has(name)) parts.push(paint(theme, "accent", "(write)"));
+  if (toolApproval(name) === "write") parts.push(paint(theme, "accent", "(write)"));
   const meta = callMeta(record, subject);
   if (meta.length > 0) parts.push(paint(theme, "muted", meta.join(" · ")));
   return parts.join(" ");
@@ -285,7 +275,7 @@ export function renderToolResult(
   const meta = resultMeta(result.details);
   const header = [
     paint(theme, "success", "✓"),
-    paint(theme, "accent", WRITE_TOOLS.has(name) ? "(write)" : "(read)"),
+    paint(theme, "accent", toolApproval(name) === "write" ? "(write)" : "(read)"),
     meta.length > 0 ? paint(theme, "muted", meta.join(" · ")) : undefined,
   ]
     .filter((part): part is string => part !== undefined)
