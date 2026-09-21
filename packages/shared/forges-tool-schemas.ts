@@ -298,6 +298,22 @@ export function forgesToolSchemas() {
         maxItems: 100,
       }),
     ),
+    filesOffset: Type.Optional(
+      Type.Integer({
+        description:
+          "Zero-based inventory offset; use nextFilesOffset to continue with the same paths",
+        minimum: 0,
+        maximum: Number.MAX_SAFE_INTEGER,
+      }),
+    ),
+    filesLimit: Type.Optional(
+      Type.Integer({
+        description:
+          "Maximum tracked paths per page, default 1000; names also have a 64 KiB page budget",
+        minimum: 1,
+        maximum: 1000,
+      }),
+    ),
     historyLimit: Type.Optional(
       Type.Integer({
         description: "Maximum HEAD commits to return, including message bodies; defaults to 3",

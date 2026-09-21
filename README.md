@@ -121,6 +121,8 @@ const evidence = await verifyLocalMerge({
 console.log(evidence.mergeReachable, evidence.pathsMatch);
 ```
 
+Tracked files are paged. Continue with `filesOffset: inspection.nextFilesOffset` until it is `null`, keeping `paths` unchanged. The [agent guide](https://forges.agntn.dev/guide/agents) covers limits and concurrent edits.
+
 Replace the sample `mergeCommit` with the forge's actual merge or squash SHA for that PR, not the current target tip. The two booleans answer different questions: is that commit in the target's local history, and do the selected paths match the PR head? Neither authorizes deleting a branch. Details and limits: [Agents](https://forges.agntn.dev/guide/agents#local-merge-verification).
 
 ## 🗺️ Providers

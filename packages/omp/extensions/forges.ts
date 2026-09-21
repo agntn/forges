@@ -789,6 +789,22 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
           maxItems: 100,
         }),
       ),
+      filesOffset: Type.Optional(
+        Type.Integer({
+          description:
+            "Zero-based inventory offset; use nextFilesOffset to continue with the same paths",
+          minimum: 0,
+          maximum: Number.MAX_SAFE_INTEGER,
+        }),
+      ),
+      filesLimit: Type.Optional(
+        Type.Integer({
+          description:
+            "Maximum tracked paths per page, default 1000; names also have a 64 KiB page budget",
+          minimum: 1,
+          maximum: 1000,
+        }),
+      ),
       historyLimit: Type.Optional(
         Type.Integer({
           description: "Maximum HEAD commits to return, including message bodies; defaults to 3",
@@ -804,7 +820,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     name: "forges_local_inspect",
     label: "Inspect Local Repository",
     description:
-      "Read local Git status, tracked paths and recent HEAD commit messages in one call. Supports Git pathspecs. No fetch or writes; the reads are not an atomic snapshot.",
+      "Read local Git status, a page of tracked paths and recent HEAD commit messages. Follow nextFilesOffset until null, keeping paths unchanged. No fetch or writes; concurrent index edits can change pagination.",
     parameters: localInspectParameters,
     ...statusRenderers("forges_local_inspect", "Inspect Local Repository"),
     approval: toolApproval("forges_local_inspect"),

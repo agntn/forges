@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 
 export interface VerifyLocalMergeOptions {
   cwd: string;
@@ -26,6 +26,104 @@ export class LocalGitError extends Error {
   }
 }
 
+function gitArgs(args: string[], pathspecs: "literal" | "git"): string[] {
+  return [
+    "--no-pager",
+    "-c",
+    "core.fsmonitor=false",
+    "--no-replace-objects",
+    "--no-lazy-fetch",
+    pathspecs === "literal" ? "--literal-pathspecs" : "--no-literal-pathspecs",
+    ...args,
+  ];
+}
+
+function gitOptions(cwd: string) {
+  return {
+    cwd,
+    env: {
+      ...Object.fromEntries(
+        Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith("GIT_")),
+      ),
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_OPTIONAL_LOCKS: "0",
+    },
+    timeout: 10_000,
+  };
+}
+
+function trackedFilesPage(
+  cwd: string,
+  paths: string[],
+  offset: number,
+  limit: number,
+): Promise<{
+  trackedFiles: string[];
+  nextFilesOffset: number | null;
+}> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "git",
+      gitArgs(["ls-files", "--cached", "--deduplicate", "-z", "--", ...paths], "git"),
+      {
+        ...gitOptions(cwd),
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    const trackedFiles: string[] = [];
+    let pending = Buffer.alloc(0);
+    let stderr = "";
+    let count = 0;
+    let bytes = 0;
+    let full = false;
+    let failure: Error | undefined;
+    child.on("error", (error) => {
+      failure = error;
+    });
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr = (stderr + chunk).slice(0, 8192);
+    });
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (failure) return;
+      pending = Buffer.concat([pending, chunk]);
+      let end: number;
+      while ((end = pending.indexOf(0)) !== -1) {
+        const path = pending.subarray(0, end);
+        pending = pending.subarray(end + 1);
+        if (path.length > 64 * 1024) {
+          failure = new LocalGitError("Git ls-files returned a path exceeding 64 KiB");
+          child.kill();
+          return;
+        }
+        if (count++ < offset || full) continue;
+        if (trackedFiles.length >= limit || bytes + path.length > 64 * 1024) {
+          full = true;
+          continue;
+        }
+        trackedFiles.push(path.toString("utf8"));
+        bytes += path.length;
+      }
+      if (pending.length > 64 * 1024) {
+        failure = new LocalGitError("Git ls-files returned a path exceeding 64 KiB");
+        child.kill();
+      }
+    });
+    child.on("close", (code, signal) => {
+      if (failure || code !== 0 || signal || pending.length) {
+        reject(
+          new LocalGitError(
+            `Git ls-files failed: ${failure?.message || stderr.trim() || signal || code || "incomplete path"}`,
+            { cause: failure },
+          ),
+        );
+        return;
+      }
+      resolve({ trackedFiles, nextFilesOffset: full ? offset + trackedFiles.length : null });
+    });
+  });
+}
+
 function git(
   cwd: string,
   args: string[],
@@ -35,28 +133,8 @@ function git(
   return new Promise((resolve, reject) => {
     execFile(
       "git",
-      [
-        "--no-pager",
-        "-c",
-        "core.fsmonitor=false",
-        "--no-replace-objects",
-        "--no-lazy-fetch",
-        pathspecs === "literal" ? "--literal-pathspecs" : "--no-literal-pathspecs",
-        ...args,
-      ],
-      {
-        cwd,
-        env: {
-          ...Object.fromEntries(
-            Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith("GIT_")),
-          ),
-          GIT_TERMINAL_PROMPT: "0",
-          GIT_OPTIONAL_LOCKS: "0",
-        },
-        encoding: "utf8",
-        timeout: 10_000,
-        maxBuffer: 1024 * 1024,
-      },
+      gitArgs(args, pathspecs),
+      { ...gitOptions(cwd), encoding: "utf8", maxBuffer: 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error && !(predicate && error.code === 1 && !error.killed && !error.signal)) {
           reject(
@@ -153,6 +231,10 @@ export interface InspectLocalOptions {
   /** Git pathspecs relative to the repository root; omitted means all paths. */
   paths?: string[];
   historyLimit?: number;
+  /** Zero-based inventory offset; continue with nextFilesOffset and unchanged pathspecs. */
+  filesOffset?: number;
+  /** Maximum names per page, 1-1000 (default 1000), also bounded by 64 KiB of path bytes. */
+  filesLimit?: number;
 }
 
 export interface LocalStatusEntry {
@@ -167,6 +249,8 @@ export interface LocalInspection {
   headSha: string | null;
   status: LocalStatusEntry[];
   trackedFiles: string[];
+  /** Null when this scan reached the end; pages are not an atomic index snapshot. */
+  nextFilesOffset: number | null;
   commits: { sha: string; subject: string; body: string }[];
 }
 
@@ -209,6 +293,14 @@ export async function inspectLocal(options: InspectLocalOptions): Promise<LocalI
   if (!Number.isInteger(historyLimit) || historyLimit < 1 || historyLimit > 100) {
     throw new TypeError("historyLimit must be an integer between 1 and 100");
   }
+  const filesOffset = options.filesOffset ?? 0;
+  const filesLimit = options.filesLimit ?? 1000;
+  if (!Number.isSafeInteger(filesOffset) || filesOffset < 0) {
+    throw new TypeError("filesOffset must be a nonnegative safe integer");
+  }
+  if (!Number.isInteger(filesLimit) || filesLimit < 1 || filesLimit > 1000) {
+    throw new TypeError("filesLimit must be an integer between 1 and 1000");
+  }
   const root = (await git(options.cwd, ["rev-parse", "--show-toplevel"])).output.replace(/\n$/, "");
   const head = await git(root, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], true);
   if (!head.ok) {
@@ -234,7 +326,7 @@ export async function inspectLocal(options: InspectLocalOptions): Promise<LocalI
       false,
       "git",
     ),
-    git(root, ["ls-files", "--cached", "--deduplicate", "-z", "--", ...paths], false, "git"),
+    trackedFilesPage(root, paths, filesOffset, filesLimit),
     headSha === null
       ? Promise.resolve({ output: "" })
       : git(
@@ -267,7 +359,7 @@ export async function inspectLocal(options: InspectLocalOptions): Promise<LocalI
     root,
     headSha,
     status: parseStatus(status.output),
-    trackedFiles: files.output ? files.output.split("\0").slice(0, -1) : [],
+    ...files,
     commits,
   };
 }
