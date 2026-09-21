@@ -397,41 +397,42 @@ function decodeQuotedGitPath(value: string): string | null {
   return new TextDecoder().decode(Uint8Array.from(bytes));
 }
 
-function diffSectionPath(section: string): string | null {
+function diffSectionPath(section: string, candidatePaths: readonly string[]): string | null {
   const headerEnd = section.indexOf("\n");
   const header = section.slice(0, headerEnd === -1 ? section.length : headerEnd);
   const body = header.slice("diff --git ".length);
-  let target: string;
-  if (body.startsWith('"')) {
+  if (body.endsWith('"')) {
+    const quoteOffsets: number[] = [];
     let escaped = false;
-    let separator = -1;
-    for (let index = 1; index < body.length; index += 1) {
+    for (let index = 0; index < body.length; index += 1) {
       const character = body[index]!;
-      if (character === '"' && !escaped && body[index + 1] === " ") {
-        separator = index + 1;
-        break;
-      }
+      if (character === '"' && !escaped) quoteOffsets.push(index);
       escaped = character === "\\" && !escaped;
       if (character !== "\\") escaped = false;
     }
-    if (separator === -1) return null;
-    const decoded = decodeQuotedGitPath(body.slice(separator + 1));
-    if (decoded === null) return null;
-    target = decoded;
-  } else {
-    const separator = body.indexOf(" b/");
-    if (separator === -1) return null;
-    target = body.slice(separator + 1);
+    const openingQuote = quoteOffsets.at(-2);
+    if (openingQuote === undefined) return null;
+    const target = decodeQuotedGitPath(body.slice(openingQuote));
+    if (target === null || !target.startsWith("b/")) return null;
+    const path = target.slice(2);
+    return candidatePaths.includes(path) ? path : null;
   }
-  return target.startsWith("b/") ? target.slice(2) : null;
+
+  let match: string | null = null;
+  for (const path of candidatePaths) {
+    if (body.endsWith(` b/${path}`) && (match === null || path.length > match.length)) {
+      match = path;
+    }
+  }
+  return match;
 }
 
-function splitGitDiff(diff: string): Map<string, string> {
+function splitGitDiff(diff: string, candidatePaths: readonly string[]): Map<string, string> {
   const starts = [...diff.matchAll(/^diff --git /gmu)].map((match) => match.index);
   const sections = new Map<string, string>();
   for (const [index, start] of starts.entries()) {
     const section = diff.slice(start, starts[index + 1] ?? diff.length);
-    const path = diffSectionPath(section);
+    const path = diffSectionPath(section, candidatePaths);
     if (path !== null && !sections.has(path)) sections.set(path, section);
   }
   return sections;
@@ -1000,8 +1001,12 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodePathSegment(commit.sha)}.diff`,
         { responseType: "stream" },
       );
-      const sections = splitGitDiff(await readBoundedGiteaDiff(diffStream));
-      const files: CommitPatchFile[] = (commit.files ?? []).map((file) => {
+      const commitFiles = commit.files ?? [];
+      const sections = splitGitDiff(
+        await readBoundedGiteaDiff(diffStream),
+        commitFiles.map((file) => file.filename),
+      );
+      const files: CommitPatchFile[] = commitFiles.map((file) => {
         const patch = sections.get(file.filename);
         const binary =
           patch !== undefined && /^(?:Binary files .+ differ|GIT binary patch)$/mu.test(patch);

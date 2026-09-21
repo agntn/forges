@@ -886,6 +886,52 @@ describe("Gitea Provider", () => {
       );
     });
 
+    it("matches mixed quoted and ambiguous unquoted diff paths", async () => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      mockClient
+        .mockResolvedValueOnce({
+          sha,
+          commit: {
+            message: "rename paths",
+            author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+            committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          },
+          parents: [],
+          files: [
+            { filename: "newname", status: "renamed" },
+            { filename: "foo b/x", status: "modified" },
+          ],
+        })
+        .mockResolvedValueOnce(
+          textStream(
+            [
+              'diff --git "a/old\\tname" b/newname',
+              "similarity index 90%",
+              'rename from "old\\tname"',
+              "rename to newname",
+              "@@ -1 +1 @@",
+              "-old",
+              "+renamed",
+              "diff --git a/foo b/x b/foo b/x",
+              "--- a/foo b/x",
+              "+++ b/foo b/x",
+              "@@ -1 +1 @@",
+              "-old",
+              "+ambiguous",
+              "",
+            ].join("\n"),
+          ),
+        );
+
+      const result = await provider.commits.readPatch("testowner", "test-repo", sha);
+
+      expect(result.states).toEqual({ included: 2, binary: 0, unavailable: 0 });
+      expect(result.content).toContain("--- renamed newname\n");
+      expect(result.content).toContain("+renamed");
+      expect(result.content).toContain("--- modified foo b/x\n");
+      expect(result.content).toContain("+ambiguous");
+    });
+
     it("rejects Gitea commit diffs above the bounded input size", async () => {
       const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
       mockClient
