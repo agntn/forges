@@ -352,6 +352,11 @@ function buildListQuery(options?: ListOptions): Record<string, string> {
 const PLATFORM = "gitea";
 const GITEA_LABEL_PAGE_SIZE = 50;
 const MAX_GITEA_LABEL_PAGES = 100;
+
+function splitGitDiff(diff: string): string[] {
+  const starts = [...diff.matchAll(/^diff --git /gmu)].map((match) => match.index);
+  return starts.map((start, index) => diff.slice(start, starts[index + 1] ?? diff.length));
+}
 const GITEA_PULL_REQUEST_TEMPLATE_CANDIDATES = [
   "PULL_REQUEST_TEMPLATE.md",
   "PULL_REQUEST_TEMPLATE.yaml",
@@ -867,7 +872,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<CommitPatch> {
     try {
       const commit = await this.client<GiteaCommit>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodePathSegment(sha)}`,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodeRefPathSegment(sha)}`,
       );
       if ((options?.offset ?? 0) > 0 && sha !== commit.sha) {
         throw new ForgesError(
@@ -875,13 +880,24 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
           409,
         );
       }
-      const files: CommitPatchFile[] = (commit.files ?? []).map((file) => ({
-        path: file.filename,
-        previousPath: null,
-        status: normalizeChangedFileStatus(file.status),
-        state: file.patch === undefined ? "unavailable" : "included",
-        patch: file.patch ?? "",
-      }));
+      const rawDiff = await this.client<string>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodePathSegment(commit.sha)}.diff`,
+      );
+      const commitFiles = commit.files ?? [];
+      const sections = splitGitDiff(rawDiff);
+      const sectionsAlign = sections.length === commitFiles.length;
+      const files: CommitPatchFile[] = commitFiles.map((file, index) => {
+        const patch = sectionsAlign ? sections[index] : undefined;
+        const binary =
+          patch !== undefined && /^(?:Binary files .+ differ|GIT binary patch)$/mu.test(patch);
+        return {
+          path: file.filename,
+          previousPath: null,
+          status: normalizeChangedFileStatus(file.status),
+          state: patch === undefined ? "unavailable" : binary ? "binary" : "included",
+          patch: patch === undefined || binary ? "" : patch,
+        };
+      });
       return buildCommitPatch(commit.sha, files, null, options);
     } catch (error) {
       throw normalizeError(error, PLATFORM);

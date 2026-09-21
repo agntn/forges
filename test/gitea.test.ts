@@ -814,29 +814,57 @@ describe("Gitea Provider", () => {
       expect(JSON.stringify(result)).not.toContain("patch");
     });
 
-    it("reports Gitea commit patches as unavailable", async () => {
+    it("reads Gitea patch content from the resolved commit diff", async () => {
+      const ref = "feature/my-change";
       const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
-      mockClient.mockResolvedValueOnce({
-        sha,
-        html_url: `https://gitea.com/testowner/test-repo/commit/${sha}`,
-        commit: {
-          message: "patch",
-          author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
-          committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
-        },
-        parents: [],
-        files: [{ filename: "src/provider.ts", status: "modified" }],
-      });
+      mockClient
+        .mockResolvedValueOnce({
+          sha,
+          html_url: `https://gitea.com/testowner/test-repo/commit/${sha}`,
+          commit: {
+            message: "patch",
+            author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+            committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          },
+          parents: [],
+          files: [
+            { filename: "src/provider.ts", status: "modified" },
+            { filename: "public/logo.png", status: "modified" },
+          ],
+        })
+        .mockResolvedValueOnce(
+          [
+            "diff --git a/src/provider.ts b/src/provider.ts",
+            "index 1111111..2222222 100644",
+            "--- a/src/provider.ts",
+            "+++ b/src/provider.ts",
+            "@@ -1 +1 @@",
+            "-old",
+            "+new",
+            "diff --git a/public/logo.png b/public/logo.png",
+            "index 3333333..4444444 100644",
+            "Binary files a/public/logo.png and b/public/logo.png differ",
+            "",
+          ].join("\n"),
+        );
 
-      const result = await provider.commits.readPatch("testowner", "test-repo", sha);
-      expect(mockClient).toHaveBeenCalledWith(`/repos/testowner/test-repo/git/commits/${sha}`);
+      const result = await provider.commits.readPatch("testowner", "test-repo", ref);
 
+      expect(mockClient).toHaveBeenNthCalledWith(
+        1,
+        "/repos/testowner/test-repo/git/commits/feature%2Fmy-change",
+      );
+      expect(mockClient).toHaveBeenNthCalledWith(
+        2,
+        `/repos/testowner/test-repo/git/commits/${sha}.diff`,
+      );
       expect(result).toMatchObject({
         sha,
         filesComplete: null,
-        states: { included: 0, binary: 0, unavailable: 1 },
+        states: { included: 1, binary: 1, unavailable: 0 },
       });
-      expect(result.content).toContain("[patch unavailable from provider]");
+      expect(result.content).toContain("@@ -1 +1 @@");
+      expect(result.content).toContain("[binary patch omitted]");
     });
   });
 
