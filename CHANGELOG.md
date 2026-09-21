@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.3.3
+
+[compare changes](https://github.com/agntn/forges/compare/v0.3.2...v0.3.3)
+
+### 🚀 Enhancements
+
+- Check merge evidence without shell chains ([#133](https://github.com/agntn/forges/pull/133))
+- Inspect local Git in one tool call ([#134](https://github.com/agntn/forges/pull/134))
+- Fetch complete review bodies ([#138](https://github.com/agntn/forges/pull/138))
+- Search commits across repositories ([#139](https://github.com/agntn/forges/pull/139))
+- Read commit patches in slices ([#146](https://github.com/agntn/forges/pull/146))
+- Page large local inventories ([#149](https://github.com/agntn/forges/pull/149))
+
+### 🩹 Fixes
+
+- **mcp:** Name unknown arguments on newer TypeBox ([#128](https://github.com/agntn/forges/pull/128))
+- **gitlab:** Name the pipelines listed as checks ([#129](https://github.com/agntn/forges/pull/129))
+- Keep API paths in pagination links ([#142](https://github.com/agntn/forges/pull/142))
+
+### 💅 Refactors
+
+- Centralize tool effects ([#144](https://github.com/agntn/forges/pull/144))
+
+### ❤️ Contributors
+
+- Aeitwoen ([@aeitwoen](https://github.com/aeitwoen))
+- Ori ([@oritwoen](https://github.com/oritwoen))
+
 ## v0.3.2
 
 [compare changes](https://github.com/agntn/forges/compare/v0.3.1...v0.3.2)
