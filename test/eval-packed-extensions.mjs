@@ -199,12 +199,25 @@ async function assertPackedMcpServer(root) {
     assert.equal(JSON.parse(verified.content[0].text).result.mergeReachable, false);
     const inspected = await client.callTool({
       name: "forges_local_inspect",
-      arguments: { cwd: localMergeArgs.cwd, paths: ["file.txt"], historyLimit: 1 },
+      arguments: {
+        cwd: localMergeArgs.cwd,
+        paths: ["file.txt"],
+        historyLimit: 1,
+        filesOffset: 0,
+        filesLimit: 1,
+      },
     });
     assert.notEqual(inspected.isError, true);
     const inspection = JSON.parse(inspected.content[0].text);
     assert.equal(inspection.platform, "local");
     assert.deepEqual(inspection.result.trackedFiles, ["file.txt"]);
+    assert.equal(inspection.result.nextFilesOffset, null);
+    const exhausted = await client.callTool({
+      name: "forges_local_inspect",
+      arguments: { cwd: localMergeArgs.cwd, paths: ["file.txt"], filesOffset: 1, filesLimit: 1 },
+    });
+    assert.notEqual(exhausted.isError, true);
+    assert.deepEqual(JSON.parse(exhausted.content[0].text).result.trackedFiles, []);
     assert.deepEqual(inspection.result.status, []);
     assert.equal(inspection.result.commits.length, 1);
     assert.equal(inspection.result.commits[0].subject, "after");
@@ -377,13 +390,28 @@ try {
     assert.equal(answer.details.result.mergeReachable, false);
     const inspection = await requireTool(tools, "forges_local_inspect").execute(
       "inspect",
-      { cwd: localMergeArgs.cwd, paths: ["file.txt"], historyLimit: 1 },
+      {
+        cwd: localMergeArgs.cwd,
+        paths: ["file.txt"],
+        historyLimit: 1,
+        filesOffset: 0,
+        filesLimit: 1,
+      },
       undefined,
       undefined,
       {},
     );
     assert.equal(inspection.details.platform, "local");
     assert.deepEqual(inspection.details.result.trackedFiles, ["file.txt"]);
+    assert.equal(inspection.details.result.nextFilesOffset, null);
+    const exhausted = await requireTool(tools, "forges_local_inspect").execute(
+      "inspect-next",
+      { cwd: localMergeArgs.cwd, paths: ["file.txt"], filesOffset: 1, filesLimit: 1 },
+      undefined,
+      undefined,
+      {},
+    );
+    assert.deepEqual(exhausted.details.result.trackedFiles, []);
     assert.deepEqual(inspection.details.result.status, []);
     assert.equal(inspection.details.result.commits.length, 1);
     assert.equal(inspection.details.result.commits[0].subject, "after");

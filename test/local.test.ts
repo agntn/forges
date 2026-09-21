@@ -256,6 +256,87 @@ describe("verifyLocalMerge", () => {
 });
 
 describe("inspectLocal", () => {
+  it("pages an inventory larger than the subprocess buffer without losing paths", async () => {
+    const base = commit("base");
+    const blob = git("rev-parse", `${base}:file.txt`);
+    const paths = Array.from(
+      { length: 9000 },
+      (_, i) => `${String(i).padStart(5, "0")}${"x".repeat(120)}`,
+    );
+    const tree = execFileSync("git", ["mktree"], {
+      cwd,
+      input: paths.map((path) => `100644 blob ${blob}\t${path}\n`).join(""),
+      encoding: "utf8",
+    }).trim();
+    const head = git("commit-tree", tree, "-p", base, "-m", "large inventory");
+    git("update-ref", "HEAD", head);
+    git("read-tree", "HEAD");
+    execFileSync("git", ["update-index", "--skip-worktree", "--stdin"], {
+      cwd,
+      input: paths.join("\n") + "\n",
+    });
+    const recovered: string[] = [];
+    let filesOffset = 0;
+    do {
+      const result = await inspectLocal({ cwd, filesOffset });
+      expect(result.status).toEqual([{ index: "?", worktree: "?", path: "file.txt" }]);
+      expect(result.commits[0]).toEqual({ sha: head, subject: "large inventory", body: "" });
+      expect(result.trackedFiles.length).toBeGreaterThan(0);
+      expect(result.trackedFiles.length).toBeLessThanOrEqual(1000);
+      expect(Buffer.byteLength(result.trackedFiles.join(""))).toBeLessThanOrEqual(64 * 1024);
+      recovered.push(...result.trackedFiles);
+      if (result.nextFilesOffset === null) break;
+      expect(result.nextFilesOffset).toBeGreaterThan(filesOffset);
+      filesOffset = result.nextFilesOffset;
+    } while (recovered.length <= paths.length);
+    expect(recovered).toEqual(paths);
+  });
+  it.each([
+    'process.stdout.write("partial\\0"); process.exitCode = 7',
+    'process.stdout.write("unterminated")',
+    'process.stdout.write("x".repeat(65537) + "\\0")',
+    'process.stdout.write("x".repeat(65537))',
+  ])("rejects failed or malformed inventory streams: %s", async (program) => {
+    commit("base");
+    const spawn = childProcess.spawn;
+    vi.spyOn(childProcess, "spawn").mockImplementationOnce(() =>
+      spawn(process.execPath, ["-e", program]),
+    );
+    await expect(inspectLocal({ cwd })).rejects.toBeInstanceOf(LocalGitError);
+  });
+
+  it("uses an exact page boundary and allows offsets beyond the inventory", async () => {
+    writeFileSync(join(cwd, "a.txt"), "a");
+    commit("base");
+    expect(await inspectLocal({ cwd, filesLimit: 1 })).toMatchObject({
+      trackedFiles: ["a.txt"],
+      nextFilesOffset: 1,
+    });
+    expect(await inspectLocal({ cwd, filesLimit: 1, filesOffset: 1 })).toMatchObject({
+      trackedFiles: ["file.txt"],
+      nextFilesOffset: null,
+    });
+    expect(await inspectLocal({ cwd, filesOffset: 10 })).toMatchObject({
+      trackedFiles: [],
+      nextFilesOffset: null,
+    });
+    expect(await inspectLocal({ cwd, paths: ["missing"] })).toMatchObject({
+      trackedFiles: [],
+      nextFilesOffset: null,
+    });
+  });
+
+  it.each([-1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects filesOffset %s",
+    async (filesOffset) => {
+      await expect(inspectLocal({ cwd, filesOffset })).rejects.toThrow("filesOffset");
+    },
+  );
+
+  it.each([0, 1001, 1.5, NaN])("rejects filesLimit %s", async (filesLimit) => {
+    await expect(inspectLocal({ cwd, filesLimit })).rejects.toThrow("filesLimit");
+  });
+
   it("returns filtered status, tracked paths and full commit messages", async () => {
     mkdirSync(join(cwd, "nested"));
     writeFileSync(join(cwd, "nested/AGENTS.md"), "rules");
@@ -274,6 +355,7 @@ describe("inspectLocal", () => {
       headSha: second,
       status: [{ index: "M", worktree: "M", path: "nested/AGENTS.md" }],
       trackedFiles: ["nested/AGENTS.md"],
+      nextFilesOffset: null,
       commits: [
         { sha: second, subject: "update rules", body: "Reason line one.\nReason line two.\n" },
         { sha: first, subject: "base", body: "" },
@@ -328,6 +410,7 @@ describe("inspectLocal", () => {
       headSha: null,
       status: [{ index: "A", worktree: " ", path: "staged.txt" }],
       trackedFiles: ["staged.txt"],
+      nextFilesOffset: null,
       commits: [],
     });
   });
