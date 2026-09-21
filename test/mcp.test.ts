@@ -1,3 +1,4 @@
+import { toolEffects } from "../packages/shared/tool-effects.ts";
 import { readFile } from "node:fs/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -212,10 +213,18 @@ describe("forges MCP server", () => {
       websiteUrl: "https://github.com/agntn/forges",
     });
     expect(response.tools.map((tool) => tool.name)).toEqual(toolNames);
+    expect(response.tools.map((tool) => tool.name).sort()).toEqual(Object.keys(toolEffects).sort());
     for (const tool of response.tools) {
       expect(tool.annotations).toMatchObject({
         title: tool.title,
         readOnlyHint: !writingTools.has(tool.name),
+        idempotentHint: ![
+          "forges_issues_create",
+          "forges_pull_requests_create",
+          "forges_releases_create",
+          "forges_threads_reply",
+          "forges_auth_reload",
+        ].includes(tool.name),
         // A release edit replaces the title and notes that were there; nothing else overwrites.
         destructiveHint: tool.name === "forges_releases_update",
         openWorldHint: !tool.name.startsWith("forges_local_"),
