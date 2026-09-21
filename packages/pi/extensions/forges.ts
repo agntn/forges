@@ -472,6 +472,22 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_pull_requests_search_global",
+    label: "Search Pull Requests Across Repositories",
+    description:
+      "Search pull requests across repositories. GitHub supports optional owner/repository scope and sort/order (created/desc for newest). Returns repository identity, totalCount, incomplete and resultLimit (1000). Follow nextPage while hasNextPage is true; narrow the query when incomplete is true. Other providers report unsupported search.",
+    parameters: schemas.globalPullRequestSearchParameters,
+    ...statusRenderers("forges_pull_requests_search_global", "Search Pull Requests"),
+    promptSnippet: "Find an author's pull requests across repositories, optionally newest first.",
+    promptGuidelines: [
+      "Use forges_pull_requests_search_global with sort created and order desc for recent author contributions; narrow the query when incomplete is true.",
+    ],
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).searchPullRequestsGlobal(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_pull_requests_search",
     label: "Search Forges Pull Requests",
     description: "Search repository pull requests with the selected platform's query syntax",

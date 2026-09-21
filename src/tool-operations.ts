@@ -44,6 +44,8 @@ import type {
   PullRequestFile,
   PullRequestReview,
   PullRequestSearchItem,
+  GlobalPullRequestSearchOptions,
+  GlobalPullRequestSearchItem,
   Release,
   ReplyThreadInput,
   Repository,
@@ -213,6 +215,11 @@ export interface ListContributionTemplatesParams extends RepositoryParams {
 export interface GetContributionTemplateParams extends RepositoryParams {
   readonly kind: ContributionTemplateKind;
   readonly key: string;
+}
+
+export interface SearchPullRequestsGlobalParams
+  extends PlatformParams, GlobalPullRequestSearchOptions {
+  query: string;
 }
 
 export interface SearchCommitsParams extends PlatformParams, CommitSearchOptions {
@@ -730,6 +737,29 @@ export async function getPullRequestReview(
     params.reviewId,
   );
   return result(params.platform, review);
+}
+
+export async function searchPullRequestsGlobal(
+  params: SearchPullRequestsGlobalParams,
+): Promise<
+  ForgesToolResult<
+    SearchPageResult<Omit<GlobalPullRequestSearchItem, "body">> & { resultLimit: number }
+  >
+> {
+  const provider = await readProvider(params.platform);
+  const search = await provider.pullRequests.searchGlobal(params.query, {
+    owner: params.owner,
+    repo: params.repo,
+    page: params.page,
+    perPage: params.perPage,
+    sort: params.sort,
+    order: params.order,
+  });
+  return result(
+    params.platform,
+    { ...summarizeIssuePage(search), resultLimit: search.resultLimit },
+    "Pull-request bodies and revision details are omitted; use forges_pull_requests_get with the hit's repository and number.",
+  );
 }
 
 export async function searchPullRequests(

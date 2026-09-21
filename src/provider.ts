@@ -46,6 +46,8 @@ import type {
   PullRequestResource,
   PullRequestReview,
   PullRequestSearchItem,
+  GlobalPullRequestSearchOptions,
+  GlobalPullRequestSearchResult,
   Release,
   ReleaseResource,
   ReplyThreadInput,
@@ -241,6 +243,15 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         this.getIssueComment(owner, repo, number, commentId),
     };
     this.pullRequests = {
+      searchGlobal: async (query, options) => {
+        if (query.trim() === "") {
+          throw new ForgesError("Pull-request search query must not be empty", 400);
+        }
+        if (options?.repo !== undefined && options.owner === undefined) {
+          throw new ForgesError("Pull-request search repository scope requires an owner", 400);
+        }
+        return this.searchPullRequestsGlobal(query, options);
+      },
       list: (owner, repo, options) => this.listPullRequests(owner, repo, options),
       listFiles: (owner, repo, number, options) =>
         this.listPullRequestFiles(owner, repo, number, options),
@@ -324,6 +335,14 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _options?: ListCiRunsOptions,
   ): Promise<PageResult<CiRun>> {
     return Promise.reject(new ForgesError("CI-run listing is not supported by this provider", 501));
+  }
+  protected searchPullRequestsGlobal(
+    _query: string,
+    _options?: GlobalPullRequestSearchOptions,
+  ): Promise<GlobalPullRequestSearchResult> {
+    return Promise.reject(
+      new ForgesError("Global pull-request search is not supported by this provider", 501),
+    );
   }
   protected searchCommits(
     _query: string,

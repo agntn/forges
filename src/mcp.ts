@@ -219,6 +219,14 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       execute: (operations, args) => operations.listPullRequests(args),
     }),
     defineTool({
+      name: "forges_pull_requests_search_global",
+      title: "Search Pull Requests Across Repositories",
+      description:
+        "Search pull requests across repositories. GitHub supports optional owner/repository scope and sort/order (created/desc for newest). Returns repository identity, totalCount, incomplete and resultLimit (1000). Follow nextPage while hasNextPage is true; narrow the query when incomplete is true. Other providers report unsupported search.",
+      inputSchema: schemas.globalPullRequestSearchParameters,
+      execute: (operations, args) => operations.searchPullRequestsGlobal(args),
+    }),
+    defineTool({
       name: "forges_pull_requests_search",
       title: "Search Pull Requests",
       description:

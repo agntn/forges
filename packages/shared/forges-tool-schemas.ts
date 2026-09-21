@@ -122,6 +122,31 @@ export function forgesToolSchemas() {
     page,
     perPage,
   });
+  const globalPullRequestSearchParameters = closed({
+    platform,
+    query: Type.String({
+      description: "Native pull-request query, including author: and created: qualifiers",
+      minLength: 1,
+    }),
+    owner: Type.Optional(owner),
+    repo: Type.Optional(repo),
+    page,
+    perPage,
+    sort: Type.Optional(
+      Type.Unsafe<"created" | "updated" | "comments">({
+        type: "string",
+        enum: ["created", "updated", "comments"],
+        description: "Sort field; omit for best match",
+      }),
+    ),
+    order: Type.Optional(
+      Type.Unsafe<"asc" | "desc">({
+        type: "string",
+        enum: ["asc", "desc"],
+        description: "Sort direction; defaults to desc",
+      }),
+    ),
+  });
   const commitSearchParameters = closed({
     platform,
     query: Type.String({
@@ -335,6 +360,7 @@ export function forgesToolSchemas() {
     commitPatchParameters,
     listCommitsParameters,
     commitSearchParameters,
+    globalPullRequestSearchParameters,
     listCiRunsParameters,
     listReleasesParameters,
     releaseParameters,
