@@ -1249,13 +1249,14 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     options?: CommitPatchOptions,
   ): Promise<CommitPatch> {
     try {
-      const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodePathSegment(sha)}`;
       const files: CommitPatchFile[] = [];
       let resolvedSha: string | undefined;
       let filesComplete: boolean | null = true;
       let page = 1;
 
       while (page <= MAX_COMMIT_FILE_PAGES) {
+        const commitRef = resolvedSha ?? sha;
+        const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodePathSegment(commitRef)}`;
         const { data, headers } = await rawFetch<GitHubCommit>(this.client, route, {
           query: { page: String(page), per_page: "100" },
         });

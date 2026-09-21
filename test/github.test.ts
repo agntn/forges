@@ -1177,6 +1177,38 @@ describe("GitHubProvider", () => {
       ).rejects.toMatchObject({ status: 409 });
     });
 
+    it("pins later GitHub patch pages to the first resolved SHA", async () => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      const commit = {
+        sha,
+        commit: {
+          message: "patch",
+          author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+        },
+        html_url: `https://github.com/octocat/hello-world/commit/${sha}`,
+        parents: [],
+      };
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: { ...commit, files: [{ filename: "first.ts", status: "modified", patch: "a" }] },
+          headers: makeHeaders('<?page=2>; rel="next"'),
+        })
+        .mockResolvedValueOnce({
+          data: { ...commit, files: [{ filename: "second.ts", status: "modified", patch: "b" }] },
+          headers: makeHeaders(),
+        });
+
+      await gh.commits.readPatch("octocat", "hello-world", "main");
+
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        2,
+        mocks.client,
+        `/repos/octocat/hello-world/commits/${sha}`,
+        { query: { page: "2", per_page: "100" } },
+      );
+    });
+
     it("rejects invalid patch limits before provider I/O", async () => {
       await expect(
         gh.commits.readPatch("octocat", "hello-world", "main", { maxChars: 0 }),
