@@ -1256,7 +1256,11 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
       while (page <= MAX_COMMIT_FILE_PAGES) {
         const commitRef = resolvedSha ?? sha;
-        const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodePathSegment(commitRef)}`;
+        const encodedCommitRef =
+          resolvedSha === undefined
+            ? encodeRefPathSegment(commitRef)
+            : encodePathSegment(commitRef);
+        const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodedCommitRef}`;
         const { data, headers } = await rawFetch<GitHubCommit>(this.client, route, {
           query: { page: String(page), per_page: "100" },
         });

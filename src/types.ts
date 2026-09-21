@@ -274,7 +274,7 @@ export interface CommitPatchOptions {
   maxChars?: number;
 }
 
-/** One bounded slice of a commit patch stream. Continue with sha and nextOffset. */
+/** One bounded slice. Continue with sha, nextOffset, and the same non-null path. */
 export interface CommitPatch {
   sha: string;
   path: string | null;

@@ -1172,6 +1172,7 @@ describe("GitHubProvider", () => {
         truncated: true,
         states: { included: 1, binary: 0, unavailable: 1 },
       });
+      expect(first.content).toBe("--- renamed src/new.ts from sr");
       const continued = await gh.commits.readPatch("octocat", "hello-world", first.sha, {
         offset: first.nextOffset ?? 0,
       });
@@ -1203,8 +1204,14 @@ describe("GitHubProvider", () => {
           headers: makeHeaders(),
         });
 
-      await gh.commits.readPatch("octocat", "hello-world", "main");
+      await gh.commits.readPatch("octocat", "hello-world", "feature/foo");
 
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        1,
+        mocks.client,
+        "/repos/octocat/hello-world/commits/feature%2Ffoo",
+        { query: { page: "1", per_page: "100" } },
+      );
       expect(mocks.rawFetch).toHaveBeenNthCalledWith(
         2,
         mocks.client,

@@ -160,7 +160,8 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     ),
     offset: Type.Optional(
       Type.Integer({
-        description: "UTF-16 code-unit offset returned by the previous patch slice; defaults to 0",
+        description:
+          "UTF-16 code-unit offset returned by the previous slice; continue with its sha and same path",
         minimum: 0,
       }),
     ),
@@ -413,7 +414,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     name: "forges_commits_patch",
     label: "Forges Commit Patch",
     description:
-      "Read one bounded commit patch slice. Continue with the returned sha and nextOffset; binary, unavailable, and truncated states stay distinct",
+      "Read one bounded commit patch slice. Continue with the returned sha, nextOffset, and same non-null path. Each slice repeats provider pagination, so use the largest practical maxChars",
     parameters: commitPatchParameters,
     ...statusRenderers("forges_commits_patch", "Forges Commit Patch"),
     approval: toolApproval("forges_commits_patch"),

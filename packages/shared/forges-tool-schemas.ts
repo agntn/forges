@@ -144,7 +144,8 @@ export function forgesToolSchemas() {
     ),
     offset: Type.Optional(
       Type.Integer({
-        description: "UTF-16 code-unit offset returned by the previous patch slice; defaults to 0",
+        description:
+          "UTF-16 code-unit offset returned by the previous slice; continue with its sha and same path",
         minimum: 0,
       }),
     ),
