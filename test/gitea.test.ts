@@ -932,20 +932,26 @@ describe("Gitea Provider", () => {
       expect(result.content).toContain("+ambiguous");
     });
 
-    it("rejects Gitea commit diffs above the bounded input size", async () => {
+    it("accepts the Gitea diff size boundary and rejects content above it", async () => {
       const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      const commit = {
+        sha,
+        commit: {
+          message: "bounded patch",
+          author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+        },
+        parents: [],
+        files: [{ filename: "large.txt", status: "modified" }],
+      };
       mockClient
-        .mockResolvedValueOnce({
-          sha,
-          commit: {
-            message: "oversized patch",
-            author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
-            committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
-          },
-          parents: [],
-          files: [{ filename: "large.txt", status: "modified" }],
-        })
+        .mockResolvedValueOnce(commit)
+        .mockResolvedValueOnce(textStream("x".repeat(2_000_000)))
+        .mockResolvedValueOnce(commit)
         .mockResolvedValueOnce(textStream("x".repeat(2_000_001)));
+
+      const accepted = await provider.commits.readPatch("testowner", "test-repo", sha);
+      expect(accepted.states).toEqual({ included: 0, binary: 0, unavailable: 1 });
 
       await expect(provider.commits.readPatch("testowner", "test-repo", sha)).rejects.toMatchObject(
         {
