@@ -352,10 +352,126 @@ function buildListQuery(options?: ListOptions): Record<string, string> {
 const PLATFORM = "gitea";
 const GITEA_LABEL_PAGE_SIZE = 50;
 const MAX_GITEA_LABEL_PAGES = 100;
+const MAX_GITEA_DIFF_CHARS = 2_000_000;
+const GIT_ESCAPED_BYTES: Readonly<Record<string, number>> = {
+  a: 7,
+  b: 8,
+  t: 9,
+  n: 10,
+  v: 11,
+  f: 12,
+  r: 13,
+};
 
-function splitGitDiff(diff: string): string[] {
+function decodeQuotedGitPath(value: string): string | null {
+  if (!value.startsWith('"') || !value.endsWith('"')) return null;
+  const bytes: number[] = [];
+  const encoder = new TextEncoder();
+  for (let index = 1; index < value.length - 1; index += 1) {
+    const character = value[index]!;
+    if (character !== "\\") {
+      bytes.push(...encoder.encode(character));
+      continue;
+    }
+    const escape = value[++index];
+    if (escape === undefined) return null;
+    const escaped = GIT_ESCAPED_BYTES[escape];
+    if (escaped !== undefined) {
+      bytes.push(escaped);
+      continue;
+    }
+    if (escape === '"' || escape === "\\") {
+      bytes.push(escape.charCodeAt(0));
+      continue;
+    }
+    if (/^[0-7]$/u.test(escape)) {
+      let octal = escape;
+      while (octal.length < 3 && /^[0-7]$/u.test(value[index + 1] ?? "")) {
+        octal += value[++index];
+      }
+      bytes.push(Number.parseInt(octal, 8));
+      continue;
+    }
+    return null;
+  }
+  return new TextDecoder().decode(Uint8Array.from(bytes));
+}
+
+function diffSectionPath(section: string): string | null {
+  const headerEnd = section.indexOf("\n");
+  const header = section.slice(0, headerEnd === -1 ? section.length : headerEnd);
+  const body = header.slice("diff --git ".length);
+  let target: string;
+  if (body.startsWith('"')) {
+    let escaped = false;
+    let separator = -1;
+    for (let index = 1; index < body.length; index += 1) {
+      const character = body[index]!;
+      if (character === '"' && !escaped && body[index + 1] === " ") {
+        separator = index + 1;
+        break;
+      }
+      escaped = character === "\\" && !escaped;
+      if (character !== "\\") escaped = false;
+    }
+    if (separator === -1) return null;
+    const decoded = decodeQuotedGitPath(body.slice(separator + 1));
+    if (decoded === null) return null;
+    target = decoded;
+  } else {
+    const separator = body.indexOf(" b/");
+    if (separator === -1) return null;
+    target = body.slice(separator + 1);
+  }
+  return target.startsWith("b/") ? target.slice(2) : null;
+}
+
+function splitGitDiff(diff: string): Map<string, string> {
   const starts = [...diff.matchAll(/^diff --git /gmu)].map((match) => match.index);
-  return starts.map((start, index) => diff.slice(start, starts[index + 1] ?? diff.length));
+  const sections = new Map<string, string>();
+  for (const [index, start] of starts.entries()) {
+    const section = diff.slice(start, starts[index + 1] ?? diff.length);
+    const path = diffSectionPath(section);
+    if (path !== null && !sections.has(path)) sections.set(path, section);
+  }
+  return sections;
+}
+
+async function readBoundedGiteaDiff(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let length = 0;
+  let complete = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      length += chunk.length;
+      if (length > MAX_GITEA_DIFF_CHARS) {
+        throw new ForgesError(
+          `Gitea commit diff exceeds the ${MAX_GITEA_DIFF_CHARS} character input limit`,
+          413,
+        );
+      }
+      chunks.push(chunk);
+    }
+    const finalChunk = decoder.decode();
+    length += finalChunk.length;
+    if (length > MAX_GITEA_DIFF_CHARS) {
+      throw new ForgesError(
+        `Gitea commit diff exceeds the ${MAX_GITEA_DIFF_CHARS} character input limit`,
+        413,
+      );
+    }
+    chunks.push(finalChunk);
+    complete = true;
+    return chunks.join("");
+  } finally {
+    if (!complete) await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
 }
 const GITEA_PULL_REQUEST_TEMPLATE_CANDIDATES = [
   "PULL_REQUEST_TEMPLATE.md",
@@ -880,14 +996,13 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
           409,
         );
       }
-      const rawDiff = await this.client<string>(
+      const diffStream = await this.client<unknown, "stream">(
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodePathSegment(commit.sha)}.diff`,
+        { responseType: "stream" },
       );
-      const commitFiles = commit.files ?? [];
-      const sections = splitGitDiff(rawDiff);
-      const sectionsAlign = sections.length === commitFiles.length;
-      const files: CommitPatchFile[] = commitFiles.map((file, index) => {
-        const patch = sectionsAlign ? sections[index] : undefined;
+      const sections = splitGitDiff(await readBoundedGiteaDiff(diffStream));
+      const files: CommitPatchFile[] = (commit.files ?? []).map((file) => {
+        const patch = sections.get(file.filename);
         const binary =
           patch !== undefined && /^(?:Binary files .+ differ|GIT binary patch)$/mu.test(patch);
         return {

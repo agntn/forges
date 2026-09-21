@@ -18,6 +18,16 @@ const mockRawResponse = {
 
 const mockClient = vi.fn().mockResolvedValue({});
 
+function textStream(...chunks: string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      controller.close();
+    },
+  });
+}
+
 vi.mock("../src/http.ts", () => ({
   createHttpClient: vi.fn(() => mockClient),
   rawFetch: vi.fn(async (_client: unknown, _url: string, _opts?: unknown) => ({
@@ -828,24 +838,26 @@ describe("Gitea Provider", () => {
           },
           parents: [],
           files: [
-            { filename: "src/provider.ts", status: "modified" },
             { filename: "public/logo.png", status: "modified" },
+            { filename: "src/provider.ts", status: "modified" },
           ],
         })
         .mockResolvedValueOnce(
-          [
-            "diff --git a/src/provider.ts b/src/provider.ts",
-            "index 1111111..2222222 100644",
-            "--- a/src/provider.ts",
-            "+++ b/src/provider.ts",
-            "@@ -1 +1 @@",
-            "-old",
-            "+new",
-            "diff --git a/public/logo.png b/public/logo.png",
-            "index 3333333..4444444 100644",
-            "Binary files a/public/logo.png and b/public/logo.png differ",
-            "",
-          ].join("\n"),
+          textStream(
+            [
+              "diff --git a/src/provider.ts b/src/provider.ts",
+              "index 1111111..2222222 100644",
+              "--- a/src/provider.ts",
+              "+++ b/src/provider.ts",
+              "@@ -1 +1 @@",
+              "-old",
+              "+new",
+              "diff --git a/public/logo.png b/public/logo.png",
+              "index 3333333..4444444 100644",
+              "Binary files a/public/logo.png and b/public/logo.png differ",
+              "",
+            ].join("\n"),
+          ),
         );
 
       const result = await provider.commits.readPatch("testowner", "test-repo", ref);
@@ -857,14 +869,40 @@ describe("Gitea Provider", () => {
       expect(mockClient).toHaveBeenNthCalledWith(
         2,
         `/repos/testowner/test-repo/git/commits/${sha}.diff`,
+        { responseType: "stream" },
       );
       expect(result).toMatchObject({
         sha,
         filesComplete: null,
         states: { included: 1, binary: 1, unavailable: 0 },
       });
-      expect(result.content).toContain("@@ -1 +1 @@");
-      expect(result.content).toContain("[binary patch omitted]");
+      expect(result.content).toContain("--- modified public/logo.png\n[binary patch omitted]\n");
+      expect(result.content).toContain(
+        "--- modified src/provider.ts\ndiff --git a/src/provider.ts b/src/provider.ts",
+      );
+    });
+
+    it("rejects Gitea commit diffs above the bounded input size", async () => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      mockClient
+        .mockResolvedValueOnce({
+          sha,
+          commit: {
+            message: "oversized patch",
+            author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+            committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          },
+          parents: [],
+          files: [{ filename: "large.txt", status: "modified" }],
+        })
+        .mockResolvedValueOnce(textStream("x".repeat(2_000_001)));
+
+      await expect(provider.commits.readPatch("testowner", "test-repo", sha)).rejects.toMatchObject(
+        {
+          status: 413,
+          message: "Gitea commit diff exceeds the 2000000 character input limit",
+        },
+      );
     });
   });
 
