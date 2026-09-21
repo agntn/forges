@@ -840,6 +840,7 @@ describe("Gitea Provider", () => {
           files: [
             { filename: "public/logo.png", status: "modified" },
             { filename: "src/provider.ts", status: "modified" },
+            { filename: "missing.patch", status: "modified" },
           ],
         })
         .mockResolvedValueOnce(
@@ -874,11 +875,14 @@ describe("Gitea Provider", () => {
       expect(result).toMatchObject({
         sha,
         filesComplete: null,
-        states: { included: 1, binary: 1, unavailable: 0 },
+        states: { included: 1, binary: 1, unavailable: 1 },
       });
       expect(result.content).toContain("--- modified public/logo.png\n[binary patch omitted]\n");
       expect(result.content).toContain(
         "--- modified src/provider.ts\ndiff --git a/src/provider.ts b/src/provider.ts",
+      );
+      expect(result.content).toContain(
+        "--- modified missing.patch\n[patch unavailable from provider]\n",
       );
     });
 
