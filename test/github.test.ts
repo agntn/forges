@@ -1925,6 +1925,70 @@ describe("GitHubProvider", () => {
         nextPage: undefined,
       });
     });
+
+    it("lists commit statuses when a GitHub-compatible host has no check runs", async () => {
+      const gitbucket = new GitHubProvider({
+        baseURL: "https://gitbucket.example.com/api/v3",
+        token: "gb_test",
+      });
+      mocks.client.mockResolvedValueOnce(ghPullRequest);
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: { total_count: 2, statuses: ghStatuses },
+          headers: makeHeaders(),
+        })
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce({ data: ghRepo, headers: new Headers(), status: 200 });
+
+      const result = await gitbucket.pullRequests.listChecks("octocat", "hello-world", 99);
+
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(3, mocks.client, "/repos/octocat/hello-world");
+      expect(result).toEqual({
+        items: statuses,
+        totalCount: 2,
+        hasNextPage: false,
+        nextPage: undefined,
+      });
+    });
+
+    it("keeps a GitHub.com check-runs 404 as not found without probing the host", async () => {
+      mocks.client.mockResolvedValueOnce(ghPullRequest);
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: { total_count: 2, statuses: ghStatuses },
+          headers: makeHeaders(),
+        })
+        .mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(gh.pullRequests.listChecks("octocat", "hello-world", 99)).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps a GitHub Enterprise check-runs 404 as not found", async () => {
+      const enterprise = new GitHubProvider({
+        baseURL: "https://github.example.com/api/v3",
+        token: "ghe_test",
+      });
+      mocks.client.mockResolvedValueOnce(ghPullRequest);
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: { total_count: 0, statuses: [] },
+          headers: makeHeaders(),
+        })
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce({
+          data: ghRepo,
+          headers: new Headers({ "x-github-enterprise-version": "3.18.0" }),
+          status: 200,
+        });
+
+      await expect(
+        enterprise.pullRequests.listChecks("octocat", "hello-world", 99),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(3, mocks.client, "/repos/octocat/hello-world");
+    });
   });
 
   describe("pullRequests.listReviews", () => {
