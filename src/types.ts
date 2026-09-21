@@ -164,6 +164,26 @@ export interface PullRequestSearchItem extends Issue {
   draft: boolean;
 }
 
+/** A search hit keeps the repository needed to open the pull request. */
+export interface GlobalPullRequestSearchItem extends PullRequestSearchItem {
+  repository: string;
+}
+
+/** Native query scope, ordering and pagination for search across repositories. */
+export interface GlobalPullRequestSearchOptions {
+  owner?: string;
+  repo?: string;
+  page?: number;
+  perPage?: number;
+  sort?: "created" | "updated" | "comments";
+  order?: "asc" | "desc";
+}
+
+/** Search can match more pull requests than the provider exposes. */
+export interface GlobalPullRequestSearchResult extends SearchPageResult<GlobalPullRequestSearchItem> {
+  resultLimit: number;
+}
+
 /** Pull request information. */
 export interface PullRequest extends PullRequestSearchItem {
   sourceBranch: string;
@@ -604,6 +624,10 @@ export interface IssueResource {
  * Resource accessor for pull requests
  */
 export interface PullRequestResource {
+  searchGlobal(
+    query: string,
+    options?: GlobalPullRequestSearchOptions,
+  ): Promise<GlobalPullRequestSearchResult>;
   list(owner: string, repo: string, options?: ListOptions): Promise<PageResult<PullRequest>>;
   listFiles(
     owner: string,

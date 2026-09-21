@@ -26,6 +26,9 @@ import type {
   PullRequestReview,
   PullRequestFile,
   PullRequestSearchItem,
+  GlobalPullRequestSearchOptions,
+  GlobalPullRequestSearchResult,
+  GlobalPullRequestSearchItem,
   User,
   Owner,
   PageResult,
@@ -223,6 +226,7 @@ interface GitHubIssue {
 }
 
 interface GitHubIssueSearchResponse {
+  total_count?: number;
   items: GitHubIssue[];
   incomplete_results: boolean;
 }
@@ -1817,6 +1821,114 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       page = nextPage;
     }
     return { rows: collected, total };
+  }
+
+  protected override async searchPullRequestsGlobal(
+    searchQuery: string,
+    options?: GlobalPullRequestSearchOptions,
+  ): Promise<GlobalPullRequestSearchResult> {
+    try {
+      const page = options?.page ?? 1;
+      const perPage = options?.perPage ?? 30;
+      if (
+        !Number.isSafeInteger(page) ||
+        page < 1 ||
+        !Number.isSafeInteger(perPage) ||
+        perPage < 1 ||
+        perPage > 100
+      ) {
+        throw new ForgesError(
+          "Pull-request search requires a positive page and perPage from 1 to 100",
+          400,
+        );
+      }
+      const offset = (page - 1) * perPage;
+      if (offset >= GITHUB_SEARCH_RESULT_LIMIT) {
+        throw new ForgesError(
+          "GitHub pull-request search only exposes the first 1000 results",
+          400,
+        );
+      }
+      if (
+        options?.sort !== undefined &&
+        !["created", "updated", "comments"].includes(options.sort)
+      ) {
+        throw new ForgesError("Pull-request search sort must be created, updated or comments", 400);
+      }
+      if (options?.order !== undefined && !["asc", "desc"].includes(options.order)) {
+        throw new ForgesError("Pull-request search order must be asc or desc", 400);
+      }
+      let query = `${searchQuery} is:pr`;
+      if (options?.owner !== undefined) {
+        const owner = githubSearchQualifierSegment(options.owner);
+        query +=
+          options.repo === undefined
+            ? ` user:${owner}`
+            : ` repo:${owner}/${githubSearchQualifierSegment(options.repo)}`;
+      }
+      const { data, headers } = await rawFetch<GitHubIssueSearchResponse>(
+        this.client,
+        "/search/issues",
+        {
+          query: {
+            q: query,
+            page: String(page),
+            per_page: String(perPage),
+            ...(options?.sort === undefined ? {} : { sort: options.sort }),
+            ...(options?.order === undefined ? {} : { order: options.order }),
+          },
+        },
+      );
+      const rawItems = data?.items ?? [];
+      const items: GlobalPullRequestSearchItem[] = [];
+      for (const raw of rawItems.slice(0, GITHUB_SEARCH_RESULT_LIMIT - offset)) {
+        if (raw.pull_request === undefined || !raw.repository_url) continue;
+        let repository: string;
+        try {
+          const match = new URL(raw.repository_url).pathname.match(/\/repos\/([^/]+)\/([^/]+)$/u);
+          if (!match) continue;
+          repository = `${githubSearchQualifierSegment(decodeURIComponent(match[1]!))}/${githubSearchQualifierSegment(decodeURIComponent(match[2]!))}`;
+        } catch {
+          continue;
+        }
+        const normalized = repository.toLowerCase();
+        if (
+          options?.owner !== undefined &&
+          !normalized.startsWith(`${options.owner.toLowerCase()}/`)
+        )
+          continue;
+        if (
+          options?.repo !== undefined &&
+          normalized !== `${options.owner}/${options.repo}`.toLowerCase()
+        )
+          continue;
+        items.push({ ...this.mapPullRequestSearchItem(raw), repository });
+      }
+      const result = buildPageResult(items, headers, (item) => item);
+      if (page * perPage >= GITHUB_SEARCH_RESULT_LIMIT) {
+        result.hasNextPage = false;
+        delete result.nextPage;
+      }
+      return {
+        ...result,
+        totalCount: data?.total_count,
+        incomplete:
+          (data?.incomplete_results ?? false) ||
+          (data?.total_count ?? 0) > GITHUB_SEARCH_RESULT_LIMIT ||
+          items.length !== rawItems.length,
+        resultLimit: GITHUB_SEARCH_RESULT_LIMIT,
+      };
+    } catch (error) {
+      if (error instanceof FetchError && (error.status === 404 || error.status === 405)) {
+        throw new ForgesError(
+          "Global pull-request search is not supported by this GitHub-compatible host",
+          501,
+          "github",
+          error,
+        );
+      }
+      throw normalizeError(error, "github");
+    }
   }
 
   protected override async searchPullRequests(

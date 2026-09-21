@@ -31,6 +31,7 @@ export const toolEffects = {
   forges_issues_create: "remoteCreate",
   forges_pull_requests_list: "hostedRead",
   forges_pull_requests_search: "hostedRead",
+  forges_pull_requests_search_global: "hostedRead",
   forges_pull_requests_get: "hostedRead",
   forges_pull_requests_files: "hostedRead",
   forges_pull_requests_checks: "hostedRead",

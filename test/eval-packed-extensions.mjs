@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 
 import { loaded, recordSourcesUnder } from "./record-loads.mjs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import * as OmpTypeBox from "@oh-my-pi/omptype/typebox";
 
@@ -88,6 +89,7 @@ const expectedToolNames = [
   "forges_issues_comments_get",
   "forges_issues_create",
   "forges_pull_requests_list",
+  "forges_pull_requests_search_global",
   "forges_pull_requests_search",
   "forges_pull_requests_get",
   "forges_pull_requests_files",
@@ -329,6 +331,114 @@ async function assertPackedCommitSearch(piTools, ompTools, root = packageRoot) {
   }
 }
 
+async function assertPackedPrSearch(piTools, ompTools) {
+  const raw = {
+    id: 123,
+    number: 4,
+    title: "Fix search",
+    body: "Full body",
+    state: "open",
+    labels: [],
+    user: { login: "contributor" },
+    created_at: "2026-09-20T00:00:00Z",
+    updated_at: "2026-09-21T00:00:00Z",
+    html_url: "https://github.com/other/project/pull/4",
+    pull_request: {},
+    draft: false,
+  };
+  const requests = [];
+  const http = createServer((request, response) => {
+    requests.push(request.url);
+    response.setHeader("Content-Type", "application/json");
+    response.setHeader("Link", '<https://api.github.com/search/issues?page=2>; rel="next"');
+    response.end(
+      JSON.stringify({
+        items: [
+          { ...raw, repository_url: "https://api.github.com/repos/other/project" },
+          { ...raw, repository_url: "https://api.github.com/repos/second/repo" },
+        ],
+        total_count: 1200,
+        incomplete_results: false,
+      }),
+    );
+  });
+  await new Promise((resolve) => http.listen(0, "127.0.0.1", resolve));
+  const operations = await import(
+    pathToFileURL(join(packageRoot, "dist/tool-operations.mjs")).href
+  );
+  const client = new Client({ name: "pr-search-cli", version: "1.0.0" });
+  try {
+    const address = http.address();
+    assert(address && typeof address !== "string");
+    const baseURL = `http://127.0.0.1:${address.port}`;
+    process.env.FORGES_GITHUB_BASE_URL = baseURL;
+    operations.resetPinnedProviders();
+    const { createProvider } = await import(
+      pathToFileURL(join(packageRoot, "dist/index.mjs")).href
+    );
+    const provider = await createProvider("github", { token: "", baseURL });
+    const query = "author:contributor created:>=2026-09-01";
+    const options = { perPage: 2, sort: "created", order: "desc" };
+    const full = await provider.pullRequests.searchGlobal(query, options);
+    assert.deepEqual(
+      full.items.map((item) => item.repository),
+      ["other/project", "second/repo"],
+    );
+    assert.equal(full.totalCount, 1200);
+    assert.equal(full.incomplete, true);
+    assert.equal(full.resultLimit, 1000);
+    assert.equal(full.nextPage, 2);
+    const expected = { ...full, items: full.items.map(({ body: _body, ...item }) => item) };
+    const args = { platform: "github", query, ...options };
+    for (const tools of [piTools, ompTools]) {
+      const tool = requireTool(tools, "forges_pull_requests_search_global");
+      const answer = await tool.execute("search", args, undefined, undefined, {});
+      assert.deepEqual(answer.details.result, expected);
+      assert.deepEqual(
+        JSON.parse(answer.content[0].text).result,
+        JSON.parse(JSON.stringify(expected)),
+      );
+    }
+    await client.connect(
+      new StdioClientTransport({
+        command: process.execPath,
+        args: [join(packageRoot, "dist/cli.mjs"), "mcp"],
+        env: { ...process.env, GH_TOKEN: "", FORGES_GITHUB_BASE_URL: baseURL },
+        stderr: "pipe",
+      }),
+    );
+    const discovery = await client.listTools();
+    const tool = discovery.tools.find((item) => item.name === "forges_pull_requests_search_global");
+    assert(tool);
+    assert.deepEqual(tool.inputSchema.required, ["platform", "query"]);
+    const answer = await client.callTool({ name: tool.name, arguments: args });
+    assert.notEqual(answer.isError, true);
+    assert.deepEqual(
+      JSON.parse(answer.content[0].text).result,
+      JSON.parse(JSON.stringify(expected)),
+    );
+    const invalid = await client.callTool({
+      name: tool.name,
+      arguments: { ...args, sort: "bogus" },
+    });
+    assert.equal(invalid.isError, true);
+    assert.equal(requests.length, 4);
+    for (const request of requests) {
+      const url = new URL(request, baseURL);
+      assert.equal(url.pathname, "/search/issues");
+      assert.equal(url.searchParams.get("q"), `${query} is:pr`);
+      assert.equal(url.searchParams.get("sort"), "created");
+      assert.equal(url.searchParams.get("order"), "desc");
+    }
+  } finally {
+    await client.close();
+    operations.resetPinnedProviders();
+    await new Promise((resolve, reject) =>
+      http.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+}
+
 process.env.FORGES_GITHUB_BASE_URL = "not-a-url";
 process.env.GH_TOKEN = "";
 delete process.env.GITHUB_TOKEN;
@@ -422,6 +532,7 @@ try {
   await assertDistributionFallback(ompTool);
   await helpStaysLight;
   await assertPackedCommitSearch(piTools, ompTools);
+  await assertPackedPrSearch(piTools, ompTools);
   await assert.rejects(assertPackedCommitSearch(piTools, ompTools, join(packageRoot, "missing")), {
     code: "ERR_MODULE_NOT_FOUND",
   });

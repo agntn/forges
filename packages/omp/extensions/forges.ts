@@ -138,6 +138,27 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     page,
     perPage,
   });
+  const globalPullRequestSearchParameters = closed({
+    platform,
+    query: Type.String({
+      description: "Native pull-request query, including author: and created: qualifiers",
+      minLength: 1,
+    }),
+    owner: Type.Optional(owner),
+    repo: Type.Optional(repo),
+    page,
+    perPage,
+    sort: Type.Optional(
+      Type.Union([Type.Literal("created"), Type.Literal("updated"), Type.Literal("comments")], {
+        description: "Sort field; omit for best match",
+      }),
+    ),
+    order: Type.Optional(
+      Type.Union([Type.Literal("asc"), Type.Literal("desc")], {
+        description: "Sort direction; defaults to desc",
+      }),
+    ),
+  });
   const commitSearchParameters = closed({
     platform,
     query: Type.String({
@@ -553,6 +574,19 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: toolApproval("forges_pull_requests_list"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listPullRequests(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_search_global",
+    label: "Search Pull Requests Across Repositories",
+    description:
+      "Search pull requests across repositories. GitHub supports optional owner/repository scope and sort/order (created/desc for newest). Returns repository identity, totalCount, incomplete and resultLimit (1000). Follow nextPage while hasNextPage is true; narrow the query when incomplete is true. Other providers report unsupported search.",
+    parameters: globalPullRequestSearchParameters,
+    ...statusRenderers("forges_pull_requests_search_global", "Search Pull Requests"),
+    approval: toolApproval("forges_pull_requests_search_global"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).searchPullRequestsGlobal(params);
     },
   });
 
