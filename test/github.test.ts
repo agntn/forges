@@ -1139,6 +1139,93 @@ describe("GitHubProvider", () => {
       expect(result.files).toHaveLength(1);
       expect(result.filesComplete).toBeNull();
     });
+
+    it("returns bounded patch content and rejects continuation through a moving ref", async () => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      mocks.rawFetch.mockResolvedValue({
+        data: {
+          sha,
+          commit: {
+            message: "patch",
+            author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+            committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          },
+          html_url: `https://github.com/octocat/hello-world/commit/${sha}`,
+          parents: [],
+          files: [
+            {
+              filename: "src/new.ts",
+              previous_filename: "src/old.ts",
+              status: "renamed",
+              patch: "@@ -1 +1 @@\n-old\n+new",
+            },
+            { filename: "logo.png", status: "modified" },
+          ],
+        },
+        headers: makeHeaders(),
+      });
+
+      const first = await gh.commits.readPatch("octocat", "hello-world", "main", { maxChars: 30 });
+      expect(first).toMatchObject({
+        sha,
+        nextOffset: 30,
+        truncated: true,
+        states: { included: 1, binary: 0, unavailable: 1 },
+      });
+      expect(first.content).toBe("--- renamed src/new.ts from sr");
+      const continued = await gh.commits.readPatch("octocat", "hello-world", first.sha, {
+        offset: first.nextOffset ?? 0,
+      });
+      expect(continued).toMatchObject({ offset: 30, nextOffset: null, truncated: false });
+      await expect(
+        gh.commits.readPatch("octocat", "hello-world", "main", { offset: first.nextOffset ?? 0 }),
+      ).rejects.toMatchObject({ status: 409 });
+    });
+
+    it("pins later GitHub patch pages to the first resolved SHA", async () => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      const commit = {
+        sha,
+        commit: {
+          message: "patch",
+          author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+        },
+        html_url: `https://github.com/octocat/hello-world/commit/${sha}`,
+        parents: [],
+      };
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: { ...commit, files: [{ filename: "first.ts", status: "modified", patch: "a" }] },
+          headers: makeHeaders('<?page=2>; rel="next"'),
+        })
+        .mockResolvedValueOnce({
+          data: { ...commit, files: [{ filename: "second.ts", status: "modified", patch: "b" }] },
+          headers: makeHeaders(),
+        });
+
+      await gh.commits.readPatch("octocat", "hello-world", "feature/foo");
+
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        1,
+        mocks.client,
+        "/repos/octocat/hello-world/commits/feature%2Ffoo",
+        { query: { page: "1", per_page: "100" } },
+      );
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        2,
+        mocks.client,
+        `/repos/octocat/hello-world/commits/${sha}`,
+        { query: { page: "2", per_page: "100" } },
+      );
+    });
+
+    it("rejects invalid patch limits before provider I/O", async () => {
+      await expect(
+        gh.commits.readPatch("octocat", "hello-world", "main", { maxChars: 0 }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    });
   });
 
   // --- Issues ---

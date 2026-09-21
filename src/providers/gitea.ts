@@ -23,6 +23,9 @@ import type {
   Repository,
   CiRun,
   Commit,
+  CommitPatch,
+  CommitPatchFile,
+  CommitPatchOptions,
   CommitSummary,
   ContributionTemplateKind,
   ContributionTemplateSummary,
@@ -58,6 +61,7 @@ import type {
 import { normalizeCiRunState } from "../ci-run.ts";
 import { isPullRequestReview, normalizeReviewState } from "../review.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
+import { buildCommitPatch } from "../commit-patch.ts";
 
 // -- Raw Gitea API response types --
 
@@ -198,6 +202,7 @@ interface GiteaPullRequestFile {
   status: string;
   additions?: number;
   deletions?: number;
+  patch?: string;
 }
 
 interface GiteaCommitIdentity {
@@ -347,6 +352,128 @@ function buildListQuery(options?: ListOptions): Record<string, string> {
 const PLATFORM = "gitea";
 const GITEA_LABEL_PAGE_SIZE = 50;
 const MAX_GITEA_LABEL_PAGES = 100;
+const MAX_GITEA_DIFF_CHARS = 2_000_000;
+const GIT_ESCAPED_BYTES: Readonly<Record<string, number>> = {
+  a: 7,
+  b: 8,
+  t: 9,
+  n: 10,
+  v: 11,
+  f: 12,
+  r: 13,
+};
+
+function decodeQuotedGitPath(value: string): string | null {
+  if (!value.startsWith('"') || !value.endsWith('"')) return null;
+  const bytes: number[] = [];
+  const encoder = new TextEncoder();
+  for (let index = 1; index < value.length - 1; index += 1) {
+    const character = value[index]!;
+    if (character !== "\\") {
+      bytes.push(...encoder.encode(character));
+      continue;
+    }
+    const escape = value[++index];
+    if (escape === undefined) return null;
+    const escaped = GIT_ESCAPED_BYTES[escape];
+    if (escaped !== undefined) {
+      bytes.push(escaped);
+      continue;
+    }
+    if (escape === '"' || escape === "\\") {
+      bytes.push(escape.charCodeAt(0));
+      continue;
+    }
+    if (/^[0-7]$/u.test(escape)) {
+      let octal = escape;
+      while (octal.length < 3 && /^[0-7]$/u.test(value[index + 1] ?? "")) {
+        octal += value[++index];
+      }
+      bytes.push(Number.parseInt(octal, 8));
+      continue;
+    }
+    return null;
+  }
+  return new TextDecoder().decode(Uint8Array.from(bytes));
+}
+
+function diffSectionPath(section: string, candidatePaths: readonly string[]): string | null {
+  const headerEnd = section.indexOf("\n");
+  const header = section.slice(0, headerEnd === -1 ? section.length : headerEnd);
+  const body = header.slice("diff --git ".length);
+  if (body.endsWith('"')) {
+    const quoteOffsets: number[] = [];
+    let escaped = false;
+    for (let index = 0; index < body.length; index += 1) {
+      const character = body[index]!;
+      if (character === '"' && !escaped) quoteOffsets.push(index);
+      escaped = character === "\\" && !escaped;
+      if (character !== "\\") escaped = false;
+    }
+    const openingQuote = quoteOffsets.at(-2);
+    if (openingQuote === undefined) return null;
+    const target = decodeQuotedGitPath(body.slice(openingQuote));
+    if (target === null || !target.startsWith("b/")) return null;
+    const path = target.slice(2);
+    return candidatePaths.includes(path) ? path : null;
+  }
+
+  let match: string | null = null;
+  for (const path of candidatePaths) {
+    if (body.endsWith(` b/${path}`) && (match === null || path.length > match.length)) {
+      match = path;
+    }
+  }
+  return match;
+}
+
+function splitGitDiff(diff: string, candidatePaths: readonly string[]): Map<string, string> {
+  const starts = [...diff.matchAll(/^diff --git /gmu)].map((match) => match.index);
+  const sections = new Map<string, string>();
+  for (const [index, start] of starts.entries()) {
+    const section = diff.slice(start, starts[index + 1] ?? diff.length);
+    const path = diffSectionPath(section, candidatePaths);
+    if (path !== null && !sections.has(path)) sections.set(path, section);
+  }
+  return sections;
+}
+
+async function readBoundedGiteaDiff(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let length = 0;
+  let complete = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      length += chunk.length;
+      if (length > MAX_GITEA_DIFF_CHARS) {
+        throw new ForgesError(
+          `Gitea commit diff exceeds the ${MAX_GITEA_DIFF_CHARS} character input limit`,
+          413,
+        );
+      }
+      chunks.push(chunk);
+    }
+    const finalChunk = decoder.decode();
+    length += finalChunk.length;
+    if (length > MAX_GITEA_DIFF_CHARS) {
+      throw new ForgesError(
+        `Gitea commit diff exceeds the ${MAX_GITEA_DIFF_CHARS} character input limit`,
+        413,
+      );
+    }
+    chunks.push(finalChunk);
+    complete = true;
+    return chunks.join("");
+  } finally {
+    if (!complete) await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+}
 const GITEA_PULL_REQUEST_TEMPLATE_CANDIDATES = [
   "PULL_REQUEST_TEMPLATE.md",
   "PULL_REQUEST_TEMPLATE.yaml",
@@ -854,6 +981,48 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     }
   }
 
+  protected override async readCommitPatch(
+    owner: string,
+    repo: string,
+    sha: string,
+    options?: CommitPatchOptions,
+  ): Promise<CommitPatch> {
+    try {
+      const commit = await this.client<GiteaCommit>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodeRefPathSegment(sha)}`,
+      );
+      if ((options?.offset ?? 0) > 0 && sha !== commit.sha) {
+        throw new ForgesError(
+          "Continue commit patches with the resolved SHA from the first page",
+          409,
+        );
+      }
+      const diffStream = await this.client<unknown, "stream">(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodePathSegment(commit.sha)}.diff`,
+        { responseType: "stream" },
+      );
+      const commitFiles = commit.files ?? [];
+      const sections = splitGitDiff(
+        await readBoundedGiteaDiff(diffStream),
+        commitFiles.map((file) => file.filename),
+      );
+      const files: CommitPatchFile[] = commitFiles.map((file) => {
+        const patch = sections.get(file.filename);
+        const binary =
+          patch !== undefined && /^(?:Binary files .+ differ|GIT binary patch)$/mu.test(patch);
+        return {
+          path: file.filename,
+          previousPath: null,
+          status: normalizeChangedFileStatus(file.status),
+          state: patch === undefined ? "unavailable" : binary ? "binary" : "included",
+          patch: patch === undefined || binary ? "" : patch,
+        };
+      });
+      return buildCommitPatch(commit.sha, files, null, options);
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
   // --- Releases ---
 
   private releasesRoute(owner: string, repo: string): string {

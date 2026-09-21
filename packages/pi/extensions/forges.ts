@@ -277,6 +277,23 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_commits_patch",
+    label: "Forges Commit Patch",
+    description:
+      "Read one bounded commit patch slice. Continue with the returned sha, nextOffset, and same non-null path. Each slice repeats provider pagination, so use the largest practical maxChars",
+    promptSnippet:
+      "Read code changes from one known commit without materializing an unbounded diff.",
+    promptGuidelines: [
+      "Use forges_commits_patch for bounded patch slices. Continue with the returned sha, nextOffset, and same non-null path, not the original branch or tag.",
+    ],
+    parameters: schemas.commitPatchParameters,
+    ...statusRenderers("forges_commits_patch", "Forges Commit Patch"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).readCommitPatch(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_releases_list",
     label: "Forges Releases",
     description: "List repository releases, newest first, without their notes",

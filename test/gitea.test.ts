@@ -18,6 +18,16 @@ const mockRawResponse = {
 
 const mockClient = vi.fn().mockResolvedValue({});
 
+function textStream(...chunks: string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      controller.close();
+    },
+  });
+}
+
 vi.mock("../src/http.ts", () => ({
   createHttpClient: vi.fn(() => mockClient),
   rawFetch: vi.fn(async (_client: unknown, _url: string, _opts?: unknown) => ({
@@ -812,6 +822,143 @@ describe("Gitea Provider", () => {
         filesComplete: null,
       });
       expect(JSON.stringify(result)).not.toContain("patch");
+    });
+
+    it("reads Gitea patch content from the resolved commit diff", async () => {
+      const ref = "feature/my-change";
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      mockClient
+        .mockResolvedValueOnce({
+          sha,
+          html_url: `https://gitea.com/testowner/test-repo/commit/${sha}`,
+          commit: {
+            message: "patch",
+            author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+            committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          },
+          parents: [],
+          files: [
+            { filename: "public/logo.png", status: "modified" },
+            { filename: "src/provider.ts", status: "modified" },
+            { filename: "missing.patch", status: "modified" },
+          ],
+        })
+        .mockResolvedValueOnce(
+          textStream(
+            [
+              "diff --git a/src/provider.ts b/src/provider.ts",
+              "index 1111111..2222222 100644",
+              "--- a/src/provider.ts",
+              "+++ b/src/provider.ts",
+              "@@ -1 +1 @@",
+              "-old",
+              "+new",
+              "diff --git a/public/logo.png b/public/logo.png",
+              "index 3333333..4444444 100644",
+              "Binary files a/public/logo.png and b/public/logo.png differ",
+              "",
+            ].join("\n"),
+          ),
+        );
+
+      const result = await provider.commits.readPatch("testowner", "test-repo", ref);
+
+      expect(mockClient).toHaveBeenNthCalledWith(
+        1,
+        "/repos/testowner/test-repo/git/commits/feature%2Fmy-change",
+      );
+      expect(mockClient).toHaveBeenNthCalledWith(
+        2,
+        `/repos/testowner/test-repo/git/commits/${sha}.diff`,
+        { responseType: "stream" },
+      );
+      expect(result).toMatchObject({
+        sha,
+        filesComplete: null,
+        states: { included: 1, binary: 1, unavailable: 1 },
+      });
+      expect(result.content).toContain("--- modified public/logo.png\n[binary patch omitted]\n");
+      expect(result.content).toContain(
+        "--- modified src/provider.ts\ndiff --git a/src/provider.ts b/src/provider.ts",
+      );
+      expect(result.content).toContain(
+        "--- modified missing.patch\n[patch unavailable from provider]\n",
+      );
+    });
+
+    it("matches mixed quoted and ambiguous unquoted diff paths", async () => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      mockClient
+        .mockResolvedValueOnce({
+          sha,
+          commit: {
+            message: "rename paths",
+            author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+            committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          },
+          parents: [],
+          files: [
+            { filename: "newname", status: "renamed" },
+            { filename: "foo b/x", status: "modified" },
+          ],
+        })
+        .mockResolvedValueOnce(
+          textStream(
+            [
+              'diff --git "a/old\\tname" b/newname',
+              "similarity index 90%",
+              'rename from "old\\tname"',
+              "rename to newname",
+              "@@ -1 +1 @@",
+              "-old",
+              "+renamed",
+              "diff --git a/foo b/x b/foo b/x",
+              "--- a/foo b/x",
+              "+++ b/foo b/x",
+              "@@ -1 +1 @@",
+              "-old",
+              "+ambiguous",
+              "",
+            ].join("\n"),
+          ),
+        );
+
+      const result = await provider.commits.readPatch("testowner", "test-repo", sha);
+
+      expect(result.states).toEqual({ included: 2, binary: 0, unavailable: 0 });
+      expect(result.content).toContain("--- renamed newname\n");
+      expect(result.content).toContain("+renamed");
+      expect(result.content).toContain("--- modified foo b/x\n");
+      expect(result.content).toContain("+ambiguous");
+    });
+
+    it("accepts the Gitea diff size boundary and rejects content above it", async () => {
+      const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+      const commit = {
+        sha,
+        commit: {
+          message: "bounded patch",
+          author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+        },
+        parents: [],
+        files: [{ filename: "large.txt", status: "modified" }],
+      };
+      mockClient
+        .mockResolvedValueOnce(commit)
+        .mockResolvedValueOnce(textStream("x".repeat(2_000_000)))
+        .mockResolvedValueOnce(commit)
+        .mockResolvedValueOnce(textStream("x".repeat(2_000_001)));
+
+      const accepted = await provider.commits.readPatch("testowner", "test-repo", sha);
+      expect(accepted.states).toEqual({ included: 0, binary: 0, unavailable: 1 });
+
+      await expect(provider.commits.readPatch("testowner", "test-repo", sha)).rejects.toMatchObject(
+        {
+          status: 413,
+          message: "Gitea commit diff exceeds the 2000000 character input limit",
+        },
+      );
     });
   });
 

@@ -134,6 +134,29 @@ export function forgesToolSchemas() {
     perPage,
   });
   const commitParameters = closed({ platform, owner, repo, sha });
+  const commitPatchParameters = closed({
+    platform,
+    owner,
+    repo,
+    sha,
+    path: Type.Optional(
+      Type.String({ description: "Only return the patch stream for this file path", minLength: 1 }),
+    ),
+    offset: Type.Optional(
+      Type.Integer({
+        description:
+          "UTF-16 code-unit offset returned by the previous slice; continue with its sha and same path",
+        minimum: 0,
+      }),
+    ),
+    maxChars: Type.Optional(
+      Type.Integer({
+        description: "Maximum patch UTF-16 code units to return; defaults to 20000",
+        minimum: 1,
+        maximum: 200000,
+      }),
+    ),
+  });
   const listCommitsParameters = closed({
     platform,
     owner,
@@ -293,6 +316,7 @@ export function forgesToolSchemas() {
     contributionTemplateParameters,
     codeSearchParameters,
     commitParameters,
+    commitPatchParameters,
     listCommitsParameters,
     commitSearchParameters,
     listCiRunsParameters,

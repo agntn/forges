@@ -43,6 +43,7 @@ src/
 ├── ci-run.ts             # Cross-platform CI/check status and conclusion normalization
 ├── review.ts             # Review verdict normalization: GitHub and Gitea reviews, GitLab reviewer stances
 ├── changed-file.ts       # Changed-file status normalization + GitLab diff line counts
+├── commit-patch.ts       # Bounded commit patch stream rendering and continuation
 ├── pagination.ts         # Link header + x-next-page async generator
 ├── version.ts            # Package version — the one source for it in src/
 ├── tool-operations.ts    # Executors behind every agent surface (MCP, Pi, OMP)

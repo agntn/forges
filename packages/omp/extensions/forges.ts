@@ -150,6 +150,29 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     perPage,
   });
   const commitParameters = closed({ platform, owner, repo, sha });
+  const commitPatchParameters = closed({
+    platform,
+    owner,
+    repo,
+    sha,
+    path: Type.Optional(
+      Type.String({ description: "Only return the patch stream for this file path", minLength: 1 }),
+    ),
+    offset: Type.Optional(
+      Type.Integer({
+        description:
+          "UTF-16 code-unit offset returned by the previous slice; continue with its sha and same path",
+        minimum: 0,
+      }),
+    ),
+    maxChars: Type.Optional(
+      Type.Integer({
+        description: "Maximum patch UTF-16 code units to return; defaults to 20000",
+        minimum: 1,
+        maximum: 200000,
+      }),
+    ),
+  });
   const listCommitsParameters = closed({
     platform,
     owner,
@@ -384,6 +407,19 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: toolApproval("forges_commits_get"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getCommit(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_commits_patch",
+    label: "Forges Commit Patch",
+    description:
+      "Read one bounded commit patch slice. Continue with the returned sha, nextOffset, and same non-null path. Each slice repeats provider pagination, so use the largest practical maxChars",
+    parameters: commitPatchParameters,
+    ...statusRenderers("forges_commits_patch", "Forges Commit Patch"),
+    approval: toolApproval("forges_commits_patch"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).readCommitPatch(params);
     },
   });
 

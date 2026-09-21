@@ -12,6 +12,9 @@ import type {
   CodeSearchOptions,
   CiRun,
   Commit,
+  CommitPatch,
+  CommitPatchFile,
+  CommitPatchOptions,
   CommitSummary,
   CommitSearchOptions,
   CommitSearchResult,
@@ -60,6 +63,7 @@ import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
 import { isPullRequestReview, normalizeReviewState } from "../review.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
+import { buildCommitPatch } from "../commit-patch.ts";
 
 const MAX_COMMIT_FILE_PAGES = 30;
 const MAX_DRAFT_RELEASE_PAGES = 5;
@@ -239,6 +243,8 @@ interface GitHubPullRequestFile {
   status: string;
   additions?: number;
   deletions?: number;
+  previous_filename?: string;
+  patch?: string;
 }
 
 interface GitHubCommitIdentity {
@@ -1231,6 +1237,79 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         files,
         filesComplete: files.length < 3000 ? filesComplete : null,
       };
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async readCommitPatch(
+    owner: string,
+    repo: string,
+    sha: string,
+    options?: CommitPatchOptions,
+  ): Promise<CommitPatch> {
+    try {
+      const files: CommitPatchFile[] = [];
+      let resolvedSha: string | undefined;
+      let filesComplete: boolean | null = true;
+      let page = 1;
+
+      while (page <= MAX_COMMIT_FILE_PAGES) {
+        const commitRef = resolvedSha ?? sha;
+        const encodedCommitRef =
+          resolvedSha === undefined
+            ? encodeRefPathSegment(commitRef)
+            : encodePathSegment(commitRef);
+        const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodedCommitRef}`;
+        const { data, headers } = await rawFetch<GitHubCommit>(this.client, route, {
+          query: { page: String(page), per_page: "100" },
+        });
+        if (!data) throw new ForgesError("GitHub returned no commit data", 502, "github");
+        if (resolvedSha !== undefined && data.sha !== resolvedSha) {
+          throw new ForgesError(
+            "GitHub changed commit identity during patch pagination",
+            502,
+            "github",
+          );
+        }
+        resolvedSha ??= data.sha;
+        files.push(
+          ...(data.files ?? []).map(
+            (file) =>
+              ({
+                path: file.filename,
+                previousPath: file.previous_filename ?? null,
+                status: normalizeChangedFileStatus(file.status),
+                state: file.patch === undefined ? "unavailable" : "included",
+                patch: file.patch ?? "",
+              }) satisfies CommitPatchFile,
+          ),
+        );
+
+        const { hasNextPage, nextPage } = paginationFromLink(headers);
+        if (!hasNextPage) break;
+        if (nextPage === undefined || nextPage <= page || nextPage > MAX_COMMIT_FILE_PAGES) {
+          filesComplete = null;
+          break;
+        }
+        page = nextPage;
+      }
+
+      if (resolvedSha === undefined) {
+        throw new ForgesError("GitHub commit pagination produced no pages", 502, "github");
+      }
+      if ((options?.offset ?? 0) > 0 && sha !== resolvedSha) {
+        throw new ForgesError(
+          "Continue commit patches with the resolved SHA from the first page",
+          409,
+        );
+      }
+      return buildCommitPatch(
+        resolvedSha,
+        files,
+        files.length < 3000 ? filesComplete : null,
+        options,
+      );
     } catch (error) {
       throw normalizeError(error, "github");
     }

@@ -18,6 +18,7 @@ export const toolEffects = {
   forges_commits_search: "hostedRead",
   forges_commits_list: "hostedRead",
   forges_commits_get: "hostedRead",
+  forges_commits_patch: "hostedRead",
   forges_releases_list: "hostedRead",
   forges_releases_get: "hostedRead",
   forges_releases_create: "remoteCreate",

@@ -15,6 +15,8 @@ import type {
   CodeSearchOptions,
   Comment,
   Commit,
+  CommitPatch,
+  CommitPatchOptions,
   ContributionTemplate,
   ContributionTemplateKind,
   ContributionTemplateSummary,
@@ -224,6 +226,8 @@ export interface SearchCodeParams extends PlatformParams, CodeSearchOptions {
 export interface GetCommitParams extends RepositoryParams {
   sha: string;
 }
+
+export type ReadCommitPatchParams = RepositoryParams & CommitPatchOptions & { sha: string };
 
 export type ListCommitsParams = RepositoryParams & ListCommitOptions;
 
@@ -487,6 +491,18 @@ export async function getCommit(params: GetCommitParams): Promise<ForgesToolResu
   const provider = await readProvider(params.platform);
   const commit = await provider.commits.get(params.owner, params.repo, params.sha);
   return result(params.platform, commit);
+}
+
+export async function readCommitPatch(
+  params: ReadCommitPatchParams,
+): Promise<ForgesToolResult<CommitPatch>> {
+  const provider = await readProvider(params.platform);
+  const patch = await provider.commits.readPatch(params.owner, params.repo, params.sha, {
+    path: params.path,
+    offset: params.offset,
+    maxChars: params.maxChars,
+  });
+  return result(params.platform, patch);
 }
 
 function summarizeReleasePage(page: PageResult<Release>): PageResult<Omit<Release, "body">> {

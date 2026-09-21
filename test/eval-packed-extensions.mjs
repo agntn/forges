@@ -76,6 +76,7 @@ const expectedToolNames = [
   "forges_commits_search",
   "forges_commits_list",
   "forges_commits_get",
+  "forges_commits_patch",
   "forges_releases_list",
   "forges_releases_get",
   "forges_releases_create",

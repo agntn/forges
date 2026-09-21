@@ -4,6 +4,7 @@
 
 import { assertAssignees } from "./assignees.ts";
 import { ForgesError, NotFoundError } from "./errors.ts";
+import { assertCommitPatchOptions } from "./commit-patch.ts";
 import type {
   CiRun,
   CiRunResource,
@@ -12,6 +13,8 @@ import type {
   CodeSearchResource,
   Comment,
   Commit,
+  CommitPatch,
+  CommitPatchOptions,
   ContributionTemplate,
   ContributionTemplateKind,
   ContributionTemplateResource,
@@ -196,6 +199,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       },
       list: (owner, repo, options) => this.listCommits(owner, repo, options),
       get: (owner, repo, sha) => this.getCommit(owner, repo, sha),
+      readPatch: async (owner, repo, sha, options) => {
+        assertCommitPatchOptions(options);
+        return this.readCommitPatch(owner, repo, sha, options);
+      },
     };
     this.releases = {
       list: (owner, repo, options) => this.listReleases(owner, repo, options),
@@ -332,6 +339,16 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     return Promise.reject(new ForgesError("Commit listing is not supported by this provider", 501));
   }
   protected abstract getCommit(owner: string, repo: string, sha: string): Promise<Commit>;
+  protected readCommitPatch(
+    _owner: string,
+    _repo: string,
+    _sha: string,
+    _options?: CommitPatchOptions,
+  ): Promise<CommitPatch> {
+    return Promise.reject(
+      new ForgesError("Commit patch reads are not supported by this provider", 501),
+    );
+  }
   protected listReleases(
     _owner: string,
     _repo: string,
