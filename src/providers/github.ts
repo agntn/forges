@@ -1776,9 +1776,10 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         (data) => data.statuses,
         wanted,
       );
-      const runs = await this.readRevisionRows<GitHubCheckRunsResponse, GitHubCheckRun>(
+      const runs = await this.readCheckRuns(
+        owner,
+        repo,
         `${revision}/check-runs`,
-        (data) => data.check_runs,
         Math.max(1, wanted - statuses.rows.length),
       );
       const checks = [
@@ -1795,6 +1796,31 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       };
     } catch (error) {
       throw normalizeError(error, "github");
+    }
+  }
+
+  /** A 404 from a host without check runs, GitBucket for one, leaves the commit statuses. */
+  private async readCheckRuns(
+    owner: string,
+    repo: string,
+    path: string,
+    wanted: number,
+  ): Promise<{ rows: GitHubCheckRun[]; total: number }> {
+    try {
+      return await this.readRevisionRows<GitHubCheckRunsResponse, GitHubCheckRun>(
+        path,
+        (data) => data.check_runs,
+        wanted,
+      );
+    } catch (error) {
+      if (
+        error instanceof FetchError &&
+        error.status === 404 &&
+        !(await this.isGitHubHost(owner, repo))
+      ) {
+        return { rows: [], total: 0 };
+      }
+      throw error;
     }
   }
 
