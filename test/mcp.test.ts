@@ -9,7 +9,7 @@ import { createMcpServer } from "../src/mcp.ts";
 import { resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
-  const repos = { list: vi.fn(), get: vi.fn() };
+  const repos = { list: vi.fn(), get: vi.fn(), readContents: vi.fn() };
   const contributionTemplates = { list: vi.fn(), get: vi.fn() };
   const code = { search: vi.fn() };
   const ciRuns = { list: vi.fn() };
@@ -71,6 +71,7 @@ vi.mock("../src/index.ts", () => ({
 const toolNames = [
   "forges_repos_list",
   "forges_repos_get",
+  "forges_repos_contents",
   "forges_contribution_templates_list",
   "forges_contribution_templates_get",
   "forges_code_search",
@@ -546,6 +547,34 @@ describe("forges MCP server", () => {
 
     expect(mocks.commits.get).toHaveBeenCalledWith("agntn", "forges", commit.sha);
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: commit });
+  });
+
+  it("reads repository contents through the shared operation", async () => {
+    const contents = {
+      type: "file",
+      path: "README.md",
+      sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+      size: 8,
+      binary: false,
+      content: "# Hello\n",
+      offset: 0,
+      nextOffset: null,
+      truncated: false,
+    };
+    mocks.repos.readContents.mockResolvedValue(contents);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_repos_contents",
+      arguments: { repo: "agntn/forges", path: "README.md", ref: "v0.3.3", maxChars: 1000 },
+    });
+
+    expect(mocks.repos.readContents).toHaveBeenCalledWith("agntn", "forges", "README.md", {
+      ref: "v0.3.3",
+      offset: undefined,
+      maxChars: 1000,
+    });
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: contents });
   });
 
   it("reads bounded commit patches through the shared operation", async () => {

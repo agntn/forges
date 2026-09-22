@@ -50,6 +50,8 @@ import type {
   Release,
   ReplyThreadInput,
   Repository,
+  RepositoryContents,
+  RepositoryContentsOptions,
   SearchPageResult,
   Thread,
   ThreadComment,
@@ -390,6 +392,9 @@ export interface GetCommitParams extends RepositoryParams {
   sha: string;
 }
 
+export type ReadRepositoryContentsParams = RepositoryParams &
+  RepositoryContentsOptions & { path: string };
+
 export type ReadCommitPatchParams = RepositoryParams & CommitPatchOptions & { sha: string };
 
 export type ListCommitsParams = RepositoryParams & ListCommitOptions;
@@ -665,6 +670,19 @@ export async function listCommits(
     perPage: params.perPage,
   });
   return result(params.platform, commits);
+}
+
+export async function readRepositoryContents(
+  args: ReadRepositoryContentsParams,
+): Promise<ForgesToolResult<RepositoryContents>> {
+  const params = repositoryTarget(args);
+  const provider = await readProvider(params.platform);
+  const contents = await provider.repos.readContents(params.owner, params.repo, params.path, {
+    ref: params.ref,
+    offset: params.offset,
+    maxChars: params.maxChars,
+  });
+  return result(params.platform, contents);
 }
 
 export async function getCommit(args: GetCommitParams): Promise<ForgesToolResult<Commit>> {

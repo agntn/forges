@@ -588,6 +588,71 @@ describe("Gitea Provider", () => {
 
   // --- CI runs ---
 
+  describe("repos.readContents", () => {
+    const sha = "180e6101d078152f14b018fdb908c821c16cb091";
+    const giteaFile = (content: string | Uint8Array) => ({
+      type: "file",
+      name: "README.md",
+      path: "README.md",
+      size: Buffer.from(content).length,
+      encoding: "base64",
+      content: Buffer.from(content).toString("base64"),
+    });
+
+    it("resolves HEAD without commit stats and reads the file at that commit", async () => {
+      mockClient.mockResolvedValueOnce({ sha }).mockResolvedValueOnce(giteaFile("Forgejo\n"));
+
+      const file = await provider.repos.readContents("forgejo", "forgejo", "README.md");
+
+      expect(mockClient).toHaveBeenNthCalledWith(1, "/repos/forgejo/forgejo/git/commits/HEAD", {
+        query: { stat: "false", files: "false", verification: "false" },
+      });
+      expect(mockClient).toHaveBeenNthCalledWith(2, "/repos/forgejo/forgejo/contents/README.md", {
+        query: { ref: sha },
+      });
+      expect(file).toMatchObject({ type: "file", sha, content: "Forgejo\n", binary: false });
+    });
+
+    it("labels invalid UTF-8 as binary", async () => {
+      mockClient
+        .mockResolvedValueOnce({ sha })
+        .mockResolvedValueOnce(giteaFile(Uint8Array.from([0xff, 0xfe, 0x41])));
+
+      await expect(
+        provider.repos.readContents("forgejo", "forgejo", "README.md"),
+      ).resolves.toMatchObject({ binary: true, content: "", size: 3 });
+    });
+
+    it("lists a directory with sizes for files only", async () => {
+      mockClient.mockResolvedValueOnce([
+        { type: "file", name: "color.go", path: "modules/log/color.go", size: 1968 },
+        { type: "symlink", name: "latest", path: "modules/log/latest", size: 9 },
+      ]);
+
+      await expect(
+        provider.repos.readContents("forgejo", "forgejo", "modules/log", { ref: sha }),
+      ).resolves.toEqual({
+        type: "directory",
+        path: "modules/log",
+        sha,
+        entries: [
+          { name: "color.go", path: "modules/log/color.go", type: "file", size: 1968 },
+          { name: "latest", path: "modules/log/latest", type: "symlink", size: null },
+        ],
+        entriesComplete: true,
+      });
+      expect(mockClient).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses a submodule as unreadable", async () => {
+      mockClient.mockResolvedValueOnce({ type: "submodule", name: "sub", path: "sub", size: 0 });
+
+      await expect(
+        provider.repos.readContents("forgejo", "forgejo", "sub", { ref: sha }),
+      ).rejects.toMatchObject({ status: 422 });
+    });
+  });
+
   describe("ciRuns.list", () => {
     it("returns normalized paged workflow runs and filters by branch", async () => {
       mockedRawFetch.mockResolvedValueOnce({

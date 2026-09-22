@@ -18,7 +18,7 @@ import forgesPiExtension from "../packages/pi/extensions/forges.ts";
 import { resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
-  const repos = { list: vi.fn(), get: vi.fn() };
+  const repos = { list: vi.fn(), get: vi.fn(), readContents: vi.fn() };
   const contributionTemplates = { list: vi.fn(), get: vi.fn() };
   const code = { search: vi.fn() };
   const ciRuns = { list: vi.fn() };
@@ -95,6 +95,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
 const toolNames = [
   "forges_repos_list",
   "forges_repos_get",
+  "forges_repos_contents",
   "forges_contribution_templates_list",
   "forges_contribution_templates_get",
   "forges_code_search",
@@ -474,6 +475,42 @@ describe("Forges Pi extension", () => {
       "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
     );
     expect(result.details.result).toEqual({ sha: "abc", files: [], filesComplete: true });
+  });
+
+  it("reads repository contents through the shared provider operation", async () => {
+    mocks.repos.readContents.mockResolvedValue({
+      type: "file",
+      path: "README.md",
+      sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+      size: 8,
+      binary: false,
+      content: "# Hello\n",
+      offset: 0,
+      nextOffset: null,
+      truncated: false,
+    });
+    const tool = requirePiTool(registerPiTools(), "forges_repos_contents");
+    const result = await tool.execute(
+      "test",
+      {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        path: "README.md",
+        ref: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+        offset: 20,
+      },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+
+    expect(mocks.repos.readContents).toHaveBeenCalledWith("agntn", "forges", "README.md", {
+      ref: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+      offset: 20,
+      maxChars: undefined,
+    });
+    expect(result.details.result).toMatchObject({ type: "file", path: "README.md" });
   });
 
   it("executes commit patch reads through the shared provider operation", async () => {
@@ -1356,6 +1393,42 @@ describe("Forges OMP extension", () => {
       "page",
       "perPage",
     ]);
+  });
+
+  it("reads repository contents through the shared provider operation", async () => {
+    mocks.repos.readContents.mockResolvedValue({
+      type: "file",
+      path: "README.md",
+      sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+      size: 8,
+      binary: false,
+      content: "# Hello\n",
+      offset: 0,
+      nextOffset: null,
+      truncated: false,
+    });
+    const tool = requireOmpTool(registerOmpTools().tools, "forges_repos_contents");
+    const result = await tool.execute(
+      "test",
+      {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        path: "README.md",
+        ref: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+        offset: 20,
+      },
+      undefined,
+      undefined,
+      unusedOmpContext,
+    );
+
+    expect(mocks.repos.readContents).toHaveBeenCalledWith("agntn", "forges", "README.md", {
+      ref: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+      offset: 20,
+      maxChars: undefined,
+    });
+    expect(result.details.result).toMatchObject({ type: "file", path: "README.md" });
   });
 
   it("executes commit patch reads through the shared provider operation", async () => {

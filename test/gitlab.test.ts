@@ -821,6 +821,131 @@ describe("GitLabProvider", () => {
 
   // --- CI runs ---
 
+  describe("repos.readContents", () => {
+    const sha = "f5016eda261bb7142627d05d1d85a20d6dd56ddc";
+    const glFile = (content: string | Uint8Array) => ({
+      size: Buffer.from(content).length,
+      encoding: "base64",
+      content: Buffer.from(content).toString("base64"),
+      commit_id: sha,
+    });
+
+    it("reads a file at HEAD and reports the commit the files API resolved", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce(glFile("# GLab\n"));
+
+      const file = await gl.repos.readContents("gitlab-org", "cli", "docs/README.md");
+
+      expect(mocks.client).toHaveBeenLastCalledWith(
+        "/projects/278964/repository/files/docs%2FREADME.md",
+        { query: { ref: "HEAD" } },
+      );
+      expect(file).toMatchObject({
+        type: "file",
+        path: "docs/README.md",
+        sha,
+        content: "# GLab\n",
+      });
+    });
+
+    it("pins a tag read and refuses to continue from the tag", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce(glFile("abcdef"));
+
+      const first = await gl.repos.readContents("gitlab-org", "cli", "a", {
+        ref: "v1.0",
+        maxChars: 4,
+      });
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/repository/files/a", {
+        query: { ref: "v1.0" },
+      });
+      expect(first).toMatchObject({ content: "abcd", nextOffset: 4 });
+
+      mocks.client.mockResolvedValueOnce(glFile("abcdef"));
+      await expect(
+        gl.repos.readContents("gitlab-org", "cli", "a", { ref: "v1.0", offset: 4 }),
+      ).rejects.toMatchObject({ status: 409 });
+    });
+
+    it("refuses a file above the size limit", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({ ...glFile("x"), size: 2_000_000 });
+
+      await expect(gl.repos.readContents("gitlab-org", "cli", "big.bin")).rejects.toMatchObject({
+        status: 413,
+      });
+    });
+
+    it("falls back to the tree for a directory and maps entry kinds", async () => {
+      mockProjectResolve();
+      mocks.client.mockRejectedValueOnce(makeFetchError(404)).mockResolvedValueOnce({ id: sha });
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: [
+            { name: ".vale", path: "docs/.vale", type: "tree", mode: "040000" },
+            { name: "link", path: "docs/link", type: "blob", mode: "120000" },
+          ],
+          headers: glHeaders({ nextPage: "2" }),
+        })
+        .mockResolvedValueOnce({
+          data: [{ name: "index.md", path: "docs/index.md", type: "blob", mode: "100644" }],
+          headers: glHeaders({ nextPage: "" }),
+        });
+
+      const listing = await gl.repos.readContents("gitlab-org", "cli", "docs");
+
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/repository/commits/HEAD");
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        1,
+        mocks.client,
+        "/projects/278964/repository/tree",
+        {
+          query: { ref: sha, path: "docs", page: 1, per_page: 100 },
+        },
+      );
+      expect(listing).toEqual({
+        type: "directory",
+        path: "docs",
+        sha,
+        entries: [
+          { name: ".vale", path: "docs/.vale", type: "directory", size: null },
+          { name: "link", path: "docs/link", type: "symlink", size: null },
+          { name: "index.md", path: "docs/index.md", type: "file", size: null },
+        ],
+        entriesComplete: true,
+      });
+    });
+
+    it("stops a huge tree at the page cap and says the listing is partial", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({ id: sha });
+      for (let page = 1; page <= 10; page += 1) {
+        mocks.rawFetch.mockResolvedValueOnce({
+          data: [{ name: `f${page}`, path: `f${page}`, type: "blob", mode: "100644" }],
+          headers: glHeaders({ nextPage: String(page + 1) }),
+        });
+      }
+
+      const root = await gl.repos.readContents("gitlab-org", "cli", "");
+
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(10);
+      expect(root).toMatchObject({ type: "directory", path: "", entriesComplete: false });
+      expect(mocks.rawFetch.mock.calls[0]?.[2]).toEqual({
+        query: { ref: sha, path: undefined, page: 1, per_page: 100 },
+      });
+    });
+
+    it("reports a path that is neither file nor tree as not found", async () => {
+      mockProjectResolve();
+      mocks.client.mockRejectedValueOnce(makeFetchError(404)).mockResolvedValueOnce({ id: sha });
+      mocks.rawFetch.mockResolvedValueOnce({ data: [], headers: glHeaders() });
+
+      await expect(gl.repos.readContents("gitlab-org", "cli", "nope")).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+    });
+  });
+
   describe("ciRuns.list", () => {
     it("returns normalized paged pipelines and filters by ref", async () => {
       mockProjectResolve();

@@ -266,6 +266,7 @@ describe("cross-provider class consistency", () => {
       expect(typeof p.commits.list).toBe("function");
       expect(typeof p.commits.get).toBe("function");
       expect(typeof p.commits.readPatch).toBe("function");
+      expect(typeof p.repos.readContents).toBe("function");
     }
   });
 
@@ -305,6 +306,7 @@ describe("cross-provider class consistency", () => {
       expect(p.commits.list.length).toBeGreaterThanOrEqual(2);
       expect(p.commits.get.length).toBeGreaterThanOrEqual(3);
       expect(p.commits.readPatch.length).toBeGreaterThanOrEqual(3);
+      expect(p.repos.readContents.length).toBeGreaterThanOrEqual(3);
       expect(p.releases.list.length).toBeGreaterThanOrEqual(2);
       expect(p.releases.get.length).toBeGreaterThanOrEqual(3);
       expect(p.releases.create.length).toBeGreaterThanOrEqual(3);

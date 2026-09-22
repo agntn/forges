@@ -11,6 +11,7 @@ export type ToolEffect =
 export const toolEffects = {
   forges_repos_list: "hostedRead",
   forges_repos_get: "hostedRead",
+  forges_repos_contents: "hostedRead",
   forges_contribution_templates_list: "hostedRead",
   forges_contribution_templates_get: "hostedRead",
   forges_code_search: "hostedRead",

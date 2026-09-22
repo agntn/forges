@@ -943,6 +943,206 @@ describe("GitHubProvider", () => {
 
   // --- CI runs ---
 
+  describe("repos.readContents", () => {
+    const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
+    const base64 = (value: string | Uint8Array) => Buffer.from(value).toString("base64");
+
+    it("resolves the default branch to a commit and reads the file at that commit", async () => {
+      mocks.client.mockResolvedValueOnce(`${sha}\n`).mockResolvedValueOnce({
+        type: "file",
+        name: "README.md",
+        path: "docs/README.md",
+        size: 8,
+        encoding: "base64",
+        content: `${base64("# Hello\n")}\n`,
+      });
+
+      const file = await gh.repos.readContents("octocat", "hello-world", "/docs/README.md");
+
+      expect(mocks.client).toHaveBeenNthCalledWith(1, "/repos/octocat/hello-world/commits/HEAD", {
+        headers: { Accept: "application/vnd.github.sha" },
+        responseType: "text",
+      });
+      expect(mocks.client).toHaveBeenNthCalledWith(
+        2,
+        "/repos/octocat/hello-world/contents/docs/README.md",
+        { query: { ref: sha } },
+      );
+      expect(file).toEqual({
+        type: "file",
+        path: "docs/README.md",
+        sha,
+        size: 8,
+        binary: false,
+        content: "# Hello\n",
+        offset: 0,
+        nextOffset: null,
+        truncated: false,
+      });
+    });
+
+    it("reads at a tag, and skips the resolving request for a full SHA", async () => {
+      const file = {
+        type: "file",
+        name: "a",
+        path: "a",
+        size: 1,
+        encoding: "base64",
+        content: base64("a"),
+      };
+      mocks.client
+        .mockResolvedValueOnce(sha)
+        .mockResolvedValueOnce(file)
+        .mockResolvedValueOnce(file);
+
+      await gh.repos.readContents("octocat", "hello-world", "a", { ref: "release/v1.0" });
+      expect(mocks.client).toHaveBeenNthCalledWith(
+        1,
+        "/repos/octocat/hello-world/commits/release%2Fv1.0",
+        expect.anything(),
+      );
+
+      mocks.client.mockClear();
+      const pinned = await gh.repos.readContents("octocat", "hello-world", "a", { ref: sha });
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+      expect(pinned.sha).toBe(sha);
+    });
+
+    it("takes the commit SHA from a GitBucket commit object", async () => {
+      mocks.client
+        .mockResolvedValueOnce(JSON.stringify({ sha, commit: {} }))
+        .mockResolvedValueOnce({
+          type: "file",
+          name: "a",
+          path: "a",
+          size: 1,
+          encoding: "base64",
+          content: base64("a"),
+        });
+
+      await expect(gh.repos.readContents("octocat", "hello-world", "a")).resolves.toMatchObject({
+        sha,
+      });
+    });
+
+    it("labels a binary file instead of returning its bytes", async () => {
+      mocks.client.mockResolvedValueOnce(sha).mockResolvedValueOnce({
+        type: "file",
+        name: "logo.png",
+        path: "logo.png",
+        size: 6,
+        encoding: "base64",
+        content: base64(Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x1a])),
+      });
+
+      await expect(
+        gh.repos.readContents("octocat", "hello-world", "logo.png"),
+      ).resolves.toMatchObject({
+        binary: true,
+        content: "",
+        size: 6,
+        nextOffset: null,
+      });
+    });
+
+    it("refuses a file the contents API sends without content", async () => {
+      mocks.client.mockResolvedValueOnce(sha).mockResolvedValueOnce({
+        type: "file",
+        name: "api.json",
+        path: "api.json",
+        size: 1_000_001,
+        encoding: "none",
+        content: "",
+      });
+
+      await expect(
+        gh.repos.readContents("octocat", "hello-world", "api.json"),
+      ).rejects.toMatchObject({
+        status: 413,
+      });
+    });
+
+    it("lists a directory, and the repository root for an empty path", async () => {
+      mocks.client.mockResolvedValueOnce(sha).mockResolvedValueOnce([
+        { type: "file", name: "index.ts", path: "src/index.ts", size: 120 },
+        { type: "dir", name: "providers", path: "src/providers", size: 0 },
+        { type: "submodule", name: "vendor", path: "src/vendor", size: 0 },
+      ]);
+
+      await expect(gh.repos.readContents("octocat", "hello-world", "src/")).resolves.toEqual({
+        type: "directory",
+        path: "src",
+        sha,
+        entries: [
+          { name: "index.ts", path: "src/index.ts", type: "file", size: 120 },
+          { name: "providers", path: "src/providers", type: "directory", size: null },
+          { name: "vendor", path: "src/vendor", type: "submodule", size: null },
+        ],
+        entriesComplete: true,
+      });
+
+      mocks.client.mockResolvedValueOnce(sha).mockResolvedValueOnce([]);
+      await gh.repos.readContents("octocat", "hello-world", "/");
+      expect(mocks.client).toHaveBeenLastCalledWith("/repos/octocat/hello-world/contents", {
+        query: { ref: sha },
+      });
+    });
+
+    it("continues a long file only from the resolved SHA", async () => {
+      const text = "x".repeat(25);
+      const file = {
+        type: "file",
+        name: "a",
+        path: "a",
+        size: 25,
+        encoding: "base64",
+        content: base64(text),
+      };
+      mocks.client
+        .mockResolvedValueOnce(sha)
+        .mockResolvedValueOnce(file)
+        .mockResolvedValueOnce(file);
+
+      const first = await gh.repos.readContents("octocat", "hello-world", "a", { maxChars: 10 });
+      expect(first).toMatchObject({ content: "x".repeat(10), nextOffset: 10, truncated: true });
+
+      const last = await gh.repos.readContents("octocat", "hello-world", "a", {
+        ref: first.sha,
+        offset: 20,
+        maxChars: 10,
+      });
+      expect(last).toMatchObject({
+        content: "xxxxx",
+        offset: 20,
+        nextOffset: null,
+        truncated: false,
+      });
+
+      mocks.client.mockResolvedValueOnce(sha);
+      await expect(
+        gh.repos.readContents("octocat", "hello-world", "a", { offset: 10 }),
+      ).rejects.toMatchObject({ status: 409 });
+    });
+
+    it("normalizes a missing path to NotFoundError", async () => {
+      mocks.client.mockResolvedValueOnce(sha).mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(
+        gh.repos.readContents("octocat", "hello-world", "nope.md"),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+
+    it("refuses a path that would leave the contents route before any request", async () => {
+      await expect(
+        gh.repos.readContents("octocat", "hello-world", "docs/../../user"),
+      ).rejects.toMatchObject({ status: 400 });
+      await expect(
+        gh.repos.readContents("octocat", "hello-world", "a", { maxChars: 0 }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+  });
+
   describe("ciRuns.list", () => {
     it("returns normalized paged workflow runs and filters by branch", async () => {
       mocks.rawFetch.mockResolvedValueOnce({

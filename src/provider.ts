@@ -5,6 +5,7 @@
 import { assertAssignees } from "./assignees.ts";
 import { ForgesError, NotFoundError } from "./errors.ts";
 import { assertCommitPatchOptions } from "./commit-patch.ts";
+import { assertRepositoryContentsOptions, normalizeRepositoryPath } from "./repository-contents.ts";
 import type {
   CiRun,
   CiRunResource,
@@ -53,6 +54,8 @@ import type {
   ReleaseResource,
   ReplyThreadInput,
   Repository,
+  RepositoryContents,
+  RepositoryContentsOptions,
   RepositoryResource,
   SearchPageResult,
   Thread,
@@ -156,6 +159,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     this.repos = {
       list: (owner, options) => this.listRepos(owner, options),
       get: (owner, repo) => this.getRepo(owner, repo),
+      readContents: async (owner, repo, path, options) => {
+        assertRepositoryContentsOptions(options);
+        return this.readRepositoryContents(owner, repo, normalizeRepositoryPath(path), options);
+      },
     };
     this.contributionTemplates = {
       list: async (owner, repo, kind, options) => {
@@ -326,6 +333,16 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   ): Promise<ContributionTemplateSummary[]> {
     return Promise.reject(
       new ForgesError("Contribution template discovery is not supported by this provider", 501),
+    );
+  }
+  protected readRepositoryContents(
+    _owner: string,
+    _repo: string,
+    _path: string,
+    _options?: RepositoryContentsOptions,
+  ): Promise<RepositoryContents> {
+    return Promise.reject(
+      new ForgesError("Repository contents reads are not supported by this provider", 501),
     );
   }
   protected readContributionTemplate(

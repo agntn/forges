@@ -203,6 +203,7 @@ function resultMeta(details: unknown): string[] {
   if (Array.isArray(payload.items)) meta.push(`${payload.items.length} items`);
   for (const [key, label] of [
     ["files", "files"],
+    ["entries", "entries"],
     ["comments", "comments"],
     ["assignees", "assignees"],
   ] as const) {
