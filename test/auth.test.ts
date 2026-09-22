@@ -240,6 +240,63 @@ describe("resolveToken", () => {
     });
   });
 
+  // --- Named account ---
+
+  describe("named account", () => {
+    const hostsWithTwoAccounts =
+      "github.com:\n" +
+      "    users:\n" +
+      "        active:\n" +
+      "            oauth_token: gho_active\n" +
+      "        second:\n" +
+      "            oauth_token: gho_second\n" +
+      "    user: active\n" +
+      "    oauth_token: gho_active\n";
+
+    it("asks gh for that login's token", () => {
+      mockedExecFileSync.mockReturnValueOnce("gho_second\n");
+      const result = resolveToken("github", { account: "second" });
+      expect(result).toEqual({ token: "gho_second", source: "cli" });
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        "gh",
+        ["auth", "token", "--hostname", "github.com", "--user", "second"],
+        expect.objectContaining({ encoding: "utf-8", timeout: 5000 }),
+      );
+    });
+
+    it("reads the login's own entry from hosts.yml", () => {
+      mockedExecFileSync.mockImplementation(() => {
+        throw new Error("not found");
+      });
+      mockedReadFileSync.mockReturnValueOnce(hostsWithTwoAccounts);
+      const result = resolveToken("github", { account: "second" });
+      expect(result).toEqual({ token: "gho_second", source: "config" });
+    });
+
+    it("never falls back to the active account's token", () => {
+      mockedExecFileSync.mockImplementation(() => {
+        throw new Error("no account found for missing");
+      });
+      mockedReadFileSync.mockReturnValueOnce(hostsWithTwoAccounts);
+      expect(resolveToken("github", { account: "missing" })).toBeNull();
+    });
+
+    it("leaves the env step first", () => {
+      process.env.GH_TOKEN = "ghp_env";
+      expect(resolveToken("github", { account: "second" })).toEqual({
+        token: "ghp_env",
+        source: "env",
+      });
+      expect(mockedExecFileSync).not.toHaveBeenCalled();
+    });
+
+    it("finds nothing on platforms whose CLI cannot pick a login", () => {
+      mockedReadFileSync.mockReturnValue("hosts:\n  gitlab.com:\n    token: glpat-active\n");
+      expect(resolveToken("gitlab", { account: "second" })).toBeNull();
+      expect(mockedExecFileSync).not.toHaveBeenCalled();
+    });
+  });
+
   // --- Priority chain ---
 
   describe("priority", () => {

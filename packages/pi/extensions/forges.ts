@@ -43,6 +43,11 @@ function approvalField(value: string): string {
   return sanitizeApprovalText(value).replaceAll("\n", " ");
 }
 
+/** A write that names its account shows it; without one it goes out as the pinned credential. */
+function accountLine(account: string | undefined): string[] {
+  return account === undefined ? [] : [`Account     ${approvalField(account)}`];
+}
+
 /** The approval text names the resolved target, so the dialog matches the write. */
 type Resolved<P extends ForgesTools.RepositoryParams> = P & ForgesTools.RepositoryTarget;
 
@@ -50,6 +55,7 @@ function pullRequestApprovalMessage(params: Resolved<ForgesTools.CreatePullReque
   const body = sanitizeApprovalText(params.body);
   return [
     `Repository  ${approvalField(params.owner)}/${approvalField(params.repo)} on ${platformLabels[params.platform]}`,
+    ...accountLine(params.account),
     `Branches    ${approvalField(params.sourceBranch)} → ${approvalField(params.targetBranch)}`,
     `Status      ${params.draft === true ? "Draft" : "Ready for review"}`,
     `Assignees   ${params.assignees?.map(approvalField).join(", ") || "None"}`,
@@ -75,6 +81,7 @@ function releaseApprovalMessage(
     "ref" in params && params.ref !== undefined ? ` (from ${approvalField(params.ref)})` : "";
   return [
     `Repository  ${approvalField(params.owner)}/${approvalField(params.repo)} on ${platformLabels[params.platform]}`,
+    ...accountLine(params.account),
     `Tag         ${approvalField(params.tag)}${target}`,
     `Draft       ${flag(params.draft, "Yes", "No, public at once")}`,
     `Pre-release ${flag(params.prerelease, "Yes", "No")}`,
@@ -750,7 +757,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     promptGuidelines: [
       "Use forges_threads_resolve only when the user explicitly asks to resolve a thread.",
     ],
-    parameters: schemas.threadParameters,
+    parameters: schemas.threadStateParameters,
     ...statusRenderers("forges_threads_resolve", "Resolve Forges Thread"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).resolveThread(params);
@@ -766,7 +773,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     promptGuidelines: [
       "Use forges_threads_unresolve only when the user explicitly asks to reopen a thread.",
     ],
-    parameters: schemas.threadParameters,
+    parameters: schemas.threadStateParameters,
     ...statusRenderers("forges_threads_unresolve", "Unresolve Forges Thread"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).unresolveThread(params);

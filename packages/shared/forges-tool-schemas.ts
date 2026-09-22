@@ -106,6 +106,15 @@ export function forgesToolSchemas() {
     }),
   );
 
+  /** Only gh hands out a named login's token, so the other platforms reject it. */
+  const account = Type.Optional(
+    Type.String({
+      description:
+        "GitHub login to act as; refused unless the local credential belongs to it. Omit for the pinned one.",
+      minLength: 1,
+    }),
+  );
+
   /** A closed object rejects a stray `per_page` instead of quietly shrinking the page. */
   function closed<T extends TProperties>(properties: T): TObject<T> {
     return Type.Object(properties, { additionalProperties: false });
@@ -228,6 +237,7 @@ export function forgesToolSchemas() {
     ),
     draft,
     prerelease,
+    account,
   });
   const updateReleaseParameters = closed({
     platform,
@@ -238,6 +248,7 @@ export function forgesToolSchemas() {
     body: releaseBody,
     draft,
     prerelease,
+    account,
   });
   const listRepositoryItemsParameters = closed({
     platform,
@@ -301,6 +312,7 @@ export function forgesToolSchemas() {
     body: Type.String({ description: "Issue body" }),
     labels: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     assignees,
+    account,
   });
   const createPullRequestParameters = closed({
     platform,
@@ -312,12 +324,13 @@ export function forgesToolSchemas() {
     targetBranch: Type.String({ description: "Target branch", minLength: 1 }),
     draft: Type.Optional(Type.Boolean({ description: "Create as a draft pull request" })),
     assignees,
+    account,
   });
   const userParameters = closed({
     platform,
     username: Type.String({ description: "Platform username", minLength: 1 }),
   });
-  const authenticatedUserParameters = closed({ platform });
+  const authenticatedUserParameters = closed({ platform, account });
   const listThreadsParameters = closed({
     platform,
     owner,
@@ -328,6 +341,7 @@ export function forgesToolSchemas() {
     state: threadState,
   });
   const threadParameters = closed({ platform, owner, repo, number, threadId });
+  const threadStateParameters = closed({ platform, owner, repo, number, threadId, account });
   const replyThreadParameters = closed({
     platform,
     owner,
@@ -335,6 +349,7 @@ export function forgesToolSchemas() {
     number,
     threadId,
     body: Type.String({ description: "Reply body", minLength: 1 }),
+    account,
   });
 
   const localMergeParameters = closed({
@@ -419,6 +434,7 @@ export function forgesToolSchemas() {
     authenticatedUserParameters,
     listThreadsParameters,
     threadParameters,
+    threadStateParameters,
     replyThreadParameters,
   };
 }

@@ -24,8 +24,19 @@ const mocks = vi.hoisted(() => {
   const credentialToken = { current: "test-token" as string | null };
   const anonymousWrites = { current: 0 };
   const issueCreateGate = { current: undefined as Promise<void> | undefined };
+  /** Logins `gh auth token --user` can answer for; the token names its owner. */
+  const ghLogins = { current: new Set(["aeitwoen", "oritwoen"]) };
+  /** A `GH_TOKEN` in the environment answers every lookup, a named account's too. */
+  const envCredential = { current: false };
+  const issueAuthors = { current: [] as string[] };
 
-  const resolveToken = vi.fn(() => {
+  const resolveToken = vi.fn((_platform: string, options?: { account?: string }) => {
+    const account = options?.account;
+    if (account !== undefined && !envCredential.current) {
+      return ghLogins.current.has(account)
+        ? { token: `account:${account}`, source: "cli" as const }
+        : null;
+    }
     const token = credentialToken.current;
     return token === null ? null : { token, source: "env" as const };
   });
@@ -33,7 +44,8 @@ const mocks = vi.hoisted(() => {
   const createProvider = vi.fn(
     (_platform: string, config?: { baseURL?: string; token?: string }) => {
       const anonymous = config?.token === "";
-      const login = anonymous ? "anonymous" : localLogin.current;
+      const namedLogin = config?.token?.startsWith("account:") ? config.token.slice(8) : undefined;
+      const login = anonymous ? "anonymous" : (namedLogin ?? localLogin.current);
 
       return {
         contributionTemplates: {
@@ -98,6 +110,7 @@ const mocks = vi.hoisted(() => {
               anonymousWrites.current += 1;
             }
             await issueCreateGate.current;
+            issueAuthors.current.push(login);
             return {
               id: "7",
               number: 7,
@@ -119,6 +132,9 @@ const mocks = vi.hoisted(() => {
     credentialToken,
     anonymousWrites,
     issueCreateGate,
+    ghLogins,
+    envCredential,
+    issueAuthors,
     resolveToken,
     createProvider,
   };
@@ -143,6 +159,9 @@ beforeEach(() => {
   mocks.credentialToken.current = "test-token";
   mocks.anonymousWrites.current = 0;
   mocks.issueCreateGate.current = undefined;
+  mocks.ghLogins.current = new Set(["aeitwoen", "oritwoen"]);
+  mocks.envCredential.current = false;
+  mocks.issueAuthors.current = [];
   mocks.resolveToken.mockClear();
   mocks.createProvider.mockClear();
   vi.stubEnv("FORGES_GITHUB_BASE_URL", undefined);
@@ -355,6 +374,82 @@ describe("configured provider", () => {
     await write;
     const reloaded = await reload;
     expect(reloaded.details.result.login).toBe("oritwoen");
+  });
+});
+
+describe("named account", () => {
+  it("writes as the named login and leaves the default pin alone", async () => {
+    await getAuthenticatedUser({ platform: "github" });
+
+    const created = await createIssue({ ...issueParams, account: "oritwoen" });
+    const named = await getAuthenticatedUser({ platform: "github", account: "OriTwoEn" });
+    const fallback = await getAuthenticatedUser({ platform: "github" });
+
+    expect(created.details.result.author.login).toBe("oritwoen");
+    expect(named.details.result.login).toBe("oritwoen");
+    expect(fallback.details.result.login).toBe("aeitwoen");
+    expect(mocks.resolveToken).toHaveBeenCalledWith("github", {
+      baseURL: undefined,
+      account: "oritwoen",
+    });
+    // One default provider and one pinned per account, whatever the login's case.
+    expect(mocks.createProvider).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses a login gh has no token for and writes nothing", async () => {
+    await expect(createIssue({ ...issueParams, account: "ghost" })).rejects.toThrow(
+      'No auth token found for github account "ghost"',
+    );
+
+    expect(mocks.createProvider).not.toHaveBeenCalled();
+    expect(mocks.issueAuthors.current).toEqual([]);
+  });
+
+  it("refuses an env token that belongs to another login", async () => {
+    mocks.envCredential.current = true;
+
+    const write = createIssue({ ...issueParams, account: "oritwoen" });
+
+    await expect(write).rejects.toThrow(AuthenticationError);
+    await expect(write).rejects.toThrow(/belongs to "aeitwoen"\. GH_TOKEN or GITHUB_TOKEN/);
+    expect(mocks.issueAuthors.current).toEqual([]);
+  });
+
+  it("accepts an env token that belongs to the named login", async () => {
+    mocks.envCredential.current = true;
+
+    const created = await createIssue({ ...issueParams, account: "aeitwoen" });
+
+    expect(created.details.result.author.login).toBe("aeitwoen");
+  });
+
+  it("does not pin a refused account", async () => {
+    mocks.envCredential.current = true;
+    await expect(createIssue({ ...issueParams, account: "oritwoen" })).rejects.toThrow();
+    mocks.envCredential.current = false;
+
+    const created = await createIssue({ ...issueParams, account: "oritwoen" });
+
+    expect(created.details.result.author.login).toBe("oritwoen");
+  });
+
+  it("rejects an account on platforms whose CLI cannot pick a login", async () => {
+    await expect(
+      createIssue({ ...issueParams, platform: "gitlab", account: "oritwoen" }),
+    ).rejects.toThrow("Choosing an account is supported only on github");
+
+    expect(mocks.resolveToken).not.toHaveBeenCalled();
+  });
+
+  it("drops account pins on reload", async () => {
+    await getAuthenticatedUser({ platform: "github", account: "oritwoen" });
+    mocks.ghLogins.current = new Set(["aeitwoen"]);
+
+    await reloadAuthentication({ platform: "github" });
+
+    await expect(getAuthenticatedUser({ platform: "github", account: "oritwoen" })).rejects.toThrow(
+      AuthenticationError,
+    );
   });
 });
 

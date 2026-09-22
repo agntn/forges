@@ -950,6 +950,34 @@ describe("Forges Pi extension", () => {
     expect(result.details.result).toMatchObject({ number: 43 });
   });
 
+  it("names the account a pull request goes out as in the approval", async () => {
+    const confirm = vi.fn().mockResolvedValue(false);
+    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
+
+    await expect(
+      tool.execute(
+        "test",
+        {
+          repo: "agntn/forges",
+          title: "Add approval",
+          body: "Require confirmation before creation.",
+          sourceBranch: "feat/pr-approval",
+          targetBranch: "main",
+          account: "oritwoen",
+        },
+        undefined,
+        undefined,
+        approvalPiContext(confirm),
+      ),
+    ).rejects.toThrow("cancelled by the user");
+
+    expect(confirm).toHaveBeenCalledWith(
+      "Create pull request?",
+      expect.stringContaining("Repository  agntn/forges on GitHub\nAccount     oritwoen\n"),
+      { signal: undefined },
+    );
+  });
+
   it("names the resolved repository in the approval when the slug carried it", async () => {
     const confirm = vi.fn().mockResolvedValue(false);
     const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");

@@ -121,6 +121,15 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     }),
   );
 
+  /** Only gh hands out a named login's token, so the other platforms reject it. */
+  const account = Type.Optional(
+    Type.String({
+      description:
+        "GitHub login to act as; refused unless the local credential belongs to it. Omit for the pinned one.",
+      minLength: 1,
+    }),
+  );
+
   /** Closed like the shared schemas: an unknown argument fails instead of vanishing. */
   function closed<P extends Parameters<typeof Type.Object>[0]>(properties: P) {
     return Type.Object(properties, { additionalProperties: false });
@@ -239,6 +248,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     ),
     draft,
     prerelease,
+    account,
   });
   const updateReleaseParameters = closed({
     platform,
@@ -249,6 +259,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     body: releaseBody,
     draft,
     prerelease,
+    account,
   });
   const listRepositoryItemsParameters = closed({
     platform,
@@ -313,6 +324,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     body: Type.String({ description: "Issue body" }),
     labels: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     assignees,
+    account,
   });
   const createPullRequestParameters = closed({
     platform,
@@ -324,12 +336,13 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     targetBranch: Type.String({ description: "Target branch", minLength: 1 }),
     draft: Type.Optional(Type.Boolean({ description: "Create as a draft pull request" })),
     assignees,
+    account,
   });
   const userParameters = closed({
     platform,
     username: Type.String({ description: "Platform username", minLength: 1 }),
   });
-  const authenticatedUserParameters = closed({ platform });
+  const authenticatedUserParameters = closed({ platform, account });
   const threadState = Type.Optional(
     Type.Union([Type.Literal("unresolved"), Type.Literal("resolved"), Type.Literal("all")], {
       description: "Filter by resolved state",
@@ -346,6 +359,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     state: threadState,
   });
   const threadParameters = closed({ platform, owner, repo, number, threadId });
+  const threadStateParameters = closed({ platform, owner, repo, number, threadId, account });
   const replyThreadParameters = closed({
     platform,
     owner,
@@ -353,6 +367,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     number,
     threadId,
     body: Type.String({ description: "Reply body", minLength: 1 }),
+    account,
   });
 
   pi.registerTool({
@@ -817,7 +832,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Resolve Forges Thread",
     description:
       "Mark a pull-request review thread as resolved; this mutates the selected Git platform",
-    parameters: threadParameters,
+    parameters: threadStateParameters,
     ...statusRenderers("forges_threads_resolve", "Resolve Forges Thread"),
     approval: toolApproval("forges_threads_resolve"),
     async execute(_toolCallId, params) {
@@ -830,7 +845,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     label: "Unresolve Forges Thread",
     description:
       "Mark a pull-request review thread as unresolved; this mutates the selected Git platform",
-    parameters: threadParameters,
+    parameters: threadStateParameters,
     ...statusRenderers("forges_threads_unresolve", "Unresolve Forges Thread"),
     approval: toolApproval("forges_threads_unresolve"),
     async execute(_toolCallId, params) {
