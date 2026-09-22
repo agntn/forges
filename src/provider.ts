@@ -41,6 +41,7 @@ import type {
   Owner,
   PageResult,
   PullRequest,
+  ClosingIssue,
   PullRequestCheck,
   PullRequestFile,
   PullRequestResource,
@@ -273,7 +274,14 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         }
         return this.searchPullRequests(owner, repo, query, options);
       },
-      get: (owner, repo, number) => this.getPullRequest(owner, repo, number),
+      get: async (owner, repo, number, options) => {
+        if (options?.closingIssues !== true) return this.getPullRequest(owner, repo, number);
+        const [pullRequest, closingIssues] = await Promise.all([
+          this.getPullRequest(owner, repo, number),
+          this.listClosingIssues(owner, repo, number),
+        ]);
+        return { ...pullRequest, closingIssues };
+      },
       create: async (owner, repo, input) => {
         assertAssignees(input.assignees);
         return this.createPullRequest(owner, repo, input);
@@ -482,6 +490,14 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     repo: string,
     number: number,
   ): Promise<PullRequest>;
+  /** Null means the provider cannot tell which issues a pull request closes. */
+  protected listClosingIssues(
+    _owner: string,
+    _repo: string,
+    _number: number,
+  ): Promise<ClosingIssue[] | null> {
+    return Promise.resolve(null);
+  }
   protected abstract createPullRequest(
     owner: string,
     repo: string,

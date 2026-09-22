@@ -282,6 +282,18 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     state,
   });
   const repositoryItemParameters = closed({ platform, owner, repo, number });
+  const pullRequestParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    closingIssues: Type.Optional(
+      Type.Boolean({
+        description:
+          "Also list the issues the pull request closes on merge, at the cost of one more request; null where the platform cannot tell",
+      }),
+    ),
+  });
   const listCommentsParameters = closed({ platform, owner, repo, number, page, perPage });
   /**
    * The waiting mode of the check listing. The bound repeats
@@ -658,7 +670,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     name: "forges_pull_requests_get",
     label: "Forges Pull Request",
     description: "Get one normalized pull request by repository and number",
-    parameters: repositoryItemParameters,
+    parameters: pullRequestParameters,
     ...statusRenderers("forges_pull_requests_get", "Forges Pull Request"),
     approval: toolApproval("forges_pull_requests_get"),
     async execute(_toolCallId, params) {

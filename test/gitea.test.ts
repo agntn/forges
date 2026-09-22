@@ -1733,6 +1733,17 @@ describe("Gitea Provider", () => {
   });
 
   describe("pullRequests.get", () => {
+    it("reports closing issues as unknown, not as none", async () => {
+      mockClient.mockResolvedValueOnce(giteaPullRequest());
+
+      const result = await provider.pullRequests.get("testowner", "test-repo", 5, {
+        closingIssues: true,
+      });
+
+      expect(result.closingIssues).toBeNull();
+      expect(mockClient).toHaveBeenCalledTimes(1);
+    });
+
     it("returns the merge commit SHA for a merged pull request", async () => {
       mockClient.mockResolvedValueOnce(
         giteaPullRequest({

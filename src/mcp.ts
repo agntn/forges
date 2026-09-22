@@ -238,8 +238,8 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       name: "forges_pull_requests_get",
       title: "Get Pull Request",
       description:
-        "Get one pull request, called a merge request on GitLab, by number: body, branches, head revision, draft and merged state, mergeability, provider merge status, and the landed merge commit SHA.",
-      inputSchema: schemas.repositoryItemParameters,
+        "Get one pull request, called a merge request on GitLab, by number: body, branches, head revision, draft and merged state, mergeability, provider merge status, and the landed merge commit SHA. Pass closingIssues to also list the issues it closes on merge.",
+      inputSchema: schemas.pullRequestParameters,
       execute: (operations, args) => operations.getPullRequest(args),
     }),
     defineTool({
