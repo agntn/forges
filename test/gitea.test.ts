@@ -653,6 +653,135 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("ciRuns jobs", () => {
+    const rawJob = {
+      id: 105912189006,
+      run_id: 9876,
+      name: "test",
+      status: "completed",
+      conclusion: "failure",
+      started_at: "2026-09-19T14:27:10Z",
+      completed_at: "2026-09-19T14:27:16Z",
+      html_url: "https://gitea.com/testowner/test-repo/actions/runs/9876/jobs/0",
+      steps: [
+        {
+          number: 1,
+          name: "Set up job",
+          status: "completed",
+          conclusion: "success",
+          started_at: "2026-09-19T14:27:10Z",
+          completed_at: "2026-09-19T14:27:15Z",
+        },
+        {
+          number: 2,
+          name: "Test",
+          status: "completed",
+          conclusion: "failure",
+          started_at: "2026-09-19T14:27:15Z",
+          completed_at: "2026-09-19T14:27:16Z",
+        },
+      ],
+    };
+    const jobLog = [
+      "2026-09-19T14:27:10.1000000Z Current runner version: '2.337.0'",
+      "2026-09-19T14:27:15.2000000Z ##[group]Run npm test",
+      "2026-09-19T14:27:15.9000000Z ##[error]Process completed with exit code 1.",
+      "",
+    ].join("\n");
+
+    it("lists the jobs of one run with their steps", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: { total_count: 1, jobs: [rawJob] },
+        headers: makeHeaders(),
+        status: 200,
+      });
+
+      const result = await provider.ciRuns.listJobs("testowner", "test-repo", "9876", {
+        page: 2,
+        perPage: 10,
+      });
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        expect.anything(),
+        "/repos/testowner/test-repo/actions/runs/9876/jobs",
+        { query: { page: "2", limit: "10" } },
+      );
+      expect(result.items).toEqual([
+        {
+          id: "105912189006",
+          runId: "9876",
+          name: "test",
+          status: "completed",
+          conclusion: "failure",
+          startedAt: "2026-09-19T14:27:10Z",
+          completedAt: "2026-09-19T14:27:16Z",
+          url: "https://gitea.com/testowner/test-repo/actions/runs/9876/jobs/0",
+          steps: [
+            expect.objectContaining({ number: 1, name: "Set up job", conclusion: "success" }),
+            expect.objectContaining({ number: 2, name: "Test", conclusion: "failure" }),
+          ],
+        },
+      ]);
+      expect(result.totalCount).toBe(1);
+    });
+
+    it("reads a job log with the failing step first", async () => {
+      mockClient.mockResolvedValueOnce(rawJob).mockResolvedValueOnce(new Response(jobLog).body);
+
+      const log = await provider.ciRuns.readJobLog("testowner", "test-repo", "105912189006");
+
+      expect(mockClient).toHaveBeenNthCalledWith(
+        1,
+        "/repos/testowner/test-repo/actions/jobs/105912189006",
+      );
+      expect(mockClient).toHaveBeenNthCalledWith(
+        2,
+        "/repos/testowner/test-repo/actions/jobs/105912189006/logs",
+        { responseType: "stream" },
+      );
+      expect(log.content).toBe(
+        [
+          "--- step 2 Test: failure",
+          "##[group]Run npm test",
+          "##[error]Process completed with exit code 1.",
+          "--- step 1 Set up job: success",
+          "Current runner version: '2.337.0'",
+          "",
+        ].join("\n"),
+      );
+      expect(log).toMatchObject({ jobId: "105912189006", started: true, nextOffset: null });
+    });
+
+    it("says a queued job has no log without asking for one", async () => {
+      mockClient.mockResolvedValueOnce({
+        ...rawJob,
+        status: "queued",
+        conclusion: null,
+        steps: [],
+      });
+
+      const log = await provider.ciRuns.readJobLog("testowner", "test-repo", "105912189006");
+
+      expect(mockClient).toHaveBeenCalledTimes(1);
+      expect(log).toMatchObject({ started: false, status: "queued", content: "", length: 0 });
+    });
+
+    it("rejects a job id that is not a number before any request", async () => {
+      await expect(
+        provider.ciRuns.readJobLog("testowner", "test-repo", "1/../../hooks"),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(mockClient).not.toHaveBeenCalled();
+    });
+
+    it("maps a missing job to NotFoundError", async () => {
+      mockClient.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(
+        provider.ciRuns.readJobLog("testowner", "test-repo", "105912189006"),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+
   describe("ciRuns.list", () => {
     it("returns normalized paged workflow runs and filters by branch", async () => {
       mockedRawFetch.mockResolvedValueOnce({

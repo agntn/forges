@@ -946,6 +946,82 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("ciRuns jobs", () => {
+    const glJob = {
+      id: 16667043902,
+      name: "lint",
+      stage: "test",
+      status: "failed",
+      started_at: "2026-09-22T22:19:29.611Z",
+      finished_at: "2026-09-22T22:20:07.077Z",
+      web_url: "https://gitlab.com/gitlab-org/gitlab-foss/-/jobs/16667043902",
+      pipeline: { id: 9001 },
+    };
+
+    it("lists the jobs of one pipeline without steps", async () => {
+      mockProjectResolve();
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glJob, { ...glJob, id: 16667043903, status: "created", started_at: null }],
+        headers: glHeaders({ total: "2" }),
+      });
+
+      const result = await gl.ciRuns.listJobs("gitlab-org", "gitlab-foss", "9001", { perPage: 10 });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/pipelines/9001/jobs",
+        { query: { page: 1, per_page: 10 } },
+      );
+      expect(result.items).toEqual([
+        {
+          id: "16667043902",
+          runId: "9001",
+          name: "lint",
+          status: "completed",
+          conclusion: "failure",
+          startedAt: "2026-09-22T22:19:29.611Z",
+          completedAt: "2026-09-22T22:20:07.077Z",
+          url: "https://gitlab.com/gitlab-org/gitlab-foss/-/jobs/16667043902",
+          steps: [],
+        },
+        expect.objectContaining({ id: "16667043903", status: "queued", startedAt: null }),
+      ]);
+    });
+
+    it("reads a job trace without timestamps, section markers or ANSI", async () => {
+      mockProjectResolve();
+      const trace = [
+        "2026-09-22T22:19:30.000000Z 00O section_start:1790115570:step_script\r\u001b[0K$ npm test",
+        "2026-09-22T22:20:06.821736Z 00O \u001b[31;1mERROR: Job failed: exit code 1\u001b[0;m",
+        "",
+      ].join("\n");
+      mocks.client.mockResolvedValueOnce(glJob).mockResolvedValueOnce(new Response(trace).body);
+
+      const log = await gl.ciRuns.readJobLog("gitlab-org", "gitlab-foss", "16667043902");
+
+      expect(mocks.client).toHaveBeenNthCalledWith(2, "/projects/278964/jobs/16667043902");
+      expect(mocks.client).toHaveBeenNthCalledWith(3, "/projects/278964/jobs/16667043902/trace", {
+        responseType: "stream",
+      });
+      expect(log).toMatchObject({
+        jobId: "16667043902",
+        conclusion: "failure",
+        started: true,
+        content: "$ npm test\nERROR: Job failed: exit code 1\n",
+      });
+    });
+
+    it("says a job that never started has no trace", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({ ...glJob, status: "skipped", started_at: null });
+
+      const log = await gl.ciRuns.readJobLog("gitlab-org", "gitlab-foss", "16667043902");
+
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(log).toMatchObject({ started: false, conclusion: "skipped", content: "" });
+    });
+  });
+
   describe("ciRuns.list", () => {
     it("returns normalized paged pipelines and filters by ref", async () => {
       mockProjectResolve();

@@ -5,8 +5,12 @@
 import { assertAssignees } from "./assignees.ts";
 import { ForgesError, NotFoundError } from "./errors.ts";
 import { assertCommitPatchOptions } from "./commit-patch.ts";
+import { assertCiId, assertCiJobLogOptions } from "./ci-job-log.ts";
 import { assertRepositoryContentsOptions, normalizeRepositoryPath } from "./repository-contents.ts";
 import type {
+  CiJob,
+  CiJobLog,
+  CiJobLogOptions,
   CiRun,
   CiRunResource,
   CodeSearchItem,
@@ -29,6 +33,7 @@ import type {
   CreateReleaseInput,
   Issue,
   IssueResource,
+  ListCiJobsOptions,
   ListCiRunsOptions,
   ListCommentOptions,
   ListCommitOptions,
@@ -196,6 +201,15 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.ciRuns = {
       list: (owner, repo, options) => this.listCiRuns(owner, repo, options),
+      listJobs: async (owner, repo, runId, options) => {
+        assertCiId(runId, "run");
+        return this.listCiJobs(owner, repo, runId, options);
+      },
+      readJobLog: async (owner, repo, jobId, options) => {
+        assertCiId(jobId, "job");
+        assertCiJobLogOptions(options);
+        return this.readCiJobLog(owner, repo, jobId, options);
+      },
     };
     this.commits = {
       search: async (query, options) => {
@@ -366,6 +380,24 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _options?: ListCiRunsOptions,
   ): Promise<PageResult<CiRun>> {
     return Promise.reject(new ForgesError("CI-run listing is not supported by this provider", 501));
+  }
+  protected listCiJobs(
+    _owner: string,
+    _repo: string,
+    _runId: string,
+    _options?: ListCiJobsOptions,
+  ): Promise<PageResult<CiJob>> {
+    return Promise.reject(new ForgesError("CI-job listing is not supported by this provider", 501));
+  }
+  protected readCiJobLog(
+    _owner: string,
+    _repo: string,
+    _jobId: string,
+    _options?: CiJobLogOptions,
+  ): Promise<CiJobLog> {
+    return Promise.reject(
+      new ForgesError("CI-job log reads are not supported by this provider", 501),
+    );
   }
   protected searchPullRequestsGlobal(
     _query: string,

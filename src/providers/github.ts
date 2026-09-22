@@ -12,6 +12,9 @@ import type {
   RepositoryContentsOptions,
   CodeSearchItem,
   CodeSearchOptions,
+  CiJob,
+  CiJobLog,
+  CiJobLogOptions,
   CiRun,
   Commit,
   CommitPatch,
@@ -37,6 +40,7 @@ import type {
   PageResult,
   SearchPageResult,
   ListOptions,
+  ListCiJobsOptions,
   ListCiRunsOptions,
   ListCommentOptions,
   ListCommitOptions,
@@ -70,6 +74,13 @@ import { normalizeCiRunState } from "../ci-run.ts";
 import { isPullRequestReview, normalizeReviewState } from "../review.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
 import { buildCommitPatch } from "../commit-patch.ts";
+import {
+  buildCiJobLog,
+  jobStarted,
+  mapActionsJob,
+  readJobLogText,
+  type ActionsJob,
+} from "../ci-job-log.ts";
 import {
   assertContinuationRef,
   assertFileSize,
@@ -162,6 +173,11 @@ interface GitHubCiRun {
 interface GitHubCiRunsResponse {
   total_count: number;
   workflow_runs: GitHubCiRun[];
+}
+
+interface GitHubCiJobsResponse {
+  total_count: number;
+  jobs: ActionsJob[];
 }
 
 interface GitHubCheckRun {
@@ -1215,6 +1231,52 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         ...buildPageResult(data?.workflow_runs ?? [], headers, (raw) => this.mapCiRun(raw)),
         totalCount: data?.total_count,
       };
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async listCiJobs(
+    owner: string,
+    repo: string,
+    runId: string,
+    options?: ListCiJobsOptions,
+  ): Promise<PageResult<CiJob>> {
+    try {
+      const query: Record<string, string> = {};
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+
+      const { data, headers } = await rawFetch<GitHubCiJobsResponse>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/actions/runs/${runId}/jobs`,
+        { query },
+      );
+      return {
+        ...buildPageResult(data?.jobs ?? [], headers, mapActionsJob),
+        totalCount: data?.total_count,
+      };
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async readCiJobLog(
+    owner: string,
+    repo: string,
+    jobId: string,
+    options?: CiJobLogOptions,
+  ): Promise<CiJobLog> {
+    try {
+      const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/actions/jobs/${jobId}`;
+      const job = mapActionsJob(await this.client<ActionsJob>(route));
+      if (!jobStarted(job, true)) return buildCiJobLog(job, null, options);
+      // The route redirects to blob storage; fetch drops the token on that cross-origin hop.
+      const stream = await this.client<unknown, "stream">(`${route}/logs`, {
+        responseType: "stream",
+      });
+      const log = await readJobLogText(stream);
+      return buildCiJobLog(job, { ...log, timestamped: true }, options);
     } catch (error) {
       throw normalizeError(error, "github");
     }

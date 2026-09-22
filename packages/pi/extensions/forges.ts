@@ -256,6 +256,38 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_ci_jobs_list",
+    label: "Forges CI Jobs",
+    description:
+      "List the jobs of one CI run with status, conclusion and steps. An empty first page means the run started no jobs",
+    promptSnippet: "List the jobs and steps of one CI run to find the one that failed.",
+    promptGuidelines: [
+      "Use forges_ci_jobs_list instead of gh run view --json jobs to find which job and step of a run failed.",
+    ],
+    parameters: schemas.listCiJobsParameters,
+    ...statusRenderers("forges_ci_jobs_list", "Forges CI Jobs"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listCiJobs(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_ci_jobs_log",
+    label: "Forges CI Job Log",
+    description:
+      "Read one CI job log as a bounded slice without timestamps or ANSI escapes; on GitHub and Gitea failing steps come first. Continue with nextOffset",
+    promptSnippet: "Read why a CI job failed from its log, failing step first.",
+    promptGuidelines: [
+      "Use forges_ci_jobs_log instead of gh run view --log-failed. On GitHub a failing check id from forges_pull_requests_checks is the job id.",
+    ],
+    parameters: schemas.ciJobLogParameters,
+    ...statusRenderers("forges_ci_jobs_log", "Forges CI Job Log"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).readCiJobLog(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_commits_search",
     label: "Search Forges Commits",
     description:

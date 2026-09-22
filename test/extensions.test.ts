@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn(), readContents: vi.fn() };
   const contributionTemplates = { list: vi.fn(), get: vi.fn() };
   const code = { search: vi.fn() };
-  const ciRuns = { list: vi.fn() };
+  const ciRuns = { list: vi.fn(), listJobs: vi.fn(), readJobLog: vi.fn() };
   const commits = { list: vi.fn(), get: vi.fn(), readPatch: vi.fn() };
   const releases = { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn() };
   const issues = {
@@ -100,6 +100,8 @@ const toolNames = [
   "forges_contribution_templates_get",
   "forges_code_search",
   "forges_ci_runs_list",
+  "forges_ci_jobs_list",
+  "forges_ci_jobs_log",
   "forges_commits_search",
   "forges_commits_list",
   "forges_commits_get",
@@ -511,6 +513,38 @@ describe("Forges Pi extension", () => {
       maxChars: undefined,
     });
     expect(result.details.result).toMatchObject({ type: "file", path: "README.md" });
+  });
+
+  it("reads CI jobs and job logs through the shared provider operations", async () => {
+    mocks.ciRuns.listJobs.mockResolvedValue({ items: [], hasNextPage: false });
+    mocks.ciRuns.readJobLog.mockResolvedValue({ jobId: "105912189006", started: true });
+    const tools = registerPiTools();
+    const target = { platform: "github", owner: "agntn", repo: "forges" } as const;
+
+    await requirePiTool(tools, "forges_ci_jobs_list").execute(
+      "test",
+      { ...target, runId: "35448775016", page: 2 },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+    const result = await requirePiTool(tools, "forges_ci_jobs_log").execute(
+      "test",
+      { ...target, jobId: "105912189006", maxChars: 1000 },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+
+    expect(mocks.ciRuns.listJobs).toHaveBeenCalledWith("agntn", "forges", "35448775016", {
+      page: 2,
+      perPage: undefined,
+    });
+    expect(mocks.ciRuns.readJobLog).toHaveBeenCalledWith("agntn", "forges", "105912189006", {
+      offset: undefined,
+      maxChars: 1000,
+    });
+    expect(result.details.result).toMatchObject({ jobId: "105912189006", started: true });
   });
 
   it("executes commit patch reads through the shared provider operation", async () => {
@@ -1429,6 +1463,38 @@ describe("Forges OMP extension", () => {
       maxChars: undefined,
     });
     expect(result.details.result).toMatchObject({ type: "file", path: "README.md" });
+  });
+
+  it("reads CI jobs and job logs through the shared provider operations", async () => {
+    mocks.ciRuns.listJobs.mockResolvedValue({ items: [], hasNextPage: false });
+    mocks.ciRuns.readJobLog.mockResolvedValue({ jobId: "105912189006", started: true });
+    const tools = registerOmpTools().tools;
+    const target = { platform: "github", owner: "agntn", repo: "forges" } as const;
+
+    await requireOmpTool(tools, "forges_ci_jobs_list").execute(
+      "test",
+      { ...target, runId: "35448775016", page: 2 },
+      undefined,
+      undefined,
+      unusedOmpContext,
+    );
+    const result = await requireOmpTool(tools, "forges_ci_jobs_log").execute(
+      "test",
+      { ...target, jobId: "105912189006", maxChars: 1000 },
+      undefined,
+      undefined,
+      unusedOmpContext,
+    );
+
+    expect(mocks.ciRuns.listJobs).toHaveBeenCalledWith("agntn", "forges", "35448775016", {
+      page: 2,
+      perPage: undefined,
+    });
+    expect(mocks.ciRuns.readJobLog).toHaveBeenCalledWith("agntn", "forges", "105912189006", {
+      offset: undefined,
+      maxChars: 1000,
+    });
+    expect(result.details.result).toMatchObject({ jobId: "105912189006", started: true });
   });
 
   it("executes commit patch reads through the shared provider operation", async () => {

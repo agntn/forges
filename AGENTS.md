@@ -41,6 +41,7 @@ src/
 ├── cache.ts              # unstorage LRU cache — GET-only, lazy-initialized
 ├── errors.ts             # ForgesError hierarchy + normalizeError()
 ├── ci-run.ts             # Cross-platform CI/check status and conclusion normalization
+├── ci-job-log.ts         # CI job mapping, log cleanup, bounded log stream with failing steps first
 ├── review.ts             # Review verdict normalization: GitHub and Gitea reviews, GitLab reviewer stances
 ├── changed-file.ts       # Changed-file status normalization + GitLab diff line counts
 ├── commit-patch.ts       # Bounded commit patch stream rendering and continuation

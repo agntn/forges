@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn(), readContents: vi.fn() };
   const contributionTemplates = { list: vi.fn(), get: vi.fn() };
   const code = { search: vi.fn() };
-  const ciRuns = { list: vi.fn() };
+  const ciRuns = { list: vi.fn(), listJobs: vi.fn(), readJobLog: vi.fn() };
   const commits = { search: vi.fn(), list: vi.fn(), get: vi.fn(), readPatch: vi.fn() };
   const releases = { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn() };
   const issues = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
@@ -76,6 +76,8 @@ const toolNames = [
   "forges_contribution_templates_get",
   "forges_code_search",
   "forges_ci_runs_list",
+  "forges_ci_jobs_list",
+  "forges_ci_jobs_log",
   "forges_commits_search",
   "forges_commits_list",
   "forges_commits_get",
@@ -476,6 +478,46 @@ describe("forges MCP server", () => {
       perPage: 10,
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: runs });
+  });
+
+  it("lists CI jobs and reads a job log through the shared operations", async () => {
+    const jobs = { items: [{ id: "105912189006", conclusion: "failure" }], hasNextPage: false };
+    const log = {
+      jobId: "105912189006",
+      name: "test",
+      status: "completed",
+      conclusion: "failure",
+      started: true,
+      logComplete: true,
+      content: "--- step 10 Test: failure\n##[error]Process completed with exit code 1.\n",
+      offset: 0,
+      nextOffset: null,
+      truncated: false,
+      length: 72,
+    };
+    mocks.ciRuns.listJobs.mockResolvedValue(jobs);
+    mocks.ciRuns.readJobLog.mockResolvedValue(log);
+    const client = await connectTestClient();
+
+    const listed = await client.callTool({
+      name: "forges_ci_jobs_list",
+      arguments: { repo: "agntn/forges", runId: "35448775016", perPage: 10 },
+    });
+    const read = await client.callTool({
+      name: "forges_ci_jobs_log",
+      arguments: { repo: "agntn/forges", jobId: "105912189006", offset: 20, maxChars: 1000 },
+    });
+
+    expect(mocks.ciRuns.listJobs).toHaveBeenCalledWith("agntn", "forges", "35448775016", {
+      page: undefined,
+      perPage: 10,
+    });
+    expect(mocks.ciRuns.readJobLog).toHaveBeenCalledWith("agntn", "forges", "105912189006", {
+      offset: 20,
+      maxChars: 1000,
+    });
+    expect(JSON.parse(text(listed.content))).toEqual({ platform: "github", result: jobs });
+    expect(JSON.parse(text(read.content))).toEqual({ platform: "github", result: log });
   });
 
   it("lists commit summaries through the shared operation", async () => {
