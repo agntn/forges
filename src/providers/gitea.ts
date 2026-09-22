@@ -23,6 +23,9 @@ import type {
   RepositoryContentsOptions,
   ProviderConfig,
   Repository,
+  CiJob,
+  CiJobLog,
+  CiJobLogOptions,
   CiRun,
   Commit,
   CommitPatch,
@@ -42,6 +45,7 @@ import type {
   PageResult,
   SearchPageResult,
   ListOptions,
+  ListCiJobsOptions,
   ListCiRunsOptions,
   ListCommentOptions,
   ListCommitOptions,
@@ -64,6 +68,13 @@ import { normalizeCiRunState } from "../ci-run.ts";
 import { isPullRequestReview, normalizeReviewState } from "../review.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
 import { buildCommitPatch } from "../commit-patch.ts";
+import {
+  buildCiJobLog,
+  jobStarted,
+  mapActionsJob,
+  readJobLogText,
+  type ActionsJob,
+} from "../ci-job-log.ts";
 import {
   assertContinuationRef,
   assertFileSize,
@@ -102,6 +113,11 @@ interface GiteaCiRun {
   conclusion?: string | null;
   html_url?: string | null;
   url?: string | null;
+}
+
+interface GiteaCiJobsResponse {
+  total_count?: number;
+  jobs?: ActionsJob[];
 }
 
 interface GiteaCiRunsResponse {
@@ -963,6 +979,55 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         hasNextPage,
         nextPage: hasNextPage ? (result.nextPage ?? page + 1) : undefined,
       };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async listCiJobs(
+    owner: string,
+    repo: string,
+    runId: string,
+    options?: ListCiJobsOptions,
+  ): Promise<PageResult<CiJob>> {
+    try {
+      const page = options?.page ?? 1;
+      const perPage = options?.perPage ?? 30;
+      const { data, headers } = await rawFetch<GiteaCiJobsResponse>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/actions/runs/${runId}/jobs`,
+        { query: { page: String(page), limit: String(perPage) } },
+      );
+      const totalCount = data?.total_count;
+      const result = buildPageResult(data?.jobs ?? [], headers, mapActionsJob);
+      const hasNextPage =
+        result.hasNextPage || (totalCount !== undefined && page * perPage < totalCount);
+      return {
+        ...result,
+        totalCount,
+        hasNextPage,
+        nextPage: hasNextPage ? (result.nextPage ?? page + 1) : undefined,
+      };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async readCiJobLog(
+    owner: string,
+    repo: string,
+    jobId: string,
+    options?: CiJobLogOptions,
+  ): Promise<CiJobLog> {
+    try {
+      const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/actions/jobs/${jobId}`;
+      const job = mapActionsJob(await this.client<ActionsJob>(route));
+      if (!jobStarted(job, true)) return buildCiJobLog(job, null, options);
+      const stream = await this.client<unknown, "stream">(`${route}/logs`, {
+        responseType: "stream",
+      });
+      const log = await readJobLogText(stream);
+      return buildCiJobLog(job, { ...log, timestamped: true }, options);
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }

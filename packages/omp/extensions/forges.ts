@@ -260,6 +260,40 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     perPage,
   });
   const listCiRunsParameters = closed({ platform, owner, repo, branch, page, perPage });
+  const listCiJobsParameters = closed({
+    platform,
+    owner,
+    repo,
+    runId: Type.String({
+      description: "CI run id from forges_ci_runs_list; a pipeline id on GitLab",
+      minLength: 1,
+    }),
+    page,
+    perPage,
+  });
+  const ciJobLogParameters = closed({
+    platform,
+    owner,
+    repo,
+    jobId: Type.String({
+      description:
+        "CI job id from forges_ci_jobs_list; on GitHub a check id from forges_pull_requests_checks works too",
+      minLength: 1,
+    }),
+    offset: Type.Optional(
+      Type.Integer({
+        description: "UTF-16 code-unit offset returned by the previous slice",
+        minimum: 0,
+      }),
+    ),
+    maxChars: Type.Optional(
+      Type.Integer({
+        description: "Maximum log UTF-16 code units to return; defaults to 20000",
+        minimum: 1,
+        maximum: 200000,
+      }),
+    ),
+  });
   const listReleasesParameters = closed({ platform, owner, repo, page, perPage });
   const releaseParameters = closed({ platform, owner, repo, tag });
   const createReleaseParameters = closed({
@@ -496,6 +530,32 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: toolApproval("forges_ci_runs_list"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listCiRuns(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_ci_jobs_list",
+    label: "Forges CI Jobs",
+    description:
+      "List the jobs of one CI run with status, conclusion and steps. An empty first page means the run started no jobs",
+    parameters: listCiJobsParameters,
+    ...statusRenderers("forges_ci_jobs_list", "Forges CI Jobs"),
+    approval: toolApproval("forges_ci_jobs_list"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).listCiJobs(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_ci_jobs_log",
+    label: "Forges CI Job Log",
+    description:
+      "Read one CI job log as a bounded slice without timestamps or ANSI escapes; on GitHub and Gitea failing steps come first. Continue with nextOffset",
+    parameters: ciJobLogParameters,
+    ...statusRenderers("forges_ci_jobs_log", "Forges CI Job Log"),
+    approval: toolApproval("forges_ci_jobs_log"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).readCiJobLog(params);
     },
   });
 

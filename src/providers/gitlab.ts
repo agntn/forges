@@ -21,6 +21,9 @@ import type {
   RepositoryPermission,
   CodeSearchItem,
   CodeSearchOptions,
+  CiJob,
+  CiJobLog,
+  CiJobLogOptions,
   CiRun,
   Commit,
   CommitPatch,
@@ -42,6 +45,7 @@ import type {
   PageResult,
   SearchPageResult,
   ListOptions,
+  ListCiJobsOptions,
   ListCiRunsOptions,
   ListCommentOptions,
   ListCommitOptions,
@@ -74,6 +78,7 @@ import { normalizeCiRunState } from "../ci-run.ts";
 import { normalizeReviewState } from "../review.ts";
 import { countDiffLines } from "../changed-file.ts";
 import { buildCommitPatch } from "../commit-patch.ts";
+import { buildCiJobLog, cleanGitLabTrace, jobStarted, readJobLogText } from "../ci-job-log.ts";
 import {
   assertContinuationRef,
   assertFileSize,
@@ -138,6 +143,16 @@ interface GitLabProject {
     project_access: GitLabProjectAccess | null;
     group_access: GitLabProjectAccess | null;
   } | null;
+}
+
+interface GitLabJob {
+  id: number;
+  name: string;
+  status: string;
+  started_at: string | null;
+  finished_at: string | null;
+  web_url: string;
+  pipeline: { id: number };
 }
 
 interface GitLabPipeline {
@@ -461,6 +476,19 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   private mapGitLabState(state: string): IssueState {
     return state === "closed" || state === "merged" ? "closed" : "open";
+  }
+
+  private mapCiJob(raw: GitLabJob): CiJob {
+    return {
+      id: String(raw.id),
+      runId: String(raw.pipeline.id),
+      name: raw.name,
+      ...normalizeCiRunState(raw.status),
+      startedAt: raw.started_at,
+      completedAt: raw.finished_at,
+      url: raw.web_url,
+      steps: [],
+    };
   }
 
   private mapCiRun(raw: GitLabPipeline): CiRun {
@@ -1043,6 +1071,53 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       return this.parsePagination(
         (data ?? []).map((raw) => this.mapCiRun(raw)),
         headers,
+      );
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async listCiJobs(
+    owner: string,
+    repo: string,
+    runId: string,
+    options?: ListCiJobsOptions,
+  ): Promise<PageResult<CiJob>> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const { data, headers } = await rawFetch<GitLabJob[]>(
+        this.client,
+        `/projects/${projectId}/pipelines/${runId}/jobs`,
+        { query: { page: options?.page ?? 1, per_page: options?.perPage ?? 30 } },
+      );
+      return this.parsePagination(
+        (data ?? []).map((raw) => this.mapCiJob(raw)),
+        headers,
+      );
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async readCiJobLog(
+    owner: string,
+    repo: string,
+    jobId: string,
+    options?: CiJobLogOptions,
+  ): Promise<CiJobLog> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const route = `/projects/${projectId}/jobs/${jobId}`;
+      const job = this.mapCiJob(await this.client<GitLabJob>(route));
+      if (!jobStarted(job, false)) return buildCiJobLog(job, null, options);
+      const stream = await this.client<unknown, "stream">(`${route}/trace`, {
+        responseType: "stream",
+      });
+      const log = await readJobLogText(stream);
+      return buildCiJobLog(
+        job,
+        { text: cleanGitLabTrace(log.text), complete: log.complete, timestamped: false },
+        options,
       );
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");

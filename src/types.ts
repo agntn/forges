@@ -125,6 +125,62 @@ export interface CiRun {
   url: string;
 }
 
+/** One step of a CI job. Times are ISO 8601, null when the step never ran. */
+export interface CiJobStep {
+  number: number;
+  name: string;
+  status: CiRunStatus;
+  conclusion: CiRunConclusion;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+/** One job of a CI run. GitLab reports no steps, so its steps are empty. */
+export interface CiJob {
+  id: string;
+  runId: string;
+  name: string;
+  status: CiRunStatus;
+  conclusion: CiRunConclusion;
+  startedAt: string | null;
+  completedAt: string | null;
+  url: string;
+  steps: CiJobStep[];
+}
+
+/** Pagination for the jobs of one CI run. */
+export interface ListCiJobsOptions {
+  page?: number;
+  perPage?: number;
+}
+
+/** Continuation and output bounds for a job log read. */
+export interface CiJobLogOptions {
+  offset?: number;
+  maxChars?: number;
+}
+
+/**
+ * One bounded slice of a job log. Timestamps and ANSI escapes are removed; on
+ * GitHub and Gitea each step is a `--- step N name: conclusion` section, failing
+ * steps first. `started` is false when no runner took the job, so it has no log.
+ * `logComplete` is false when the log was longer than the read keeps and only
+ * its end is here. Continue with jobId and nextOffset.
+ */
+export interface CiJobLog {
+  jobId: string;
+  name: string;
+  status: CiRunStatus;
+  conclusion: CiRunConclusion;
+  started: boolean;
+  logComplete: boolean;
+  content: string;
+  offset: number;
+  nextOffset: number | null;
+  truncated: boolean;
+  length: number;
+}
+
 /** A normalized check or pipeline associated with a pull request head revision. */
 export interface PullRequestCheck {
   id: string;
@@ -649,6 +705,18 @@ export interface CodeSearchResource {
 /** Resource accessor for repository CI runs. */
 export interface CiRunResource {
   list(owner: string, repo: string, options?: ListCiRunsOptions): Promise<PageResult<CiRun>>;
+  listJobs(
+    owner: string,
+    repo: string,
+    runId: string,
+    options?: ListCiJobsOptions,
+  ): Promise<PageResult<CiJob>>;
+  readJobLog(
+    owner: string,
+    repo: string,
+    jobId: string,
+    options?: CiJobLogOptions,
+  ): Promise<CiJobLog>;
 }
 
 /** Resource accessor for commits. */

@@ -11,6 +11,9 @@ import { AuthenticationError, ForgesError } from "./errors.ts";
 import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
 import type { Provider } from "./provider.ts";
 import type {
+  CiJob,
+  CiJobLog,
+  CiJobLogOptions,
   CiRun,
   CodeSearchItem,
   CodeSearchOptions,
@@ -405,6 +408,14 @@ export interface ListCiRunsParams extends RepositoryParams {
   perPage?: number;
 }
 
+export interface ListCiJobsParams extends RepositoryParams {
+  runId: string;
+  page?: number;
+  perPage?: number;
+}
+
+export type ReadCiJobLogParams = RepositoryParams & CiJobLogOptions & { jobId: string };
+
 export interface ListReleasesParams extends RepositoryParams {
   page?: number;
   perPage?: number;
@@ -640,6 +651,28 @@ export async function listCiRuns(
   const provider = await readProvider(params.platform);
   const runs = await provider.ciRuns.list(params.owner, params.repo, options);
   return result(params.platform, runs);
+}
+
+export async function listCiJobs(
+  args: ListCiJobsParams,
+): Promise<ForgesToolResult<PageResult<CiJob>>> {
+  const params = repositoryTarget(args);
+  const provider = await readProvider(params.platform);
+  const jobs = await provider.ciRuns.listJobs(params.owner, params.repo, params.runId, {
+    page: params.page,
+    perPage: params.perPage,
+  });
+  return result(params.platform, jobs);
+}
+
+export async function readCiJobLog(args: ReadCiJobLogParams): Promise<ForgesToolResult<CiJobLog>> {
+  const params = repositoryTarget(args);
+  const provider = await readProvider(params.platform);
+  const log = await provider.ciRuns.readJobLog(params.owner, params.repo, params.jobId, {
+    offset: params.offset,
+    maxChars: params.maxChars,
+  });
+  return result(params.platform, log);
 }
 
 export async function searchCommits(

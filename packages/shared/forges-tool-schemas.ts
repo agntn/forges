@@ -249,6 +249,40 @@ export function forgesToolSchemas() {
     perPage,
   });
   const listCiRunsParameters = closed({ platform, owner, repo, branch, page, perPage });
+  const listCiJobsParameters = closed({
+    platform,
+    owner,
+    repo,
+    runId: Type.String({
+      description: "CI run id from forges_ci_runs_list; a pipeline id on GitLab",
+      minLength: 1,
+    }),
+    page,
+    perPage,
+  });
+  const ciJobLogParameters = closed({
+    platform,
+    owner,
+    repo,
+    jobId: Type.String({
+      description:
+        "CI job id from forges_ci_jobs_list; on GitHub a check id from forges_pull_requests_checks works too",
+      minLength: 1,
+    }),
+    offset: Type.Optional(
+      Type.Integer({
+        description: "UTF-16 code-unit offset returned by the previous slice",
+        minimum: 0,
+      }),
+    ),
+    maxChars: Type.Optional(
+      Type.Integer({
+        description: "Maximum log UTF-16 code units to return; defaults to 20000",
+        minimum: 1,
+        maximum: 200000,
+      }),
+    ),
+  });
   const listReleasesParameters = closed({ platform, owner, repo, page, perPage });
   const releaseParameters = closed({ platform, owner, repo, tag });
   const createReleaseParameters = closed({
@@ -457,6 +491,8 @@ export function forgesToolSchemas() {
     commitSearchParameters,
     globalPullRequestSearchParameters,
     listCiRunsParameters,
+    listCiJobsParameters,
+    ciJobLogParameters,
     listReleasesParameters,
     releaseParameters,
     createReleaseParameters,

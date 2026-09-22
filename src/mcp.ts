@@ -107,6 +107,22 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       execute: (operations, args) => operations.listCiRuns(args),
     }),
     defineTool({
+      name: "forges_ci_jobs_list",
+      title: "List CI Jobs",
+      description:
+        "List the jobs of one CI run with their lifecycle status, terminal conclusion, start and end times, web URL and, on GitHub and Gitea, their steps. A failed job has conclusion failure; read its log with forges_ci_jobs_log. An empty page 1 means the run started no jobs. GitLab jobs report no steps.",
+      inputSchema: schemas.listCiJobsParameters,
+      execute: (operations, args) => operations.listCiJobs(args),
+    }),
+    defineTool({
+      name: "forges_ci_jobs_log",
+      title: "Read CI Job Log",
+      description:
+        "Read one CI job log as a bounded text slice without timestamps or ANSI escapes. On GitHub and Gitea each step is a --- step N name: conclusion section and failing steps come first, so the first slice explains the failure; GitLab traces read in order, so start near length - maxChars for the end. Continue with nextOffset. started is false when no runner took the job, and logComplete is false when only the end of a very long log was kept.",
+      inputSchema: schemas.ciJobLogParameters,
+      execute: (operations, args) => operations.readCiJobLog(args),
+    }),
+    defineTool({
       name: "forges_commits_search",
       title: "Search Commits",
       description:

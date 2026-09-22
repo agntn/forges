@@ -16,6 +16,8 @@ export const toolEffects = {
   forges_contribution_templates_get: "hostedRead",
   forges_code_search: "hostedRead",
   forges_ci_runs_list: "hostedRead",
+  forges_ci_jobs_list: "hostedRead",
+  forges_ci_jobs_log: "hostedRead",
   forges_commits_search: "hostedRead",
   forges_commits_list: "hostedRead",
   forges_commits_get: "hostedRead",
