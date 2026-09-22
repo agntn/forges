@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.3.4
+
+[compare changes](https://github.com/agntn/forges/compare/v0.3.3...v0.3.4)
+
+### 🚀 Enhancements
+
+- Find pull requests across repositories ([#150](https://github.com/agntn/forges/pull/150))
+- Accept owner/repo and default the platform ([#155](https://github.com/agntn/forges/pull/155))
+- Wait for pull request checks to conclude ([#156](https://github.com/agntn/forges/pull/156))
+- Report who merged a pull request and when ([#160](https://github.com/agntn/forges/pull/160))
+- Let writes pick their gh account ([#164](https://github.com/agntn/forges/pull/164))
+- List the issues a pull request closes ([#165](https://github.com/agntn/forges/pull/165))
+- Fetch repository files without cloning ([#169](https://github.com/agntn/forges/pull/169))
+- Show why a CI job failed ([#170](https://github.com/agntn/forges/pull/170))
+
+### 🔥 Performance
+
+- Send tool results as compact JSON ([#157](https://github.com/agntn/forges/pull/157))
+
+### 🩹 Fixes
+
+- Surface commit statuses from GitBucket ([#151](https://github.com/agntn/forges/pull/151))
+- Reject invalid pages when listing checks ([#152](https://github.com/agntn/forges/pull/152))
+- **tui:** Re-indent compact results when expanded ([#158](https://github.com/agntn/forges/pull/158))
+- Load dev stubs under plain node ([#161](https://github.com/agntn/forges/pull/161))
+
+### 🏡 Chore
+
+- Remove `CLAUDE.md` ([f885abf](https://github.com/agntn/forges/commit/f885abf))
+
+### ❤️ Contributors
+
+- Aeitwoen ([@aeitwoen](https://github.com/aeitwoen))
+- Ori ([@oritwoen](https://github.com/oritwoen))
+
 ## v0.3.3
 
 [compare changes](https://github.com/agntn/forges/compare/v0.3.2...v0.3.3)
