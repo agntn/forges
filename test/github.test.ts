@@ -1735,6 +1735,25 @@ describe("GitHubProvider", () => {
       },
     ];
 
+    it("rejects page zero instead of reporting no checks", async () => {
+      mocks.client.mockResolvedValueOnce(ghPullRequest);
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: { total_count: 2, statuses: ghStatuses },
+          headers: makeHeaders(),
+        })
+        .mockResolvedValueOnce({
+          data: { total_count: 1, check_runs: [ghCheckRun(6001)] },
+          headers: makeHeaders(),
+        });
+
+      await expect(
+        gh.pullRequests.listChecks("octocat", "hello-world", 99, { page: 0 }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(mocks.client).not.toHaveBeenCalled();
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    });
+
     it("lists the commit statuses of the head revision before its check runs", async () => {
       mocks.client.mockResolvedValueOnce(ghPullRequest);
       mocks.rawFetch

@@ -79,7 +79,7 @@ export interface ProviderRawTypes {
   comment: unknown;
 }
 
-function contributionTemplatePageValue(
+function paginationPageValue(
   value: number | undefined,
   fallback: number,
   label: string,
@@ -106,8 +106,8 @@ function contributionTemplatePagination(
   options?: ListContributionTemplatesOptions,
 ): ContributionTemplatePagination {
   return {
-    page: contributionTemplatePageValue(options?.page, 1, "page"),
-    perPage: contributionTemplatePageValue(options?.perPage, 30, "perPage", 100),
+    page: paginationPageValue(options?.page, 1, "page"),
+    perPage: paginationPageValue(options?.perPage, 30, "perPage", 100),
   };
 }
 
@@ -255,8 +255,14 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       list: (owner, repo, options) => this.listPullRequests(owner, repo, options),
       listFiles: (owner, repo, number, options) =>
         this.listPullRequestFiles(owner, repo, number, options),
-      listChecks: (owner, repo, number, options) =>
-        this.listPullRequestChecks(owner, repo, number, options),
+      listChecks: async (owner, repo, number, options) => {
+        const page = paginationPageValue(options?.page, 1, "page");
+        const perPage = paginationPageValue(options?.perPage, 30, "perPage", 100);
+        if (!Number.isSafeInteger(page * perPage + 1)) {
+          throw new ForgesError("Check pagination exceeds the safe integer range", 400);
+        }
+        return this.listPullRequestChecks(owner, repo, number, options);
+      },
       listReviews: (owner, repo, number, options) =>
         this.listPullRequestReviews(owner, repo, number, options),
       getReview: (owner, repo, number, reviewId) =>
