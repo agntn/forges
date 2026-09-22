@@ -143,6 +143,7 @@ Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 ### Key rules
 
 - **Token check:** use `!== undefined` not falsy check. Empty string is intentional (allow unauthenticated).
+- **Tool targets:** `platform` defaults to `github` and `repo` may arrive as `owner/name`. `repositoryTarget()` in `src/tool-operations.ts` resolves both once for every surface, and rejects an `owner` passed next to a slashed `repo` instead of picking one.
 - **Agent auth boundary:** read executors may fall back to an isolated empty-token provider; writes and `users.authenticated` must use the credentialed provider map.
 - **List vs Get:** list operations use `rawFetch` for pagination headers. Stable item reads use `cachedFetch`; repository, issue, pull request, release, discussion comment, and user item reads use the client directly.
 - **No raw error throws** — always `throw normalizeError(error, platform)`.

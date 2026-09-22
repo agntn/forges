@@ -252,11 +252,42 @@ describe("forges MCP server", () => {
 
     expect(response.tools[0]?.inputSchema).toMatchObject({
       type: "object",
-      required: ["platform", "owner"],
+      required: ["owner"],
+      properties: {
+        platform: { enum: ["github", "gitlab", "gitea"], default: "github" },
+      },
     });
+    expect(
+      response.tools.find((tool) => tool.name === "forges_repos_get")?.inputSchema,
+    ).toMatchObject({ required: ["repo"] });
     for (const tool of response.tools) {
       expect(JSON.stringify(tool.inputSchema)).not.toMatch(/token|baseURL/u);
     }
+  });
+
+  it("accepts a repository written as one owner/name slug, on the default platform", async () => {
+    mocks.repos.get.mockResolvedValue(repository);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_repos_get",
+      arguments: { repo: "agntn/forges" },
+    });
+
+    expect(response.isError).not.toBe(true);
+    expect(mocks.repos.get).toHaveBeenCalledWith("agntn", "forges");
+  });
+
+  it("reports an ambiguous repository as a tool error the model can act on", async () => {
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_repos_get",
+      arguments: { owner: "agntn", repo: "oritwoen/forges" },
+    });
+
+    expect(response.isError).toBe(true);
+    expect(text(response.content)).toContain("Ambiguous repository");
   });
 
   it("answers with the normalized repository from the shared operation", async () => {

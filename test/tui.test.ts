@@ -48,6 +48,18 @@ describe("Forges tool TUI", () => {
     );
   });
 
+  it("renders a repository the caller wrote as one owner/name slug", () => {
+    const read = renderToolCall(
+      "forges_issues_get",
+      "Forges Issue",
+      { repo: "agntn/forges", number: 42 },
+      { executionStarted: true, isPartial: true },
+      plain,
+    );
+
+    expect(read).toBe("◌ ◈ Forges Issue agntn/forges#42");
+  });
+
   it("summarizes a page instead of dumping JSON while collapsed", () => {
     const result = {
       content: [{ type: "text", text: JSON.stringify({ items: [{ id: 1 }, { id: 2 }] }) }],
