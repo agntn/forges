@@ -234,8 +234,25 @@ function cleanBodyLine(text: string): string {
   return cleanTerminalText(text).trimEnd();
 }
 
+/**
+ * Tool results reach the model as one compact line, which no human can read.
+ *
+ * The expanded row is the human view, so it re-indents the payload it was
+ * given. Text that is not a JSON object or array, such as an error message,
+ * is printed as it arrived.
+ */
+function indentPayload(body: string): string {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed === null || typeof parsed !== "object") return body;
+    return JSON.stringify(parsed, undefined, 2);
+  } catch {
+    return body;
+  }
+}
+
 function expandedBody(result: RenderedToolResult, theme: StatusTheme): string[] {
-  const body = resultText(result);
+  const body = indentPayload(resultText(result));
   if (!body) return [];
   return body.split(/\r?\n/u).map((line) => `  ${paint(theme, "toolOutput", cleanBodyLine(line))}`);
 }

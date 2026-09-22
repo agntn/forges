@@ -96,6 +96,45 @@ describe("Forges tool TUI", () => {
     expect(expanded).not.toContain(escape);
   });
 
+  it("re-indents a compact payload so the expanded row stays readable", () => {
+    const details = {
+      platform: "github",
+      result: { items: [{ path: "src/tool-operations.ts", additions: 1 }], hasNextPage: false },
+    };
+    const result = {
+      content: [{ type: "text", text: JSON.stringify(details) }],
+      details,
+    };
+    const expanded = renderToolResult(
+      "forges_pull_requests_files",
+      result,
+      false,
+      { expanded: true },
+      plain,
+    );
+    const lines = expanded.split("\n");
+
+    expect(lines.length).toBeGreaterThan(5);
+    expect(Math.max(...lines.map((line) => line.length))).toBeLessThan(60);
+    expect(lines[1]).toBe("  {");
+    expect(JSON.parse(lines.slice(1).join("\n"))).toEqual(details);
+  });
+
+  it("prints a payload that is not a JSON object exactly as it arrived", () => {
+    for (const text of ["not json at all", '"just a string"', "42"]) {
+      const result = { content: [{ type: "text", text }], details: {} };
+      const expanded = renderToolResult(
+        "forges_repos_get",
+        result,
+        false,
+        { expanded: true },
+        plain,
+      );
+
+      expect(expanded.split("\n")[1]).toBe(`  ${text}`);
+    }
+  });
+
   it("reads failures separately from each harness result shape", () => {
     const result = {
       content: [{ type: "text", text: "Repository not found\nCheck the owner and name" }],
