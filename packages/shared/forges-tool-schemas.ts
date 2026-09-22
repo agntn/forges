@@ -261,8 +261,29 @@ export function forgesToolSchemas() {
   });
   const repositoryItemParameters = closed({ platform, owner, repo, number });
   const listCommentsParameters = closed({ platform, owner, repo, number, page, perPage });
+  /**
+   * The waiting mode of the check listing. The bound repeats
+   * `MAX_CHECK_WAIT_SECONDS` from `src/check-wait.ts`, which this file cannot
+   * import: it ships to npm and `src/` does not.
+   */
+  const waitSeconds = Type.Optional(
+    Type.Integer({
+      description:
+        "Wait up to this many seconds for every check to conclude, instead of reading the current state once",
+      minimum: 1,
+      maximum: 300,
+    }),
+  );
   const listPullRequestFilesParameters = listCommentsParameters;
-  const listPullRequestChecksParameters = listCommentsParameters;
+  const listPullRequestChecksParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    page,
+    perPage,
+    waitSeconds,
+  });
   const listPullRequestReviewsParameters = listCommentsParameters;
   const pullRequestReviewParameters = closed({
     platform,

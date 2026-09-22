@@ -272,8 +272,29 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   });
   const repositoryItemParameters = closed({ platform, owner, repo, number });
   const listCommentsParameters = closed({ platform, owner, repo, number, page, perPage });
+  /**
+   * The waiting mode of the check listing. The bound repeats
+   * `MAX_CHECK_WAIT_SECONDS` from `src/check-wait.ts`, which this file cannot
+   * import: it ships to npm and `src/` does not.
+   */
+  const waitSeconds = Type.Optional(
+    Type.Integer({
+      description:
+        "Wait up to this many seconds for every check to conclude, instead of reading the current state once",
+      minimum: 1,
+      maximum: 300,
+    }),
+  );
   const listPullRequestFilesParameters = listCommentsParameters;
-  const listPullRequestChecksParameters = listCommentsParameters;
+  const listPullRequestChecksParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    page,
+    perPage,
+    waitSeconds,
+  });
   const listPullRequestReviewsParameters = listCommentsParameters;
   const pullRequestReviewParameters = closed({
     platform,
@@ -645,7 +666,8 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_pull_requests_checks",
     label: "Forges Pull Request Checks",
-    description: "List normalized checks or pipelines for one pull request head revision",
+    description:
+      "List normalized checks or pipelines for one pull request head revision, optionally waiting for them to conclude",
     parameters: listPullRequestChecksParameters,
     ...statusRenderers("forges_pull_requests_checks", "Forges Pull Request Checks"),
     approval: toolApproval("forges_pull_requests_checks"),
