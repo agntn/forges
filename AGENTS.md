@@ -100,6 +100,7 @@ test/
 ### TypeScript
 
 - **Strict mode** — plus `noUncheckedIndexedAccess`, `noImplicitOverride`, `noUnusedLocals`, `noUnusedParameters`, `noImplicitReturns`, and `noFallthroughCasesInSwitch`
+- **Erasable syntax only:** no parameter properties, enums or namespaces. `pnpm dev` stubs re-export `src/*.ts`, and plain `node` can only strip types, not transform them
 - **Target:** ESNext, **module:** NodeNext, **moduleResolution:** NodeNext
 - **No `as any` or `@ts-ignore`** — use proper generics
 - **IDs are strings** — always `String(raw.id)`, even when APIs return numbers

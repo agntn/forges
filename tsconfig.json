@@ -10,6 +10,7 @@
     "resolveJsonModule": true,
     "strict": true,
     "isolatedModules": true,
+    "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "noUncheckedIndexedAccess": true,
     "forceConsistentCasingInFileNames": true,
