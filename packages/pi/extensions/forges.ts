@@ -540,10 +540,12 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_pull_requests_checks",
     label: "Forges Pull Request Checks",
-    description: "List normalized checks or pipelines for one pull request head revision",
-    promptSnippet: "Read the current checks for a pull request on GitHub, GitLab, or Gitea.",
+    description:
+      "List normalized checks or pipelines for one pull request head revision, optionally waiting for them to conclude",
+    promptSnippet: "Read the checks for a pull request on GitHub, GitLab, or Gitea.",
     promptGuidelines: [
       "Use forges_pull_requests_checks to verify pull-request CI before merging or reviewing.",
+      "Give forges_pull_requests_checks a waitSeconds budget rather than calling it again to see whether a running check finished.",
     ],
     parameters: schemas.listPullRequestChecksParameters,
     ...statusRenderers("forges_pull_requests_checks", "Forges Pull Request Checks"),

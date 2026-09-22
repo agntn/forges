@@ -652,6 +652,62 @@ describe("forges MCP server", () => {
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: checks });
   });
 
+  it("waits for pull-request checks to conclude instead of reporting their current state", async () => {
+    const concluded = {
+      items: [
+        {
+          id: "6001",
+          name: "test",
+          status: "completed",
+          conclusion: "success",
+          url: "https://github.com/agntn/forges/runs/6001",
+        },
+      ],
+      hasNextPage: false,
+    };
+    mocks.pullRequests.listChecks.mockResolvedValue(concluded);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_checks",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        number: 53,
+        waitSeconds: 30,
+      },
+    });
+
+    expect(mocks.pullRequests.listChecks).toHaveBeenCalledWith("agntn", "forges", 53, {
+      page: 1,
+      perPage: undefined,
+    });
+    const payload = JSON.parse(text(response.content));
+    expect(payload.result.items).toEqual(concluded.items);
+    expect(payload.result.wait).toMatchObject({ settled: true, polls: 1, pending: [] });
+    expect(payload.note).toBeUndefined();
+  });
+
+  it("rejects a wait budget outside the accepted range", async () => {
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_checks",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        number: 53,
+        waitSeconds: 0,
+      },
+    });
+
+    expect(response.isError).toBe(true);
+    expect(text(response.content)).toContain("/waitSeconds");
+    expect(mocks.pullRequests.listChecks).not.toHaveBeenCalled();
+  });
+
   it("lists pull-request reviews with truncated bodies", async () => {
     const review = {
       id: "5234466503",

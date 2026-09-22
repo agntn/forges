@@ -6,6 +6,7 @@ import type {
   VerifyLocalMergeOptions,
 } from "./local.ts";
 import { assertAssignees } from "./assignees.ts";
+import { waitForChecks, type WaitedCheckPage } from "./check-wait.ts";
 import { AuthenticationError, ForgesError } from "./errors.ts";
 import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
 import type { Provider } from "./provider.ts";
@@ -374,8 +375,12 @@ export interface ListCommentsParams extends RepositoryParams {
 }
 
 export type ListPullRequestFilesParams = ListCommentsParams;
-export type ListPullRequestChecksParams = ListCommentsParams;
 export type ListPullRequestReviewsParams = ListCommentsParams;
+
+export interface ListPullRequestChecksParams extends ListCommentsParams {
+  /** Seconds to wait for every check to conclude; absent reads the current state once. */
+  waitSeconds?: number;
+}
 
 export interface GetPullRequestReviewParams extends GetRepositoryItemParams {
   reviewId: string;
@@ -799,20 +804,21 @@ export async function listPullRequestFiles(
 
 export async function listPullRequestChecks(
   args: ListPullRequestChecksParams,
-): Promise<ForgesToolResult<PageResult<PullRequestCheck>>> {
+): Promise<ForgesToolResult<PageResult<PullRequestCheck> | WaitedCheckPage>> {
   const params = repositoryTarget(args);
-  const options: ListPullRequestChecksOptions = {
-    page: params.page,
-    perPage: params.perPage,
-  };
   const provider = await readProvider(params.platform);
-  const checks = await provider.pullRequests.listChecks(
-    params.owner,
-    params.repo,
-    params.number,
-    options,
-  );
-  return result(params.platform, checks);
+  const readPage = (page: number) => {
+    const options: ListPullRequestChecksOptions = { page, perPage: params.perPage };
+    return provider.pullRequests.listChecks(params.owner, params.repo, params.number, options);
+  };
+  const requestedPage = params.page ?? 1;
+
+  if (params.waitSeconds === undefined) {
+    return result(params.platform, await readPage(requestedPage));
+  }
+
+  const waited = await waitForChecks(readPage, requestedPage, params.waitSeconds);
+  return result(params.platform, waited.page, waited.note);
 }
 
 export async function listPullRequestReviews(
