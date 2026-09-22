@@ -25,7 +25,7 @@ export interface AuthResult {
  */
 export function resolveToken(
   platform: Platform,
-  options?: { token?: string; baseURL?: string },
+  options?: { token?: string; baseURL?: string; account?: string },
 ): AuthResult | null {
   // 1. Explicit token always wins (even empty string = intentional)
   if (options?.token !== undefined) {
@@ -41,13 +41,13 @@ export function resolveToken(
   }
 
   // 3. CLI tools
-  const cliToken = resolveFromCli(platform, hostname);
+  const cliToken = resolveFromCli(platform, hostname, options?.account);
   if (cliToken !== null) {
     return { token: cliToken, source: "cli" };
   }
 
   // 4. Config files (fallback if CLI not installed but config exists)
-  const configToken = resolveFromConfig(platform, hostname);
+  const configToken = resolveFromConfig(platform, hostname, options?.account);
   if (configToken !== null) {
     return { token: configToken, source: "config" };
   }
@@ -92,10 +92,15 @@ function resolveFromEnv(platform: Platform): string | null {
 
 // --- CLI tools ---
 
-function resolveFromCli(platform: Platform, hostname: string): string | null {
+/**
+ * A named `account` is honored only where the CLI can pick one of several logins,
+ * which today is `gh`. Elsewhere it yields no token rather than the active one.
+ */
+function resolveFromCli(platform: Platform, hostname: string, account?: string): string | null {
+  if (account !== undefined && platform !== "github") return null;
   switch (platform) {
     case "github":
-      return ghAuthToken(hostname);
+      return ghAuthToken(hostname, account);
     case "gitlab":
       return glabAuthToken(hostname);
     case "gitea":
@@ -106,10 +111,13 @@ function resolveFromCli(platform: Platform, hostname: string): string | null {
 /**
  * Run `gh auth token` to get GitHub token.
  * Works for github.com and GitHub Enterprise (custom hostname).
+ * `--user` reads one logged-in account's token without switching the active one.
  */
-function ghAuthToken(hostname: string): string | null {
+function ghAuthToken(hostname: string, account?: string): string | null {
+  const args = ["auth", "token", "--hostname", hostname];
+  if (account !== undefined) args.push("--user", account);
   try {
-    const result = execFileSync("gh", ["auth", "token", "--hostname", hostname], {
+    const result = execFileSync("gh", args, {
       encoding: "utf-8",
       timeout: 5000,
       stdio: ["pipe", "pipe", "pipe"],
@@ -149,10 +157,11 @@ function teaAuthToken(_hostname: string): string | null {
 
 // --- Config files ---
 
-function resolveFromConfig(platform: Platform, hostname: string): string | null {
+function resolveFromConfig(platform: Platform, hostname: string, account?: string): string | null {
+  if (account !== undefined && platform !== "github") return null;
   switch (platform) {
     case "github":
-      return readGhConfig(hostname);
+      return readGhConfig(hostname, account);
     case "gitlab":
       return readGlabConfig(hostname);
     case "gitea":
@@ -165,15 +174,25 @@ function resolveFromConfig(platform: Platform, hostname: string): string | null 
  *
  * Format:
  *   github.com:
+ *     users:
+ *       username:
+ *         oauth_token: gho_...
  *     oauth_token: gho_...
  *     user: username
+ *
+ * A named account reads only its own `users` entry, never the active token.
  */
-function readGhConfig(hostname: string): string | null {
+function readGhConfig(hostname: string, account?: string): string | null {
   try {
     const configPath = join(ghConfigDir(), "hosts.yml");
     const content = readFileSync(configPath, "utf-8");
     const hostSection = getYamlMappingSection(content, hostname);
     if (!hostSection) return null;
+    if (account !== undefined) {
+      const usersSection = getYamlMappingSection(hostSection, "users");
+      const userSection = usersSection && getYamlMappingSection(usersSection, account);
+      return userSection ? extractYamlField(userSection, "oauth_token") : null;
+    }
     return extractYamlField(hostSection, "oauth_token");
   } catch {
     return null;

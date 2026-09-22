@@ -1,4 +1,4 @@
-import { createProvider, resolveToken } from "./index.ts";
+import { createProvider, resolveToken, type AuthResult } from "./index.ts";
 import type {
   InspectLocalOptions,
   LocalInspection,
@@ -97,9 +97,11 @@ async function withCredentialOperation<T>(
   }
 }
 
-function providerKey(platform: ForgesPlatform): string {
+/** An account key extends its platform key, so a platform reset drops it too. */
+function providerKey(platform: ForgesPlatform, account?: string): string {
   const baseURL = process.env[baseUrlEnvByPlatform[platform]];
-  return baseURL === undefined ? platform : `${platform} ${baseURL}`;
+  const key = baseURL === undefined ? platform : `${platform} ${baseURL}`;
+  return account === undefined ? key : `${key} @${account.toLowerCase()}`;
 }
 
 function configuredToken(platform: ForgesPlatform): string {
@@ -119,10 +121,9 @@ async function createConfiguredProvider(
 function trackProvider(
   providers: Map<string, Promise<Provider>>,
   key: string,
-  platform: ForgesPlatform,
-  token: string,
+  load: () => Promise<Provider>,
 ): Promise<Provider> {
-  const provider = createConfiguredProvider(platform, token);
+  const provider = load();
   providers.set(key, provider);
   provider.catch(() => {
     if (providers.get(key) === provider) providers.delete(key);
@@ -141,7 +142,12 @@ function credentialSetupHint(platform: ForgesPlatform): string {
   }
 }
 
-async function authenticatedProvider(platform: ForgesPlatform): Promise<Provider> {
+async function authenticatedProvider(
+  platform: ForgesPlatform,
+  account?: string,
+): Promise<Provider> {
+  if (account !== undefined) return accountProvider(platform, account);
+
   const key = providerKey(platform);
   const pinned = pinnedProviders.get(key);
   if (pinned) return pinned;
@@ -154,7 +160,61 @@ async function authenticatedProvider(platform: ForgesPlatform): Promise<Provider
     );
   }
 
-  return trackProvider(pinnedProviders, key, platform, token);
+  return trackProvider(pinnedProviders, key, () => createConfiguredProvider(platform, token));
+}
+
+/**
+ * Pin a provider to one named account, next to the platform's default credential.
+ *
+ * Only `gh` can hand out the token of a login that is not the active one. The
+ * token then has to prove it belongs to that login before anything is written:
+ * a `GH_TOKEN` in the environment still wins the lookup, and a write signed by
+ * the wrong account would look like a success.
+ */
+function accountProvider(platform: ForgesPlatform, account: string): Promise<Provider> {
+  if (platform !== "github") {
+    throw new ForgesError(
+      `Choosing an account is supported only on github; omit account to write as the ${platform} credential.`,
+      501,
+      platform,
+    );
+  }
+
+  const key = providerKey(platform, account);
+  const pinned = pinnedProviders.get(key);
+  if (pinned) return pinned;
+
+  const baseURL = process.env[baseUrlEnvByPlatform[platform]];
+  const credential = resolveToken(platform, { baseURL, account });
+  if (credential === null || credential.token === "") {
+    throw new AuthenticationError(
+      `No auth token found for ${platform} account "${account}". Log in with \`gh auth login\` until \`gh auth status\` lists it.`,
+      platform,
+    );
+  }
+
+  return trackProvider(pinnedProviders, key, () =>
+    verifiedAccountProvider(platform, account, credential),
+  );
+}
+
+async function verifiedAccountProvider(
+  platform: ForgesPlatform,
+  account: string,
+  credential: AuthResult,
+): Promise<Provider> {
+  const provider = await createConfiguredProvider(platform, credential.token);
+  const { login } = await provider.users.authenticated();
+  if (login.toLowerCase() === account.toLowerCase()) return provider;
+
+  const hint =
+    credential.source === "env"
+      ? "GH_TOKEN or GITHUB_TOKEN is set and takes precedence; unset it to use the gh login."
+      : "Check `gh auth status`.";
+  throw new AuthenticationError(
+    `Refusing to act as "${account}": the ${platform} token found for it belongs to "${login}". ${hint}`,
+    platform,
+  );
 }
 
 function readProvider(platform: ForgesPlatform): Promise<Provider> {
@@ -165,11 +225,12 @@ function readProvider(platform: ForgesPlatform): Promise<Provider> {
   const token = configuredToken(platform);
   if (token !== "") {
     anonymousReadProviders.delete(key);
-    return trackProvider(pinnedProviders, key, platform, token);
+    return trackProvider(pinnedProviders, key, () => createConfiguredProvider(platform, token));
   }
 
   return (
-    anonymousReadProviders.get(key) ?? trackProvider(anonymousReadProviders, key, platform, token)
+    anonymousReadProviders.get(key) ??
+    trackProvider(anonymousReadProviders, key, () => createConfiguredProvider(platform, token))
   );
 }
 
@@ -191,6 +252,11 @@ export function resetPinnedProviders(platform?: ForgesPlatform): void {
 export interface PlatformParams {
   /** Omitted means github, the platform an agent asks for far more often than it varies. */
   platform?: ForgesPlatform;
+}
+
+export interface AccountParams {
+  /** GitHub login to act as; omitted means the platform's pinned credential. */
+  account?: string;
 }
 
 export interface OwnerParams extends PlatformParams {
@@ -343,9 +409,9 @@ export interface GetReleaseParams extends RepositoryParams {
   tag: string;
 }
 
-export type CreateReleaseParams = RepositoryParams & CreateReleaseInput;
+export type CreateReleaseParams = RepositoryParams & AccountParams & CreateReleaseInput;
 
-export type UpdateReleaseParams = GetReleaseParams & UpdateReleaseInput;
+export type UpdateReleaseParams = GetReleaseParams & AccountParams & UpdateReleaseInput;
 
 export interface ListRepositoryItemsParams extends RepositoryParams {
   page?: number;
@@ -364,9 +430,9 @@ export interface GetRepositoryItemParams extends RepositoryParams {
   number: number;
 }
 
-export type CreateIssueParams = RepositoryParams & CreateIssueInput;
+export type CreateIssueParams = RepositoryParams & AccountParams & CreateIssueInput;
 
-export type CreatePullRequestParams = RepositoryParams & CreatePullRequestInput;
+export type CreatePullRequestParams = RepositoryParams & AccountParams & CreatePullRequestInput;
 
 export interface ListCommentsParams extends RepositoryParams {
   number: number;
@@ -650,7 +716,7 @@ export async function getRelease(args: GetReleaseParams): Promise<ForgesToolResu
 export async function createRelease(args: CreateReleaseParams): Promise<ForgesToolResult<Release>> {
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
-    const provider = await authenticatedProvider(params.platform);
+    const provider = await authenticatedProvider(params.platform, params.account);
     const release = await provider.releases.create(params.owner, params.repo, {
       tag: params.tag,
       name: params.name,
@@ -666,7 +732,7 @@ export async function createRelease(args: CreateReleaseParams): Promise<ForgesTo
 export async function updateRelease(args: UpdateReleaseParams): Promise<ForgesToolResult<Release>> {
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
-    const provider = await authenticatedProvider(params.platform);
+    const provider = await authenticatedProvider(params.platform, params.account);
     const release = await provider.releases.update(params.owner, params.repo, params.tag, {
       name: params.name,
       body: params.body,
@@ -756,7 +822,7 @@ export async function createIssue(args: CreateIssueParams): Promise<ForgesToolRe
   const params = repositoryTarget(args);
   assertAssignees(params.assignees, params.platform);
   return withCredentialOperation(params.platform, async () => {
-    const provider = await authenticatedProvider(params.platform);
+    const provider = await authenticatedProvider(params.platform, params.account);
     const issue = await provider.issues.create(params.owner, params.repo, {
       title: params.title,
       body: params.body,
@@ -946,7 +1012,7 @@ export async function createPullRequest(
   const params = repositoryTarget(args);
   assertAssignees(params.assignees, params.platform);
   return withCredentialOperation(params.platform, async () => {
-    const provider = await authenticatedProvider(params.platform);
+    const provider = await authenticatedProvider(params.platform, params.account);
     const pullRequest = await provider.pullRequests.create(params.owner, params.repo, {
       title: params.title,
       body: params.body,
@@ -970,22 +1036,33 @@ export async function getUser(args: GetUserParams): Promise<ForgesToolResult<Use
   return result(params.platform, user);
 }
 
-async function authenticatedUserResult(platform: ForgesPlatform): Promise<ForgesToolResult<User>> {
-  const provider = await authenticatedProvider(platform);
+export type AuthenticatedUserParams = PlatformParams & AccountParams;
+
+async function authenticatedUserResult(
+  platform: ForgesPlatform,
+  account: string | undefined,
+): Promise<ForgesToolResult<User>> {
+  const provider = await authenticatedProvider(platform, account);
   return result(platform, await provider.users.authenticated());
 }
 
-export function getAuthenticatedUser(args: PlatformParams): Promise<ForgesToolResult<User>> {
+export function getAuthenticatedUser(
+  args: AuthenticatedUserParams,
+): Promise<ForgesToolResult<User>> {
   const params = platformTarget(args);
-  return withCredentialOperation(params.platform, () => authenticatedUserResult(params.platform));
+  return withCredentialOperation(params.platform, () =>
+    authenticatedUserResult(params.platform, params.account),
+  );
 }
 
-/** Replace one platform's pinned credential and return the newly authenticated account. */
-export function reloadAuthentication(args: PlatformParams): Promise<ForgesToolResult<User>> {
+/** Replace one platform's pinned credentials and return the newly authenticated account. */
+export function reloadAuthentication(
+  args: AuthenticatedUserParams,
+): Promise<ForgesToolResult<User>> {
   const params = platformTarget(args);
   return withCredentialOperation(params.platform, () => {
     resetPinnedProviders(params.platform);
-    return authenticatedUserResult(params.platform);
+    return authenticatedUserResult(params.platform, params.account);
   });
 }
 
@@ -1001,7 +1078,9 @@ export interface GetThreadParams extends RepositoryParams {
   threadId: string;
 }
 
-export type ReplyThreadParams = GetThreadParams & ReplyThreadInput;
+export type ThreadStateParams = GetThreadParams & AccountParams;
+
+export type ReplyThreadParams = ThreadStateParams & ReplyThreadInput;
 
 function summarizeThreadPage(page: PageResult<Thread>): PageResult<Thread> {
   return {
@@ -1059,7 +1138,7 @@ export async function replyToThread(
 ): Promise<ForgesToolResult<ThreadComment>> {
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
-    const provider = await authenticatedProvider(params.platform);
+    const provider = await authenticatedProvider(params.platform, params.account);
     const comment = await provider.threads.reply(
       params.owner,
       params.repo,
@@ -1071,10 +1150,10 @@ export async function replyToThread(
   });
 }
 
-export async function resolveThread(args: GetThreadParams): Promise<ForgesToolResult<Thread>> {
+export async function resolveThread(args: ThreadStateParams): Promise<ForgesToolResult<Thread>> {
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
-    const provider = await authenticatedProvider(params.platform);
+    const provider = await authenticatedProvider(params.platform, params.account);
     const thread = await provider.threads.resolve(
       params.owner,
       params.repo,
@@ -1085,10 +1164,10 @@ export async function resolveThread(args: GetThreadParams): Promise<ForgesToolRe
   });
 }
 
-export async function unresolveThread(args: GetThreadParams): Promise<ForgesToolResult<Thread>> {
+export async function unresolveThread(args: ThreadStateParams): Promise<ForgesToolResult<Thread>> {
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
-    const provider = await authenticatedProvider(params.platform);
+    const provider = await authenticatedProvider(params.platform, params.account);
     const thread = await provider.threads.unresolve(
       params.owner,
       params.repo,

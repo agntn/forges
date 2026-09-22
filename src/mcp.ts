@@ -310,7 +310,7 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       name: "forges_users_authenticated",
       title: "Get Authenticated User",
       description:
-        "Get the profile of the account the locally detected credentials belong to. Call this before writing anything, because every write lands under that account and the server never takes a token as an argument. The credential stays pinned until forges_auth_reload explicitly replaces it.",
+        "Get the profile of the account the locally detected credentials belong to. Call this before writing anything, because every write lands under that account and the server never takes a token as an argument. With account, it checks that GitHub login instead, as a write naming it would. The credential stays pinned until forges_auth_reload explicitly replaces it.",
       inputSchema: schemas.authenticatedUserParameters,
       execute: (operations, args) => operations.getAuthenticatedUser(args),
     }),
@@ -351,7 +351,7 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       title: "Resolve Review Thread",
       description:
         "Mark one review thread resolved. This writes to the hosted platform under the local credentials, so resolve a thread only after the point it raised has actually been addressed.",
-      inputSchema: schemas.threadParameters,
+      inputSchema: schemas.threadStateParameters,
       execute: (operations, args) => operations.resolveThread(args),
     }),
     defineTool({
@@ -359,7 +359,7 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       title: "Unresolve Review Thread",
       description:
         "Reopen one resolved review thread. This writes to the hosted platform under the local credentials.",
-      inputSchema: schemas.threadParameters,
+      inputSchema: schemas.threadStateParameters,
       execute: (operations, args) => operations.unresolveThread(args),
     }),
     defineTool({
