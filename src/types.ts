@@ -189,6 +189,10 @@ export interface PullRequest extends PullRequestSearchItem {
   sourceBranch: string;
   targetBranch: string;
   mergeCommitSha: string;
+  /** When the pull request was merged; null until it is. */
+  mergedAt: string | null;
+  /** Who merged it; null until merged, or when the provider's response leaves it out. */
+  mergedBy: { login: string } | null;
   headSha: string;
   mergeable: boolean | null;
   mergeStatus: string;

@@ -236,6 +236,7 @@ interface GitHubPullRequest extends GitHubIssue {
   base: { ref: string };
   merged?: boolean;
   merged_at?: string | null;
+  merged_by?: { login: string } | null;
   draft: boolean;
   merge_commit_sha?: string | null;
   mergeable?: boolean | null;
@@ -966,6 +967,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       merged,
       draft: raw.draft,
       mergeCommitSha: merged ? (raw.merge_commit_sha ?? "") : "",
+      mergedAt: merged ? (raw.merged_at ?? null) : null,
+      mergedBy: merged && raw.merged_by ? { login: raw.merged_by.login } : null,
       headSha: raw.head.sha ?? "",
       mergeable: raw.mergeable ?? null,
       mergeStatus: raw.mergeable_state ?? "",

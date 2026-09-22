@@ -1918,6 +1918,43 @@ describe("GitLabProvider", () => {
       expect(pr.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/34");
     });
 
+    it("reports when and by whom a merge request was merged", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        ...glMergedMR,
+        merge_user: { username: "maintainer" },
+        merged_by: { username: "maintainer" },
+      });
+
+      const pr = await gl.pullRequests.get("o", "r", 34);
+
+      expect(pr.mergedAt).toBe("2024-03-12T10:00:00Z");
+      expect(pr.mergedBy).toEqual({ login: "maintainer" });
+    });
+
+    it("falls back to the deprecated merged_by", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({ ...glMergedMR, merged_by: { username: "maintainer" } });
+
+      const pr = await gl.pullRequests.get("o", "r", 34);
+
+      expect(pr.mergedBy).toEqual({ login: "maintainer" });
+    });
+
+    it("ignores the merge user queued on an unmerged merge request", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        ...glMergeRequest,
+        merge_when_pipeline_succeeds: true,
+        merge_user: { username: "maintainer" },
+      });
+
+      const pr = await gl.pullRequests.get("o", "r", 33);
+
+      expect(pr.mergedAt).toBeNull();
+      expect(pr.mergedBy).toBeNull();
+    });
+
     it.each([
       ["cannot_be_merged", "conflict", false],
       ["unchecked", "checking", null],
