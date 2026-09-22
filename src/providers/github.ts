@@ -8,6 +8,8 @@ import { Provider, type ProviderRawTypes } from "../provider.ts";
 import type {
   ProviderConfig,
   Repository,
+  RepositoryContents,
+  RepositoryContentsOptions,
   CodeSearchItem,
   CodeSearchOptions,
   CiRun,
@@ -68,9 +70,21 @@ import { normalizeCiRunState } from "../ci-run.ts";
 import { isPullRequestReview, normalizeReviewState } from "../review.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
 import { buildCommitPatch } from "../commit-patch.ts";
+import {
+  assertContinuationRef,
+  assertFileSize,
+  buildRepositoryFile,
+  contentsEntryType,
+  encodeRepositoryPath,
+  fileTooLarge,
+  isCommitSha,
+  unreadableEntry,
+} from "../repository-contents.ts";
 
 const MAX_COMMIT_FILE_PAGES = 30;
 const MAX_DRAFT_RELEASE_PAGES = 5;
+/** GitHub lists at most this many entries of one directory through the contents API. */
+const GITHUB_DIRECTORY_ENTRY_LIMIT = 1000;
 const GITHUB_SEARCH_RESULT_LIMIT = 1000;
 const GITHUB_ISSUE_TEMPLATE_DIRECTORY = ".github/ISSUE_TEMPLATE";
 const GITHUB_COMMUNITY_FILE_DIRECTORIES = [".github", "", "docs"] as const;
@@ -105,6 +119,7 @@ interface GitHubContent {
   type: string;
   name: string;
   path: string;
+  size?: number;
   content?: string;
   encoding?: string;
 }
@@ -1113,6 +1128,71 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     } catch (error) {
       throw normalizeError(error, "github");
     }
+  }
+
+  protected override async readRepositoryContents(
+    owner: string,
+    repo: string,
+    path: string,
+    options?: RepositoryContentsOptions,
+  ): Promise<RepositoryContents> {
+    try {
+      const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`;
+      const sha = isCommitSha(options?.ref)
+        ? options.ref
+        : await this.resolveCommitSha(route, options?.ref ?? "HEAD");
+      assertContinuationRef(options, sha);
+      const contents = await this.client<GitHubContent[] | GitHubContent>(
+        `${route}/contents${path === "" ? "" : `/${encodeRepositoryPath(path)}`}`,
+        { query: { ref: sha } },
+      );
+      if (Array.isArray(contents)) {
+        return {
+          type: "directory",
+          path,
+          sha,
+          entries: contents.map((entry) => ({
+            name: entry.name,
+            path: entry.path,
+            type: contentsEntryType(entry.type),
+            size: entry.type === "file" ? (entry.size ?? null) : null,
+          })),
+          entriesComplete: contents.length < GITHUB_DIRECTORY_ENTRY_LIMIT ? true : null,
+        };
+      }
+      if (contents.type !== "file") throw unreadableEntry(path, contents.type);
+      if (contents.encoding === "none") throw fileTooLarge(path, contents.size ?? 0);
+      assertFileSize(path, contents.size ?? 0);
+      if (contents.encoding !== "base64" || contents.content === undefined) {
+        throw new ForgesError(`GitHub returned no content for ${path}`, 502, "github");
+      }
+      return buildRepositoryFile(path, sha, contents.content, options);
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /** Resolve a ref to a commit SHA; GitBucket ignores the sha media type and sends the commit. */
+  private async resolveCommitSha(route: string, ref: string): Promise<string> {
+    const body = await this.client<string, "text">(
+      `${route}/commits/${encodeRefPathSegment(ref)}`,
+      {
+        headers: { Accept: "application/vnd.github.sha" },
+        responseType: "text",
+      },
+    );
+    const sha = body.trim();
+    if (isCommitSha(sha)) return sha;
+    try {
+      const parsed: unknown = JSON.parse(sha);
+      if (typeof parsed === "object" && parsed !== null && "sha" in parsed) {
+        const { sha: parsedSha } = parsed;
+        if (typeof parsedSha === "string" && isCommitSha(parsedSha)) return parsedSha;
+      }
+    } catch {
+      /* Neither a SHA nor JSON: the error below says so. */
+    }
+    throw new ForgesError(`GitHub could not resolve ${ref} to a commit`, 502, "github");
   }
 
   protected override async listCiRuns(

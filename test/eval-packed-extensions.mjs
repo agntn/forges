@@ -70,6 +70,7 @@ class PackedText {
 const expectedToolNames = [
   "forges_repos_list",
   "forges_repos_get",
+  "forges_repos_contents",
   "forges_contribution_templates_list",
   "forges_contribution_templates_get",
   "forges_code_search",

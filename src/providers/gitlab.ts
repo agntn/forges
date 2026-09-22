@@ -13,6 +13,9 @@
 
 import { Provider, type ProviderRawTypes } from "../provider.ts";
 import type {
+  RepositoryContents,
+  RepositoryContentsOptions,
+  RepositoryEntry,
   ProviderConfig,
   Repository,
   RepositoryPermission,
@@ -71,8 +74,14 @@ import { normalizeCiRunState } from "../ci-run.ts";
 import { normalizeReviewState } from "../review.ts";
 import { countDiffLines } from "../changed-file.ts";
 import { buildCommitPatch } from "../commit-patch.ts";
+import {
+  assertContinuationRef,
+  assertFileSize,
+  buildRepositoryFile,
+} from "../repository-contents.ts";
 
 const MAX_COMMIT_DIFF_PAGES = 100;
+const MAX_TREE_PAGES = 10;
 const MAX_CODE_SEARCH_PROJECT_REQUESTS = 5;
 const MAX_PIPELINE_NAME_REQUESTS = 5;
 const MAX_CONTRIBUTION_TEMPLATE_PAGES = 100;
@@ -193,6 +202,20 @@ interface GitLabMergeRequestDiff {
   collapsed?: boolean;
   too_large?: boolean;
   diff: string;
+}
+
+interface GitLabRepositoryFile {
+  size: number;
+  encoding: string;
+  content: string;
+  commit_id: string;
+}
+
+interface GitLabTreeEntry {
+  name: string;
+  path: string;
+  type: string;
+  mode: string;
 }
 
 interface GitLabCommit {
@@ -784,6 +807,90 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }
+  }
+
+  /** Git keeps no empty directories, so an empty tree below the root is a missing path. */
+  protected override async readRepositoryContents(
+    owner: string,
+    repo: string,
+    path: string,
+    options?: RepositoryContentsOptions,
+  ): Promise<RepositoryContents> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const ref = options?.ref ?? "HEAD";
+      if (path !== "") {
+        const file = await this.tryRepositoryFile(projectId, path, ref);
+        if (file !== null) {
+          assertContinuationRef(options, file.commit_id);
+          assertFileSize(path, file.size);
+          if (file.encoding !== "base64") {
+            throw new ForgesError(`GitLab returned no content for ${path}`, 502, "gitlab");
+          }
+          return buildRepositoryFile(path, file.commit_id, file.content, options);
+        }
+      }
+
+      const commit = await this.client<GitLabCommit>(
+        `/projects/${projectId}/repository/commits/${encodeRefPathSegment(ref)}`,
+      );
+      assertContinuationRef(options, commit.id);
+      const entries: RepositoryEntry[] = [];
+      let entriesComplete = true;
+      let page = 1;
+      while (true) {
+        const { data, headers } = await rawFetch<GitLabTreeEntry[]>(
+          this.client,
+          `/projects/${projectId}/repository/tree`,
+          { query: { ref: commit.id, path: path === "" ? undefined : path, page, per_page: 100 } },
+        );
+        entries.push(...(data ?? []).map((entry) => this.mapTreeEntry(entry)));
+        const next = headers.get("x-next-page");
+        if (next === null || next === "") break;
+        const nextPage = Number.parseInt(next, 10);
+        if (!Number.isInteger(nextPage) || nextPage <= page || nextPage > MAX_TREE_PAGES) {
+          entriesComplete = false;
+          break;
+        }
+        page = nextPage;
+      }
+      if (entries.length === 0 && path !== "") {
+        throw new NotFoundError(`Resource not found: ${path}`, "gitlab");
+      }
+      return { type: "directory", path, sha: commit.id, entries, entriesComplete };
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  /** The files API answers 404 for a directory too, so null means "try the tree". */
+  private async tryRepositoryFile(
+    projectId: number,
+    path: string,
+    ref: string,
+  ): Promise<GitLabRepositoryFile | null> {
+    try {
+      return await this.client<GitLabRepositoryFile>(
+        `/projects/${projectId}/repository/files/${encodeURIComponent(path)}`,
+        { query: { ref } },
+      );
+    } catch (error: unknown) {
+      const normalized = normalizeError(error, "gitlab");
+      if (normalized.status === 404) return null;
+      throw normalized;
+    }
+  }
+
+  private mapTreeEntry(entry: GitLabTreeEntry): RepositoryEntry {
+    const type =
+      entry.type === "tree"
+        ? "directory"
+        : entry.type === "commit"
+          ? "submodule"
+          : entry.mode === "120000"
+            ? "symlink"
+            : "file";
+    return { name: entry.name, path: entry.path, type, size: null };
   }
 
   private contributionTemplateApiType(kind: ContributionTemplateKind): string {

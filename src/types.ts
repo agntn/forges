@@ -330,6 +330,54 @@ export interface CommitPatch {
   states: Record<CommitPatchState, number>;
 }
 
+/** Kind of one entry in a repository tree. */
+export type RepositoryEntryType = "file" | "directory" | "symlink" | "submodule";
+
+/** One entry of a repository directory. size is null when the platform leaves it out. */
+export interface RepositoryEntry {
+  name: string;
+  path: string;
+  type: RepositoryEntryType;
+  size: number | null;
+}
+
+/** Revision and continuation options for a repository contents read. */
+export interface RepositoryContentsOptions {
+  /** Branch, tag or commit. Defaults to the default branch. */
+  ref?: string;
+  offset?: number;
+  maxChars?: number;
+}
+
+/** One bounded slice of a file. Continue with sha and nextOffset. */
+export interface RepositoryFileContents {
+  type: "file";
+  path: string;
+  /** Commit the read resolved ref to. */
+  sha: string;
+  /** Size in bytes. */
+  size: number;
+  /** True when the bytes are not UTF-8 text; content is then empty. */
+  binary: boolean;
+  content: string;
+  offset: number;
+  nextOffset: number | null;
+  truncated: boolean;
+}
+
+/** One directory listing. entriesComplete is null when the platform caps the listing. */
+export interface RepositoryDirectoryContents {
+  type: "directory";
+  path: string;
+  /** Commit the read resolved ref to. */
+  sha: string;
+  entries: RepositoryEntry[];
+  entriesComplete: boolean | null;
+}
+
+/** What one path of a repository holds at a commit. */
+export type RepositoryContents = RepositoryFileContents | RepositoryDirectoryContents;
+
 /** One release: a tag with notes. Keyed by tag everywhere, because GitLab releases have no id. */
 export interface Release {
   /** Platform id, or the tag name on GitLab. */
@@ -569,6 +617,12 @@ export interface ProviderConfig {
 export interface RepositoryResource {
   list(owner: string, options?: ListOptions): Promise<PageResult<Repository>>;
   get(owner: string, repo: string): Promise<Repository>;
+  readContents(
+    owner: string,
+    repo: string,
+    path: string,
+    options?: RepositoryContentsOptions,
+  ): Promise<RepositoryContents>;
 }
 
 /** Resource accessor for effective repository contribution templates. */

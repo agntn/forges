@@ -19,6 +19,8 @@ import {
 import { Provider, type ProviderRawTypes } from "../provider.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import type {
+  RepositoryContents,
+  RepositoryContentsOptions,
   ProviderConfig,
   Repository,
   CiRun,
@@ -62,6 +64,15 @@ import { normalizeCiRunState } from "../ci-run.ts";
 import { isPullRequestReview, normalizeReviewState } from "../review.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
 import { buildCommitPatch } from "../commit-patch.ts";
+import {
+  assertContinuationRef,
+  assertFileSize,
+  buildRepositoryFile,
+  contentsEntryType,
+  encodeRepositoryPath,
+  isCommitSha,
+  unreadableEntry,
+} from "../repository-contents.ts";
 
 // -- Raw Gitea API response types --
 
@@ -69,6 +80,7 @@ interface GiteaContent {
   type: string;
   name: string;
   path: string;
+  size?: number;
   content?: string;
   encoding?: string;
 }
@@ -764,6 +776,52 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
           `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
         ),
       );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async readRepositoryContents(
+    owner: string,
+    repo: string,
+    path: string,
+    options?: RepositoryContentsOptions,
+  ): Promise<RepositoryContents> {
+    try {
+      const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`;
+      const sha = isCommitSha(options?.ref)
+        ? options.ref
+        : (
+            await this.client<GiteaCommit>(
+              `${route}/git/commits/${encodeRefPathSegment(options?.ref ?? "HEAD")}`,
+              { query: { stat: "false", files: "false", verification: "false" } },
+            )
+          ).sha;
+      assertContinuationRef(options, sha);
+      const contents = await this.client<GiteaContent[] | GiteaContent>(
+        `${route}/contents${path === "" ? "" : `/${encodeRepositoryPath(path)}`}`,
+        { query: { ref: sha } },
+      );
+      if (Array.isArray(contents)) {
+        return {
+          type: "directory",
+          path,
+          sha,
+          entries: contents.map((entry) => ({
+            name: entry.name,
+            path: entry.path,
+            type: contentsEntryType(entry.type),
+            size: entry.type === "file" ? (entry.size ?? null) : null,
+          })),
+          entriesComplete: true,
+        };
+      }
+      if (contents.type !== "file") throw unreadableEntry(path, contents.type);
+      assertFileSize(path, contents.size ?? 0);
+      if (contents.encoding !== "base64" || contents.content === undefined) {
+        throw new ForgesError(`Gitea returned no content for ${path}`, 502, PLATFORM);
+      }
+      return buildRepositoryFile(path, sha, contents.content, options);
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }

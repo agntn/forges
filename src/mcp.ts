@@ -67,6 +67,14 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       execute: (operations, args) => operations.getRepository(args),
     }),
     defineTool({
+      name: "forges_repos_contents",
+      title: "Read Repository Contents",
+      description:
+        "Read one file or directory of a repository at a branch, tag or commit; ref defaults to the default branch. A file returns one bounded text slice with the resolved commit sha, its byte size and nextOffset; continue with that sha as ref and nextOffset. Binary files come back labeled with empty content, files above 1 MiB are refused, and a directory returns its entries.",
+      inputSchema: schemas.repositoryContentsParameters,
+      execute: (operations, args) => operations.readRepositoryContents(args),
+    }),
+    defineTool({
       name: "forges_contribution_templates_list",
       title: "List Contribution Templates",
       description:

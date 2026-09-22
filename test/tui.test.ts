@@ -120,6 +120,24 @@ describe("Forges tool TUI", () => {
     expect(JSON.parse(lines.slice(1).join("\n"))).toEqual(details);
   });
 
+  it("counts the entries of a directory listing", () => {
+    const details = {
+      platform: "github",
+      result: {
+        type: "directory",
+        path: "src",
+        sha: "abc",
+        entries: [{}, {}],
+        entriesComplete: true,
+      },
+    };
+    const result = { content: [{ type: "text", text: JSON.stringify(details) }], details };
+
+    expect(renderToolResult("forges_repos_contents", result, false, {}, plain)).toBe(
+      "✓ (read) src · 2 entries",
+    );
+  });
+
   it("prints a payload that is not a JSON object exactly as it arrived", () => {
     for (const text of ["not json at all", '"just a string"', "42"]) {
       const result = { content: [{ type: "text", text }], details: {} };

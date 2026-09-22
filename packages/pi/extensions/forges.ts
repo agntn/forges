@@ -177,6 +177,22 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_repos_contents",
+    label: "Forges Repository Contents",
+    description:
+      "Read one file or directory of a repository at a branch, tag or commit. A file comes back as a bounded text slice with the resolved sha; continue with that sha as ref and nextOffset. Binary files are labeled, not dumped",
+    promptSnippet: "Read a file or list a directory of a remote repository without cloning it.",
+    promptGuidelines: [
+      "Use forges_repos_contents instead of gh api contents or raw.githubusercontent.com. Continue a long file with the returned sha as ref and nextOffset.",
+    ],
+    parameters: schemas.repositoryContentsParameters,
+    ...statusRenderers("forges_repos_contents", "Forges Repository Contents"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).readRepositoryContents(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_contribution_templates_list",
     label: "Forges Contribution Templates",
     description:

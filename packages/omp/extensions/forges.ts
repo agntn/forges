@@ -137,6 +137,35 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
 
   const listRepositoriesParameters = closed({ platform, owner: accountOwner, page, perPage });
   const repositoryParameters = closed({ platform, owner, repo });
+  const repositoryContentsParameters = closed({
+    platform,
+    owner,
+    repo,
+    path: Type.String({
+      description: 'File or directory path; "" or "/" reads the repository root',
+    }),
+    ref: Type.Optional(
+      Type.String({
+        description:
+          "Branch, tag or commit SHA; defaults to the default branch. Continue a file with the returned sha",
+        minLength: 1,
+      }),
+    ),
+    offset: Type.Optional(
+      Type.Integer({
+        description:
+          "UTF-16 code-unit offset returned by the previous slice; continue with its sha as ref",
+        minimum: 0,
+      }),
+    ),
+    maxChars: Type.Optional(
+      Type.Integer({
+        description: "Maximum file UTF-16 code units to return; defaults to 20000",
+        minimum: 1,
+        maximum: 200000,
+      }),
+    ),
+  });
   const listContributionTemplatesParameters = closed({
     platform,
     owner,
@@ -404,6 +433,19 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: toolApproval("forges_repos_get"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getRepository(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_repos_contents",
+    label: "Forges Repository Contents",
+    description:
+      "Read one file or directory of a repository at a branch, tag or commit. A file comes back as a bounded text slice with the resolved sha; continue with that sha as ref and nextOffset. Binary files are labeled, not dumped",
+    parameters: repositoryContentsParameters,
+    ...statusRenderers("forges_repos_contents", "Forges Repository Contents"),
+    approval: toolApproval("forges_repos_contents"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).readRepositoryContents(params);
     },
   });
 
