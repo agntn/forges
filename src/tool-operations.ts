@@ -413,7 +413,7 @@ function result<T>(
   const details = { platform, result: value };
   const modelDetails = note ? { ...details, note } : details;
   return {
-    content: [{ type: "text", text: JSON.stringify(modelDetails, null, 2) }],
+    content: [{ type: "text", text: JSON.stringify(modelDetails) }],
     details,
   };
 }
