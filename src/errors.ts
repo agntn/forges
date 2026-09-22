@@ -9,13 +9,15 @@ import { FetchError } from "ofetch";
  * Base error class for forges operations
  */
 export class ForgesError extends Error {
-  constructor(
-    message: string,
-    public status?: number,
-    public platform?: string,
-    public originalError?: Error,
-  ) {
+  status?: number;
+  platform?: string;
+  originalError?: Error;
+
+  constructor(message: string, status?: number, platform?: string, originalError?: Error) {
     super(message);
+    this.status = status;
+    this.platform = platform;
+    this.originalError = originalError;
     this.name = this.constructor.name;
     Object.setPrototypeOf(this, ForgesError.prototype);
   }
@@ -55,13 +57,11 @@ export class PermissionError extends ForgesError {
  * Thrown when rate limit is exceeded (429)
  */
 export class RateLimitError extends ForgesError {
-  constructor(
-    message: string,
-    public retryAfter?: number,
-    platform?: string,
-    originalError?: Error,
-  ) {
+  retryAfter?: number;
+
+  constructor(message: string, retryAfter?: number, platform?: string, originalError?: Error) {
     super(message, 429, platform, originalError);
+    this.retryAfter = retryAfter;
     Object.setPrototypeOf(this, RateLimitError.prototype);
   }
 }
