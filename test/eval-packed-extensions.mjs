@@ -410,7 +410,8 @@ async function assertPackedPrSearch(piTools, ompTools) {
     const discovery = await client.listTools();
     const tool = discovery.tools.find((item) => item.name === "forges_pull_requests_search_global");
     assert(tool);
-    assert.deepEqual(tool.inputSchema.required, ["platform", "query"]);
+    assert.deepEqual(tool.inputSchema.required, ["query"]);
+    assert.equal(tool.inputSchema.properties.platform.default, "github");
     const answer = await client.callTool({ name: tool.name, arguments: args });
     assert.notEqual(answer.isError, true);
     assert.deepEqual(

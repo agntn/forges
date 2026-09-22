@@ -6,7 +6,7 @@ import type {
   VerifyLocalMergeOptions,
 } from "./local.ts";
 import { assertAssignees } from "./assignees.ts";
-import { AuthenticationError } from "./errors.ts";
+import { AuthenticationError, ForgesError } from "./errors.ts";
 import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
 import type { Provider } from "./provider.ts";
 import type {
@@ -188,15 +188,104 @@ export function resetPinnedProviders(platform?: ForgesPlatform): void {
 }
 
 export interface PlatformParams {
-  platform: ForgesPlatform;
+  /** Omitted means github, the platform an agent asks for far more often than it varies. */
+  platform?: ForgesPlatform;
 }
 
 export interface OwnerParams extends PlatformParams {
-  owner: string;
+  owner?: string;
 }
 
 export interface RepositoryParams extends OwnerParams {
+  /** A bare repository name, or `owner/name` while `owner` is omitted. */
   repo: string;
+}
+
+/** The target an operation works on once the loose arguments are resolved. */
+export interface RepositoryTarget {
+  platform: ForgesPlatform;
+  owner: string;
+  repo: string;
+}
+
+const defaultPlatform: ForgesPlatform = "github";
+
+function targetError(message: string, platform: ForgesPlatform): ForgesError {
+  return new ForgesError(message, undefined, platform);
+}
+
+/**
+ * Split an `owner/name` slug written into `repo`.
+ *
+ * Every forge, its web UI and its CLI write a repository that way, so a caller
+ * holding the slug tends to pass it whole. An explicit `owner` alongside a
+ * slashed `repo` is contradictory rather than redundant, and is rejected instead
+ * of one of the two being picked silently.
+ */
+function splitRepository(
+  repo: string,
+  owner: string | undefined,
+  platform: ForgesPlatform,
+): { owner: string | undefined; repo: string } {
+  if (!repo.includes("/")) return { owner, repo };
+
+  if (owner !== undefined) {
+    throw targetError(
+      `Ambiguous repository: owner "${owner}" was passed with repo "${repo}". Pass either owner and a bare repo name, or repo alone as "owner/name".`,
+      platform,
+    );
+  }
+
+  const segments = repo.split("/");
+  const [slugOwner, slugRepo] = segments;
+  if (segments.length !== 2 || !slugOwner || !slugRepo) {
+    throw targetError(
+      `Invalid repository "${repo}": pass a bare name, or "owner/name" with exactly one slash.`,
+      platform,
+    );
+  }
+
+  return { owner: slugOwner, repo: slugRepo };
+}
+
+/** Resolve the platform of an operation that names no repository. */
+function platformTarget<P extends PlatformParams>(params: P): P & { platform: ForgesPlatform } {
+  return { ...params, platform: params.platform ?? defaultPlatform };
+}
+
+/** Resolve an operation scoped to an account rather than to one repository. */
+function ownerTarget<P extends OwnerParams>(
+  params: P,
+): P & { platform: ForgesPlatform; owner: string } {
+  const platform = params.platform ?? defaultPlatform;
+  const { owner } = params;
+  if (owner === undefined || owner === "") {
+    throw targetError("Missing owner: pass the user or organization to read.", platform);
+  }
+  return { ...params, platform, owner };
+}
+
+/** Resolve one repository, accepting the owner either on its own field or inside `repo`. */
+export function repositoryTarget<P extends RepositoryParams>(params: P): P & RepositoryTarget {
+  const platform = params.platform ?? defaultPlatform;
+  const { owner, repo } = splitRepository(params.repo, params.owner, platform);
+  if (owner === undefined || owner === "") {
+    throw targetError(
+      `Missing owner for repository "${repo}": pass owner, or write repo as "owner/${repo}".`,
+      platform,
+    );
+  }
+  return { ...params, platform, owner, repo };
+}
+
+/** Resolve a search, where an absent owner means the whole platform rather than a mistake. */
+function searchTarget<P extends PlatformParams & { owner?: string; repo?: string }>(
+  params: P,
+): P & { platform: ForgesPlatform } {
+  const platform = params.platform ?? defaultPlatform;
+  if (params.repo === undefined) return { ...params, platform };
+  const { owner, repo } = splitRepository(params.repo, params.owner, platform);
+  return { ...params, platform, owner, repo };
 }
 
 export interface ListRepositoriesParams extends OwnerParams {
@@ -391,24 +480,27 @@ function listOptions(params: {
 }
 
 export async function listRepositories(
-  params: ListRepositoriesParams,
+  args: ListRepositoriesParams,
 ): Promise<ForgesToolResult<PageResult<Repository>>> {
+  const params = ownerTarget(args);
   const provider = await readProvider(params.platform);
   const repositories = await provider.repos.list(params.owner, listOptions(params));
   return result(params.platform, repositories);
 }
 
 export async function getRepository(
-  params: GetRepositoryParams,
+  args: GetRepositoryParams,
 ): Promise<ForgesToolResult<Repository>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const repository = await provider.repos.get(params.owner, params.repo);
   return result(params.platform, repository);
 }
 
 export async function listContributionTemplates(
-  params: ListContributionTemplatesParams,
+  args: ListContributionTemplatesParams,
 ): Promise<ForgesToolResult<PageResult<ContributionTemplateSummary>>> {
+  const params = repositoryTarget(args);
   const options: ListContributionTemplatesOptions = {
     page: params.page,
     perPage: params.perPage,
@@ -428,8 +520,9 @@ export async function listContributionTemplates(
 }
 
 export async function getContributionTemplate(
-  params: GetContributionTemplateParams,
+  args: GetContributionTemplateParams,
 ): Promise<ForgesToolResult<ContributionTemplate>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const template = await provider.contributionTemplates.get(
     params.owner,
@@ -441,8 +534,9 @@ export async function getContributionTemplate(
 }
 
 export async function searchCode(
-  params: SearchCodeParams,
+  args: SearchCodeParams,
 ): Promise<ForgesToolResult<SearchPageResult<CodeSearchItem>>> {
+  const params = searchTarget(args);
   const provider = await readProvider(params.platform);
   const search = await provider.code.search(params.query, {
     owner: params.owner,
@@ -454,8 +548,9 @@ export async function searchCode(
 }
 
 export async function listCiRuns(
-  params: ListCiRunsParams,
+  args: ListCiRunsParams,
 ): Promise<ForgesToolResult<PageResult<CiRun>>> {
+  const params = repositoryTarget(args);
   const options: ListCiRunsOptions = {
     branch: params.branch,
     page: params.page,
@@ -467,8 +562,9 @@ export async function listCiRuns(
 }
 
 export async function searchCommits(
-  params: SearchCommitsParams,
+  args: SearchCommitsParams,
 ): Promise<ForgesToolResult<CommitSearchResult>> {
+  const params = searchTarget(args);
   const provider = await readProvider(params.platform);
   const search = await provider.commits.search(params.query, {
     owner: params.owner,
@@ -480,8 +576,9 @@ export async function searchCommits(
 }
 
 export async function listCommits(
-  params: ListCommitsParams,
+  args: ListCommitsParams,
 ): Promise<ForgesToolResult<PageResult<CommitSummary>>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const commits = await provider.commits.list(params.owner, params.repo, {
     ref: params.ref,
@@ -494,15 +591,17 @@ export async function listCommits(
   return result(params.platform, commits);
 }
 
-export async function getCommit(params: GetCommitParams): Promise<ForgesToolResult<Commit>> {
+export async function getCommit(args: GetCommitParams): Promise<ForgesToolResult<Commit>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const commit = await provider.commits.get(params.owner, params.repo, params.sha);
   return result(params.platform, commit);
 }
 
 export async function readCommitPatch(
-  params: ReadCommitPatchParams,
+  args: ReadCommitPatchParams,
 ): Promise<ForgesToolResult<CommitPatch>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const patch = await provider.commits.readPatch(params.owner, params.repo, params.sha, {
     path: params.path,
@@ -520,8 +619,9 @@ function summarizeReleasePage(page: PageResult<Release>): PageResult<Omit<Releas
 }
 
 export async function listReleases(
-  params: ListReleasesParams,
+  args: ListReleasesParams,
 ): Promise<ForgesToolResult<PageResult<Omit<Release, "body">>>> {
+  const params = repositoryTarget(args);
   const options: ListReleasesOptions = {
     page: params.page,
     perPage: params.perPage,
@@ -535,13 +635,15 @@ export async function listReleases(
   );
 }
 
-export async function getRelease(params: GetReleaseParams): Promise<ForgesToolResult<Release>> {
+export async function getRelease(args: GetReleaseParams): Promise<ForgesToolResult<Release>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const release = await provider.releases.get(params.owner, params.repo, params.tag);
   return result(params.platform, release);
 }
 
-export function createRelease(params: CreateReleaseParams): Promise<ForgesToolResult<Release>> {
+export async function createRelease(args: CreateReleaseParams): Promise<ForgesToolResult<Release>> {
+  const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform);
     const release = await provider.releases.create(params.owner, params.repo, {
@@ -556,7 +658,8 @@ export function createRelease(params: CreateReleaseParams): Promise<ForgesToolRe
   });
 }
 
-export function updateRelease(params: UpdateReleaseParams): Promise<ForgesToolResult<Release>> {
+export async function updateRelease(args: UpdateReleaseParams): Promise<ForgesToolResult<Release>> {
+  const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform);
     const release = await provider.releases.update(params.owner, params.repo, params.tag, {
@@ -570,8 +673,9 @@ export function updateRelease(params: UpdateReleaseParams): Promise<ForgesToolRe
 }
 
 export async function listIssues(
-  params: ListRepositoryItemsParams,
+  args: ListRepositoryItemsParams,
 ): Promise<ForgesToolResult<PageResult<Omit<Issue, "body">>>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const issues = await provider.issues.list(params.owner, params.repo, listOptions(params));
   return result(
@@ -582,8 +686,9 @@ export async function listIssues(
 }
 
 export async function searchIssues(
-  params: SearchRepositoryIssuesParams,
+  args: SearchRepositoryIssuesParams,
 ): Promise<ForgesToolResult<SearchPageResult<Omit<Issue, "body">>>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const issues = await provider.issues.search(
     params.owner,
@@ -598,7 +703,8 @@ export async function searchIssues(
   );
 }
 
-export async function getIssue(params: GetRepositoryItemParams): Promise<ForgesToolResult<Issue>> {
+export async function getIssue(args: GetRepositoryItemParams): Promise<ForgesToolResult<Issue>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const issue = await provider.issues.get(params.owner, params.repo, params.number);
   return result(params.platform, issue);
@@ -612,8 +718,9 @@ function commentListOptions(params: ListCommentsParams): ListCommentOptions {
 }
 
 export async function listIssueComments(
-  params: ListCommentsParams,
+  args: ListCommentsParams,
 ): Promise<ForgesToolResult<PageResult<Comment>>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const comments = await provider.issues.listComments(
     params.owner,
@@ -628,9 +735,8 @@ export async function listIssueComments(
   );
 }
 
-export async function getIssueComment(
-  params: GetCommentParams,
-): Promise<ForgesToolResult<Comment>> {
+export async function getIssueComment(args: GetCommentParams): Promise<ForgesToolResult<Comment>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const comment = await provider.issues.getComment(
     params.owner,
@@ -641,7 +747,8 @@ export async function getIssueComment(
   return result(params.platform, comment);
 }
 
-export async function createIssue(params: CreateIssueParams): Promise<ForgesToolResult<Issue>> {
+export async function createIssue(args: CreateIssueParams): Promise<ForgesToolResult<Issue>> {
+  const params = repositoryTarget(args);
   assertAssignees(params.assignees, params.platform);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform);
@@ -656,8 +763,9 @@ export async function createIssue(params: CreateIssueParams): Promise<ForgesTool
 }
 
 export async function listPullRequests(
-  params: ListRepositoryItemsParams,
+  args: ListRepositoryItemsParams,
 ): Promise<ForgesToolResult<PageResult<Omit<PullRequest, "body">>>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const pullRequests = await provider.pullRequests.list(
     params.owner,
@@ -672,8 +780,9 @@ export async function listPullRequests(
 }
 
 export async function listPullRequestFiles(
-  params: ListPullRequestFilesParams,
+  args: ListPullRequestFilesParams,
 ): Promise<ForgesToolResult<PageResult<PullRequestFile>>> {
+  const params = repositoryTarget(args);
   const options: ListPullRequestFilesOptions = {
     page: params.page,
     perPage: params.perPage,
@@ -689,8 +798,9 @@ export async function listPullRequestFiles(
 }
 
 export async function listPullRequestChecks(
-  params: ListPullRequestChecksParams,
+  args: ListPullRequestChecksParams,
 ): Promise<ForgesToolResult<PageResult<PullRequestCheck>>> {
+  const params = repositoryTarget(args);
   const options: ListPullRequestChecksOptions = {
     page: params.page,
     perPage: params.perPage,
@@ -706,8 +816,9 @@ export async function listPullRequestChecks(
 }
 
 export async function listPullRequestReviews(
-  params: ListPullRequestReviewsParams,
+  args: ListPullRequestReviewsParams,
 ): Promise<ForgesToolResult<PageResult<PullRequestReview>>> {
+  const params = repositoryTarget(args);
   const options: ListPullRequestReviewsOptions = {
     page: params.page,
     perPage: params.perPage,
@@ -727,8 +838,9 @@ export async function listPullRequestReviews(
 }
 
 export async function getPullRequestReview(
-  params: GetPullRequestReviewParams,
+  args: GetPullRequestReviewParams,
 ): Promise<ForgesToolResult<PullRequestReview>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const review = await provider.pullRequests.getReview(
     params.owner,
@@ -740,12 +852,13 @@ export async function getPullRequestReview(
 }
 
 export async function searchPullRequestsGlobal(
-  params: SearchPullRequestsGlobalParams,
+  args: SearchPullRequestsGlobalParams,
 ): Promise<
   ForgesToolResult<
     SearchPageResult<Omit<GlobalPullRequestSearchItem, "body">> & { resultLimit: number }
   >
 > {
+  const params = searchTarget(args);
   const provider = await readProvider(params.platform);
   const search = await provider.pullRequests.searchGlobal(params.query, {
     owner: params.owner,
@@ -763,8 +876,9 @@ export async function searchPullRequestsGlobal(
 }
 
 export async function searchPullRequests(
-  params: SearchRepositoryPullRequestsParams,
+  args: SearchRepositoryPullRequestsParams,
 ): Promise<ForgesToolResult<SearchPageResult<Omit<PullRequestSearchItem, "body">>>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const pullRequests = await provider.pullRequests.search(
     params.owner,
@@ -780,16 +894,18 @@ export async function searchPullRequests(
 }
 
 export async function getPullRequest(
-  params: GetRepositoryItemParams,
+  args: GetRepositoryItemParams,
 ): Promise<ForgesToolResult<PullRequest>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const pullRequest = await provider.pullRequests.get(params.owner, params.repo, params.number);
   return result(params.platform, pullRequest);
 }
 
 export async function listPullRequestComments(
-  params: ListCommentsParams,
+  args: ListCommentsParams,
 ): Promise<ForgesToolResult<PageResult<Comment>>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const comments = await provider.pullRequests.listComments(
     params.owner,
@@ -805,8 +921,9 @@ export async function listPullRequestComments(
 }
 
 export async function getPullRequestComment(
-  params: GetCommentParams,
+  args: GetCommentParams,
 ): Promise<ForgesToolResult<Comment>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const comment = await provider.pullRequests.getComment(
     params.owner,
@@ -818,8 +935,9 @@ export async function getPullRequestComment(
 }
 
 export async function createPullRequest(
-  params: CreatePullRequestParams,
+  args: CreatePullRequestParams,
 ): Promise<ForgesToolResult<PullRequest>> {
+  const params = repositoryTarget(args);
   assertAssignees(params.assignees, params.platform);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform);
@@ -839,7 +957,8 @@ export async function createPullRequest(
   });
 }
 
-export async function getUser(params: GetUserParams): Promise<ForgesToolResult<User>> {
+export async function getUser(args: GetUserParams): Promise<ForgesToolResult<User>> {
+  const params = platformTarget(args);
   const provider = await readProvider(params.platform);
   const user = await provider.users.get(params.username);
   return result(params.platform, user);
@@ -850,12 +969,14 @@ async function authenticatedUserResult(platform: ForgesPlatform): Promise<Forges
   return result(platform, await provider.users.authenticated());
 }
 
-export function getAuthenticatedUser(params: PlatformParams): Promise<ForgesToolResult<User>> {
+export function getAuthenticatedUser(args: PlatformParams): Promise<ForgesToolResult<User>> {
+  const params = platformTarget(args);
   return withCredentialOperation(params.platform, () => authenticatedUserResult(params.platform));
 }
 
 /** Replace one platform's pinned credential and return the newly authenticated account. */
-export function reloadAuthentication(params: PlatformParams): Promise<ForgesToolResult<User>> {
+export function reloadAuthentication(args: PlatformParams): Promise<ForgesToolResult<User>> {
+  const params = platformTarget(args);
   return withCredentialOperation(params.platform, () => {
     resetPinnedProviders(params.platform);
     return authenticatedUserResult(params.platform);
@@ -898,8 +1019,9 @@ function threadListOptions(params: ListThreadsParams): ListThreadOptions {
 }
 
 export async function listThreads(
-  params: ListThreadsParams,
+  args: ListThreadsParams,
 ): Promise<ForgesToolResult<PageResult<Thread>>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const threads = await provider.threads.list(
     params.owner,
@@ -914,7 +1036,8 @@ export async function listThreads(
   );
 }
 
-export async function getThread(params: GetThreadParams): Promise<ForgesToolResult<Thread>> {
+export async function getThread(args: GetThreadParams): Promise<ForgesToolResult<Thread>> {
+  const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const thread = await provider.threads.get(
     params.owner,
@@ -925,7 +1048,10 @@ export async function getThread(params: GetThreadParams): Promise<ForgesToolResu
   return result(params.platform, thread);
 }
 
-export function replyToThread(params: ReplyThreadParams): Promise<ForgesToolResult<ThreadComment>> {
+export async function replyToThread(
+  args: ReplyThreadParams,
+): Promise<ForgesToolResult<ThreadComment>> {
+  const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform);
     const comment = await provider.threads.reply(
@@ -939,7 +1065,8 @@ export function replyToThread(params: ReplyThreadParams): Promise<ForgesToolResu
   });
 }
 
-export function resolveThread(params: GetThreadParams): Promise<ForgesToolResult<Thread>> {
+export async function resolveThread(args: GetThreadParams): Promise<ForgesToolResult<Thread>> {
+  const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform);
     const thread = await provider.threads.resolve(
@@ -952,7 +1079,8 @@ export function resolveThread(params: GetThreadParams): Promise<ForgesToolResult
   });
 }
 
-export function unresolveThread(params: GetThreadParams): Promise<ForgesToolResult<Thread>> {
+export async function unresolveThread(args: GetThreadParams): Promise<ForgesToolResult<Thread>> {
+  const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform);
     const thread = await provider.threads.unresolve(

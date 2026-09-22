@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthenticationError } from "../src/errors.ts";
 import {
   createIssue,
+  createRelease,
   getAuthenticatedUser,
   getContributionTemplate,
   getRepository,
   listContributionTemplates,
+  listRepositories,
   reloadAuthentication,
   searchCode,
   resetPinnedProviders,
@@ -372,5 +374,57 @@ describe("provider loading", () => {
     const identity = await getAuthenticatedUser({ platform: "github" });
 
     expect(identity.details.result.login).toBe("oritwoen");
+  });
+});
+
+describe("repository target", () => {
+  it("reads a repository written as one owner/name slug, on github by default", async () => {
+    const read = await getRepository({ repo: "agntn/keys" });
+
+    expect(mocks.createProvider).toHaveBeenCalledWith("github", { token: "test-token" });
+    expect(read.details).toMatchObject({
+      platform: "github",
+      result: { name: "keys", fullName: "agntn/keys" },
+    });
+  });
+
+  it("keeps the long form answering as it did", async () => {
+    const read = await getRepository({ platform: "github", owner: "agntn", repo: "keys" });
+
+    expect(read.details.result.fullName).toBe("agntn/keys");
+  });
+
+  it("scopes a search from the slug and leaves an unscoped search global", async () => {
+    const scoped = await searchCode({ query: "Provider", repo: "agntn/forges" });
+    const global = await searchCode({ query: "Provider" });
+
+    expect(scoped.details.result).toMatchObject({
+      options: { owner: "agntn", repo: "forges" },
+    });
+    expect(global.details.result).toMatchObject({
+      options: { owner: undefined, repo: undefined },
+    });
+  });
+
+  it("refuses an owner passed twice rather than picking one", async () => {
+    await expect(getRepository({ owner: "agntn", repo: "oritwoen/keys" })).rejects.toThrow(
+      /Ambiguous repository/,
+    );
+  });
+
+  it("refuses a repo that is neither a name nor one owner/name pair", async () => {
+    await expect(getRepository({ repo: "agntn/keys/main" })).rejects.toThrow(/exactly one slash/);
+    await expect(getRepository({ repo: "agntn/" })).rejects.toThrow(/exactly one slash/);
+  });
+
+  it("names the missing owner when a bare repo carries none", async () => {
+    await expect(getRepository({ repo: "keys" })).rejects.toThrow(
+      'Missing owner for repository "keys"',
+    );
+    await expect(listRepositories({})).rejects.toThrow("Missing owner");
+  });
+
+  it("rejects rather than throws when a write resolves no target", async () => {
+    await expect(createRelease({ repo: "keys", tag: "v1.0.0" })).rejects.toThrow("Missing owner");
   });
 });

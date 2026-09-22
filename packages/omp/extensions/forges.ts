@@ -51,12 +51,28 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   // OMP validates tool parameters with its host TypeBox build, so these shapes are
   // rebuilt here instead of imported from shared/forges-tool-schemas.ts, which the
   // Pi extension and the MCP server share.
-  const platform = Type.Union(
-    [Type.Literal("github"), Type.Literal("gitlab"), Type.Literal("gitea")],
-    { description: "Git hosting platform" },
+  const platform = Type.Optional(
+    Type.Union([Type.Literal("github"), Type.Literal("gitlab"), Type.Literal("gitea")], {
+      description: "Git hosting platform; defaults to github",
+      default: "github",
+    }),
   );
-  const owner = Type.String({ description: "Repository owner or organization", minLength: 1 });
-  const repo = Type.String({ description: "Repository name", minLength: 1 });
+  /** Repository tools take the owner inside `repo` as readily as on its own field. */
+  const owner = Type.Optional(
+    Type.String({
+      description: 'Repository owner or organization; omit when repo is written "owner/name"',
+      minLength: 1,
+    }),
+  );
+  /** Listing an account's repositories has no repo to carry the owner. */
+  const accountOwner = Type.String({
+    description: "Repository owner or organization",
+    minLength: 1,
+  });
+  const repo = Type.String({
+    description: 'Repository name, or "owner/name" when owner is omitted',
+    minLength: 1,
+  });
   const contributionTemplateKind = Type.Union(
     [Type.Literal("issue"), Type.Literal("pull_request")],
     { description: "Contribution template kind" },
@@ -110,7 +126,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     return Type.Object(properties, { additionalProperties: false });
   }
 
-  const listRepositoriesParameters = closed({ platform, owner, page, perPage });
+  const listRepositoriesParameters = closed({ platform, owner: accountOwner, page, perPage });
   const repositoryParameters = closed({ platform, owner, repo });
   const listContributionTemplatesParameters = closed({
     platform,
@@ -133,7 +149,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
       description: "Search query in the selected provider's syntax",
       minLength: 1,
     }),
-    owner: Type.Optional(owner),
+    owner,
     repo: Type.Optional(repo),
     page,
     perPage,
@@ -144,7 +160,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
       description: "Native pull-request query, including author: and created: qualifiers",
       minLength: 1,
     }),
-    owner: Type.Optional(owner),
+    owner,
     repo: Type.Optional(repo),
     page,
     perPage,
@@ -165,7 +181,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
       description: "Native commit query, including author-date: or committer-date: qualifiers",
       minLength: 1,
     }),
-    owner: Type.Optional(owner),
+    owner,
     repo: Type.Optional(repo),
     page,
     perPage,

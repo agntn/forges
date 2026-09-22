@@ -87,13 +87,18 @@ export function forgeToolTitle(name: string, label: string): string {
   return `${forgeToolSymbol(name)} ${label}`;
 }
 
+/** Renders the arguments as sent, where `repo` may already carry its owner. */
 function repositoryTarget(record: Readonly<Record<string, unknown>>): string | undefined {
   const owner = scalar(record, "owner");
   const repo = scalar(record, "repo");
-  if (!owner) return undefined;
+  if (!owner) return repo?.includes("/") ? withNumber(record, repo) : undefined;
   if (!repo) return owner;
+  return withNumber(record, `${owner}/${repo}`);
+}
+
+function withNumber(record: Readonly<Record<string, unknown>>, target: string): string {
   const number = scalar(record, "number");
-  return number ? `${owner}/${repo}#${number}` : `${owner}/${repo}`;
+  return number ? `${target}#${number}` : target;
 }
 
 function callSubject(record: Readonly<Record<string, unknown>>): string | undefined {

@@ -43,7 +43,10 @@ function approvalField(value: string): string {
   return sanitizeApprovalText(value).replaceAll("\n", " ");
 }
 
-function pullRequestApprovalMessage(params: ForgesTools.CreatePullRequestParams): string {
+/** The approval text names the resolved target, so the dialog matches the write. */
+type Resolved<P extends ForgesTools.RepositoryParams> = P & ForgesTools.RepositoryTarget;
+
+function pullRequestApprovalMessage(params: Resolved<ForgesTools.CreatePullRequestParams>): string {
   const body = sanitizeApprovalText(params.body);
   return [
     `Repository  ${approvalField(params.owner)}/${approvalField(params.repo)} on ${platformLabels[params.platform]}`,
@@ -61,7 +64,7 @@ function pullRequestApprovalMessage(params: ForgesTools.CreatePullRequestParams)
 
 /** On a create an omitted flag is the platform default; on an update it stays as it is. */
 function releaseApprovalMessage(
-  params: ForgesTools.CreateReleaseParams | ForgesTools.UpdateReleaseParams,
+  params: Resolved<ForgesTools.CreateReleaseParams> | Resolved<ForgesTools.UpdateReleaseParams>,
   creating: boolean,
 ): string {
   const flag = (value: boolean | undefined, on: string, off: string) =>
@@ -333,7 +336,9 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     ],
     parameters: schemas.createReleaseParameters,
     ...statusRenderers("forges_releases_create", "Create Forges Release"),
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+    async execute(_toolCallId, args, signal, _onUpdate, ctx) {
+      const operations = await loadToolOperations();
+      const params = operations.repositoryTarget(args);
       await confirmReleaseWrite(
         ctx,
         signal,
@@ -341,7 +346,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
         releaseApprovalMessage(params, true),
         "creation",
       );
-      return (await loadToolOperations()).createRelease(params);
+      return operations.createRelease(params);
     },
   });
 
@@ -356,7 +361,9 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     ],
     parameters: schemas.updateReleaseParameters,
     ...statusRenderers("forges_releases_update", "Update Forges Release"),
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+    async execute(_toolCallId, args, signal, _onUpdate, ctx) {
+      const operations = await loadToolOperations();
+      const params = operations.repositoryTarget(args);
       await confirmReleaseWrite(
         ctx,
         signal,
@@ -364,7 +371,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
         releaseApprovalMessage(params, false),
         "update",
       );
-      return (await loadToolOperations()).updateRelease(params);
+      return operations.updateRelease(params);
     },
   });
 
@@ -618,13 +625,15 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     ],
     parameters: schemas.createPullRequestParameters,
     ...statusRenderers("forges_pull_requests_create", "Create Forges Pull Request"),
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+    async execute(_toolCallId, args, signal, _onUpdate, ctx) {
       if (!ctx.hasUI) {
         throw new Error(
           "Pull request creation requires interactive approval in Pi TUI or RPC mode",
         );
       }
 
+      const operations = await loadToolOperations();
+      const params = operations.repositoryTarget(args);
       const approved = await ctx.ui.confirm(
         "Create pull request?",
         pullRequestApprovalMessage(params),
@@ -636,7 +645,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
         );
       }
 
-      return (await loadToolOperations()).createPullRequest(params);
+      return operations.createPullRequest(params);
     },
   });
 

@@ -22,13 +22,30 @@ export type ForgesPlatform = "github" | "gitlab" | "gitea";
  * model can never point an operation at a host of its choosing.
  */
 export function forgesToolSchemas() {
-  const platform = Type.Unsafe<ForgesPlatform>({
-    type: "string",
-    enum: ["github", "gitlab", "gitea"],
-    description: "Git hosting platform",
+  const platform = Type.Optional(
+    Type.Unsafe<ForgesPlatform>({
+      type: "string",
+      enum: ["github", "gitlab", "gitea"],
+      description: "Git hosting platform; defaults to github",
+      default: "github",
+    }),
+  );
+  /** Repository tools take the owner inside `repo` as readily as on its own field. */
+  const owner = Type.Optional(
+    Type.String({
+      description: 'Repository owner or organization; omit when repo is written "owner/name"',
+      minLength: 1,
+    }),
+  );
+  /** Listing an account's repositories has no repo to carry the owner. */
+  const accountOwner = Type.String({
+    description: "Repository owner or organization",
+    minLength: 1,
   });
-  const owner = Type.String({ description: "Repository owner or organization", minLength: 1 });
-  const repo = Type.String({ description: "Repository name", minLength: 1 });
+  const repo = Type.String({
+    description: 'Repository name, or "owner/name" when owner is omitted',
+    minLength: 1,
+  });
   const contributionTemplateKind = Type.Unsafe<"issue" | "pull_request">({
     type: "string",
     enum: ["issue", "pull_request"],
@@ -94,7 +111,7 @@ export function forgesToolSchemas() {
     return Type.Object(properties, { additionalProperties: false });
   }
 
-  const listRepositoriesParameters = closed({ platform, owner, page, perPage });
+  const listRepositoriesParameters = closed({ platform, owner: accountOwner, page, perPage });
   const repositoryParameters = closed({ platform, owner, repo });
   const listContributionTemplatesParameters = closed({
     platform,
@@ -117,7 +134,7 @@ export function forgesToolSchemas() {
       description: "Search query in the selected provider's syntax",
       minLength: 1,
     }),
-    owner: Type.Optional(owner),
+    owner,
     repo: Type.Optional(repo),
     page,
     perPage,
@@ -128,7 +145,7 @@ export function forgesToolSchemas() {
       description: "Native pull-request query, including author: and created: qualifiers",
       minLength: 1,
     }),
-    owner: Type.Optional(owner),
+    owner,
     repo: Type.Optional(repo),
     page,
     perPage,
@@ -153,7 +170,7 @@ export function forgesToolSchemas() {
       description: "Native commit query, including author-date: or committer-date: qualifiers",
       minLength: 1,
     }),
-    owner: Type.Optional(owner),
+    owner,
     repo: Type.Optional(repo),
     page,
     perPage,
