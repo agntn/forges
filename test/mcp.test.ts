@@ -752,6 +752,29 @@ describe("forges MCP server", () => {
     expect(JSON.parse(text(full.content))).toEqual({ platform: "github", result: review });
   });
 
+  it("passes closingIssues through to the pull-request read", async () => {
+    const closingIssues = [
+      {
+        number: 162,
+        title: "Linked",
+        state: "open",
+        url: "https://github.com/agntn/forges/issues/162",
+      },
+    ];
+    mocks.pullRequests.get.mockResolvedValue({ number: 170, closingIssues });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_get",
+      arguments: { owner: "agntn", repo: "forges", number: 170, closingIssues: true },
+    });
+
+    expect(mocks.pullRequests.get).toHaveBeenCalledWith("agntn", "forges", 170, {
+      closingIssues: true,
+    });
+    expect(JSON.parse(text(response.content)).result.closingIssues).toEqual(closingIssues);
+  });
+
   it("reloads the pinned credential and returns the authenticated profile", async () => {
     const user = { id: "1", login: "aeitwoen" };
     mocks.users.authenticated.mockResolvedValue(user);

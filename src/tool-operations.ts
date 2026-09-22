@@ -448,6 +448,11 @@ export interface ListPullRequestChecksParams extends ListCommentsParams {
   waitSeconds?: number;
 }
 
+export interface GetPullRequestParams extends GetRepositoryItemParams {
+  /** Also list the issues the pull request closes on merge. */
+  closingIssues?: boolean;
+}
+
 export interface GetPullRequestReviewParams extends GetRepositoryItemParams {
   reviewId: string;
 }
@@ -966,11 +971,13 @@ export async function searchPullRequests(
 }
 
 export async function getPullRequest(
-  args: GetRepositoryItemParams,
+  args: GetPullRequestParams,
 ): Promise<ForgesToolResult<PullRequest>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const pullRequest = await provider.pullRequests.get(params.owner, params.repo, params.number);
+  const pullRequest = await provider.pullRequests.get(params.owner, params.repo, params.number, {
+    closingIssues: params.closingIssues,
+  });
   return result(params.platform, pullRequest);
 }
 

@@ -653,6 +653,30 @@ describe("Forges Pi extension", () => {
     expect(mocks.pullRequests.getReview).toHaveBeenCalledWith("agntn", "forges", 5, "123");
   });
 
+  it("passes closingIssues through both extensions", async () => {
+    mocks.pullRequests.get.mockResolvedValue({ number: 5, closingIssues: null });
+    const args = {
+      platform: "gitea",
+      owner: "agntn",
+      repo: "forges",
+      number: 5,
+      closingIssues: true,
+    };
+    const piTool = requirePiTool(registerPiTools(), "forges_pull_requests_get");
+    const ompTool = requireOmpTool(registerOmpTools().tools, "forges_pull_requests_get");
+
+    for (const result of [
+      await piTool.execute("test", args, undefined, undefined, unusedPiContext),
+      await ompTool.execute("test", args, undefined, undefined, unusedOmpContext),
+    ]) {
+      expect(result.details).toMatchObject({ result: { closingIssues: null } });
+    }
+    expect(mocks.pullRequests.get).toHaveBeenCalledTimes(2);
+    expect(mocks.pullRequests.get).toHaveBeenCalledWith("agntn", "forges", 5, {
+      closingIssues: true,
+    });
+  });
+
   it("executes pull-request review listing through the shared provider operation", async () => {
     const tool = requirePiTool(registerPiTools(), "forges_pull_requests_reviews");
     const result = await tool.execute(

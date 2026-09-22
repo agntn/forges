@@ -271,6 +271,18 @@ export function forgesToolSchemas() {
     state,
   });
   const repositoryItemParameters = closed({ platform, owner, repo, number });
+  const pullRequestParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    closingIssues: Type.Optional(
+      Type.Boolean({
+        description:
+          "Also list the issues the pull request closes on merge, at the cost of one more request; null where the platform cannot tell",
+      }),
+    ),
+  });
   const listCommentsParameters = closed({ platform, owner, repo, number, page, perPage });
   /**
    * The waiting mode of the check listing. The bound repeats
@@ -422,6 +434,7 @@ export function forgesToolSchemas() {
     listRepositoryItemsParameters,
     searchRepositoryItemsParameters,
     repositoryItemParameters,
+    pullRequestParameters,
     listCommentsParameters,
     listPullRequestFilesParameters,
     listPullRequestChecksParameters,

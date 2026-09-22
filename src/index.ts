@@ -43,6 +43,8 @@ export type {
   GlobalPullRequestSearchResult,
   GlobalPullRequestSearchItem,
   PullRequest,
+  ClosingIssue,
+  GetPullRequestOptions,
   PullRequestFileStatus,
   PullRequestFile,
   PullRequestReviewState,

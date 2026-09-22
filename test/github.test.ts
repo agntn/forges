@@ -2443,6 +2443,123 @@ describe("GitHubProvider", () => {
   });
 
   describe("pullRequests.get", () => {
+    const closingIssuesPage = (
+      nodes: unknown[],
+      hasNextPage = false,
+      endCursor: string | null = null,
+    ) => ({
+      data: {
+        repository: {
+          pullRequest: { closingIssuesReferences: { pageInfo: { hasNextPage, endCursor }, nodes } },
+        },
+      },
+    });
+
+    it("lists the issues a pull request closes when asked", async () => {
+      mocks.client.mockImplementation(async (url: string) =>
+        url === "/graphql"
+          ? closingIssuesPage([
+              {
+                number: 7,
+                title: "Dark mode flickers",
+                state: "OPEN",
+                url: "https://github.com/octocat/hello-world/issues/7",
+              },
+              null,
+              {
+                number: 3,
+                title: "Old report",
+                state: "CLOSED",
+                url: "https://github.com/octocat/other/issues/3",
+              },
+            ])
+          : ghPullRequest,
+      );
+
+      const pr = await gh.pullRequests.get("octocat", "hello-world", 99, { closingIssues: true });
+
+      expect(pr.number).toBe(99);
+      expect(pr.closingIssues).toEqual([
+        {
+          number: 7,
+          title: "Dark mode flickers",
+          state: "open",
+          url: "https://github.com/octocat/hello-world/issues/7",
+        },
+        {
+          number: 3,
+          title: "Old report",
+          state: "closed",
+          url: "https://github.com/octocat/other/issues/3",
+        },
+      ]);
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(mocks.client).toHaveBeenCalledWith("/graphql", {
+        method: "POST",
+        body: {
+          query: expect.stringContaining("closingIssuesReferences"),
+          variables: { owner: "octocat", name: "hello-world", number: 99, after: null },
+        },
+      });
+    });
+
+    it("returns an empty list when nothing is closed", async () => {
+      mocks.client.mockImplementation(async (url: string) =>
+        url === "/graphql" ? closingIssuesPage([]) : ghPullRequest,
+      );
+
+      const pr = await gh.pullRequests.get("octocat", "hello-world", 99, { closingIssues: true });
+
+      expect(pr.closingIssues).toEqual([]);
+    });
+
+    it("follows the closing-issue cursor past one page", async () => {
+      const issue = (number: number) => ({
+        number,
+        title: `Issue ${number}`,
+        state: "OPEN",
+        url: `https://github.com/octocat/hello-world/issues/${number}`,
+      });
+      const pages = [closingIssuesPage([issue(1)], true, "c1"), closingIssuesPage([issue(2)])];
+      mocks.client.mockImplementation(async (url: string) =>
+        url === "/graphql" ? pages.shift() : ghPullRequest,
+      );
+
+      const pr = await gh.pullRequests.get("octocat", "hello-world", 99, { closingIssues: true });
+
+      expect(pr.closingIssues?.map((issue) => issue.number)).toEqual([1, 2]);
+      expect(mocks.client).toHaveBeenLastCalledWith("/graphql", {
+        method: "POST",
+        body: expect.objectContaining({ variables: expect.objectContaining({ after: "c1" }) }),
+      });
+    });
+
+    it("reports closing issues as unknown on a host without GraphQL", async () => {
+      const gitbucket = new GitHubProvider({
+        baseURL: "https://gitbucket.example.com/api/v3",
+        token: "gb_test",
+      });
+      mocks.client.mockImplementation(async (url: string) => {
+        if (url.endsWith("/graphql")) throw makeFetchError(404);
+        return ghPullRequest;
+      });
+
+      const pr = await gitbucket.pullRequests.get("octocat", "hello-world", 99, {
+        closingIssues: true,
+      });
+
+      expect(pr.closingIssues).toBeNull();
+    });
+
+    it("makes no extra request and adds no field by default", async () => {
+      mocks.client.mockResolvedValueOnce(ghPullRequest);
+
+      const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
+
+      expect(pr).not.toHaveProperty("closingIssues");
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+    });
+
     it("returns the merge commit SHA for a merged pull request", async () => {
       mocks.client.mockResolvedValueOnce({
         ...ghPullRequest,

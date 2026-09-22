@@ -522,7 +522,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     description: "Get one normalized pull request by repository and number",
     promptSnippet: "Get one pull request from GitHub, GitLab, or Gitea.",
     promptGuidelines: ["Use forges_pull_requests_get when the exact pull-request number is known."],
-    parameters: schemas.repositoryItemParameters,
+    parameters: schemas.pullRequestParameters,
     ...statusRenderers("forges_pull_requests_get", "Forges Pull Request"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getPullRequest(params);

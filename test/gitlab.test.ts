@@ -1902,6 +1902,77 @@ describe("GitLabProvider", () => {
   });
 
   describe("pullRequests.get", () => {
+    it("lists what closes_issues reports when asked", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce(glMergedMR);
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: [
+            {
+              iid: 12,
+              title: "Crash on save",
+              state: "opened",
+              web_url: "https://gitlab.com/gitlab-org/gitlab-foss/-/issues/12",
+            },
+            { id: "JIRA-5", title: "External ticket" },
+          ],
+          headers: glHeaders({ nextPage: "2" }),
+        })
+        .mockResolvedValueOnce({
+          data: [
+            {
+              iid: 13,
+              title: "Done already",
+              state: "closed",
+              web_url: "https://gitlab.com/gitlab-org/gitlab-foss/-/issues/13",
+            },
+          ],
+          headers: glHeaders({ nextPage: "" }),
+        });
+
+      const pr = await gl.pullRequests.get("o", "r", 34, { closingIssues: true });
+
+      expect(pr.number).toBe(34);
+      expect(pr.closingIssues).toEqual([
+        {
+          number: 12,
+          title: "Crash on save",
+          state: "open",
+          url: "https://gitlab.com/gitlab-org/gitlab-foss/-/issues/12",
+        },
+        {
+          number: 13,
+          title: "Done already",
+          state: "closed",
+          url: "https://gitlab.com/gitlab-org/gitlab-foss/-/issues/13",
+        },
+      ]);
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        1,
+        mocks.client,
+        "/projects/278964/merge_requests/34/closes_issues",
+        { query: { page: 1, per_page: 100 } },
+      );
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
+        2,
+        mocks.client,
+        "/projects/278964/merge_requests/34/closes_issues",
+        { query: { page: 2, per_page: 100 } },
+      );
+      // One project lookup serves both concurrent reads.
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+    });
+
+    it("makes no closes_issues request by default", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce(glMergedMR);
+
+      const pr = await gl.pullRequests.get("o", "r", 34);
+
+      expect(pr).not.toHaveProperty("closingIssues");
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    });
+
     it("returns mapped merge request as pull request", async () => {
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce(glMergedMR);

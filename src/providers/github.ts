@@ -22,6 +22,7 @@ import type {
   ContributionTemplateSummary,
   Issue,
   PullRequest,
+  ClosingIssue,
   PullRequestCheck,
   PullRequestReview,
   PullRequestFile,
@@ -381,6 +382,24 @@ interface GitHubGraphQLThreadScopeData {
   node: { pullRequest: GitHubGraphQLThreadScope | null } | null;
 }
 
+interface GitHubGraphQLClosingIssue {
+  number: number;
+  title: string;
+  state: "OPEN" | "CLOSED";
+  url: string;
+}
+
+interface GitHubGraphQLClosingIssuesData {
+  repository: {
+    pullRequest: {
+      closingIssuesReferences: {
+        pageInfo: GitHubGraphQLPageInfo;
+        nodes: Array<GitHubGraphQLClosingIssue | null> | null;
+      };
+    } | null;
+  } | null;
+}
+
 interface GitHubGraphQLThreadMutationData {
   resolveReviewThread?: { thread: GitHubGraphQLReviewThread | null };
   unresolveReviewThread?: { thread: GitHubGraphQLReviewThread | null };
@@ -432,6 +451,19 @@ const THREAD_SCOPE_QUERY = `
   query($id: ID!) {
     node(id: $id) {
       ... on PullRequestReviewThread { ${THREAD_SCOPE_FIELDS} }
+    }
+  }
+`;
+
+const CLOSING_ISSUES_QUERY = `
+  query($owner: String!, $name: String!, $number: Int!, $after: String) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        closingIssuesReferences(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes { number title state url }
+        }
+      }
     }
   }
 `;
@@ -2023,6 +2055,58 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       );
       return this.mapPullRequest(data);
     } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /**
+   * Only GraphQL knows which issues a pull request closes. GitBucket serves no
+   * GraphQL, so there the answer is unknown rather than an error.
+   */
+  protected override async listClosingIssues(
+    owner: string,
+    repo: string,
+    prNumber: number,
+  ): Promise<ClosingIssue[] | null> {
+    try {
+      const issues: ClosingIssue[] = [];
+      let cursor: string | null = null;
+      for (;;) {
+        const data: GitHubGraphQLClosingIssuesData = await this.graphql(CLOSING_ISSUES_QUERY, {
+          owner,
+          name: repo,
+          number: prNumber,
+          after: cursor,
+        });
+        const pullRequest = data.repository?.pullRequest;
+        if (!pullRequest) {
+          throw new NotFoundError(
+            `Resource not found: pull request ${owner}/${repo}#${prNumber}`,
+            "github",
+          );
+        }
+        const connection = pullRequest.closingIssuesReferences;
+        for (const node of presentGraphQLNodes(connection.nodes)) {
+          issues.push({
+            number: node.number,
+            title: node.title,
+            state: node.state === "CLOSED" ? "closed" : "open",
+            url: node.url,
+          });
+        }
+        const endCursor = connection.pageInfo.endCursor;
+        if (!connection.pageInfo.hasNextPage || !endCursor || endCursor === cursor) break;
+        cursor = endCursor;
+      }
+      return issues;
+    } catch (error) {
+      if (
+        error instanceof ForgesError &&
+        error.originalError instanceof FetchError &&
+        (error.originalError.status === 404 || error.originalError.status === 405)
+      ) {
+        return null;
+      }
       throw normalizeError(error, "github");
     }
   }

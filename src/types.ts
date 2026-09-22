@@ -196,6 +196,26 @@ export interface PullRequest extends PullRequestSearchItem {
   headSha: string;
   mergeable: boolean | null;
   mergeStatus: string;
+  /**
+   * Issues the pull request closes when merged. Present only when the read asks for
+   * it with `closingIssues`; null when the provider cannot report them, so unknown
+   * never reads as none.
+   */
+  closingIssues?: ClosingIssue[] | null;
+}
+
+/** An issue a pull request closes on merge; it may live in another repository. */
+export interface ClosingIssue {
+  number: number;
+  title: string;
+  state: IssueState;
+  url: string;
+}
+
+/** Extra data a single pull-request read may fetch. */
+export interface GetPullRequestOptions {
+  /** Also fetch the issues the pull request closes, at the cost of one more request. */
+  closingIssues?: boolean;
 }
 
 /** Normalized status of one changed file. */
@@ -663,7 +683,12 @@ export interface PullRequestResource {
     query: string,
     options?: ListOptions,
   ): Promise<SearchPageResult<PullRequestSearchItem>>;
-  get(owner: string, repo: string, number: number): Promise<PullRequest>;
+  get(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: GetPullRequestOptions,
+  ): Promise<PullRequest>;
   create(owner: string, repo: string, input: CreatePullRequestInput): Promise<PullRequest>;
   listComments(
     owner: string,

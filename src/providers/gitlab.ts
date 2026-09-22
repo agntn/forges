@@ -28,6 +28,7 @@ import type {
   ContributionTemplateSummary,
   Issue,
   PullRequest,
+  ClosingIssue,
   PullRequestCheck,
   PullRequestReview,
   PullRequestReviewState,
@@ -369,6 +370,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   private client: HttpClient;
   private readonly apiBaseURL: string;
   private projectIdCache = new Map<string, ProjectIdCacheEntry>();
+  /** Lookups still in flight, so concurrent reads of one project share a request. */
+  private projectIdLoads = new Map<string, Promise<number>>();
   private readonly projectIdCacheMax: number;
   private readonly projectIdCacheTtl: number;
 
@@ -694,15 +697,24 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     if (cached !== undefined) {
       return cached;
     }
+    const pending = this.projectIdLoads.get(key);
+    if (pending) return pending;
 
-    try {
-      const encoded = encodeProjectPath(owner, repo);
-      const project = await this.client<GitLabProject>(`/projects/${encoded}`);
-      this.setCachedProjectId(key, project.id);
-      return project.id;
-    } catch (error: unknown) {
-      throw normalizeError(error, "gitlab");
-    }
+    const load = (async () => {
+      try {
+        const encoded = encodeProjectPath(owner, repo);
+        const project = await this.client<GitLabProject>(`/projects/${encoded}`);
+        this.setCachedProjectId(key, project.id);
+        return project.id;
+      } catch (error: unknown) {
+        throw normalizeError(error, "gitlab");
+      }
+    })();
+    this.projectIdLoads.set(key, load);
+    // Settled callbacks run after the set above, even when the lookup failed synchronously.
+    const settle = () => this.projectIdLoads.delete(key);
+    void load.then(settle, settle);
+    return load;
   }
 
   /**
@@ -1590,6 +1602,42 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         `/projects/${projectId}/merge_requests/${encodePathSegment(iid)}`,
       );
       return this.mapPullRequest(mr);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async listClosingIssues(
+    owner: string,
+    repo: string,
+    iid: number,
+  ): Promise<ClosingIssue[]> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const issues: ClosingIssue[] = [];
+      let page = 1;
+      for (;;) {
+        const { data, headers } = await rawFetch<Array<Partial<GitLabIssue>>>(
+          this.client,
+          `/projects/${projectId}/merge_requests/${encodePathSegment(iid)}/closes_issues`,
+          { query: { page, per_page: 100 } },
+        );
+        for (const raw of data ?? []) {
+          // An external tracker such as Jira answers with its own keys and no iid.
+          if (typeof raw.iid !== "number") continue;
+          issues.push({
+            number: raw.iid,
+            title: raw.title ?? "",
+            state: this.mapGitLabState(raw.state ?? ""),
+            url: raw.web_url ?? "",
+          });
+        }
+        const next = headers.get("x-next-page");
+        const nextPage = next ? parseInt(next, 10) : NaN;
+        if (!Number.isInteger(nextPage) || nextPage <= page) break;
+        page = nextPage;
+      }
+      return issues;
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }
