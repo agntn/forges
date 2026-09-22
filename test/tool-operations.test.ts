@@ -154,6 +154,22 @@ afterEach(() => {
 });
 
 describe("configured provider", () => {
+  it("serializes results as compact JSON that still parses to the details", async () => {
+    const read = await getContributionTemplate({
+      platform: "github",
+      owner: "agntn",
+      repo: "forges",
+      kind: "issue",
+      key: "agntn/.github:.github/ISSUE_TEMPLATE/bug.yml",
+    });
+    const text = read.content[0].text;
+
+    expect(text).toBe(JSON.stringify(read.details));
+    expect(text).not.toMatch(/\n/);
+    expect(JSON.parse(text)).toEqual(read.details);
+    expect(JSON.parse(text).result.content).toBe("name: Bug report\nbody: []\n");
+  });
+
   it("lists template metadata without bodies and reads one exact key in full", async () => {
     const listed = await listContributionTemplates({
       platform: "github",
