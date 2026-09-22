@@ -1632,6 +1632,9 @@ describe("GitHubProvider", () => {
       expect(result.items[0]).toMatchObject({
         merged: true,
         mergeCommitSha: "850662f475b8c2db88f57f9c3e6901f2e1418c8f",
+        mergedAt: "2026-08-27T20:34:31Z",
+        // The list endpoint returns the simple pull request shape, without merged_by.
+        mergedBy: null,
       });
     });
   });
@@ -2458,6 +2461,30 @@ describe("GitHubProvider", () => {
       expect(pr.mergeable).toBe(true);
       expect(pr.mergeStatus).toBe("blocked");
       expect(pr.url).toBe("https://github.com/octocat/hello-world/pull/99");
+    });
+
+    it("reports when and by whom a pull request was merged", async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...ghPullRequest,
+        state: "closed",
+        merged: true,
+        merged_at: "2024-02-03T09:00:00Z",
+        merged_by: { login: "maintainer", id: 5001, type: "User" },
+      });
+
+      const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
+
+      expect(pr.mergedAt).toBe("2024-02-03T09:00:00Z");
+      expect(pr.mergedBy).toEqual({ login: "maintainer" });
+    });
+
+    it("leaves merge metadata null on an open pull request", async () => {
+      mocks.client.mockResolvedValueOnce(ghPullRequest);
+
+      const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
+
+      expect(pr.mergedAt).toBeNull();
+      expect(pr.mergedBy).toBeNull();
     });
 
     it("preserves unknown mergeability while GitHub computes it", async () => {

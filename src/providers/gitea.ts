@@ -192,6 +192,8 @@ interface GiteaPullRequest {
   head?: { ref?: string | null; label?: string | null; sha?: string | null } | null;
   base?: { ref?: string | null; label?: string | null } | null;
   merged?: boolean;
+  merged_at?: string | null;
+  merged_by?: GiteaUser | null;
   draft?: boolean;
   merge_commit_sha?: string | null;
   mergeable?: boolean;
@@ -671,6 +673,8 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       merged,
       draft: raw.draft ?? false,
       mergeCommitSha: merged ? (raw.merge_commit_sha ?? "") : "",
+      mergedAt: merged ? (raw.merged_at ?? null) : null,
+      mergedBy: merged && raw.merged_by ? { login: raw.merged_by.login } : null,
       headSha: raw.head?.sha ?? "",
       mergeable: raw.mergeable ?? null,
       mergeStatus: "",

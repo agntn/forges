@@ -173,6 +173,8 @@ interface GitLabMergeRequest {
   source_branch: string;
   target_branch: string;
   merged_at: string | null;
+  merge_user?: { username: string } | null;
+  merged_by?: { username: string } | null;
   draft: boolean;
   merge_commit_sha: string | null;
   sha?: string | null;
@@ -543,11 +545,16 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   protected override mapPullRequest(raw: GitLabMergeRequest): PullRequest {
     const searchItem = this.mapPullRequestSearchItem(raw);
+    // `merged_by` is deprecated in favor of `merge_user`, which is also set before
+    // the merge on a merge request queued to merge when its pipeline succeeds.
+    const mergeUser = searchItem.merged ? (raw.merge_user ?? raw.merged_by ?? null) : null;
     return {
       ...searchItem,
       sourceBranch: raw.source_branch,
       targetBranch: raw.target_branch,
       mergeCommitSha: searchItem.merged ? (raw.merge_commit_sha ?? "") : "",
+      mergedAt: raw.merged_at,
+      mergedBy: mergeUser ? { login: mergeUser.username } : null,
       headSha: raw.sha ?? "",
       mergeable:
         raw.merge_status === "can_be_merged"

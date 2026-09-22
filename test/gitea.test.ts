@@ -1285,6 +1285,8 @@ describe("Gitea Provider", () => {
         merged: false,
         draft: false,
         mergeCommitSha: "",
+        mergedAt: null,
+        mergedBy: null,
         headSha: "42190a2e08172b2d2e3f63f7b848231ec566b08f",
         mergeable: true,
         mergeStatus: "",
@@ -1752,6 +1754,31 @@ describe("Gitea Provider", () => {
       expect(result.mergeable).toBe(true);
       expect(result.mergeStatus).toBe("");
       expect(result.url).toBe("https://gitea.com/testowner/test-repo/pulls/5");
+    });
+
+    it("reports when and by whom a pull request was merged", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaPullRequest({
+          state: "closed",
+          merged: true,
+          merged_at: "2026-09-20T11:04:52Z",
+          merged_by: { id: 7, login: "maintainer" },
+        }),
+      );
+
+      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
+
+      expect(result.mergedAt).toBe("2026-09-20T11:04:52Z");
+      expect(result.mergedBy).toEqual({ login: "maintainer" });
+    });
+
+    it("leaves merge metadata null on an open pull request", async () => {
+      mockClient.mockResolvedValueOnce(giteaPullRequest());
+
+      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
+
+      expect(result.mergedAt).toBeNull();
+      expect(result.mergedBy).toBeNull();
     });
 
     it("keeps mergeability unknown when an older server omits it", async () => {
