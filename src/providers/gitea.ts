@@ -63,13 +63,14 @@ import type {
   ReplyThreadInput,
   Thread,
   ThreadComment,
+  UpdateIssueInput,
   UpdatePullRequestInput,
   UpdateReleaseInput,
 } from "../types.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
 import { isPullRequestReview, normalizeReviewState } from "../review.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
-import { changesAssignees, nextAssignees } from "../pull-request-update.ts";
+import { changesAssignees, nextAssignees } from "../update-input.ts";
 import { buildCommitPatch } from "../commit-patch.ts";
 import {
   buildCiJobLog,
@@ -1630,28 +1631,8 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
           ? await this.client<GiteaPullRequest>(pullPath)
           : undefined;
 
-      if (input.addLabels?.length) {
-        const ids = await this.resolveIssueLabelIds(owner, repo, input.addLabels);
-        await this.client(`${issuePath}/labels`, { method: "POST", body: { labels: ids } });
-      }
-      const removed = new Set(input.removeLabels);
-      for (const label of current?.labels ?? []) {
-        if (!removed.has(label.name)) continue;
-        await this.client(`${issuePath}/labels/${encodePathSegment(label.id)}`, {
-          method: "DELETE",
-        });
-      }
-
-      const body: Record<string, unknown> = {};
-      if (input.title !== undefined) body.title = input.title;
-      if (input.body !== undefined) body.body = input.body;
-      if (input.state !== undefined) body.state = input.state;
-      if (current && changesAssignees(input)) {
-        body.assignees = nextAssignees(
-          (current.assignees ?? []).map(({ login }) => login),
-          input,
-        );
-      }
+      await this.writeIssueLabels(owner, repo, issuePath, input, current?.labels);
+      const body = this.editFields(input, current);
 
       return this.mapPullRequest(
         Object.keys(body).length > 0
@@ -1661,6 +1642,75 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
+  }
+
+  /**
+   * The same split as a pull request update. The issue is read first in any case,
+   * because this route answers for a pull request number too.
+   */
+  protected override async updateIssue(
+    owner: string,
+    repo: string,
+    number: number,
+    input: UpdateIssueInput,
+  ): Promise<Issue> {
+    const issuePath = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}`;
+    try {
+      const current = await this.client<GiteaIssue>(issuePath);
+      if (current.pull_request != null) {
+        throw new NotFoundError(`Issue not found: ${number}`, PLATFORM);
+      }
+
+      await this.writeIssueLabels(owner, repo, issuePath, input, current.labels);
+      const body = this.editFields(input, current);
+
+      return this.mapIssue(
+        Object.keys(body).length > 0
+          ? await this.client<GiteaIssue>(issuePath, { method: "PATCH", body })
+          : await this.client<GiteaIssue>(issuePath),
+      );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  /** Adds labels by id and removes the ones the item carries; the rest stay. */
+  private async writeIssueLabels(
+    owner: string,
+    repo: string,
+    issuePath: string,
+    input: UpdateIssueInput,
+    current: readonly GiteaLabel[] | null | undefined,
+  ): Promise<void> {
+    if (input.addLabels?.length) {
+      const ids = await this.resolveIssueLabelIds(owner, repo, input.addLabels);
+      await this.client(`${issuePath}/labels`, { method: "POST", body: { labels: ids } });
+    }
+    const removed = new Set(input.removeLabels);
+    for (const label of current ?? []) {
+      if (!removed.has(label.name)) continue;
+      await this.client(`${issuePath}/labels/${encodePathSegment(label.id)}`, {
+        method: "DELETE",
+      });
+    }
+  }
+
+  /** The edit route body; assignees go only as the whole list, built from the current one. */
+  private editFields(
+    input: UpdateIssueInput,
+    current: Pick<GiteaIssue, "assignees"> | undefined,
+  ): Record<string, unknown> {
+    const body: Record<string, unknown> = {};
+    if (input.title !== undefined) body.title = input.title;
+    if (input.body !== undefined) body.body = input.body;
+    if (input.state !== undefined) body.state = input.state;
+    if (current && changesAssignees(input)) {
+      body.assignees = nextAssignees(
+        (current.assignees ?? []).map(({ login }) => login),
+        input,
+      );
+    }
+    return body;
   }
 
   // --- Comments ---

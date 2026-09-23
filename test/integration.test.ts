@@ -160,6 +160,7 @@ describe("createProvider factory", () => {
     ["getRelease", "Releases are not supported by this provider"],
     ["createRelease", "Release creation is not supported by this provider"],
     ["updateRelease", "Release updates are not supported by this provider"],
+    ["updateIssue", "Issue updates are not supported by this provider"],
     ["updatePullRequest", "Pull request updates are not supported by this provider"],
     ["createIssueComment", "Issue comments are not supported by this provider"],
     ["createPullRequestComment", "Pull request comments are not supported by this provider"],

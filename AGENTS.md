@@ -45,7 +45,7 @@ src/
 ├── review.ts             # Review verdict normalization: GitHub and Gitea reviews, GitLab reviewer stances
 ├── changed-file.ts       # Changed-file status normalization + GitLab diff line counts
 ├── commit-patch.ts       # Bounded commit patch stream rendering and continuation
-├── pull-request-update.ts # Update input checks + whole-list assignee merge for GitLab and Gitea
+├── update-input.ts       # Issue and pull request update checks + whole-list assignee merge for GitLab and Gitea
 ├── pagination.ts         # Link header + x-next-page async generator
 ├── version.ts            # Package version — the one source for it in src/
 ├── tool-operations.ts    # Executors behind every agent surface (MCP, Pi, OMP)
@@ -225,6 +225,7 @@ vi.mock("../src/cache.ts", () => ({ cachedFetch: mocks.cachedFetch }));
 - **Releases are keyed by tag** because GitLab releases have no id; GitHub and Gitea update by the id a tag read returns. GitLab has no draft or prerelease flag, so `true` for either is a 501 there, never a silent publish.
 - **GitLab template provenance can be hidden:** use the effective template API and leave inherited source fields unknown rather than guessing a group or instance source.
 - **Pull request edits change lists, never replace them:** `addAssignees`/`removeAssignees` and `addLabels`/`removeLabels`. GitLab and Gitea take assignees only as the whole list, so they read the pull request first; `draft` stays out: none of the three REST edit routes takes it.
+- **Issue edits follow the same input.** GitHub and Gitea serve pull requests on the issue route, so `issues.update` reads the number first and answers `NotFoundError` for a pull request before any write. `state_reason` stays out: GitLab and Gitea have no counterpart.
 - **Gitea uses `limit`** param, not `per_page`.
 - **Gitea templates are repository-scoped:** do not claim GitHub-style owner inheritance.
 - **unstorage memory driver has no TTL** — that's why lru-cache driver is used.

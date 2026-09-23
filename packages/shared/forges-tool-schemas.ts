@@ -409,22 +409,7 @@ export function forgesToolSchemas() {
     assignees,
     account,
   });
-  const updatePullRequestParameters = closed({
-    platform,
-    owner,
-    repo,
-    number,
-    title: Type.Optional(Type.String({ description: "New pull-request title", minLength: 1 })),
-    body: Type.Optional(
-      Type.String({ description: "New pull-request body; replaces the old one" }),
-    ),
-    state: Type.Optional(
-      Type.Unsafe<"open" | "closed">({
-        type: "string",
-        enum: ["open", "closed"],
-        description: "Close or reopen; a merged pull request stays merged",
-      }),
-    ),
+  const listChanges = {
     addAssignees: Type.Optional(
       Type.Array(Type.String({ minLength: 1 }), {
         description: "Logins to assign next to the current ones. GitLab Free keeps one.",
@@ -449,6 +434,41 @@ export function forgesToolSchemas() {
         maxItems: 100,
       }),
     ),
+  };
+  const updateIssueParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    title: Type.Optional(Type.String({ description: "New issue title", minLength: 1 })),
+    body: Type.Optional(Type.String({ description: "New issue body; replaces the old one" })),
+    state: Type.Optional(
+      Type.Unsafe<"open" | "closed">({
+        type: "string",
+        enum: ["open", "closed"],
+        description: "Close or reopen",
+      }),
+    ),
+    ...listChanges,
+    account,
+  });
+  const updatePullRequestParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    title: Type.Optional(Type.String({ description: "New pull-request title", minLength: 1 })),
+    body: Type.Optional(
+      Type.String({ description: "New pull-request body; replaces the old one" }),
+    ),
+    state: Type.Optional(
+      Type.Unsafe<"open" | "closed">({
+        type: "string",
+        enum: ["open", "closed"],
+        description: "Close or reopen; a merged pull request stays merged",
+      }),
+    ),
+    ...listChanges,
     account,
   });
   const userParameters = closed({
@@ -559,6 +579,7 @@ export function forgesToolSchemas() {
     commentParameters,
     createCommentParameters,
     createIssueParameters,
+    updateIssueParameters,
     createPullRequestParameters,
     updatePullRequestParameters,
     userParameters,

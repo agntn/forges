@@ -59,6 +59,7 @@ import type {
   ReplyThreadInput,
   Thread,
   ThreadComment,
+  UpdateIssueInput,
   UpdatePullRequestInput,
   UpdateReleaseInput,
 } from "../types.ts";
@@ -2310,17 +2311,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     const pullPath = `${repository}/pulls/${encodePathSegment(prNumber)}`;
     const issuePath = `${repository}/issues/${encodePathSegment(prNumber)}`;
     try {
-      // Every label path is built before the first write, so a bad name changes nothing.
-      const removedLabelPaths = (input.removeLabels ?? []).map((label) => {
-        if (label === "." || label === "..") {
-          throw new ForgesError(
-            `GitHub has no route to remove the label "${label}"`,
-            400,
-            "github",
-          );
-        }
-        return `${issuePath}/labels/${encodeLabelPathSegment(label)}`;
-      });
+      const removedLabelPaths = this.removedLabelPaths(issuePath, input.removeLabels);
       const fields = { title: input.title, body: input.body, state: input.state };
       const patched = Object.values(fields).some((value) => value !== undefined);
       let data = await this.client<GitHubPullRequest>(
@@ -2328,43 +2319,98 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         patched ? { method: "PATCH", body: fields } : {},
       );
 
-      let issueWrites = false;
-      if (input.addAssignees?.length) {
-        await this.client(`${issuePath}/assignees`, {
-          method: "POST",
-          body: { assignees: input.addAssignees },
-        });
-        issueWrites = true;
-      }
-      if (input.removeAssignees?.length) {
-        await this.client(`${issuePath}/assignees`, {
-          method: "DELETE",
-          body: { assignees: input.removeAssignees },
-        });
-        issueWrites = true;
-      }
-      if (input.addLabels?.length) {
-        await this.client(`${issuePath}/labels`, {
-          method: "POST",
-          body: { labels: input.addLabels },
-        });
-        issueWrites = true;
-      }
-      for (const labelPath of removedLabelPaths) {
-        try {
-          await this.client(labelPath, { method: "DELETE" });
-        } catch (error) {
-          // The pull request was just read, so a 404 here is a label it does not carry.
-          if (!(error instanceof FetchError && error.status === 404)) throw error;
-        }
-        issueWrites = true;
-      }
-
+      const issueWrites = await this.writeIssueLists(issuePath, input, removedLabelPaths);
       if (issueWrites) data = await this.client<GitHubPullRequest>(pullPath);
       return this.mapPullRequest(data);
     } catch (error) {
       throw normalizeError(error, "github");
     }
+  }
+
+  /**
+   * Title, body and state go out in one PATCH, assignees and labels through the
+   * add and remove endpoints, which leave the rest alone. The issue is read
+   * first, because this route answers for a pull request number too, and read
+   * again after the list writes so the result shows them.
+   */
+  protected override async updateIssue(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    input: UpdateIssueInput,
+  ): Promise<Issue> {
+    const issuePath = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(issueNumber)}`;
+    try {
+      const removedLabelPaths = this.removedLabelPaths(issuePath, input.removeLabels);
+      let data = await this.client<GitHubIssue>(issuePath);
+      if (data.pull_request !== undefined) {
+        throw new NotFoundError(`Issue not found: ${issueNumber}`, "github");
+      }
+      const fields = { title: input.title, body: input.body, state: input.state };
+      if (Object.values(fields).some((value) => value !== undefined)) {
+        data = await this.client<GitHubIssue>(issuePath, { method: "PATCH", body: fields });
+      }
+
+      if (await this.writeIssueLists(issuePath, input, removedLabelPaths)) {
+        data = await this.client<GitHubIssue>(issuePath);
+      }
+      return this.mapIssue(data);
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /** Every label path is built before the first write, so a bad name changes nothing. */
+  private removedLabelPaths(issuePath: string, labels: readonly string[] = []): string[] {
+    return labels.map((label) => {
+      if (label === "." || label === "..") {
+        throw new ForgesError(`GitHub has no route to remove the label "${label}"`, 400, "github");
+      }
+      return `${issuePath}/labels/${encodeLabelPathSegment(label)}`;
+    });
+  }
+
+  /**
+   * Adds and removes assignees and labels through the issue endpoints, which
+   * leave the others alone. Resolves to whether anything was written.
+   */
+  private async writeIssueLists(
+    issuePath: string,
+    input: UpdateIssueInput,
+    removedLabelPaths: readonly string[],
+  ): Promise<boolean> {
+    let written = false;
+    if (input.addAssignees?.length) {
+      await this.client(`${issuePath}/assignees`, {
+        method: "POST",
+        body: { assignees: input.addAssignees },
+      });
+      written = true;
+    }
+    if (input.removeAssignees?.length) {
+      await this.client(`${issuePath}/assignees`, {
+        method: "DELETE",
+        body: { assignees: input.removeAssignees },
+      });
+      written = true;
+    }
+    if (input.addLabels?.length) {
+      await this.client(`${issuePath}/labels`, {
+        method: "POST",
+        body: { labels: input.addLabels },
+      });
+      written = true;
+    }
+    for (const labelPath of removedLabelPaths) {
+      try {
+        await this.client(labelPath, { method: "DELETE" });
+      } catch (error) {
+        // The item was just read, so a 404 here is a label it does not carry.
+        if (!(error instanceof FetchError && error.status === 404)) throw error;
+      }
+      written = true;
+    }
+    return written;
   }
 
   // --- Comments ---

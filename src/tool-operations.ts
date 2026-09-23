@@ -6,7 +6,7 @@ import type {
   VerifyLocalMergeOptions,
 } from "./local.ts";
 import { assertAssignees } from "./assignees.ts";
-import { assertPullRequestUpdate } from "./pull-request-update.ts";
+import { assertIssueUpdate, assertPullRequestUpdate } from "./update-input.ts";
 import { waitForChecks, type WaitedCheckPage } from "./check-wait.ts";
 import { FetchError } from "ofetch";
 import { AuthenticationError, ForgesError } from "./errors.ts";
@@ -63,6 +63,7 @@ import type {
   Thread,
   ThreadComment,
   ThreadState,
+  UpdateIssueInput,
   UpdatePullRequestInput,
   UpdateReleaseInput,
   User,
@@ -512,6 +513,8 @@ export type CreateIssueParams = RepositoryParams & AccountParams & CreateIssueIn
 
 export type CreatePullRequestParams = RepositoryParams & AccountParams & CreatePullRequestInput;
 
+export type UpdateIssueParams = GetRepositoryItemParams & AccountParams & UpdateIssueInput;
+
 export type UpdatePullRequestParams = GetRepositoryItemParams &
   AccountParams &
   UpdatePullRequestInput;
@@ -586,7 +589,7 @@ function assignmentNote(
 
 /** A platform can accept an assignee change and still not apply it, GitLab Free past one. */
 function reassignmentNote(
-  params: Pick<UpdatePullRequestInput, "addAssignees" | "removeAssignees">,
+  params: Pick<UpdateIssueInput, "addAssignees" | "removeAssignees">,
   actual: Array<{ login: string }>,
 ): string | undefined {
   const assigned = new Set(actual.map(({ login }) => login.toLowerCase()));
@@ -1229,6 +1232,25 @@ export async function createPullRequest(
       pullRequest,
       assignmentNote(params.assignees, pullRequest.assignees),
     );
+  });
+}
+
+export async function updateIssue(args: UpdateIssueParams): Promise<ForgesToolResult<Issue>> {
+  const params = repositoryTarget(args);
+  const input: UpdateIssueInput = {
+    title: params.title,
+    body: params.body,
+    state: params.state,
+    addAssignees: params.addAssignees,
+    removeAssignees: params.removeAssignees,
+    addLabels: params.addLabels,
+    removeLabels: params.removeLabels,
+  };
+  assertIssueUpdate(input, params.platform);
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform, params.account);
+    const issue = await provider.issues.update(params.owner, params.repo, params.number, input);
+    return result(params.platform, issue, reassignmentNote(input, issue.assignees));
   });
 }
 

@@ -25,7 +25,7 @@ vi.mock("../src/cache.ts", () => ({
 }));
 
 import { GitHubProvider } from "../src/providers/github.ts";
-import type { UpdatePullRequestInput } from "../src/types.ts";
+import type { UpdateIssueInput, UpdatePullRequestInput } from "../src/types.ts";
 
 // --- Fixtures (snake_case matching real GitHub API) ---
 
@@ -3220,6 +3220,93 @@ describe("GitHubProvider", () => {
           99,
           input as unknown as UpdatePullRequestInput,
         ),
+      ).rejects.toMatchObject({ status: 400, message: expect.stringContaining(message) });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("issues.update", () => {
+    const issuePath = "/repos/octocat/hello-world/issues/42";
+
+    it("reads the issue, then patches only the fields given", async () => {
+      mocks.client
+        .mockResolvedValueOnce(ghIssue)
+        .mockResolvedValueOnce({ ...ghIssue, body: "Fixed number.", state: "closed" });
+
+      const issue = await gh.issues.update("octocat", "hello-world", 42, {
+        body: "Fixed number.",
+        state: "closed",
+      });
+
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(mocks.client).toHaveBeenNthCalledWith(1, issuePath);
+      // Undefined fields drop out of the JSON body, so the title goes untouched.
+      expect(JSON.parse(JSON.stringify(mocks.client.mock.calls[1]))).toEqual([
+        issuePath,
+        { method: "PATCH", body: { body: "Fixed number.", state: "closed" } },
+      ]);
+      expect(issue.body).toBe("Fixed number.");
+      expect(issue.state).toBe("closed");
+      expect(issue.labels).toEqual(["bug", "priority:high"]);
+    });
+
+    it("adds and removes through the list endpoints, then reads the result back", async () => {
+      const updated = {
+        ...ghIssue,
+        assignees: [{ login: "octocat" }, { login: "reviewer" }],
+        labels: [{ name: "docs" }],
+      };
+      mocks.client
+        .mockResolvedValueOnce(ghIssue)
+        .mockResolvedValueOnce(ghIssue)
+        .mockResolvedValueOnce(ghIssue)
+        .mockResolvedValueOnce([])
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce(updated);
+
+      const issue = await gh.issues.update("octocat", "hello-world", 42, {
+        addAssignees: ["reviewer"],
+        removeAssignees: ["former"],
+        addLabels: ["docs"],
+        removeLabels: ["never-set"],
+      });
+
+      expect(mocks.client.mock.calls).toEqual([
+        [issuePath],
+        [`${issuePath}/assignees`, { method: "POST", body: { assignees: ["reviewer"] } }],
+        [`${issuePath}/assignees`, { method: "DELETE", body: { assignees: ["former"] } }],
+        [`${issuePath}/labels`, { method: "POST", body: { labels: ["docs"] } }],
+        [`${issuePath}/labels/never-set`, { method: "DELETE" }],
+        [issuePath],
+      ]);
+      expect(issue.assignees).toEqual([{ login: "octocat" }, { login: "reviewer" }]);
+      expect(issue.labels).toEqual(["docs"]);
+    });
+
+    it("writes nothing when the number is a pull request", async () => {
+      mocks.client.mockResolvedValueOnce({ ...ghIssue, pull_request: {} });
+
+      await expect(
+        gh.issues.update("octocat", "hello-world", 42, { state: "closed", addLabels: ["docs"] }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses a dot label before the first request", async () => {
+      await expect(
+        gh.issues.update("octocat", "hello-world", 42, { title: "Renamed", removeLabels: ["."] }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{}, "Issue update needs at least one change"],
+      [{ title: "  " }, "Issue title must not be empty"],
+      [{ state: "merged" }, 'Issue state must be "open" or "closed"'],
+      [{ addLabels: ["docs"], removeLabels: ["docs"] }, "both add and remove: docs"],
+    ])("rejects %j before any request", async (input, message) => {
+      await expect(
+        gh.issues.update("octocat", "hello-world", 42, input as unknown as UpdateIssueInput),
       ).rejects.toMatchObject({ status: 400, message: expect.stringContaining(message) });
       expect(mocks.client).not.toHaveBeenCalled();
     });

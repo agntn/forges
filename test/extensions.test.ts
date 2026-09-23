@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => {
     create: vi.fn(),
     listComments: vi.fn(),
     createComment: vi.fn(),
+    update: vi.fn(),
   };
   const pullRequests = {
     list: vi.fn(),
@@ -120,6 +121,7 @@ const toolNames = [
   "forges_issues_comments_get",
   "forges_issues_comments_create",
   "forges_issues_create",
+  "forges_issues_update",
   "forges_pull_requests_list",
   "forges_pull_requests_search_global",
   "forges_pull_requests_search",
@@ -993,6 +995,62 @@ describe("Forges Pi extension", () => {
     });
   });
 
+  it("shows an issue update in the approval dialog before it goes out", async () => {
+    const confirm = vi.fn().mockResolvedValue(true);
+    mocks.issues.update.mockResolvedValue({ number: 174, assignees: [] });
+    const tool = requirePiTool(registerPiTools(), "forges_issues_update");
+
+    await tool.execute(
+      "test",
+      { repo: "agntn/forges", number: 174, state: "closed", removeLabels: ["needs-triage"] },
+      undefined,
+      undefined,
+      approvalPiContext(confirm),
+    );
+
+    expect(confirm).toHaveBeenCalledWith(
+      "Update issue?",
+      [
+        "Repository  agntn/forges on GitHub",
+        "Number      #174",
+        "State       Close",
+        "Assignees   Unchanged",
+        "Labels      -needs-triage",
+        "",
+        "Title",
+        "(unchanged)",
+        "",
+        "Description",
+        "(unchanged)",
+      ].join("\n"),
+      { signal: undefined },
+    );
+    expect(mocks.issues.update).toHaveBeenCalledWith("agntn", "forges", 174, {
+      title: undefined,
+      body: undefined,
+      state: "closed",
+      addAssignees: undefined,
+      removeAssignees: undefined,
+      addLabels: undefined,
+      removeLabels: ["needs-triage"],
+    });
+  });
+
+  it("fails closed when an issue update is declined", async () => {
+    const tool = requirePiTool(registerPiTools(), "forges_issues_update");
+
+    await expect(
+      tool.execute(
+        "test",
+        { repo: "agntn/forges", number: 174, body: "edited" },
+        undefined,
+        undefined,
+        approvalPiContext(vi.fn().mockResolvedValue(false)),
+      ),
+    ).rejects.toThrow("Issue update was cancelled by the user");
+    expect(mocks.issues.update).not.toHaveBeenCalled();
+  });
+
   it("fails closed when a pull-request update has no approval UI or is declined", async () => {
     const tool = requirePiTool(registerPiTools(), "forges_pull_requests_update");
     const params = { repo: "agntn/forges", number: 5, body: "edited" };
@@ -1504,6 +1562,7 @@ describe("Forges OMP extension", () => {
     const { tools } = registerOmpTools();
     const mutationTools: Record<string, true> = {
       forges_issues_create: true,
+      forges_issues_update: true,
       forges_issues_comments_create: true,
       forges_pull_requests_create: true,
       forges_pull_requests_comments_create: true,

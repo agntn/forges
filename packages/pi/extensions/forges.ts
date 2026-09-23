@@ -95,9 +95,7 @@ function releaseApprovalMessage(
 }
 
 /** An update lists only what it changes; everything else stays as it is. */
-function pullRequestUpdateApprovalMessage(
-  params: Resolved<ForgesTools.UpdatePullRequestParams>,
-): string {
+function updateApprovalMessage(params: Resolved<ForgesTools.UpdateIssueParams>): string {
   const changes = (added: string[] | undefined, removed: string[] | undefined) =>
     [
       ...(added ?? []).map((value) => `+${approvalField(value)}`),
@@ -563,6 +561,31 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_issues_update",
+    label: "Update Forges Issue",
+    description:
+      "Change an issue's title, body, state, assignees or labels; this mutates the selected Git platform",
+    promptSnippet: "Edit or close an issue on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_issues_update only when the user explicitly asks to change an issue; read it with forges_issues_get first, a new body replaces the old one.",
+    ],
+    parameters: schemas.updateIssueParameters,
+    ...statusRenderers("forges_issues_update", "Update Forges Issue"),
+    async execute(_toolCallId, args, signal, _onUpdate, ctx) {
+      const operations = await loadToolOperations();
+      const params = operations.repositoryTarget(args);
+      await confirmWrite(
+        ctx,
+        signal,
+        "Update issue?",
+        updateApprovalMessage(params),
+        "Issue update",
+      );
+      return operations.updateIssue(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_pull_requests_list",
     label: "Forges Pull Requests",
     description: "List normalized pull requests for a repository, optionally filtered by state",
@@ -787,7 +810,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
         ctx,
         signal,
         "Update pull request?",
-        pullRequestUpdateApprovalMessage(params),
+        updateApprovalMessage(params),
         "Pull request update",
       );
       return operations.updatePullRequest(params);

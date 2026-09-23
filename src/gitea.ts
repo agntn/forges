@@ -31,6 +31,7 @@ export type {
   CreateCommentInput,
   CreateIssueInput,
   CreatePullRequestInput,
+  UpdateIssueInput,
   UpdatePullRequestInput,
   ReplyThreadInput,
   ProviderConfig,

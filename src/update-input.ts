@@ -1,6 +1,6 @@
 import { assertAssignees } from "./assignees.ts";
 import { ForgesError } from "./errors.ts";
-import type { UpdatePullRequestInput } from "./types.ts";
+import type { UpdateIssueInput } from "./types.ts";
 
 const MAX_LABELS = 100;
 
@@ -34,16 +34,16 @@ function overlap(
  * before any request goes out. Logins compare case-insensitively, as every
  * platform treats them; label names compare exactly.
  */
-export function assertPullRequestUpdate(input: UpdatePullRequestInput, platform?: string): void {
+function assertUpdate(input: UpdateIssueInput, subject: string, platform?: string): void {
   assertAssignees(input.addAssignees, platform);
   assertAssignees(input.removeAssignees, platform);
   assertLabels(input.addLabels, "addLabels", platform);
   assertLabels(input.removeLabels, "removeLabels", platform);
   if (input.title !== undefined && input.title.trim() === "") {
-    throw new ForgesError("Pull request title must not be empty", 400, platform);
+    throw new ForgesError(`${subject} title must not be empty`, 400, platform);
   }
   if (input.state !== undefined && input.state !== "open" && input.state !== "closed") {
-    throw new ForgesError('Pull request state must be "open" or "closed"', 400, platform);
+    throw new ForgesError(`${subject} state must be "open" or "closed"`, 400, platform);
   }
 
   const assignees = overlap(input.addAssignees, input.removeAssignees, (login) =>
@@ -63,8 +63,16 @@ export function assertPullRequestUpdate(input: UpdatePullRequestInput, platform?
       (list) => list !== undefined && list.length > 0,
     );
   if (!changes) {
-    throw new ForgesError("Pull request update needs at least one change", 400, platform);
+    throw new ForgesError(`${subject} update needs at least one change`, 400, platform);
   }
+}
+
+export function assertIssueUpdate(input: UpdateIssueInput, platform?: string): void {
+  assertUpdate(input, "Issue", platform);
+}
+
+export function assertPullRequestUpdate(input: UpdateIssueInput, platform?: string): void {
+  assertUpdate(input, "Pull request", platform);
 }
 
 /**
@@ -73,7 +81,7 @@ export function assertPullRequestUpdate(input: UpdatePullRequestInput, platform?
  */
 export function nextAssignees(
   current: readonly string[],
-  input: Pick<UpdatePullRequestInput, "addAssignees" | "removeAssignees">,
+  input: Pick<UpdateIssueInput, "addAssignees" | "removeAssignees">,
 ): string[] {
   const removed = new Set(input.removeAssignees?.map((login) => login.toLowerCase()));
   const next = current.filter((login) => !removed.has(login.toLowerCase()));
@@ -88,7 +96,7 @@ export function nextAssignees(
 
 /** Whether the update touches assignees at all. */
 export function changesAssignees(
-  input: Pick<UpdatePullRequestInput, "addAssignees" | "removeAssignees">,
+  input: Pick<UpdateIssueInput, "addAssignees" | "removeAssignees">,
 ): boolean {
   return Boolean(input.addAssignees?.length || input.removeAssignees?.length);
 }
