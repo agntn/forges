@@ -1567,6 +1567,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   /**
    * Gitea matches keywords, answers newest first and caps nothing. Its search route has
    * no repository filter, so a repository scope goes to that repository's issue list.
+   * Forgejo ignores `created_by` there, so rows by anyone else mean the filter was dropped.
    */
   protected override async searchPullRequestsGlobal(
     searchQuery: string,
@@ -1596,7 +1597,8 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         );
       }
       const query: Record<string, string> = {
-        q: searchQuery,
+        ...(searchQuery.trim() === "" ? {} : { q: searchQuery }),
+        ...(options?.author === undefined ? {} : { created_by: options.author }),
         type: "pulls",
         state: "all",
         page: String(page),
@@ -1610,6 +1612,17 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       }
       const { data, headers } = await rawFetch<GiteaIssue[]>(this.client, path, { query });
       const rawItems = data ?? [];
+      const author = options?.author?.toLowerCase();
+      if (
+        author !== undefined &&
+        rawItems.some((raw) => raw.user?.login?.toLowerCase() !== author)
+      ) {
+        throw new ForgesError(
+          "This Gitea host ignores the author filter on pull-request search",
+          501,
+          PLATFORM,
+        );
+      }
       const items: GlobalPullRequestSearchItem[] = [];
       for (const raw of rawItems) {
         const repository = raw.repository?.full_name;

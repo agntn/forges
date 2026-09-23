@@ -153,6 +153,8 @@ describe("global pull-request search", () => {
       { repo: "x" },
       { owner: "bad owner" },
       { owner: "ok", repo: "bad:repo" },
+      { author: "two words" },
+      { author: "author:x" },
       { page: 0 },
       { page: 1.5 },
       { page: 35 },
@@ -164,6 +166,20 @@ describe("global pull-request search", () => {
       });
     }
     expect(mocks.rawFetch).not.toHaveBeenCalled();
+  });
+
+  it("adds author as a qualifier, with or without keywords", async () => {
+    mocks.rawFetch.mockResolvedValue({
+      data: { items: [], total_count: 0 },
+      headers: new Headers(),
+    });
+    const resource = new GitHubProvider({ token: "" }).pullRequests;
+    await resource.searchGlobal("fix", { author: "contributor" });
+    await resource.searchGlobal("", { author: "contributor" });
+    expect(mocks.rawFetch.mock.calls.map(([, , options]) => options.query.q)).toEqual([
+      "fix is:pr author:contributor",
+      "is:pr author:contributor",
+    ]);
   });
 
   it.each([401, 404, 405])(
@@ -257,6 +273,23 @@ describe("Gitea global pull-request search", () => {
     const result = await new GiteaProvider({ token: "" }).pullRequests.searchGlobal("fix");
     expect(result.items.map((item) => item.repository)).toEqual(["gitea/gitea-mcp"]);
     expect(result).toMatchObject({ totalCount: 4, incomplete: true });
+  });
+
+  it("filters by author through created_by and refuses a host that ignores it", async () => {
+    const resource = new GiteaProvider({ token: "" }).pullRequests;
+    mocks.rawFetch.mockResolvedValueOnce({ data: [giteaHit], headers: new Headers() });
+    const result = await resource.searchGlobal("", { author: "Contributor" });
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/repos/issues/search", {
+      query: { created_by: "Contributor", type: "pulls", state: "all", page: "1", limit: "30" },
+    });
+    expect(result.items).toHaveLength(1);
+    mocks.rawFetch.mockResolvedValueOnce({
+      data: [giteaHit, { ...giteaHit, user: { login: "someone-else" } }],
+      headers: new Headers(),
+    });
+    await expect(resource.searchGlobal("fix", { author: "contributor" })).rejects.toMatchObject({
+      status: 501,
+    });
   });
 
   it("accepts newest first and rejects any other ordering or bad page before transport", async () => {
@@ -367,20 +400,21 @@ describe("GitLab global pull-request search", () => {
     expect(result.totalCount).toBeUndefined();
   });
 
-  it("turns author: into the author filter and orders by update", async () => {
+  it("filters by author and orders by update", async () => {
     mocks.rawFetch.mockResolvedValue({ data: [], headers: new Headers() });
     const resource = new GitLabProvider({ token: "" }).pullRequests;
-    await resource.searchGlobal("author:eighthave", { sort: "updated", order: "asc" });
-    await resource.searchGlobal(" gradle  author:eighthave  update ");
+    await resource.searchGlobal("", { author: "eighthave", sort: "updated", order: "asc" });
+    await resource.searchGlobal(" gradle author:eighthave ");
     expect(mocks.rawFetch.mock.calls.map(([, , options]) => options.query)).toEqual([
       expect.objectContaining({
         author_username: "eighthave",
         order_by: "updated_at",
         sort: "asc",
       }),
-      expect.objectContaining({ search: "gradle update", author_username: "eighthave" }),
+      expect.objectContaining({ search: "gradle author:eighthave" }),
     ]);
     expect(mocks.rawFetch.mock.calls[0]![2].query).not.toHaveProperty("search");
+    expect(mocks.rawFetch.mock.calls[1]![2].query).not.toHaveProperty("author_username");
   });
 
   it("drops hits without a repository and marks the page incomplete", async () => {
@@ -397,18 +431,13 @@ describe("GitLab global pull-request search", () => {
     expect(result).toMatchObject({ totalCount: 3, incomplete: true });
   });
 
-  it("rejects comment ordering, two authors and bad pages before transport", async () => {
+  it("rejects comment ordering and bad pages before transport", async () => {
     const resource = new GitLabProvider({ token: "" }).pullRequests;
     await expect(resource.searchGlobal("fix", { sort: "comments" })).rejects.toMatchObject({
       status: 501,
     });
-    for (const [query, options] of [
-      ["author:a author:b", {}],
-      ["fix", { page: 0 }],
-      ["fix", { perPage: 101 }],
-      ["fix", { perPage: Number.NaN }],
-    ] as const) {
-      await expect(resource.searchGlobal(query, options)).rejects.toMatchObject({ status: 400 });
+    for (const options of [{ page: 0 }, { perPage: 101 }, { perPage: Number.NaN }]) {
+      await expect(resource.searchGlobal("fix", options)).rejects.toMatchObject({ status: 400 });
     }
     expect(mocks.rawFetch).not.toHaveBeenCalled();
   });
@@ -418,7 +447,7 @@ describe("GitLab global pull-request search", () => {
     mocks.rawFetch.mockRejectedValueOnce(makeFetchError(408));
     await expect(resource.searchGlobal("fix")).rejects.toMatchObject({
       status: 408,
-      message: expect.stringContaining("author:"),
+      message: expect.stringContaining("author"),
     });
     mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
     await expect(resource.searchGlobal("fix", { owner: "someone" })).rejects.toMatchObject({

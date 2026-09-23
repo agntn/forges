@@ -604,12 +604,12 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     name: "forges_pull_requests_search_global",
     label: "Search Pull Requests Across Repositories",
     description:
-      "Search pull requests across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords plus author:<username>, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. Returns repository identity, totalCount and incomplete. Follow nextPage while hasNextPage is true; narrow the query when incomplete is true.",
+      "Search pull requests across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. author filters by login on every platform. Returns repository identity, totalCount and incomplete. Follow nextPage while hasNextPage is true; narrow the query when incomplete is true.",
     parameters: schemas.globalPullRequestSearchParameters,
     ...statusRenderers("forges_pull_requests_search_global", "Search Pull Requests"),
     promptSnippet: "Find an author's pull requests across repositories, optionally newest first.",
     promptGuidelines: [
-      "Use forges_pull_requests_search_global with sort created and order desc for recent author contributions; narrow the query when incomplete is true.",
+      "Use forges_pull_requests_search_global with author, sort created and order desc for recent author contributions; narrow the query when incomplete is true.",
     ],
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).searchPullRequestsGlobal(params);

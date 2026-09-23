@@ -227,6 +227,8 @@ export interface GlobalPullRequestSearchItem extends PullRequestSearchItem {
 
 /** Native query scope, ordering and pagination for search across repositories. */
 export interface GlobalPullRequestSearchOptions {
+  /** Login of the author; each provider turns it into its own filter. */
+  author?: string;
   owner?: string;
   repo?: string;
   page?: number;

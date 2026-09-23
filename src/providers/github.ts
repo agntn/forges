@@ -2065,7 +2065,10 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       if (options?.order !== undefined && !["asc", "desc"].includes(options.order)) {
         throw new ForgesError("Pull-request search order must be asc or desc", 400);
       }
-      let query = `${searchQuery} is:pr`;
+      let query = `${searchQuery} is:pr`.trim();
+      if (options?.author !== undefined) {
+        query += ` author:${githubSearchQualifierSegment(options.author)}`;
+      }
       if (options?.owner !== undefined) {
         const owner = githubSearchQualifierSegment(options.owner);
         query +=

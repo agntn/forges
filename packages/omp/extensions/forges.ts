@@ -194,11 +194,19 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   });
   const globalPullRequestSearchParameters = closed({
     platform,
-    query: Type.String({
-      description:
-        "Native pull-request query: author: and created: qualifiers on GitHub, keywords on Gitea, keywords and author: on GitLab",
-      minLength: 1,
-    }),
+    query: Type.Optional(
+      Type.String({
+        description:
+          "Native pull-request query: qualifiers such as created: on GitHub, keywords on Gitea and GitLab. Optional with author",
+        minLength: 1,
+      }),
+    ),
+    author: Type.Optional(
+      Type.String({
+        description: "Login of the pull request author, on every platform",
+        minLength: 1,
+      }),
+    ),
     owner,
     repo: Type.Optional(repo),
     page,
@@ -840,7 +848,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     name: "forges_pull_requests_search_global",
     label: "Search Pull Requests Across Repositories",
     description:
-      "Search pull requests across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords plus author:<username>, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. Returns repository identity, totalCount and incomplete. Follow nextPage while hasNextPage is true; narrow the query when incomplete is true.",
+      "Search pull requests across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. author filters by login on every platform. Returns repository identity, totalCount and incomplete. Follow nextPage while hasNextPage is true; narrow the query when incomplete is true.",
     parameters: globalPullRequestSearchParameters,
     ...statusRenderers("forges_pull_requests_search_global", "Search Pull Requests"),
     approval: toolApproval("forges_pull_requests_search_global"),

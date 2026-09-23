@@ -1812,7 +1812,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     }
   }
 
-  /** `author:` is GitLab's author filter; without `scope=all` the route lists only your own. */
+  /** Without `scope=all`, GitLab's `/merge_requests` lists only the caller's own. */
   protected override async searchPullRequestsGlobal(
     searchQuery: string,
     options?: GlobalPullRequestSearchOptions,
@@ -1841,22 +1841,6 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       if (order !== "asc" && order !== "desc") {
         throw new ForgesError("Pull-request search order must be asc or desc", 400, "gitlab");
       }
-      const words: string[] = [];
-      let author: string | undefined;
-      for (const term of searchQuery.trim().split(/\s+/u)) {
-        const match = /^author:(.+)$/u.exec(term);
-        if (!match) {
-          words.push(term);
-        } else if (author === undefined) {
-          author = match[1];
-        } else {
-          throw new ForgesError(
-            "GitLab merge request search takes one author: qualifier",
-            400,
-            "gitlab",
-          );
-        }
-      }
       const query: Record<string, string> = {
         state: "all",
         order_by: `${sort}_at`,
@@ -1864,8 +1848,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         page: String(page),
         per_page: String(perPage),
       };
-      if (words.length > 0) query.search = words.join(" ");
-      if (author !== undefined) query.author_username = author;
+      if (searchQuery.trim() !== "") query.search = searchQuery.trim();
+      if (options?.author !== undefined) query.author_username = options.author;
       let path = "/merge_requests";
       if (options?.owner !== undefined && options.repo !== undefined) {
         path = `/projects/${encodeProjectPath(options.owner, options.repo)}/merge_requests`;
@@ -1894,7 +1878,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       const normalized = normalizeError(error, "gitlab");
       if (normalized.status === 408) {
         throw new ForgesError(
-          "GitLab timed out on this search. Narrow it with an owner or an author: qualifier",
+          "GitLab timed out on this search. Narrow it with an owner or an author",
           408,
           "gitlab",
           normalized.originalError,
@@ -1902,7 +1886,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       }
       if (normalized.status === 404 && options?.owner !== undefined && options.repo === undefined) {
         throw new NotFoundError(
-          `No GitLab group ${options.owner}. For one user's merge requests, search with author:<username> instead`,
+          `No GitLab group ${options.owner}. For one user's merge requests, pass author instead`,
           "gitlab",
           normalized.originalError,
         );
