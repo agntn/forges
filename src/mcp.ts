@@ -9,6 +9,7 @@ import type { Static, TObject } from "typebox";
 import type { ForgesToolSchemas } from "../packages/shared/forges-tool-schemas.ts";
 import type * as ToolOperations from "./tool-operations.ts";
 import type { ForgesToolResult } from "./tool-operations.ts";
+import { redactEndpoint } from "./redact-endpoint.ts";
 import { version } from "./version.ts";
 import { lazy } from "../packages/shared/lazy.ts";
 import { forgeToolTitle } from "../packages/shared/tui.ts";
@@ -479,36 +480,17 @@ function errorResult(text: string): CallToolResult {
 }
 
 /**
- * ofetch formats every FetchError message as `[METHOD] "<absolute url>": …` and
- * `normalizeError` keeps that text, so passing it straight through would hand the
- * model the `FORGES_*_BASE_URL` the tool surface deliberately withholds — along
- * with any credentials an operator put in it. The request line goes; a URL left
- * anywhere else in the message becomes a placeholder. Text a provider authored
- * carries no endpoint and survives untouched.
- */
-const REQUEST_LINE = /\[[A-Z]+\] "[^"]*":\s*/g;
-const ABSOLUTE_URL = /\b[a-z][\w+.-]*:\/\/\S+/gi;
-
-function redactEndpoint(message: string): string {
-  return message.replace(REQUEST_LINE, "").replace(ABSOLUTE_URL, "<endpoint>").trim();
-}
-
-/**
  * Builds the model-facing failure line.
  *
- * The retry window is appended because it is the one field an agent can act on
- * that the message itself never carries.
+ * The executors already strip the endpoint from provider failures and name the
+ * retry window; the redaction here covers a failure raised anywhere else.
  */
 function failureText(errors: ErrorsModule, name: string, error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
   const status = error instanceof errors.ForgesError ? error.status : undefined;
   const reason =
     redactEndpoint(raw) || (status === undefined ? "no reason reported" : `HTTP ${status}`);
-  const retry =
-    error instanceof errors.RateLimitError && error.retryAfter !== undefined
-      ? ` Retry after ${error.retryAfter}s.`
-      : "";
-  return `${name} failed: ${reason}${retry}`;
+  return `${name} failed: ${reason}`;
 }
 
 /**

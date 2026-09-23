@@ -399,7 +399,7 @@ describe("configured provider", () => {
     const throttled = getRepository({ repo: "agntn/busy" });
 
     await expect(throttled).rejects.toThrow(
-      "Rate limit exceeded: 403. The request carried no token, and requests without one get a far lower rate limit.",
+      "Rate limit exceeded: 403. Retry after 60s. The request carried no token, and requests without one get a far lower rate limit.",
     );
     await expect(throttled).rejects.toMatchObject({ retryAfter: 60 });
   });
@@ -422,7 +422,7 @@ describe("configured provider", () => {
 
   it("leaves a 404 alone when a token was sent or the provider found nothing", async () => {
     await expect(getRepository({ repo: "oritwoen/missing" })).rejects.toThrow(
-      /^Resource not found: 404 $/,
+      /^Resource not found: 404$/,
     );
 
     resetPinnedProviders();
