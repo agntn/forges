@@ -195,7 +195,8 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   const globalPullRequestSearchParameters = closed({
     platform,
     query: Type.String({
-      description: "Native pull-request query, including author: and created: qualifiers",
+      description:
+        "Native pull-request query: author: and created: qualifiers on GitHub, keywords on Gitea",
       minLength: 1,
     }),
     owner,
@@ -839,7 +840,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     name: "forges_pull_requests_search_global",
     label: "Search Pull Requests Across Repositories",
     description:
-      "Search pull requests across repositories. GitHub supports optional owner/repository scope and sort/order (created/desc for newest). Returns repository identity, totalCount, incomplete and resultLimit (1000). Follow nextPage while hasNextPage is true; narrow the query when incomplete is true. Other providers report unsupported search.",
+      "Search pull requests across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first, with resultLimit null. Returns repository identity, totalCount and incomplete. Follow nextPage while hasNextPage is true; narrow the query when incomplete is true. GitLab reports unsupported search.",
     parameters: globalPullRequestSearchParameters,
     ...statusRenderers("forges_pull_requests_search_global", "Search Pull Requests"),
     approval: toolApproval("forges_pull_requests_search_global"),

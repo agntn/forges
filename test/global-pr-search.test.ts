@@ -172,13 +172,111 @@ describe("global pull-request search", () => {
     },
   );
 
-  it.each([GitLabProvider, GiteaProvider])(
-    "reports unsupported providers without transport",
-    async (Provider) => {
-      await expect(
-        new Provider({ token: "" }).pullRequests.searchGlobal("author:contributor"),
-      ).rejects.toMatchObject({ status: 501 });
-      expect(mocks.rawFetch).not.toHaveBeenCalled();
-    },
-  );
+  it("reports GitLab as unsupported without transport", async () => {
+    await expect(
+      new GitLabProvider({ token: "" }).pullRequests.searchGlobal("author:contributor"),
+    ).rejects.toMatchObject({ status: 501 });
+    expect(mocks.rawFetch).not.toHaveBeenCalled();
+  });
+});
+
+const giteaHit = {
+  id: 7,
+  number: 279,
+  title: "Fix search",
+  body: "Details",
+  state: "closed",
+  labels: [],
+  user: { login: "contributor" },
+  assignees: null,
+  created_at: "2026-09-23T12:35:30Z",
+  updated_at: "2026-09-23T15:34:40Z",
+  html_url: "https://gitea.com/gitea/gitea-mcp/pulls/279",
+  pull_request: { merged: true, draft: false },
+  repository: { id: 1, name: "gitea-mcp", owner: "gitea", full_name: "gitea/gitea-mcp" },
+};
+
+describe("Gitea global pull-request search", () => {
+  it("searches every repository, all states, and keeps each hit's repository", async () => {
+    mocks.rawFetch.mockResolvedValue({
+      data: [
+        giteaHit,
+        {
+          ...giteaHit,
+          number: 1,
+          pull_request: { merged: false, draft: true },
+          repository: { full_name: "someone/project" },
+        },
+      ],
+      headers: new Headers({
+        link: '<https://gitea.com/api/v1/repos/issues/search?limit=2&page=2&q=fix&state=all&type=pulls>; rel="next"',
+        "x-total-count": "10236",
+      }),
+    });
+    const result = await new GiteaProvider({ token: "" }).pullRequests.searchGlobal("fix", {
+      perPage: 2,
+    });
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/repos/issues/search", {
+      query: { q: "fix", type: "pulls", state: "all", page: "1", limit: "2" },
+    });
+    expect(result.items.map((item) => [item.repository, item.merged, item.draft])).toEqual([
+      ["gitea/gitea-mcp", true, false],
+      ["someone/project", false, true],
+    ]);
+    expect(result).toMatchObject({
+      hasNextPage: true,
+      nextPage: 2,
+      totalCount: 10236,
+      incomplete: false,
+      resultLimit: null,
+    });
+  });
+
+  it.each([
+    [{ owner: "gitea" }, "/repos/issues/search", { owner: "gitea" }],
+    [{ owner: "gitea", repo: "tea" }, "/repos/gitea/tea/issues", {}],
+  ])("scopes %j through %s", async (scope, path, extra) => {
+    mocks.rawFetch.mockResolvedValue({ data: [], headers: new Headers() });
+    const result = await new GiteaProvider({ token: "" }).pullRequests.searchGlobal("fix", scope);
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, path, {
+      query: { q: "fix", type: "pulls", state: "all", page: "1", limit: "30", ...extra },
+    });
+    expect(result).toMatchObject({ items: [], hasNextPage: false, incomplete: false });
+    expect(result.totalCount).toBeUndefined();
+  });
+
+  it("drops issues and hits without a repository and marks the page incomplete", async () => {
+    mocks.rawFetch.mockResolvedValue({
+      data: [
+        giteaHit,
+        { ...giteaHit, pull_request: null },
+        { ...giteaHit, repository: null },
+        { ...giteaHit, repository: { full_name: "" } },
+      ],
+      headers: new Headers({ "x-total-count": "4" }),
+    });
+    const result = await new GiteaProvider({ token: "" }).pullRequests.searchGlobal("fix");
+    expect(result.items.map((item) => item.repository)).toEqual(["gitea/gitea-mcp"]);
+    expect(result).toMatchObject({ totalCount: 4, incomplete: true });
+  });
+
+  it("accepts newest first and rejects any other ordering or bad page before transport", async () => {
+    mocks.rawFetch.mockResolvedValue({ data: [], headers: new Headers() });
+    const resource = new GiteaProvider({ token: "" }).pullRequests;
+    await resource.searchGlobal("fix", { sort: "created", order: "desc" });
+    expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
+    mocks.rawFetch.mockClear();
+    for (const options of [
+      { sort: "updated" as const },
+      { sort: "comments" as const },
+      { order: "asc" as const },
+      { sort: "created" as const, order: "asc" as const },
+    ]) {
+      await expect(resource.searchGlobal("fix", options)).rejects.toMatchObject({ status: 501 });
+    }
+    for (const options of [{ page: 0 }, { perPage: 101 }, { perPage: Number.NaN }]) {
+      await expect(resource.searchGlobal("fix", options)).rejects.toMatchObject({ status: 400 });
+    }
+    expect(mocks.rawFetch).not.toHaveBeenCalled();
+  });
 });

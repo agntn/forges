@@ -180,7 +180,8 @@ export function forgesToolSchemas() {
   const globalPullRequestSearchParameters = closed({
     platform,
     query: Type.String({
-      description: "Native pull-request query, including author: and created: qualifiers",
+      description:
+        "Native pull-request query: author: and created: qualifiers on GitHub, keywords on Gitea",
       minLength: 1,
     }),
     owner,

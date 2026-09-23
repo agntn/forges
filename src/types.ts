@@ -237,7 +237,8 @@ export interface GlobalPullRequestSearchOptions {
 
 /** Search can match more pull requests than the provider exposes. */
 export interface GlobalPullRequestSearchResult extends SearchPageResult<GlobalPullRequestSearchItem> {
-  resultLimit: number;
+  /** Hits the provider lets callers page through; null when it sets no cap. */
+  resultLimit: number | null;
 }
 
 /** Pull request information. */
