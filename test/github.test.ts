@@ -3113,6 +3113,29 @@ describe("GitHubProvider", () => {
       expect(mocks.client).toHaveBeenCalledTimes(1);
     });
 
+    it("removes a label whose name holds a slash or a percent sign", async () => {
+      mocks.client
+        .mockResolvedValueOnce(ghPullRequest)
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce({ ...ghPullRequest, labels: [] });
+
+      await gh.pullRequests.update("octocat", "hello-world", 99, {
+        removeLabels: ["kind/bug", "100%"],
+      });
+
+      expect(mocks.client).toHaveBeenNthCalledWith(
+        2,
+        "/repos/octocat/hello-world/issues/99/labels/kind%2Fbug",
+        { method: "DELETE" },
+      );
+      expect(mocks.client).toHaveBeenNthCalledWith(
+        3,
+        "/repos/octocat/hello-world/issues/99/labels/100%25",
+        { method: "DELETE" },
+      );
+    });
+
     it("keeps a failed label removal other than 404 as the error", async () => {
       mocks.client.mockResolvedValueOnce(ghPullRequest).mockRejectedValueOnce(makeFetchError(403));
 
@@ -3129,6 +3152,7 @@ describe("GitHubProvider", () => {
       [{ addAssignees: ["Octocat"], removeAssignees: ["octocat"] }, "both add and remove: Octocat"],
       [{ addLabels: ["docs"], removeLabels: ["docs"] }, "both add and remove: docs"],
       [{ addLabels: [""] }, "addLabels must be an array"],
+      [{ title: "Renamed", removeLabels: [".."] }, "removeLabels must be an array"],
     ])("rejects %j before any request", async (input, message) => {
       await expect(
         gh.pullRequests.update(

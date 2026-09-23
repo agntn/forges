@@ -67,6 +67,7 @@ import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from
 import { parseLinkHeader } from "../pagination.ts";
 import {
   encodeApiResponsePathSegment,
+  encodeLabelPathSegment,
   encodePathSegment,
   encodeRefPathSegment,
 } from "./base-url.ts";
@@ -2308,6 +2309,10 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     const pullPath = `${repository}/pulls/${encodePathSegment(prNumber)}`;
     const issuePath = `${repository}/issues/${encodePathSegment(prNumber)}`;
     try {
+      // Every label path is built before the first write, so a bad name changes nothing.
+      const removedLabelPaths = (input.removeLabels ?? []).map(
+        (label) => `${issuePath}/labels/${encodeLabelPathSegment(label)}`,
+      );
       const fields = { title: input.title, body: input.body, state: input.state };
       const patched = Object.values(fields).some((value) => value !== undefined);
       let data = await this.client<GitHubPullRequest>(
@@ -2337,11 +2342,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         });
         issueWrites = true;
       }
-      for (const label of input.removeLabels ?? []) {
+      for (const labelPath of removedLabelPaths) {
         try {
-          await this.client(`${issuePath}/labels/${encodePathSegment(label)}`, {
-            method: "DELETE",
-          });
+          await this.client(labelPath, { method: "DELETE" });
         } catch (error) {
           // The pull request was just read, so a 404 here is a label it does not carry.
           if (!(error instanceof FetchError && error.status === 404)) throw error;
