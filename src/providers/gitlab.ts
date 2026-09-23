@@ -1874,6 +1874,18 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     iid: number,
     input: UpdatePullRequestInput,
   ): Promise<PullRequest> {
+    // GitLab splits these fields on commas and refuses a comma in a label title,
+    // so such a name could only ever reach two other labels.
+    const commaLabel = [...(input.addLabels ?? []), ...(input.removeLabels ?? [])].find((name) =>
+      name.includes(","),
+    );
+    if (commaLabel !== undefined) {
+      throw new ForgesError(
+        `GitLab label names cannot contain a comma: ${commaLabel}`,
+        400,
+        "gitlab",
+      );
+    }
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const path = `/projects/${projectId}/merge_requests/${encodePathSegment(iid)}`;

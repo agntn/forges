@@ -2376,6 +2376,19 @@ describe("GitLabProvider", () => {
       });
     });
 
+    it("refuses a comma in a label name before any request, since GitLab would split it", async () => {
+      await expect(
+        gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, {
+          title: "Renamed",
+          addLabels: ["frontend,backend"],
+        }),
+      ).rejects.toMatchObject({
+        status: 400,
+        message: expect.stringContaining("frontend,backend"),
+      });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
     it("reopens with the reopen state event", async () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glMergeRequest);
