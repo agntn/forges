@@ -11,6 +11,7 @@ const writes = [
   "forges_releases_create",
   "forges_releases_update",
   "forges_issues_create",
+  "forges_issues_update",
   "forges_issues_comments_create",
   "forges_pull_requests_comments_create",
   "forges_pull_requests_create",
@@ -28,6 +29,7 @@ describe("tool effects", () => {
     expect(getToolEffect("forges_local_merge_verify")).toBe("localRead");
     expect(getToolEffect("forges_releases_create")).toBe("remoteCreate");
     expect(getToolEffect("forges_releases_update")).toBe("remoteUpdate");
+    expect(getToolEffect("forges_issues_update")).toBe("remoteUpdate");
     expect(getToolEffect("forges_pull_requests_update")).toBe("remoteUpdate");
     expect(getToolEffect("forges_threads_resolve")).toBe("remoteState");
     expect(getToolEffect("forges_auth_reload")).toBe("credentialReload");

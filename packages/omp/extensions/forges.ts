@@ -421,20 +421,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     assignees,
     account,
   });
-  const updatePullRequestParameters = closed({
-    platform,
-    owner,
-    repo,
-    number,
-    title: Type.Optional(Type.String({ description: "New pull-request title", minLength: 1 })),
-    body: Type.Optional(
-      Type.String({ description: "New pull-request body; replaces the old one" }),
-    ),
-    state: Type.Optional(
-      Type.Union([Type.Literal("open"), Type.Literal("closed")], {
-        description: "Close or reopen; a merged pull request stays merged",
-      }),
-    ),
+  const listChanges = {
     addAssignees: Type.Optional(
       Type.Array(Type.String({ minLength: 1 }), {
         description: "Logins to assign next to the current ones. GitLab Free keeps one.",
@@ -459,6 +446,37 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
         maxItems: 100,
       }),
     ),
+  };
+  const updateIssueParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    title: Type.Optional(Type.String({ description: "New issue title", minLength: 1 })),
+    body: Type.Optional(Type.String({ description: "New issue body; replaces the old one" })),
+    state: Type.Optional(
+      Type.Union([Type.Literal("open"), Type.Literal("closed")], {
+        description: "Close or reopen",
+      }),
+    ),
+    ...listChanges,
+    account,
+  });
+  const updatePullRequestParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    title: Type.Optional(Type.String({ description: "New pull-request title", minLength: 1 })),
+    body: Type.Optional(
+      Type.String({ description: "New pull-request body; replaces the old one" }),
+    ),
+    state: Type.Optional(
+      Type.Union([Type.Literal("open"), Type.Literal("closed")], {
+        description: "Close or reopen; a merged pull request stays merged",
+      }),
+    ),
+    ...listChanges,
     account,
   });
   const userParameters = closed({
@@ -789,6 +807,19 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: toolApproval("forges_issues_create"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).createIssue(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_issues_update",
+    label: "Update Forges Issue",
+    description:
+      "Change an issue's title, body, state, assignees or labels; this mutates the selected Git platform",
+    parameters: updateIssueParameters,
+    ...statusRenderers("forges_issues_update", "Update Forges Issue"),
+    approval: toolApproval("forges_issues_update"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).updateIssue(params);
     },
   });
 

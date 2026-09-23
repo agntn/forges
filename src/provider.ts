@@ -6,7 +6,7 @@ import { assertAssignees } from "./assignees.ts";
 import { ForgesError, NotFoundError } from "./errors.ts";
 import { assertCommitPatchOptions } from "./commit-patch.ts";
 import { assertCiId, assertCiJobLogOptions } from "./ci-job-log.ts";
-import { assertPullRequestUpdate } from "./pull-request-update.ts";
+import { assertIssueUpdate, assertPullRequestUpdate } from "./update-input.ts";
 import { assertRepositoryContentsOptions, normalizeRepositoryPath } from "./repository-contents.ts";
 import type {
   CiJob,
@@ -69,6 +69,7 @@ import type {
   ThreadComment,
   ThreadResource,
   ThreadState,
+  UpdateIssueInput,
   UpdatePullRequestInput,
   UpdateReleaseInput,
   User,
@@ -268,6 +269,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       create: async (owner, repo, input) => {
         assertAssignees(input.assignees);
         return this.createIssue(owner, repo, input);
+      },
+      update: async (owner, repo, number, input) => {
+        assertIssueUpdate(input);
+        return this.updateIssue(owner, repo, number, input);
       },
       listComments: (owner, repo, number, options) =>
         this.listIssueComments(owner, repo, number, options),
@@ -501,6 +506,14 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     repo: string,
     input: CreateIssueInput,
   ): Promise<Issue>;
+  protected updateIssue(
+    _owner: string,
+    _repo: string,
+    _number: number,
+    _input: UpdateIssueInput,
+  ): Promise<Issue> {
+    return Promise.reject(new ForgesError("Issue updates are not supported by this provider", 501));
+  }
   protected abstract listPullRequests(
     owner: string,
     repo: string,

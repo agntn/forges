@@ -2075,6 +2075,76 @@ describe("Gitea Provider", () => {
 
   // --- comments ---
 
+  describe("issues.update", () => {
+    const issue = "/repos/testowner/test-repo/issues/1";
+
+    it("reads the issue, then patches the fields and the whole assignee list", async () => {
+      mockClient
+        .mockResolvedValueOnce(giteaIssue())
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(
+          giteaIssue({
+            state: "closed",
+            labels: [],
+            assignees: [giteaUser({ login: "triager" }), giteaUser({ login: "reviewer" })],
+          }),
+        );
+
+      const result = await provider.issues.update("testowner", "test-repo", 1, {
+        state: "closed",
+        addAssignees: ["reviewer"],
+        removeLabels: ["bug"],
+      });
+
+      expect(mockClient.mock.calls).toEqual([
+        [issue],
+        [`${issue}/labels/1`, { method: "DELETE" }],
+        [issue, { method: "PATCH", body: { state: "closed", assignees: ["triager", "reviewer"] } }],
+      ]);
+      expect(result.state).toBe("closed");
+      expect(result.labels).toEqual([]);
+    });
+
+    it("reads the result back when only labels change", async () => {
+      mockClient
+        .mockResolvedValueOnce(giteaIssue())
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(
+          giteaIssue({
+            labels: [
+              { id: 1, name: "bug" },
+              { id: 4, name: "docs" },
+            ],
+          }),
+        );
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [{ id: 4, name: "docs" }],
+        headers: makeHeaders(),
+        status: 200,
+      });
+
+      const result = await provider.issues.update("testowner", "test-repo", 1, {
+        addLabels: ["docs"],
+      });
+
+      expect(mockClient.mock.calls).toEqual([
+        [issue],
+        [`${issue}/labels`, { method: "POST", body: { labels: [4] } }],
+        [issue],
+      ]);
+      expect(result.labels).toEqual(["bug", "docs"]);
+    });
+
+    it("writes nothing when the number is a pull request", async () => {
+      mockClient.mockResolvedValueOnce(giteaIssue({ pull_request: { merged: false } }));
+
+      await expect(
+        provider.issues.update("testowner", "test-repo", 1, { title: "Renamed" }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      expect(mockClient).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("pullRequests.update", () => {
     const pull = "/repos/testowner/test-repo/pulls/5";
     const issue = "/repos/testowner/test-repo/issues/5";

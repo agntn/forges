@@ -243,6 +243,14 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       execute: (operations, args) => operations.createIssue(args),
     }),
     defineTool({
+      name: "forges_issues_update",
+      title: "Update Issue",
+      description:
+        "Change an issue: its title, its body, its open or closed state, and assignees or labels to add or remove. Pass at least one change; everything not named keeps its value. A new body replaces the old one, so read the issue first and confirm the text with the user; this writes as the account the local credentials belong to. Returns the issue as it is after the update, with a note when an assignee change did not apply.",
+      inputSchema: schemas.updateIssueParameters,
+      execute: (operations, args) => operations.updateIssue(args),
+    }),
+    defineTool({
       name: "forges_pull_requests_list",
       title: "List Pull Requests",
       description:

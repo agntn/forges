@@ -64,6 +64,7 @@ import type {
   ReplyThreadInput,
   Thread,
   ThreadComment,
+  UpdateIssueInput,
   UpdatePullRequestInput,
   UpdateReleaseInput,
 } from "../types.ts";
@@ -79,7 +80,7 @@ import {
 import { normalizeCiRunState } from "../ci-run.ts";
 import { normalizeReviewState } from "../review.ts";
 import { countDiffLines } from "../changed-file.ts";
-import { changesAssignees, nextAssignees } from "../pull-request-update.ts";
+import { changesAssignees, nextAssignees } from "../update-input.ts";
 import { buildCommitPatch } from "../commit-patch.ts";
 import { buildCiJobLog, cleanGitLabTrace, jobStarted, readJobLogText } from "../ci-job-log.ts";
 import {
@@ -168,6 +169,11 @@ interface GitLabPipeline {
   web_url?: string | null;
 }
 
+interface GitLabAssignee {
+  id?: number;
+  username: string;
+}
+
 interface GitLabIssue {
   id: number;
   iid: number;
@@ -178,7 +184,7 @@ interface GitLabIssue {
   author: {
     username: string;
   };
-  assignees?: Array<{ username: string }>;
+  assignees?: GitLabAssignee[];
   created_at: string;
   updated_at: string;
   web_url: string;
@@ -194,7 +200,7 @@ interface GitLabMergeRequest {
   author: {
     username: string;
   };
-  assignees?: Array<{ id?: number; username: string }>;
+  assignees?: GitLabAssignee[];
   created_at: string;
   updated_at: string;
   web_url: string;
@@ -396,6 +402,23 @@ function mapGitLabPermission(
   if (accessLevel >= 15) return "triage";
   if (accessLevel >= 10) return "read";
   return "none";
+}
+
+/**
+ * GitLab splits the label fields on commas and refuses a comma in a label title,
+ * so such a name could only ever reach two other labels.
+ */
+function assertNoCommaLabels(input: UpdateIssueInput): void {
+  const commaLabel = [...(input.addLabels ?? []), ...(input.removeLabels ?? [])].find((name) =>
+    name.includes(","),
+  );
+  if (commaLabel !== undefined) {
+    throw new ForgesError(
+      `GitLab label names cannot contain a comma: ${commaLabel}`,
+      400,
+      "gitlab",
+    );
+  }
 }
 
 /**
@@ -1875,57 +1898,73 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     iid: number,
     input: UpdatePullRequestInput,
   ): Promise<PullRequest> {
-    // GitLab splits these fields on commas and refuses a comma in a label title,
-    // so such a name could only ever reach two other labels.
-    const commaLabel = [...(input.addLabels ?? []), ...(input.removeLabels ?? [])].find((name) =>
-      name.includes(","),
-    );
-    if (commaLabel !== undefined) {
-      throw new ForgesError(
-        `GitLab label names cannot contain a comma: ${commaLabel}`,
-        400,
-        "gitlab",
-      );
-    }
+    assertNoCommaLabels(input);
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const path = `/projects/${projectId}/merge_requests/${encodePathSegment(iid)}`;
-      const body: Record<string, unknown> = {};
-      if (input.title !== undefined) body.title = input.title;
-      if (input.body !== undefined) body.description = input.body;
-      if (input.state !== undefined) {
-        body.state_event = input.state === "closed" ? "close" : "reopen";
-      }
-      if (input.addLabels?.length) body.add_labels = input.addLabels.join(",");
-      if (input.removeLabels?.length) body.remove_labels = input.removeLabels.join(",");
-
-      if (changesAssignees(input)) {
-        const current = (await this.client<GitLabMergeRequest>(path)).assignees ?? [];
-        // An assignee without an id would drop out of the list, so it is looked up instead.
-        const known = new Map(
-          current.flatMap(({ id, username }) =>
-            typeof id === "number" ? [[username.toLowerCase(), id] as const] : [],
-          ),
-        );
-        const next = nextAssignees(
-          current.map(({ username }) => username),
-          input,
-        );
-        const added = next.filter((username) => !known.has(username.toLowerCase()));
-        const addedIds = await this.resolveUserIds(added);
-        added.forEach((username, index) => {
-          const id = addedIds[index];
-          if (id !== undefined) known.set(username.toLowerCase(), id);
-        });
-        const ids = next.flatMap((username) => known.get(username.toLowerCase()) ?? []);
-        Object.assign(body, ids.length === 0 ? { assignee_id: 0 } : this.assigneeFields(ids));
-      }
-
+      const body = await this.updateBody(path, input);
       const mr = await this.client<GitLabMergeRequest>(path, { method: "PUT", body });
       return this.mapPullRequest(mr);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }
+  }
+
+  /** The same single PUT as a merge request update, on the issue route. */
+  protected override async updateIssue(
+    owner: string,
+    repo: string,
+    iid: number,
+    input: UpdateIssueInput,
+  ): Promise<Issue> {
+    assertNoCommaLabels(input);
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const path = `/projects/${projectId}/issues/${encodePathSegment(iid)}`;
+      const body = await this.updateBody(path, input);
+      const issue = await this.client<GitLabIssue>(path, { method: "PUT", body });
+      return this.mapIssue(issue);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  /** The PUT body for an issue or merge request at `path`. */
+  private async updateBody(
+    path: string,
+    input: UpdateIssueInput,
+  ): Promise<Record<string, unknown>> {
+    const body: Record<string, unknown> = {};
+    if (input.title !== undefined) body.title = input.title;
+    if (input.body !== undefined) body.description = input.body;
+    if (input.state !== undefined) {
+      body.state_event = input.state === "closed" ? "close" : "reopen";
+    }
+    if (input.addLabels?.length) body.add_labels = input.addLabels.join(",");
+    if (input.removeLabels?.length) body.remove_labels = input.removeLabels.join(",");
+
+    if (changesAssignees(input)) {
+      const current = (await this.client<{ assignees?: GitLabAssignee[] }>(path)).assignees ?? [];
+      // An assignee without an id would drop out of the list, so it is looked up instead.
+      const known = new Map(
+        current.flatMap(({ id, username }) =>
+          typeof id === "number" ? [[username.toLowerCase(), id] as const] : [],
+        ),
+      );
+      const next = nextAssignees(
+        current.map(({ username }) => username),
+        input,
+      );
+      const added = next.filter((username) => !known.has(username.toLowerCase()));
+      const addedIds = await this.resolveUserIds(added);
+      added.forEach((username, index) => {
+        const id = addedIds[index];
+        if (id !== undefined) known.set(username.toLowerCase(), id);
+      });
+      const ids = next.flatMap((username) => known.get(username.toLowerCase()) ?? []);
+      Object.assign(body, ids.length === 0 ? { assignee_id: 0 } : this.assigneeFields(ids));
+    }
+    return body;
   }
 
   // --- Comments ---

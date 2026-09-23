@@ -564,14 +564,14 @@ export interface CreatePullRequestInput {
 }
 
 /**
- * Input for updating a pull request. Omitted fields keep their value, and the
+ * Input for updating an issue. Omitted fields keep their value, and the
  * assignee and label lists change by the logins and names given, so the ones
  * already there stay unless they are removed.
  */
-export interface UpdatePullRequestInput {
+export interface UpdateIssueInput {
   title?: string;
   body?: string;
-  /** Closes or reopens it. A merged pull request stays merged. */
+  /** Closes or reopens it. */
   state?: IssueState;
   /** GitLab Free keeps one assignee. */
   addAssignees?: string[];
@@ -579,6 +579,14 @@ export interface UpdatePullRequestInput {
   /** Gitea rejects a label that neither the repository nor its organization has. */
   addLabels?: string[];
   removeLabels?: string[];
+}
+
+/**
+ * Input for updating a pull request, with the same rules as an issue update.
+ */
+export interface UpdatePullRequestInput extends UpdateIssueInput {
+  /** Closes or reopens it. A merged pull request stays merged. */
+  state?: IssueState;
 }
 
 /**
@@ -782,6 +790,7 @@ export interface IssueResource {
   ): Promise<SearchPageResult<Issue>>;
   get(owner: string, repo: string, number: number): Promise<Issue>;
   create(owner: string, repo: string, input: CreateIssueInput): Promise<Issue>;
+  update(owner: string, repo: string, number: number, input: UpdateIssueInput): Promise<Issue>;
   listComments(
     owner: string,
     repo: string,

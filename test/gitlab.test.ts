@@ -2362,6 +2362,72 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("issues.update", () => {
+    const issuePath = "/projects/278964/issues/15";
+
+    it("sends only the changed fields in one PUT on the issue route", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce({ ...glIssue, state: "closed", labels: ["bug", "docs"] });
+
+      const issue = await gl.issues.update("gitlab-org", "gitlab-foss", 15, {
+        title: "Login page broken on Safari",
+        state: "closed",
+        addLabels: ["docs"],
+        removeLabels: ["critical"],
+      });
+
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(mocks.client).toHaveBeenLastCalledWith(issuePath, {
+        method: "PUT",
+        body: {
+          title: "Login page broken on Safari",
+          state_event: "close",
+          add_labels: "docs",
+          remove_labels: "critical",
+        },
+      });
+      expect(issue.state).toBe("closed");
+      expect(issue.labels).toEqual(["bug", "docs"]);
+    });
+
+    it("reads the issue before an assignee change and keeps the others", async () => {
+      mockProjectResolve(278964);
+      mocks.client
+        .mockResolvedValueOnce({ ...glIssue, assignees: [{ id: 9, username: "triager" }] })
+        .mockResolvedValueOnce([{ ...glUserSearchHit, id: 10, username: "reviewer" }])
+        .mockResolvedValueOnce(glIssue);
+
+      await gl.issues.update("gitlab-org", "gitlab-foss", 15, { addAssignees: ["reviewer"] });
+
+      expect(mocks.client).toHaveBeenNthCalledWith(2, issuePath);
+      expect(mocks.client).toHaveBeenLastCalledWith(issuePath, {
+        method: "PUT",
+        body: { assignee_ids: [9, 10] },
+      });
+    });
+
+    it("unassigns everyone with assignee_id 0", async () => {
+      mockProjectResolve(278964);
+      mocks.client
+        .mockResolvedValueOnce({ ...glIssue, assignees: [{ id: 9, username: "triager" }] })
+        .mockResolvedValueOnce({ ...glIssue, assignees: [] });
+
+      await gl.issues.update("gitlab-org", "gitlab-foss", 15, { removeAssignees: ["triager"] });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(issuePath, {
+        method: "PUT",
+        body: { assignee_id: 0 },
+      });
+    });
+
+    it("refuses a comma in a label name before any request", async () => {
+      await expect(
+        gl.issues.update("gitlab-org", "gitlab-foss", 15, { addLabels: ["a,b"] }),
+      ).rejects.toMatchObject({ status: 400, message: expect.stringContaining("a,b") });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+  });
+
   describe("pullRequests.update", () => {
     const mr = "/projects/278964/merge_requests/33";
 

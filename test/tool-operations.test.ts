@@ -16,6 +16,7 @@ import {
   reloadAuthentication,
   searchCode,
   resetPinnedProviders,
+  updateIssue,
   updatePullRequest,
 } from "../src/tool-operations.ts";
 
@@ -146,6 +147,12 @@ const mocks = vi.hoisted(() => {
               anonymousWrites.current += 1;
             }
             return { id: "31", body: "posted", author: { login } };
+          }),
+          update: vi.fn(async (_owner: string, _repo: string, number: number) => {
+            if (anonymous) {
+              anonymousWrites.current += 1;
+            }
+            return { number, state: "closed", assignees: [], updatedBy: login };
           }),
         },
         pullRequests: {
@@ -335,6 +342,30 @@ describe("configured provider", () => {
     await expect(
       updatePullRequest({ repo: "agntn/forges", number: 5, addLabels: [] }),
     ).rejects.toThrow("Pull request update needs at least one change");
+
+    expect(mocks.resolveToken).not.toHaveBeenCalled();
+    expect(mocks.createProvider).not.toHaveBeenCalled();
+  });
+
+  it("updates an issue with credentials and says when an added assignee did not stick", async () => {
+    const updated = await updateIssue({
+      repo: "agntn/forges",
+      number: 174,
+      state: "closed",
+      addAssignees: ["reviewer"],
+    });
+
+    expect(updated.details.result).toMatchObject({ number: 174, state: "closed" });
+    expect(updated.details.result).not.toMatchObject({ updatedBy: "anonymous" });
+    expect(JSON.parse(updated.content[0].text).note).toBe(
+      "Update succeeded, but the assignees did not change as asked (not assigned: reviewer). The result shows who is assigned now.",
+    );
+  });
+
+  it("rejects an issue update that changes nothing before resolving credentials", async () => {
+    await expect(updateIssue({ repo: "agntn/forges", number: 174 })).rejects.toThrow(
+      "Issue update needs at least one change",
+    );
 
     expect(mocks.resolveToken).not.toHaveBeenCalled();
     expect(mocks.createProvider).not.toHaveBeenCalled();

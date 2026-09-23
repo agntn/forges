@@ -82,6 +82,7 @@ export type {
   CreateIssueInput,
   CreatePullRequestInput,
   CreateReleaseInput,
+  UpdateIssueInput,
   UpdatePullRequestInput,
   UpdateReleaseInput,
   ReplyThreadInput,
