@@ -181,7 +181,7 @@ export function forgesToolSchemas() {
     platform,
     query: Type.String({
       description:
-        "Native pull-request query: author: and created: qualifiers on GitHub, keywords on Gitea",
+        "Native pull-request query: author: and created: qualifiers on GitHub, keywords on Gitea, keywords and author: on GitLab",
       minLength: 1,
     }),
     owner,

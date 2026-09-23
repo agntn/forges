@@ -40,6 +40,9 @@ import type {
   PullRequestReviewState,
   PullRequestFile,
   PullRequestSearchItem,
+  GlobalPullRequestSearchItem,
+  GlobalPullRequestSearchOptions,
+  GlobalPullRequestSearchResult,
   User,
   Owner,
   PageResult,
@@ -215,6 +218,7 @@ interface GitLabMergeRequest {
   merge_status?: string | null;
   detailed_merge_status?: string | null;
   head_pipeline?: GitLabPipeline | null;
+  references?: { full?: string | null } | null;
 }
 
 interface GitLabMergeRequestDiff {
@@ -370,6 +374,9 @@ function encodeProjectPath(owner: string, repo: string): string {
 function encodeWebPath(path: string): string {
   return path.split("/").map(encodePathSegment).join("/");
 }
+
+/** ofetch's retry codes without 408: a search that timed out times out again. */
+const SEARCH_RETRY_STATUS_CODES = [409, 425, 429, 500, 502, 503, 504];
 
 const DEFAULT_PROJECT_ID_CACHE_MAX = 500;
 const DEFAULT_PROJECT_ID_CACHE_TTL = 300000;
@@ -1802,6 +1809,105 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       };
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
+    }
+  }
+
+  /** `author:` is GitLab's author filter; without `scope=all` the route lists only your own. */
+  protected override async searchPullRequestsGlobal(
+    searchQuery: string,
+    options?: GlobalPullRequestSearchOptions,
+  ): Promise<GlobalPullRequestSearchResult> {
+    try {
+      const page = options?.page ?? 1;
+      const perPage = options?.perPage ?? 30;
+      if (
+        !Number.isSafeInteger(page) ||
+        page < 1 ||
+        !Number.isSafeInteger(perPage) ||
+        perPage < 1 ||
+        perPage > 100
+      ) {
+        throw new ForgesError(
+          "Pull-request search requires a positive page and perPage from 1 to 100",
+          400,
+          "gitlab",
+        );
+      }
+      const sort = options?.sort ?? "created";
+      if (sort !== "created" && sort !== "updated") {
+        throw new ForgesError("GitLab can't order merge requests by comments", 501, "gitlab");
+      }
+      const order = options?.order ?? "desc";
+      if (order !== "asc" && order !== "desc") {
+        throw new ForgesError("Pull-request search order must be asc or desc", 400, "gitlab");
+      }
+      const words: string[] = [];
+      let author: string | undefined;
+      for (const term of searchQuery.trim().split(/\s+/u)) {
+        const match = /^author:(.+)$/u.exec(term);
+        if (!match) {
+          words.push(term);
+        } else if (author === undefined) {
+          author = match[1];
+        } else {
+          throw new ForgesError(
+            "GitLab merge request search takes one author: qualifier",
+            400,
+            "gitlab",
+          );
+        }
+      }
+      const query: Record<string, string> = {
+        state: "all",
+        order_by: `${sort}_at`,
+        sort: order,
+        page: String(page),
+        per_page: String(perPage),
+      };
+      if (words.length > 0) query.search = words.join(" ");
+      if (author !== undefined) query.author_username = author;
+      let path = "/merge_requests";
+      if (options?.owner !== undefined && options.repo !== undefined) {
+        path = `/projects/${encodeProjectPath(options.owner, options.repo)}/merge_requests`;
+      } else if (options?.owner !== undefined) {
+        path = `/groups/${encodeNamespacePath(options.owner)}/merge_requests`;
+      } else {
+        query.scope = "all";
+      }
+      const { data, headers } = await rawFetch<GitLabMergeRequest[]>(this.client, path, {
+        query,
+        retryStatusCodes: SEARCH_RETRY_STATUS_CODES,
+      });
+      const rawItems = data ?? [];
+      const items: GlobalPullRequestSearchItem[] = [];
+      for (const raw of rawItems) {
+        const repository = raw.references?.full?.replace(/!\d+$/u, "");
+        if (!repository || repository === raw.references?.full) continue;
+        items.push({ ...this.mapPullRequestSearchItem(raw), repository });
+      }
+      return {
+        ...this.parsePagination(items, headers),
+        incomplete: items.length !== rawItems.length,
+        resultLimit: null,
+      };
+    } catch (error: unknown) {
+      const normalized = normalizeError(error, "gitlab");
+      if (normalized.status === 408) {
+        throw new ForgesError(
+          "GitLab timed out on this search. Narrow it with an owner or an author: qualifier",
+          408,
+          "gitlab",
+          normalized.originalError,
+        );
+      }
+      if (normalized.status === 404 && options?.owner !== undefined && options.repo === undefined) {
+        throw new NotFoundError(
+          `No GitLab group ${options.owner}. For one user's merge requests, search with author:<username> instead`,
+          "gitlab",
+          normalized.originalError,
+        );
+      }
+      throw normalized;
     }
   }
 

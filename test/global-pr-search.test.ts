@@ -26,6 +26,12 @@ const hit = {
   draft: false,
 };
 
+function makeFetchError(status: number): FetchError {
+  const error = new FetchError("Rejected");
+  Object.defineProperty(error, "status", { value: status });
+  return error;
+}
+
 beforeEach(() => vi.resetAllMocks());
 
 describe("global pull-request search", () => {
@@ -171,13 +177,6 @@ describe("global pull-request search", () => {
       ).rejects.toMatchObject({ status: status === 401 ? 401 : 501 });
     },
   );
-
-  it("reports GitLab as unsupported without transport", async () => {
-    await expect(
-      new GitLabProvider({ token: "" }).pullRequests.searchGlobal("author:contributor"),
-    ).rejects.toMatchObject({ status: 501 });
-    expect(mocks.rawFetch).not.toHaveBeenCalled();
-  });
 });
 
 const giteaHit = {
@@ -278,5 +277,153 @@ describe("Gitea global pull-request search", () => {
       await expect(resource.searchGlobal("fix", options)).rejects.toMatchObject({ status: 400 });
     }
     expect(mocks.rawFetch).not.toHaveBeenCalled();
+  });
+});
+
+const gitlabHit = {
+  id: 471955126,
+  iid: 97,
+  title: "Fix search",
+  description: "Details",
+  state: "merged",
+  labels: [],
+  author: { username: "eighthave" },
+  assignees: [],
+  created_at: "2026-06-18T13:15:54.669Z",
+  updated_at: "2026-06-18T14:02:11.103Z",
+  web_url: "https://gitlab.com/fdroid/issuebot/-/merge_requests/97",
+  source_branch: "fix-search",
+  target_branch: "master",
+  merged_at: "2026-06-18T14:02:10.981Z",
+  draft: false,
+  merge_commit_sha: null,
+  references: { short: "!97", relative: "issuebot!97", full: "fdroid/issuebot!97" },
+};
+
+describe("GitLab global pull-request search", () => {
+  it("searches every project, all states, and keeps each hit's repository", async () => {
+    mocks.rawFetch.mockResolvedValue({
+      data: [
+        gitlabHit,
+        {
+          ...gitlabHit,
+          iid: 3,
+          state: "opened",
+          merged_at: null,
+          draft: true,
+          references: { full: "group/sub/project!3" },
+        },
+      ],
+      headers: new Headers({ "x-next-page": "2", "x-total": "74" }),
+    });
+    const result = await new GitLabProvider({ token: "" }).pullRequests.searchGlobal("fix", {
+      perPage: 2,
+    });
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/merge_requests", {
+      query: {
+        scope: "all",
+        search: "fix",
+        state: "all",
+        order_by: "created_at",
+        sort: "desc",
+        page: "1",
+        per_page: "2",
+      },
+      retryStatusCodes: [409, 425, 429, 500, 502, 503, 504],
+    });
+    expect(
+      result.items.map((item) => [item.repository, item.number, item.merged, item.draft]),
+    ).toEqual([
+      ["fdroid/issuebot", 97, true, false],
+      ["group/sub/project", 3, false, true],
+    ]);
+    expect(result).toMatchObject({
+      hasNextPage: true,
+      nextPage: 2,
+      totalCount: 74,
+      incomplete: false,
+      resultLimit: null,
+    });
+  });
+
+  it.each([
+    [{ owner: "group/sub" }, "/groups/group%2Fsub/merge_requests"],
+    [{ owner: "group/sub", repo: "project" }, "/projects/group%2Fsub%2Fproject/merge_requests"],
+  ])("scopes %j through %s", async (scope, path) => {
+    mocks.rawFetch.mockResolvedValue({ data: [], headers: new Headers() });
+    const result = await new GitLabProvider({ token: "" }).pullRequests.searchGlobal("fix", scope);
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, path, {
+      query: {
+        search: "fix",
+        state: "all",
+        order_by: "created_at",
+        sort: "desc",
+        page: "1",
+        per_page: "30",
+      },
+      retryStatusCodes: [409, 425, 429, 500, 502, 503, 504],
+    });
+    expect(result).toMatchObject({ items: [], hasNextPage: false, incomplete: false });
+    expect(result.totalCount).toBeUndefined();
+  });
+
+  it("turns author: into the author filter and orders by update", async () => {
+    mocks.rawFetch.mockResolvedValue({ data: [], headers: new Headers() });
+    const resource = new GitLabProvider({ token: "" }).pullRequests;
+    await resource.searchGlobal("author:eighthave", { sort: "updated", order: "asc" });
+    await resource.searchGlobal(" gradle  author:eighthave  update ");
+    expect(mocks.rawFetch.mock.calls.map(([, , options]) => options.query)).toEqual([
+      expect.objectContaining({
+        author_username: "eighthave",
+        order_by: "updated_at",
+        sort: "asc",
+      }),
+      expect.objectContaining({ search: "gradle update", author_username: "eighthave" }),
+    ]);
+    expect(mocks.rawFetch.mock.calls[0]![2].query).not.toHaveProperty("search");
+  });
+
+  it("drops hits without a repository and marks the page incomplete", async () => {
+    mocks.rawFetch.mockResolvedValue({
+      data: [
+        gitlabHit,
+        { ...gitlabHit, references: undefined },
+        { ...gitlabHit, references: { full: "!97" } },
+      ],
+      headers: new Headers({ "x-total": "3" }),
+    });
+    const result = await new GitLabProvider({ token: "" }).pullRequests.searchGlobal("fix");
+    expect(result.items.map((item) => item.repository)).toEqual(["fdroid/issuebot"]);
+    expect(result).toMatchObject({ totalCount: 3, incomplete: true });
+  });
+
+  it("rejects comment ordering, two authors and bad pages before transport", async () => {
+    const resource = new GitLabProvider({ token: "" }).pullRequests;
+    await expect(resource.searchGlobal("fix", { sort: "comments" })).rejects.toMatchObject({
+      status: 501,
+    });
+    for (const [query, options] of [
+      ["author:a author:b", {}],
+      ["fix", { page: 0 }],
+      ["fix", { perPage: 101 }],
+      ["fix", { perPage: Number.NaN }],
+    ] as const) {
+      await expect(resource.searchGlobal(query, options)).rejects.toMatchObject({ status: 400 });
+    }
+    expect(mocks.rawFetch).not.toHaveBeenCalled();
+  });
+
+  it("names the next step when GitLab times out or the owner is no group", async () => {
+    const resource = new GitLabProvider({ token: "" }).pullRequests;
+    mocks.rawFetch.mockRejectedValueOnce(makeFetchError(408));
+    await expect(resource.searchGlobal("fix")).rejects.toMatchObject({
+      status: 408,
+      message: expect.stringContaining("author:"),
+    });
+    mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+    await expect(resource.searchGlobal("fix", { owner: "someone" })).rejects.toMatchObject({
+      status: 404,
+      message: expect.stringContaining("group"),
+    });
   });
 });
