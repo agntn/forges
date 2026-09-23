@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.3.5
+
+[compare changes](https://github.com/agntn/forges/compare/v0.3.4...v0.3.5)
+
+### 🚀 Enhancements
+
+- Edit a pull request once it is open ([#171](https://github.com/agntn/forges/pull/171))
+- Comment on issues and pull requests ([#172](https://github.com/agntn/forges/pull/172))
+- Retitle, relabel or close an issue ([#177](https://github.com/agntn/forges/pull/177))
+- Search pull requests across Gitea ([#180](https://github.com/agntn/forges/pull/180))
+- Author filter and GitLab in global PR search ([#181](https://github.com/agntn/forges/pull/181))
+- Find commits by message on GitLab ([#182](https://github.com/agntn/forges/pull/182))
+
+### 🔥 Performance
+
+- Cut commit messages to their subject line ([#176](https://github.com/agntn/forges/pull/176))
+
+### 🩹 Fixes
+
+- Flag private repos hidden by a missing token ([#173](https://github.com/agntn/forges/pull/173))
+- Hide the forge URL from Pi and OMP errors ([#178](https://github.com/agntn/forges/pull/178))
+
+### 📦 Build
+
+- Run on Vite+ and Vitest 5 ([#179](https://github.com/agntn/forges/pull/179))
+
+### ❤️ Contributors
+
+- Aeitwoen ([@aeitwoen](https://github.com/aeitwoen))
+- Ori ([@oritwoen](https://github.com/oritwoen))
+
 ## v0.3.4
 
 [compare changes](https://github.com/agntn/forges/compare/v0.3.3...v0.3.4)
