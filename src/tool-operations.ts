@@ -8,6 +8,7 @@ import type {
 import { assertAssignees } from "./assignees.ts";
 import { assertPullRequestUpdate } from "./pull-request-update.ts";
 import { waitForChecks, type WaitedCheckPage } from "./check-wait.ts";
+import { FetchError } from "ofetch";
 import { AuthenticationError, ForgesError } from "./errors.ts";
 import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
 import type { Provider } from "./provider.ts";
@@ -238,8 +239,65 @@ function readProvider(platform: ForgesPlatform): Promise<Provider> {
 
   return (
     anonymousReadProviders.get(key) ??
-    trackProvider(anonymousReadProviders, key, () => createConfiguredProvider(platform, token))
+    trackProvider(anonymousReadProviders, key, async () =>
+      explainAnonymousRefusals(await createConfiguredProvider(platform, token), platform),
+    )
   );
+}
+
+const ANONYMOUS_REFUSALS = new Set([401, 403, 404, 429]);
+/** Refusals already explained, since callers sharing one in-flight load get the same error. */
+const explainedRefusals = new WeakSet<ForgesError>();
+
+/**
+ * Make a refusal of a tokenless read say that no token was sent.
+ *
+ * A private repository answers 404 to such a request, exactly like one that does
+ * not exist, so without this the agent concludes the repository is missing. Only
+ * refusals the server sent are touched: a provider's own 404, such as a template
+ * key missing from its list, means the item really is absent.
+ */
+function explainAnonymousRefusals(provider: Provider, platform: ForgesPlatform): Provider {
+  const explain = (error: unknown): unknown => {
+    if (
+      !(error instanceof ForgesError) ||
+      explainedRefusals.has(error) ||
+      !(error.originalError instanceof FetchError) ||
+      error.status === undefined ||
+      !ANONYMOUS_REFUSALS.has(error.status)
+    ) {
+      return error;
+    }
+
+    const reason =
+      error.status === 404
+        ? `The request carried no token, and ${platform} answers 404 for a private repository as well as a missing one.`
+        : error.status === 429
+          ? "The request carried no token, and requests without one get a far lower rate limit."
+          : "The request carried no token.";
+    error.message = `${error.message.trimEnd().replace(/\.?$/, ".")} ${reason} ${credentialSetupHint(platform)} Then retry.`;
+    explainedRefusals.add(error);
+    return error;
+  };
+
+  return new Proxy(provider, {
+    get(target, property, receiver) {
+      const resource: unknown = Reflect.get(target, property, receiver);
+      if (typeof resource !== "object" || resource === null) return resource;
+      return new Proxy(resource, {
+        get(object, name, objectReceiver) {
+          const method: unknown = Reflect.get(object, name, objectReceiver);
+          if (typeof method !== "function") return method;
+          return (...args: unknown[]) =>
+            Promise.resolve()
+              .then(() => method.apply(object, args))
+              .catch((error: unknown) => {
+                throw explain(error);
+              });
+        },
+      });
+    },
+  });
 }
 
 /** Drop pinned providers so the next matching call resolves its local credential again. */
