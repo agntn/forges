@@ -196,13 +196,197 @@ describe("commit search", () => {
     ).rejects.toMatchObject({ status: 501 });
   });
 
-  it.each([GitLabProvider, GiteaProvider])(
-    "reports unsupported providers without transport",
-    async (Provider) => {
-      await expect(new Provider({ token: "" }).commits.search("snapshot")).rejects.toMatchObject({
-        status: 501,
-      });
-      expect(mocks.rawFetch).not.toHaveBeenCalled();
-    },
-  );
+  it("reports unsupported providers without transport", async () => {
+    await expect(new GiteaProvider({ token: "" }).commits.search("snapshot")).rejects.toMatchObject(
+      { status: 501 },
+    );
+    expect(mocks.rawFetch).not.toHaveBeenCalled();
+  });
+});
+
+/** A row as GitLab's API::Entities::CommitDetail serializes it for scope=commits. */
+const gitlabHit = {
+  id: "ed899a2f4b50b4370feeea94676502b42383c746",
+  short_id: "ed899a2f",
+  created_at: "2026-09-20T10:00:00.000+02:00",
+  parent_ids: ["2a4b78934375d7f53875269ffd4f45fd83a84ebe"],
+  title: "Fix iteration",
+  message: "Fix iteration\n\nKeep a snapshot.\n",
+  author_name: "Contributor",
+  author_email: "author@example.com",
+  authored_date: "2026-08-21T00:00:00.000+02:00",
+  committer_name: "Maintainer",
+  committer_email: "committer@example.com",
+  committed_date: "2026-09-20T10:00:00.000+02:00",
+  trailers: {},
+  extended_trailers: {},
+  web_url:
+    "https://gitlab.com/gitlab-org/gitlab-runner/-/commit/ed899a2f4b50b4370feeea94676502b42383c746",
+  stats: null,
+  status: null,
+  project_id: 250833,
+  last_pipeline: null,
+};
+
+const gitlabProject = {
+  id: 250833,
+  path_with_namespace: "gitlab-org/gitlab-runner",
+  web_url: "https://gitlab.com/gitlab-org/gitlab-runner",
+};
+
+const gitlabItem = {
+  sha: gitlabHit.id,
+  repository: "gitlab-org/gitlab-runner",
+  message: gitlabHit.message,
+  author: { name: "Contributor", email: "author@example.com", date: gitlabHit.authored_date },
+  committer: { name: "Maintainer", email: "committer@example.com", date: gitlabHit.committed_date },
+  parents: gitlabHit.parent_ids,
+  url: gitlabHit.web_url,
+};
+
+function scopeRefusal(data: unknown): FetchError {
+  const error = new FetchError("Bad Request");
+  Object.defineProperty(error, "status", { value: 400 });
+  Object.defineProperty(error, "data", { value: data });
+  return error;
+}
+
+describe("GitLab commit search", () => {
+  it("searches one project by message and names it on every row", async () => {
+    mocks.client.mockResolvedValueOnce(gitlabProject);
+    mocks.rawFetch.mockResolvedValue({
+      data: [gitlabHit],
+      headers: new Headers({ "x-next-page": "3", "x-total": "101" }),
+    });
+
+    const result = await new GitLabProvider({ token: "glpat-test" }).commits.search("snapshot", {
+      owner: "gitlab-org",
+      repo: "gitlab-runner",
+      page: 2,
+      perPage: 1,
+    });
+
+    expect(mocks.client).toHaveBeenCalledTimes(1);
+    expect(mocks.client).toHaveBeenCalledWith("/projects/gitlab-org%2Fgitlab-runner");
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/projects/250833/search", {
+      query: { scope: "commits", search: "snapshot", page: 2, per_page: 1 },
+    });
+    // x-total stops counting 100 past the earlier pages, so it is no count to report.
+    expect(result).toEqual({
+      items: [gitlabItem],
+      hasNextPage: true,
+      nextPage: 3,
+      incomplete: false,
+      resultLimit: null,
+    });
+  });
+
+  it("keeps paging a full 100-row page at GitLab's counting cap", async () => {
+    mocks.client.mockResolvedValueOnce(gitlabProject);
+    mocks.rawFetch.mockResolvedValue({
+      data: Array.from({ length: 100 }, () => gitlabHit),
+      headers: new Headers({ "x-next-page": "", "x-total": "200" }),
+    });
+
+    const result = await new GitLabProvider({ token: "glpat-test" }).commits.search("snapshot", {
+      owner: "gitlab-org",
+      repo: "gitlab-runner",
+      page: 2,
+      perPage: 100,
+    });
+
+    expect(result).toMatchObject({ hasNextPage: true, nextPage: 3 });
+  });
+
+  it("ends on a short last page", async () => {
+    mocks.client.mockResolvedValueOnce(gitlabProject);
+    mocks.rawFetch.mockResolvedValue({
+      data: [gitlabHit],
+      headers: new Headers({ "x-next-page": "", "x-total": "101" }),
+    });
+
+    const result = await new GitLabProvider({ token: "glpat-test" }).commits.search("snapshot", {
+      owner: "gitlab-org",
+      repo: "gitlab-runner",
+      page: 2,
+      perPage: 100,
+    });
+
+    expect(result.hasNextPage).toBe(false);
+    expect(result.nextPage).toBeUndefined();
+  });
+
+  it.each([
+    [{}, "/search"],
+    [{ owner: "gitlab-org" }, "/groups/gitlab-org/search"],
+  ])("routes %o through %s and reads each hit's project", async (scope, route) => {
+    mocks.rawFetch.mockResolvedValue({ data: [gitlabHit], headers: new Headers() });
+    mocks.client.mockResolvedValueOnce(gitlabProject);
+
+    const result = await new GitLabProvider({ token: "glpat-test" }).commits.search(
+      "snapshot",
+      scope,
+    );
+
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, route, {
+      query: { scope: "commits", search: "snapshot", page: 1, per_page: 30 },
+    });
+    expect(mocks.client).toHaveBeenCalledWith("/projects/250833");
+    expect(result).toMatchObject({ items: [gitlabItem], hasNextPage: false, incomplete: false });
+  });
+
+  it("marks a page incomplete when a hit's project cannot be read", async () => {
+    mocks.rawFetch.mockResolvedValue({
+      data: [gitlabHit, { ...gitlabHit, project_id: 99 }],
+      headers: new Headers(),
+    });
+    mocks.client.mockImplementation(async (url: string) => {
+      if (url === "/projects/250833") return gitlabProject;
+      throw new Error("gone");
+    });
+
+    const result = await new GitLabProvider({ token: "glpat-test" }).commits.search("snapshot");
+
+    expect(result).toMatchObject({ items: [gitlabItem], incomplete: true });
+  });
+
+  it.each([
+    ["Community Edition", { error: "scope does not have a valid value" }],
+    ["no advanced search", { message: "Scope supported only with advanced search" }],
+  ])("answers 501 with the project route when %s refuses a wide search", async (_, data) => {
+    mocks.rawFetch.mockRejectedValue(scopeRefusal(data));
+
+    await expect(
+      new GitLabProvider({ token: "glpat-test" }).commits.search("snapshot", {
+        owner: "gitlab-org",
+      }),
+    ).rejects.toMatchObject({
+      status: 501,
+      platform: "gitlab",
+      message: expect.stringContaining("Pass owner and repo"),
+    });
+  });
+
+  it("leaves other bad requests as they are", async () => {
+    mocks.client.mockResolvedValueOnce(gitlabProject);
+    mocks.rawFetch.mockRejectedValue(scopeRefusal({ error: "search is invalid" }));
+
+    await expect(
+      new GitLabProvider({ token: "glpat-test" }).commits.search("snapshot", {
+        owner: "gitlab-org",
+        repo: "gitlab-runner",
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it.each([
+    ["page 0", { page: 0 }],
+    ["perPage 101", { perPage: 101 }],
+  ])("rejects %s before any request", async (_, options) => {
+    await expect(
+      new GitLabProvider({ token: "glpat-test" }).commits.search("snapshot", options),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(mocks.rawFetch).not.toHaveBeenCalled();
+    expect(mocks.client).not.toHaveBeenCalled();
+  });
 });

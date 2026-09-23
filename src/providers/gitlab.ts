@@ -29,6 +29,9 @@ import type {
   CommitPatch,
   CommitPatchFile,
   CommitPatchOptions,
+  CommitSearchItem,
+  CommitSearchOptions,
+  CommitSearchResult,
   CommitSummary,
   ContributionTemplateKind,
   ContributionTemplateSummary,
@@ -71,6 +74,7 @@ import type {
   UpdatePullRequestInput,
   UpdateReleaseInput,
 } from "../types.ts";
+import { FetchError } from "ofetch";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
 import { cachedFetch, invalidateCache } from "../cache.ts";
 import { ForgesError, normalizeError, NotFoundError } from "../errors.ts";
@@ -94,7 +98,9 @@ import {
 
 const MAX_COMMIT_DIFF_PAGES = 100;
 const MAX_TREE_PAGES = 10;
-const MAX_CODE_SEARCH_PROJECT_REQUESTS = 5;
+const MAX_SEARCH_PROJECT_REQUESTS = 5;
+/** Matches GitLab's basic search counts beyond the pages already read. */
+const SEARCH_COUNT_LIMIT = 100;
 const MAX_PIPELINE_NAME_REQUESTS = 5;
 const MAX_CONTRIBUTION_TEMPLATE_PAGES = 100;
 
@@ -124,6 +130,11 @@ interface GitLabProjectAccess {
 interface GitLabCodeSearchItem {
   path: string;
   ref: string;
+  project_id: number;
+}
+
+/** A commit search row names its project only by id. */
+interface GitLabCommitSearchItem extends GitLabCommit {
   project_id: number;
 }
 
@@ -1316,28 +1327,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       const rawItems = response.data ?? [];
       // Blob rows expose only project_id, so repository names and web URLs need
       // separate project reads. Deduplicate them and cap concurrency per page.
-      const projects = new Map<number, GitLabProject>();
-      if (scopedProject !== undefined) projects.set(scopedProject.id, scopedProject);
-      const projectIds = [...new Set(rawItems.map((item) => item.project_id))].filter(
-        (projectId) => !projects.has(projectId),
-      );
-      let enrichmentError: unknown;
-      for (let offset = 0; offset < projectIds.length; offset += MAX_CODE_SEARCH_PROJECT_REQUESTS) {
-        const batch = projectIds.slice(offset, offset + MAX_CODE_SEARCH_PROJECT_REQUESTS);
-        await Promise.all(
-          batch.map(async (projectId) => {
-            try {
-              const project = await this.client<GitLabProject>(`/projects/${projectId}`);
-              projects.set(projectId, project);
-            } catch (error: unknown) {
-              enrichmentError ??= error;
-            }
-          }),
-        );
-      }
-      if (rawItems.length > 0 && projects.size === 0 && enrichmentError !== undefined) {
-        throw enrichmentError;
-      }
+      const projects = await this.readSearchProjects(rawItems, scopedProject);
 
       const items = rawItems.flatMap((raw): CodeSearchItem[] => {
         const project = projects.get(raw.project_id);
@@ -1357,6 +1347,115 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }
+  }
+
+  protected override async searchCommits(
+    search: string,
+    options?: CommitSearchOptions,
+  ): Promise<CommitSearchResult> {
+    const page = options?.page ?? 1;
+    const perPage = options?.perPage ?? 30;
+    if (
+      !Number.isSafeInteger(page) ||
+      page < 1 ||
+      !Number.isSafeInteger(perPage) ||
+      perPage < 1 ||
+      perPage > 100
+    ) {
+      throw new ForgesError(
+        "Commit search requires a positive page and perPage from 1 to 100",
+        400,
+        "gitlab",
+      );
+    }
+    const owner = options?.owner;
+    const repo = options?.repo;
+    const projectScope = owner !== undefined && repo !== undefined;
+    try {
+      let route = "/search";
+      let scopedProject: GitLabProject | undefined;
+      if (projectScope) {
+        scopedProject = await this.client<GitLabProject>(
+          `/projects/${encodeProjectPath(owner, repo)}`,
+        );
+        this.setCachedProjectId(`${owner}/${repo}`, scopedProject.id);
+        route = `/projects/${scopedProject.id}/search`;
+      } else if (owner !== undefined) {
+        route = `/groups/${encodeNamespacePath(owner)}/search`;
+      }
+
+      const response = await rawFetch<GitLabCommitSearchItem[]>(this.client, route, {
+        query: { scope: "commits", search, page, per_page: perPage },
+      });
+      const rawItems = response.data ?? [];
+      const projects = await this.readSearchProjects(rawItems, scopedProject);
+      const items = rawItems.flatMap((raw): CommitSearchItem[] => {
+        const repository = projects.get(raw.project_id)?.path_with_namespace;
+        return repository === undefined ? [] : [{ ...this.mapCommitSummary(raw), repository }];
+      });
+      // Basic search stops counting 100 matches past the earlier pages, so x-total
+      // is no count. At that cap a 100-row page gets no x-next-page though more match.
+      const { totalCount, ...pagination } = this.parsePagination(items, response.headers);
+      if (!pagination.hasNextPage && totalCount === SEARCH_COUNT_LIMIT + (page - 1) * perPage) {
+        pagination.hasNextPage = true;
+        pagination.nextPage = page + 1;
+      }
+      return {
+        ...pagination,
+        incomplete: items.length !== rawItems.length,
+        resultLimit: null,
+      };
+    } catch (error: unknown) {
+      if (
+        !projectScope &&
+        error instanceof FetchError &&
+        error.status === 400 &&
+        /\bscope\b/iu.test(JSON.stringify(error.data ?? null))
+      ) {
+        throw new ForgesError(
+          "GitLab searches commits across a group or the whole instance only with advanced search. Pass owner and repo to search one project",
+          501,
+          "gitlab",
+          error,
+        );
+      }
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  /**
+   * Read the projects that search rows name only by id, five requests at a time.
+   *
+   * A project that fails to load drops its rows. The first failure is thrown
+   * only when no project is known at all, since then no row can be kept.
+   */
+  private async readSearchProjects(
+    rawItems: readonly { project_id: number }[],
+    scopedProject: GitLabProject | undefined,
+  ): Promise<Map<number, GitLabProject>> {
+    const projects = new Map<number, GitLabProject>();
+    if (scopedProject !== undefined) projects.set(scopedProject.id, scopedProject);
+    const projectIds = [...new Set(rawItems.map((item) => item.project_id))].filter(
+      (projectId) => !projects.has(projectId),
+    );
+    let enrichmentError: unknown;
+    for (let offset = 0; offset < projectIds.length; offset += MAX_SEARCH_PROJECT_REQUESTS) {
+      const batch = projectIds.slice(offset, offset + MAX_SEARCH_PROJECT_REQUESTS);
+      await Promise.all(
+        batch.map(async (projectId) => {
+          try {
+            const project = await this.client<GitLabProject>(`/projects/${projectId}`);
+            projects.set(projectId, project);
+          } catch (error: unknown) {
+            enrichmentError ??= error;
+          }
+        }),
+      );
+    }
+    if (rawItems.length > 0 && projects.size === 0 && enrichmentError !== undefined) {
+      throw enrichmentError;
+    }
+    return projects;
   }
 
   // --- Issues ---
