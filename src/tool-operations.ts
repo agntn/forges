@@ -9,7 +9,8 @@ import { assertAssignees } from "./assignees.ts";
 import { assertIssueUpdate, assertPullRequestUpdate } from "./update-input.ts";
 import { waitForChecks, type WaitedCheckPage } from "./check-wait.ts";
 import { FetchError } from "ofetch";
-import { AuthenticationError, ForgesError } from "./errors.ts";
+import { AuthenticationError, ForgesError, RateLimitError } from "./errors.ts";
+import { redactEndpoint } from "./redact-endpoint.ts";
 import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
 import type { Provider } from "./provider.ts";
 import type {
@@ -125,7 +126,11 @@ async function createConfiguredProvider(
   token: string,
 ): Promise<Provider> {
   const baseURL = process.env[baseUrlEnvByPlatform[platform]];
-  return createProvider(platform, baseURL === undefined ? { token } : { baseURL, token });
+  const provider = await createProvider(
+    platform,
+    baseURL === undefined ? { token } : { baseURL, token },
+  );
+  return explainFailures(provider, platform, token === "");
 }
 
 /** Start one provider load under a key and forget it again if the load fails. */
@@ -241,29 +246,49 @@ function readProvider(platform: ForgesPlatform): Promise<Provider> {
 
   return (
     anonymousReadProviders.get(key) ??
-    trackProvider(anonymousReadProviders, key, async () =>
-      explainAnonymousRefusals(await createConfiguredProvider(platform, token), platform),
-    )
+    trackProvider(anonymousReadProviders, key, () => createConfiguredProvider(platform, token))
   );
 }
 
 const ANONYMOUS_REFUSALS = new Set([401, 403, 404, 429]);
-/** Refusals already explained, since callers sharing one in-flight load get the same error. */
-const explainedRefusals = new WeakSet<ForgesError>();
+/** Failures already explained, since callers sharing one in-flight load get the same error. */
+const explainedFailures = new WeakSet<ForgesError>();
+
+/** Join a sentence to a message that may or may not end with a period. */
+function appendSentence(message: string, sentence: string): string {
+  return `${message.trimEnd().replace(/\.?$/, ".")} ${sentence}`;
+}
 
 /**
- * Make a refusal of a tokenless read say that no token was sent.
+ * Rewrite a provider failure into the text every agent surface shows the model.
  *
- * A private repository answers 404 to such a request, exactly like one that does
- * not exist, so without this the agent concludes the repository is missing. Only
- * refusals the server sent are touched: a provider's own 404, such as a template
- * key missing from its list, means the item really is absent.
+ * Pi and OMP hand `error.message` to the model as it is, so the rewrite belongs
+ * here and not in one surface. The endpoint leaves the message, a rate limit
+ * names its retry window, and a refusal of a tokenless read says that no token
+ * was sent: a private repository answers 404 to such a request, exactly like one
+ * that does not exist, so without it the agent concludes the repository is
+ * missing. Only refusals the server sent get that sentence; a provider's own 404,
+ * such as a template key missing from its list, means the item really is absent.
+ * The original FetchError, URL included, stays on `originalError`.
  */
-function explainAnonymousRefusals(provider: Provider, platform: ForgesPlatform): Provider {
+function explainFailures(
+  provider: Provider,
+  platform: ForgesPlatform,
+  anonymous: boolean,
+): Provider {
   const explain = (error: unknown): unknown => {
+    if (!(error instanceof ForgesError) || explainedFailures.has(error)) return error;
+    explainedFailures.add(error);
+
+    error.message =
+      redactEndpoint(error.message) ||
+      (error.status === undefined ? "no reason reported" : `HTTP ${error.status}`);
+    if (error instanceof RateLimitError && error.retryAfter !== undefined) {
+      error.message = appendSentence(error.message, `Retry after ${error.retryAfter}s.`);
+    }
+
     if (
-      !(error instanceof ForgesError) ||
-      explainedRefusals.has(error) ||
+      !anonymous ||
       !(error.originalError instanceof FetchError) ||
       error.status === undefined ||
       !ANONYMOUS_REFUSALS.has(error.status)
@@ -277,8 +302,10 @@ function explainAnonymousRefusals(provider: Provider, platform: ForgesPlatform):
         : error.status === 429
           ? "The request carried no token, and requests without one get a far lower rate limit."
           : "The request carried no token.";
-    error.message = `${error.message.trimEnd().replace(/\.?$/, ".")} ${reason} ${credentialSetupHint(platform)} Then retry.`;
-    explainedRefusals.add(error);
+    error.message = appendSentence(
+      error.message,
+      `${reason} ${credentialSetupHint(platform)} Then retry.`,
+    );
     return error;
   };
 

@@ -1332,7 +1332,7 @@ describe("forges MCP server", () => {
     });
 
     expect(text(response.content)).toBe(
-      "forges_issues_list failed: Rate limit exceeded: 429 Too Many Requests Retry after 60s.",
+      "forges_issues_list failed: Rate limit exceeded: 429 Too Many Requests. Retry after 60s.",
     );
   });
 

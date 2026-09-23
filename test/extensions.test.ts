@@ -15,6 +15,7 @@ import { Value } from "typebox/value";
 
 import forgesOmpExtension from "../packages/omp/extensions/forges.ts";
 import forgesPiExtension from "../packages/pi/extensions/forges.ts";
+import { ForgesError, NotFoundError, RateLimitError } from "../src/errors.ts";
 import { resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
@@ -754,6 +755,47 @@ describe("Forges Pi extension", () => {
     expect(mocks.pullRequests.get).toHaveBeenCalledWith("agntn", "forges", 5, {
       closingIssues: true,
     });
+  });
+
+  it("keeps the endpoint out of Pi and OMP failures and names the retry window", async () => {
+    vi.stubEnv("FORGES_GITEA_BASE_URL", "https://ci:s3cret@git.internal.example:8443");
+    const args = { platform: "gitea", owner: "agntn", repo: "forges" };
+    const piTool = requirePiTool(registerPiTools(), "forges_repos_get");
+    const ompTool = requireOmpTool(registerOmpTools().tools, "forges_repos_get");
+    const runs = [
+      () => piTool.execute("test", args, undefined, undefined, unusedPiContext),
+      () => ompTool.execute("test", args, undefined, undefined, unusedOmpContext),
+    ];
+
+    for (const run of runs) {
+      mocks.repos.get.mockRejectedValueOnce(
+        new NotFoundError(
+          'Resource not found: [GET] "https://ci:s3cret@git.internal.example:8443/api/v1/repos/agntn/forges": 404 Not Found',
+          "gitea",
+        ),
+      );
+      await expect(run()).rejects.toThrow(/^Resource not found: 404 Not Found$/);
+
+      mocks.repos.get.mockRejectedValueOnce(
+        new RateLimitError(
+          'Rate limit exceeded: [GET] "https://ci:s3cret@git.internal.example:8443/api/v1/repos/agntn/forges": 429 Too Many Requests',
+          42,
+          "gitea",
+        ),
+      );
+      await expect(run()).rejects.toThrow(
+        /^Rate limit exceeded: 429 Too Many Requests\. Retry after 42s\.$/,
+      );
+
+      mocks.repos.get.mockRejectedValueOnce(
+        new ForgesError(
+          '[GET] "https://git.internal.example:8443/api/v1/repos/agntn/forges": ',
+          502,
+          "gitea",
+        ),
+      );
+      await expect(run()).rejects.toThrow(/^HTTP 502$/);
+    }
   });
 
   it("executes pull-request review listing through the shared provider operation", async () => {
