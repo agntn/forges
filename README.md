@@ -166,12 +166,12 @@ A class extending `Provider`, the typed mappers, and a 501 for every method you 
 
 ```bash
 pnpm install
-pnpm test        # vitest watch
+pnpm test        # vp test in watch mode
 pnpm test:run    # single run, as CI does
 pnpm typecheck   # tsc, then build, then the extension graph
 pnpm lint
 pnpm docs        # the site, it bundles src/
-pnpm run build   # obuild
+pnpm run build   # vp pack
 ```
 
 ## 💛 Thanks

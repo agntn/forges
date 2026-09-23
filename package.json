@@ -74,16 +74,16 @@
     "access": "public"
   },
   "scripts": {
-    "build": "obuild",
-    "dev": "obuild --stub",
-    "test": "vitest",
-    "test:run": "vitest --run",
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test watch",
+    "test:run": "vp test run",
     "test:packed": "node --experimental-strip-types test/eval-packed-extensions.mjs",
-    "fmt": "oxlint . --fix && oxfmt .",
-    "lint": "oxlint --deny-warnings . && oxfmt --check .",
+    "fmt": "vp lint --fix && vp fmt",
+    "lint": "vp lint --deny-warnings && vp fmt --check",
     "typecheck": "tsc --noEmit && pnpm build && tsc --noEmit -p tsconfig.extensions.json",
-    "prepack": "pnpm run build",
-    "release": "pnpm test:run && pnpm build && changelogen --release --push",
+    "prepack": "vp pack",
+    "release": "vp test run && vp pack && changelogen --release --push",
     "docs": "pnpm --dir docs dev",
     "docs:build": "pnpm --dir docs build"
   },
@@ -101,11 +101,9 @@
     "@oh-my-pi/pi-coding-agent": "17.3.7",
     "@types/node": "24.11.2",
     "changelogen": "0.6.2",
-    "obuild": "0.4.40",
-    "oxfmt": "0.36.0",
-    "oxlint": "1.80.0",
     "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.84.1 <1",

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { buildCommitPatch } from "../src/commit-patch.ts";
 import type { CommitPatchFile } from "../src/types.ts";

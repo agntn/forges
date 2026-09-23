@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { MAX_CHECK_WAIT_SECONDS, waitForChecks, type ReadCheckPage } from "../src/check-wait.ts";
 import type { PageResult, PullRequestCheck } from "../src/types.ts";

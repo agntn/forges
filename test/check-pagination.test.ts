@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { createProvider } from "../src/index.ts";
 import { ForgesError } from "../src/errors.ts";
 
