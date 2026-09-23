@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 import { FetchError } from "ofetch";
 import { NotFoundError, AuthenticationError, RateLimitError, ForgesError } from "../src/errors.ts";
 

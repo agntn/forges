@@ -544,8 +544,7 @@ onMounted(() => {
       v-else-if="state_.error"
       class="forges-body forges-frame rounded-xl"
       :style="{ color: 'var(--forges-del)' }"
-      >{{ state_.error }}</pre
-    >
+      >{{ state_.error }}</pre>
 
     <div
       v-else-if="operation === 'repo' && state_.repo"

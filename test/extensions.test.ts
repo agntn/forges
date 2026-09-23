@@ -10,7 +10,7 @@ import type {
   ExtensionContext as PiExtensionContext,
   ToolDefinition as PiToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { Value } from "typebox/value";
 
 import forgesOmpExtension from "../packages/omp/extensions/forges.ts";

@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };

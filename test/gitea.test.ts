@@ -3,7 +3,7 @@
  * Verifies API mapping, `limit` pagination param, and null-safe field handling
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { GiteaProvider } from "../src/providers/gitea.ts";
 import { Provider } from "../src/provider.ts";
 import { NotFoundError } from "../src/errors.ts";
@@ -36,8 +36,9 @@ vi.mock("../src/http.ts", () => ({
 }));
 
 vi.mock("../src/cache.ts", () => ({
-  cachedFetch: vi.fn(async (client: (...args: unknown[]) => unknown, url: string, opts?: unknown) =>
-    opts ? client(url, opts) : client(url),
+  cachedFetch: vi.fn(
+    async (client: (...args: unknown[]) => unknown, url: string, opts?: unknown) =>
+      opts ? client(url, opts) : client(url),
   ),
 }));
 

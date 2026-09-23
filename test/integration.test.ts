@@ -5,7 +5,7 @@
  * - Type exports verification
  */
 
-import { beforeAll, describe, it, expect, vi } from "vitest";
+import { beforeAll, describe, it, expect, vi } from "vite-plus/test";
 
 // -- Mock HTTP layer before importing providers --
 

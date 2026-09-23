@@ -1,15 +1,15 @@
 # AGENTS.md — forges
 
-Unified TypeScript API for GitHub, GitLab, Gitea, and GitBucket. Normalizes auth headers, pagination, and field names behind a single abstract `Provider` base class. Built on unjs stack (obuild, ofetch, unstorage). ESM only.
+Unified TypeScript API for GitHub, GitLab, Gitea, and GitBucket. Normalizes auth headers, pagination, and field names behind a single abstract `Provider` base class. Built on unjs stack (ofetch, unstorage) with Vite+ for lint, format, tests and packing. ESM only.
 
 ## Quick Commands
 
 ```bash
 pnpm i                          # install deps (pnpm 10.x, node >=22)
-pnpm dev                        # obuild --stub (dev mode with live types)
-pnpm run build                  # obuild → dist/ (.mjs + .d.mts)
+pnpm dev                        # vp pack --watch
+pnpm run build                  # vp pack → dist/ (.mjs + .d.mts)
 pnpm typecheck                  # tsc --noEmit (strict mode)
-pnpm test                       # vitest watch mode
+pnpm test                       # vp test in watch mode
 pnpm test:run                   # single run (CI)
 pnpm test:packed                # load both extensions from a published-shaped layout
 pnpm release                    # test → build → changelogen → push tag
@@ -18,13 +18,13 @@ pnpm release                    # test → build → changelogen → push tag
 **Run a single test file:**
 
 ```bash
-pnpm vitest run test/github.test.ts
+pnpm exec vp test run test/github.test.ts
 ```
 
 **Run a single test by name:**
 
 ```bash
-pnpm vitest run -t "should list repos"
+pnpm exec vp test run -t "lists a directory"
 ```
 
 **CI order:** typecheck → build → test:packed → test (see `.github/workflows/test.yml`).
@@ -73,20 +73,20 @@ test/
 
 **Where to put new code:**
 
-| Task                          | Location                            | Notes                                                                                                                    |
-| ----------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Add new provider              | `src/providers/`                    | Copy github.ts as template. Extend the abstract `Provider` base, add its loader to the `providers` map in `src/index.ts` |
-| Add new resource              | `src/types.ts` → provider files     | Define interface in types.ts, implement in each provider                                                                 |
-| Change contribution templates | `src/provider.ts` + provider files  | Keep lists metadata-only; `get` must resolve an exact listed key                                                         |
-| Change auth logic             | `src/auth.ts`                       | `resolveToken()` chain: order matters                                                                                    |
-| Change cache backend          | `src/cache.ts`                      | `configureStorage()` swaps unstorage driver                                                                              |
-| Fix pagination                | `src/pagination.ts`                 | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab                                                           |
-| Fix error mapping             | `src/errors.ts`                     | `normalizeError()` maps FetchError → ForgesError subtypes                                                                |
-| Add sub-path export           | `build.config.mjs` + `package.json` | Must update both: entries array + exports map                                                                            |
-| Add agent tool                | `src/tool-operations.ts`            | Executor first, then `src/mcp.ts` and both extensions                                                                    |
-| Change tool schema            | `packages/shared/`                  | `forgesToolSchemas()` builds them; MCP and Pi call it once, OMP rebuilds from `pi.typebox`                               |
-| Debug HTTP                    | `src/http.ts`                       | `rawFetch()` returns headers, `createHttpClient()` configures auth                                                       |
-| Add tests                     | `test/`                             | Name must match `test/<module>.test.ts`                                                                                  |
+| Task                          | Location                           | Notes                                                                                                                    |
+| ----------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Add new provider              | `src/providers/`                   | Copy github.ts as template. Extend the abstract `Provider` base, add its loader to the `providers` map in `src/index.ts` |
+| Add new resource              | `src/types.ts` → provider files    | Define interface in types.ts, implement in each provider                                                                 |
+| Change contribution templates | `src/provider.ts` + provider files | Keep lists metadata-only; `get` must resolve an exact listed key                                                         |
+| Change auth logic             | `src/auth.ts`                      | `resolveToken()` chain: order matters                                                                                    |
+| Change cache backend          | `src/cache.ts`                     | `configureStorage()` swaps unstorage driver                                                                              |
+| Fix pagination                | `src/pagination.ts`                | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab                                                           |
+| Fix error mapping             | `src/errors.ts`                    | `normalizeError()` maps FetchError → ForgesError subtypes                                                                |
+| Add sub-path export           | `vite.config.ts` + `package.json`  | Must update both: `pack.entry` + exports map                                                                             |
+| Add agent tool                | `src/tool-operations.ts`           | Executor first, then `src/mcp.ts` and both extensions                                                                    |
+| Change tool schema            | `packages/shared/`                 | `forgesToolSchemas()` builds them; MCP and Pi call it once, OMP rebuilds from `pi.typebox`                               |
+| Debug HTTP                    | `src/http.ts`                      | `rawFetch()` returns headers, `createHttpClient()` configures auth                                                       |
+| Add tests                     | `test/`                            | Name must match `test/<module>.test.ts`                                                                                  |
 
 ## Code Conventions
 
@@ -96,13 +96,13 @@ test/
 - Use explicit `.ts` extensions in relative source imports: `import { Foo } from './bar.ts'`
 - Use `import type` for type-only imports
 - Node builtins use `node:` prefix: `node:child_process`, `node:fs`
-- TypeScript uses NodeNext resolution with `allowImportingTsExtensions` and `noEmit`; obuild owns JavaScript and declaration emission
+- TypeScript uses NodeNext resolution with `allowImportingTsExtensions` and `noEmit`; `vp pack` owns JavaScript and declaration emission
 - The OMP extension must keep both dynamic imports literal: `existsSync(src)` chooses `import("../../../src/tool-operations.ts")` or `import("../../../dist/tool-operations.mjs")`. Never `import(url.href)`.
 
 ### TypeScript
 
 - **Strict mode** — plus `noUncheckedIndexedAccess`, `noImplicitOverride`, `noUnusedLocals`, `noUnusedParameters`, `noImplicitReturns`, and `noFallthroughCasesInSwitch`
-- **Erasable syntax only:** no parameter properties, enums or namespaces. `pnpm dev` stubs re-export `src/*.ts`, and plain `node` can only strip types, not transform them
+- **Erasable syntax only:** no parameter properties, enums or namespaces. The OMP extension loads `src/*.ts` in a checkout, and plain `node` can only strip types, not transform them
 - **Target:** ESNext, **module:** NodeNext, **moduleResolution:** NodeNext
 - **No `as any` or `@ts-ignore`** — use proper generics
 - **IDs are strings** — always `String(raw.id)`, even when APIs return numbers
@@ -159,6 +159,8 @@ Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 
 ## Testing
 
+**Test imports** - test files import from `vite-plus/test`, not `vitest`.
+
 **Mock pattern** — tests use `vi.hoisted()` to create mocks before imports:
 
 ```typescript
@@ -185,7 +187,7 @@ vi.mock("../src/cache.ts", () => ({ cachedFetch: mocks.cachedFetch }));
 
 **Test hygiene** — `vi.resetAllMocks()` + env restore in `beforeEach`/`afterEach`. No test pollution.
 
-**Vitest config** — `environment: "node"`, `globals: true`. No coverage thresholds.
+**Test config** - the `test` block in `vite.config.ts`: `environment: "node"`, `globals: true`. Vitest 5 clears mock history before each test. No coverage thresholds.
 
 ## Execution Workflow
 
@@ -196,7 +198,7 @@ vi.mock("../src/cache.ts", () => ({ cachedFetch: mocks.cachedFetch }));
    ```bash
    pnpm typecheck && pnpm test:run
    ```
-   If you changed a single module, run its test first: `pnpm vitest run test/<module>.test.ts`
+   If you changed a single module, run its test first: `pnpm exec vp test run test/<module>.test.ts`
 5. **Keep diffs small** — one concern per change. Don't refactor adjacent code.
 
 ## Safety and Git Hygiene
