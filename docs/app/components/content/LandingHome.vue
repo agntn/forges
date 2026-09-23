@@ -262,7 +262,7 @@ const activePlatform = computed(() => current.value.platform);
     >
       <code class="font-mono text-[13px] text-highlighted">forges mcp</code> serves the tools over
       stdio, the Pi and OMP extensions render them in the terminal. All three call the same
-      executors, so they answer identically and a fix lands once. Seven tools write, and they say so
+      executors, so they answer identically and a fix lands once. Eight tools write, and they say so
       in their annotations, so a client can gate them before a model gets creative.
       <template #visual>
         <LandingToolCall :sample="current" />
