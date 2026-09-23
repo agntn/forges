@@ -391,6 +391,14 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   });
   const commentId = Type.String({ description: "Discussion comment id", minLength: 1 });
   const commentParameters = closed({ platform, owner, repo, number, commentId });
+  const createCommentParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    body: Type.String({ description: "Comment body in the platform's Markdown", minLength: 1 }),
+    account,
+  });
   const createIssueParameters = closed({
     platform,
     owner,
@@ -760,6 +768,19 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_issues_comments_create",
+    label: "Create Forges Issue Comment",
+    description:
+      "Post a new comment in an issue's discussion; this mutates the selected Git platform",
+    parameters: createCommentParameters,
+    ...statusRenderers("forges_issues_comments_create", "Create Forges Issue Comment"),
+    approval: toolApproval("forges_issues_comments_create"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).createIssueComment(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_issues_create",
     label: "Create Forges Issue",
     description: "Create an issue in a repository; this mutates the selected Git platform",
@@ -892,6 +913,22 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: toolApproval("forges_pull_requests_comments_get"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getPullRequestComment(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_comments_create",
+    label: "Create Forges Pull Request Comment",
+    description:
+      "Post a new conversation comment on a pull request; this mutates the selected Git platform",
+    parameters: createCommentParameters,
+    ...statusRenderers(
+      "forges_pull_requests_comments_create",
+      "Create Forges Pull Request Comment",
+    ),
+    approval: toolApproval("forges_pull_requests_comments_create"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).createPullRequestComment(params);
     },
   });
 

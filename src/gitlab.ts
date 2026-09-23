@@ -28,6 +28,7 @@ export type {
   ListCommentOptions,
   ListContributionTemplatesOptions,
   ListThreadOptions,
+  CreateCommentInput,
   CreateIssueInput,
   CreatePullRequestInput,
   UpdatePullRequestInput,

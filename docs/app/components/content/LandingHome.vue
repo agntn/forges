@@ -6,7 +6,7 @@ const { samples, tick, paused, current, step } = useLandingForge();
 const stats = [
   { value: "4", label: "platforms" },
   { value: "10", label: "resources" },
-  { value: "45", label: "agent tools" },
+  { value: "47", label: "agent tools" },
   { value: "3", label: "agent surfaces" },
 ] as const;
 
@@ -250,7 +250,7 @@ const activePlatform = computed(() => current.value.platform);
 
     <LandingFeature
       eyebrow="Agents"
-      title="45 tools, three hosts"
+      title="47 tools, three hosts"
       to="/guide/agents"
       link="MCP, Pi and OMP"
       :checks="[
@@ -262,7 +262,7 @@ const activePlatform = computed(() => current.value.platform);
     >
       <code class="font-mono text-[13px] text-highlighted">forges mcp</code> serves the tools over
       stdio, the Pi and OMP extensions render them in the terminal. All three call the same
-      executors, so they answer identically and a fix lands once. Eight tools write, and they say so
+      executors, so they answer identically and a fix lands once. Ten tools write, and they say so
       in their annotations, so a client can gate them before a model gets creative.
       <template #visual>
         <LandingToolCall :sample="current" />

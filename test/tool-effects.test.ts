@@ -11,6 +11,8 @@ const writes = [
   "forges_releases_create",
   "forges_releases_update",
   "forges_issues_create",
+  "forges_issues_comments_create",
+  "forges_pull_requests_comments_create",
   "forges_pull_requests_create",
   "forges_pull_requests_update",
   "forges_auth_reload",

@@ -227,6 +227,14 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       execute: (operations, args) => operations.getIssueComment(args),
     }),
     defineTool({
+      name: "forges_issues_comments_create",
+      title: "Comment on Issue",
+      description:
+        "Post a new comment in one issue's discussion. It writes as the account the local credentials belong to, and a second call posts a second comment, so confirm the text with the user first. Returns the comment as stored, with the id forges_issues_comments_get reads.",
+      inputSchema: schemas.createCommentParameters,
+      execute: (operations, args) => operations.createIssueComment(args),
+    }),
+    defineTool({
       name: "forges_issues_create",
       title: "Create Issue",
       description:
@@ -313,6 +321,14 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
         "Get one conversation comment under a pull request, with its full body. The id is the one forges_pull_requests_comments returned; review-thread comments come back whole from forges_threads_get instead.",
       inputSchema: schemas.commentParameters,
       execute: (operations, args) => operations.getPullRequestComment(args),
+    }),
+    defineTool({
+      name: "forges_pull_requests_comments_create",
+      title: "Comment on Pull Request",
+      description:
+        "Post a new conversation comment on one pull request. It lands in the discussion, not in a review thread; answer a thread with forges_threads_reply. It writes as the account the local credentials belong to, and a second call posts a second comment, so confirm the text with the user first. Returns the comment as stored, with the id forges_pull_requests_comments_get reads.",
+      inputSchema: schemas.createCommentParameters,
+      execute: (operations, args) => operations.createPullRequestComment(args),
     }),
     defineTool({
       name: "forges_pull_requests_create",

@@ -91,6 +91,7 @@ const toolNames = [
   "forges_issues_get",
   "forges_issues_comments",
   "forges_issues_comments_get",
+  "forges_issues_comments_create",
   "forges_issues_create",
   "forges_pull_requests_list",
   "forges_pull_requests_search_global",
@@ -102,6 +103,7 @@ const toolNames = [
   "forges_pull_requests_reviews_get",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
+  "forges_pull_requests_comments_create",
   "forges_pull_requests_create",
   "forges_pull_requests_update",
   "forges_users_get",
@@ -118,6 +120,8 @@ const toolNames = [
 
 const writingTools = new Set([
   "forges_issues_create",
+  "forges_issues_comments_create",
+  "forges_pull_requests_comments_create",
   "forges_pull_requests_create",
   "forges_pull_requests_update",
   "forges_releases_create",
@@ -227,7 +231,9 @@ describe("forges MCP server", () => {
         readOnlyHint: !writingTools.has(tool.name),
         idempotentHint: ![
           "forges_issues_create",
+          "forges_issues_comments_create",
           "forges_pull_requests_create",
+          "forges_pull_requests_comments_create",
           "forges_releases_create",
           "forges_threads_reply",
           "forges_auth_reload",

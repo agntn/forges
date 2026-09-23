@@ -54,6 +54,7 @@ import type {
   ListPullRequestFilesOptions,
   ListThreadOptions,
   Comment,
+  CreateCommentInput,
   CreateIssueInput,
   CreatePullRequestInput,
   CreateReleaseInput,
@@ -1764,6 +1765,34 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     commentId: string,
   ): Promise<Comment> {
     return this.getIssueComment(owner, repo, number, commentId);
+  }
+
+  protected override async createIssueComment(
+    owner: string,
+    repo: string,
+    number: number,
+    input: CreateCommentInput,
+  ): Promise<Comment> {
+    try {
+      return this.mapComment(
+        await this.client<GiteaComment>(
+          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}/comments`,
+          { method: "POST", body: { body: input.body } },
+        ),
+      );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  /** Pulls share the issue index, so their conversation comments go through it. */
+  protected override async createPullRequestComment(
+    owner: string,
+    repo: string,
+    number: number,
+    input: CreateCommentInput,
+  ): Promise<Comment> {
+    return this.createIssueComment(owner, repo, number, input);
   }
 
   protected override async getUser(username: string): Promise<User> {

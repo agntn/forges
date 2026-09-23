@@ -603,6 +603,13 @@ export interface ListCommentOptions {
   perPage?: number;
 }
 
+/**
+ * Input for a new comment in an issue or pull-request discussion
+ */
+export interface CreateCommentInput {
+  body: string;
+}
+
 /** List operation options for pull-request files. */
 export interface ListPullRequestFilesOptions {
   page?: number;
@@ -782,6 +789,12 @@ export interface IssueResource {
     options?: ListCommentOptions,
   ): Promise<PageResult<Comment>>;
   getComment(owner: string, repo: string, number: number, commentId: string): Promise<Comment>;
+  createComment(
+    owner: string,
+    repo: string,
+    number: number,
+    input: CreateCommentInput,
+  ): Promise<Comment>;
 }
 
 /**
@@ -843,6 +856,12 @@ export interface PullRequestResource {
     options?: ListCommentOptions,
   ): Promise<PageResult<Comment>>;
   getComment(owner: string, repo: string, number: number, commentId: string): Promise<Comment>;
+  createComment(
+    owner: string,
+    repo: string,
+    number: number,
+    input: CreateCommentInput,
+  ): Promise<Comment>;
 }
 
 /**

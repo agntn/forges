@@ -379,6 +379,14 @@ export function forgesToolSchemas() {
     reviewId: Type.String({ description: "Review id returned by the reviews list", minLength: 1 }),
   });
   const commentParameters = closed({ platform, owner, repo, number, commentId });
+  const createCommentParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    body: Type.String({ description: "Comment body in the platform's Markdown", minLength: 1 }),
+    account,
+  });
   const createIssueParameters = closed({
     platform,
     owner,
@@ -549,6 +557,7 @@ export function forgesToolSchemas() {
     listPullRequestReviewsParameters,
     pullRequestReviewParameters,
     commentParameters,
+    createCommentParameters,
     createIssueParameters,
     createPullRequestParameters,
     updatePullRequestParameters,

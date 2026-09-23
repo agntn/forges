@@ -2305,6 +2305,33 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("createComment", () => {
+    it("posts to the issue discussion", async () => {
+      mockClient.mockResolvedValueOnce(giteaComment());
+
+      const comment = await provider.issues.createComment("testowner", "test-repo", 1, {
+        body: "Same here on 1.22",
+      });
+
+      expect(mockClient).toHaveBeenLastCalledWith("/repos/testowner/test-repo/issues/1/comments", {
+        method: "POST",
+        body: { body: "Same here on 1.22" },
+      });
+      expect(comment).toMatchObject({ id: "21", body: "Same here on 1.22" });
+    });
+
+    it("posts a pull-request comment through the shared issue index", async () => {
+      mockClient.mockResolvedValueOnce(giteaComment());
+
+      await provider.pullRequests.createComment("testowner", "test-repo", 5, { body: "Rebased" });
+
+      expect(mockClient).toHaveBeenLastCalledWith("/repos/testowner/test-repo/issues/5/comments", {
+        method: "POST",
+        body: { body: "Rebased" },
+      });
+    });
+  });
+
   describe("issues.getComment", () => {
     it("reads one comment by id, without the issue number", async () => {
       mockClient.mockResolvedValueOnce(giteaComment());

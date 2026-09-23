@@ -28,6 +28,7 @@ import type {
   CommitSummary,
   CommitSearchOptions,
   CommitSearchResult,
+  CreateCommentInput,
   CreateIssueInput,
   CreatePullRequestInput,
   CreateReleaseInput,
@@ -484,6 +485,8 @@ export interface GetCommentParams extends RepositoryParams {
   commentId: string;
 }
 
+export type CreateCommentParams = GetRepositoryItemParams & AccountParams & CreateCommentInput;
+
 export interface GetUserParams extends PlatformParams {
   username: string;
 }
@@ -896,6 +899,19 @@ export async function getIssueComment(args: GetCommentParams): Promise<ForgesToo
   return result(params.platform, comment);
 }
 
+export async function createIssueComment(
+  args: CreateCommentParams,
+): Promise<ForgesToolResult<Comment>> {
+  const params = repositoryTarget(args);
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform, params.account);
+    const comment = await provider.issues.createComment(params.owner, params.repo, params.number, {
+      body: params.body,
+    });
+    return result(params.platform, comment);
+  });
+}
+
 export async function createIssue(args: CreateIssueParams): Promise<ForgesToolResult<Issue>> {
   const params = repositoryTarget(args);
   assertAssignees(params.assignees, params.platform);
@@ -1084,6 +1100,22 @@ export async function getPullRequestComment(
     params.commentId,
   );
   return result(params.platform, comment);
+}
+
+export async function createPullRequestComment(
+  args: CreateCommentParams,
+): Promise<ForgesToolResult<Comment>> {
+  const params = repositoryTarget(args);
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform, params.account);
+    const comment = await provider.pullRequests.createComment(
+      params.owner,
+      params.repo,
+      params.number,
+      { body: params.body },
+    );
+    return result(params.platform, comment);
+  });
 }
 
 export async function createPullRequest(

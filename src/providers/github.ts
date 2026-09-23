@@ -49,6 +49,7 @@ import type {
   ListPullRequestFilesOptions,
   ListThreadOptions,
   Comment,
+  CreateCommentInput,
   CreateIssueInput,
   CreatePullRequestInput,
   CreateReleaseInput,
@@ -2435,6 +2436,33 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     commentId: string,
   ): Promise<Comment> {
     return this.getIssueComment(owner, repo, number, commentId);
+  }
+
+  protected override async createIssueComment(
+    owner: string,
+    repo: string,
+    number: number,
+    input: CreateCommentInput,
+  ): Promise<Comment> {
+    try {
+      const data = await this.client<GitHubComment>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}/comments`,
+        { method: "POST", body: { body: input.body } },
+      );
+      return this.mapComment(data);
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /** A pull-request conversation comment is posted through its issue as well. */
+  protected override async createPullRequestComment(
+    owner: string,
+    repo: string,
+    number: number,
+    input: CreateCommentInput,
+  ): Promise<Comment> {
+    return this.createIssueComment(owner, repo, number, input);
   }
 
   // --- Users ---
