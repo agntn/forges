@@ -285,8 +285,11 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.pullRequests = {
       searchGlobal: async (query, options) => {
-        if (query.trim() === "") {
-          throw new ForgesError("Pull-request search query must not be empty", 400);
+        if (options?.author !== undefined && !/^[^\s:'"]+$/u.test(options.author)) {
+          throw new ForgesError("Pull-request search author must be a single login", 400);
+        }
+        if (query.trim() === "" && options?.author === undefined) {
+          throw new ForgesError("Pull-request search needs a query or an author", 400);
         }
         if (options?.repo !== undefined && options.owner === undefined) {
           throw new ForgesError("Pull-request search repository scope requires an owner", 400);

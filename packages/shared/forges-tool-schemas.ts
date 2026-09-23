@@ -179,11 +179,19 @@ export function forgesToolSchemas() {
   });
   const globalPullRequestSearchParameters = closed({
     platform,
-    query: Type.String({
-      description:
-        "Native pull-request query: author: and created: qualifiers on GitHub, keywords on Gitea",
-      minLength: 1,
-    }),
+    query: Type.Optional(
+      Type.String({
+        description:
+          "Native pull-request query: qualifiers such as created: on GitHub, keywords on Gitea and GitLab. Optional with author",
+        minLength: 1,
+      }),
+    ),
+    author: Type.Optional(
+      Type.String({
+        description: "Login of the pull request author, on every platform",
+        minLength: 1,
+      }),
+    ),
     owner,
     repo: Type.Optional(repo),
     page,

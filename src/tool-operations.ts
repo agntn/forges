@@ -470,7 +470,7 @@ export interface GetContributionTemplateParams extends RepositoryParams {
 
 export interface SearchPullRequestsGlobalParams
   extends PlatformParams, GlobalPullRequestSearchOptions {
-  query: string;
+  query?: string;
 }
 
 export interface SearchCommitsParams extends PlatformParams, CommitSearchOptions {
@@ -1147,7 +1147,8 @@ export async function searchPullRequestsGlobal(
 > {
   const params = searchTarget(args);
   const provider = await readProvider(params.platform);
-  const search = await provider.pullRequests.searchGlobal(params.query, {
+  const search = await provider.pullRequests.searchGlobal(params.query ?? "", {
+    author: params.author,
     owner: params.owner,
     repo: params.repo,
     page: params.page,
