@@ -25,6 +25,7 @@ vi.mock("../src/cache.ts", () => ({
 }));
 
 import { GitHubProvider } from "../src/providers/github.ts";
+import type { UpdatePullRequestInput } from "../src/types.ts";
 
 // --- Fixtures (snake_case matching real GitHub API) ---
 
@@ -3025,6 +3026,152 @@ describe("GitHubProvider", () => {
       expect(mocks.client).toHaveBeenCalledTimes(2);
       expect(pr.number).toBe(99);
       expect(pr.assignees).toEqual([]);
+    });
+  });
+
+  describe("pullRequests.update", () => {
+    it("patches only the body and leaves title, state, assignees and labels out", async () => {
+      mocks.client.mockResolvedValueOnce({ ...ghPullRequest, body: "Closes #42." });
+
+      const pr = await gh.pullRequests.update("octocat", "hello-world", 99, {
+        body: "Closes #42.",
+      });
+
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+      // Undefined fields drop out of the JSON body, so the title and state go untouched.
+      expect(JSON.parse(JSON.stringify(mocks.client.mock.calls[0]?.[1]))).toEqual({
+        method: "PATCH",
+        body: { body: "Closes #42." },
+      });
+      expect(pr.body).toBe("Closes #42.");
+      expect(pr.title).toBe("Add dark mode");
+      expect(pr.assignees).toEqual([{ login: "maintainer" }]);
+    });
+
+    it("adds and removes through the issue endpoints, then reads the result back", async () => {
+      const updated = {
+        ...ghPullRequest,
+        assignees: [{ login: "maintainer" }, { login: "reviewer" }],
+        labels: [{ name: "docs" }],
+      };
+      mocks.client
+        .mockResolvedValueOnce(ghPullRequest)
+        .mockResolvedValueOnce(ghIssue)
+        .mockResolvedValueOnce(ghIssue)
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce(updated);
+
+      const pr = await gh.pullRequests.update("octocat", "hello-world", 99, {
+        addAssignees: ["reviewer"],
+        removeAssignees: ["former"],
+        addLabels: ["docs"],
+        removeLabels: ["enhancement", "never-set"],
+      });
+
+      const issue = "/repos/octocat/hello-world/issues/99";
+      expect(mocks.client.mock.calls).toEqual([
+        ["/repos/octocat/hello-world/pulls/99", {}],
+        [`${issue}/assignees`, { method: "POST", body: { assignees: ["reviewer"] } }],
+        [`${issue}/assignees`, { method: "DELETE", body: { assignees: ["former"] } }],
+        [`${issue}/labels`, { method: "POST", body: { labels: ["docs"] } }],
+        [`${issue}/labels/enhancement`, { method: "DELETE" }],
+        [`${issue}/labels/never-set`, { method: "DELETE" }],
+        ["/repos/octocat/hello-world/pulls/99"],
+      ]);
+      expect(pr.assignees).toEqual([{ login: "maintainer" }, { login: "reviewer" }]);
+      expect(pr.labels).toEqual(["docs"]);
+    });
+
+    it("closes and reopens through the pull request state", async () => {
+      mocks.client
+        .mockResolvedValueOnce({ ...ghPullRequest, state: "closed" })
+        .mockResolvedValueOnce({ ...ghPullRequest, state: "open" });
+
+      const closed = await gh.pullRequests.update("octocat", "hello-world", 99, {
+        state: "closed",
+      });
+      const reopened = await gh.pullRequests.update("octocat", "hello-world", 99, {
+        state: "open",
+      });
+
+      expect(mocks.client.mock.calls.map(([, options]) => options.body.state)).toEqual([
+        "closed",
+        "open",
+      ]);
+      expect(closed.state).toBe("closed");
+      expect(reopened.state).toBe("open");
+    });
+
+    it("touches no issue when the number is not a pull request", async () => {
+      mocks.client.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(
+        gh.pullRequests.update("octocat", "hello-world", 42, { addLabels: ["docs"] }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+    });
+
+    it("removes a label whose name holds a slash or a percent sign", async () => {
+      mocks.client
+        .mockResolvedValueOnce(ghPullRequest)
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce({ ...ghPullRequest, labels: [] });
+
+      await gh.pullRequests.update("octocat", "hello-world", 99, {
+        removeLabels: ["kind/bug", "100%"],
+      });
+
+      expect(mocks.client).toHaveBeenNthCalledWith(
+        2,
+        "/repos/octocat/hello-world/issues/99/labels/kind%2Fbug",
+        { method: "DELETE" },
+      );
+      expect(mocks.client).toHaveBeenNthCalledWith(
+        3,
+        "/repos/octocat/hello-world/issues/99/labels/100%25",
+        { method: "DELETE" },
+      );
+    });
+
+    it("refuses a dot label before the title changes, since its path would collapse", async () => {
+      await expect(
+        gh.pullRequests.update("octocat", "hello-world", 99, {
+          title: "Renamed",
+          removeLabels: [".."],
+        }),
+      ).rejects.toMatchObject({ status: 400, message: expect.stringContaining('"..') });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("keeps a failed label removal other than 404 as the error", async () => {
+      mocks.client.mockResolvedValueOnce(ghPullRequest).mockRejectedValueOnce(makeFetchError(403));
+
+      await expect(
+        gh.pullRequests.update("octocat", "hello-world", 99, { removeLabels: ["enhancement"] }),
+      ).rejects.toMatchObject({ status: 403 });
+    });
+
+    it.each([
+      [{}, "at least one change"],
+      [{ addAssignees: [], removeLabels: [] }, "at least one change"],
+      [{ title: "  " }, "title must not be empty"],
+      [{ state: "merged" }, 'state must be "open" or "closed"'],
+      [{ addAssignees: ["Octocat"], removeAssignees: ["octocat"] }, "both add and remove: Octocat"],
+      [{ addLabels: ["docs"], removeLabels: ["docs"] }, "both add and remove: docs"],
+      [{ addLabels: [""] }, "addLabels must be an array"],
+    ])("rejects %j before any request", async (input, message) => {
+      await expect(
+        gh.pullRequests.update(
+          "octocat",
+          "hello-world",
+          99,
+          input as unknown as UpdatePullRequestInput,
+        ),
+      ).rejects.toMatchObject({ status: 400, message: expect.stringContaining(message) });
+      expect(mocks.client).not.toHaveBeenCalled();
     });
   });
 

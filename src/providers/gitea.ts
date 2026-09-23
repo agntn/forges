@@ -62,11 +62,13 @@ import type {
   ReplyThreadInput,
   Thread,
   ThreadComment,
+  UpdatePullRequestInput,
   UpdateReleaseInput,
 } from "../types.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
 import { isPullRequestReview, normalizeReviewState } from "../review.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
+import { changesAssignees, nextAssignees } from "../pull-request-update.ts";
 import { buildCommitPatch } from "../commit-patch.ts";
 import {
   buildCiJobLog,
@@ -1598,6 +1600,62 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
             body,
           },
         ),
+      );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  /**
+   * Labels change through the issue endpoints, which add and remove by id and
+   * leave the rest alone; the edit route would need the whole list and reads an
+   * empty one as no change. Assignees go out as the whole list with the rest, so
+   * the pull request is read first, which also keeps an issue number from getting
+   * its labels changed by mistake.
+   */
+  protected override async updatePullRequest(
+    owner: string,
+    repo: string,
+    number: number,
+    input: UpdatePullRequestInput,
+  ): Promise<PullRequest> {
+    const repository = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`;
+    const pullPath = `${repository}/pulls/${encodePathSegment(number)}`;
+    const issuePath = `${repository}/issues/${encodePathSegment(number)}`;
+    try {
+      const labelWrites = Boolean(input.addLabels?.length || input.removeLabels?.length);
+      const current =
+        labelWrites || changesAssignees(input)
+          ? await this.client<GiteaPullRequest>(pullPath)
+          : undefined;
+
+      if (input.addLabels?.length) {
+        const ids = await this.resolveIssueLabelIds(owner, repo, input.addLabels);
+        await this.client(`${issuePath}/labels`, { method: "POST", body: { labels: ids } });
+      }
+      const removed = new Set(input.removeLabels);
+      for (const label of current?.labels ?? []) {
+        if (!removed.has(label.name)) continue;
+        await this.client(`${issuePath}/labels/${encodePathSegment(label.id)}`, {
+          method: "DELETE",
+        });
+      }
+
+      const body: Record<string, unknown> = {};
+      if (input.title !== undefined) body.title = input.title;
+      if (input.body !== undefined) body.body = input.body;
+      if (input.state !== undefined) body.state = input.state;
+      if (current && changesAssignees(input)) {
+        body.assignees = nextAssignees(
+          (current.assignees ?? []).map(({ login }) => login),
+          input,
+        );
+      }
+
+      return this.mapPullRequest(
+        Object.keys(body).length > 0
+          ? await this.client<GiteaPullRequest>(pullPath, { method: "PATCH", body })
+          : await this.client<GiteaPullRequest>(pullPath),
       );
     } catch (error) {
       throw normalizeError(error, PLATFORM);

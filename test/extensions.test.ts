@@ -40,6 +40,7 @@ const mocks = vi.hoisted(() => {
     search: vi.fn(),
     get: vi.fn(),
     create: vi.fn(),
+    update: vi.fn(),
     listComments: vi.fn(),
   };
   const users = { get: vi.fn(), authenticated: vi.fn() };
@@ -127,6 +128,7 @@ const toolNames = [
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
   "forges_pull_requests_create",
+  "forges_pull_requests_update",
   "forges_users_get",
   "forges_users_authenticated",
   "forges_auth_reload",
@@ -936,6 +938,76 @@ describe("Forges Pi extension", () => {
     expect(result.details.result).toMatchObject({ body: "edited" });
   });
 
+  it("shows only what a pull-request update changes and writes after Pi approval", async () => {
+    const confirm = vi.fn().mockResolvedValue(true);
+    mocks.pullRequests.update.mockResolvedValue({ number: 5, assignees: [{ login: "reviewer" }] });
+    mocks.users.authenticated.mockResolvedValue({ id: "2", login: "oritwoen" });
+    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_update");
+
+    await tool.execute(
+      "test",
+      {
+        repo: "agntn/forges",
+        number: 5,
+        state: "closed",
+        addAssignees: ["reviewer"],
+        addLabels: ["docs"],
+        removeLabels: ["stale"],
+        account: "oritwoen",
+      },
+      undefined,
+      undefined,
+      approvalPiContext(confirm),
+    );
+
+    expect(confirm).toHaveBeenCalledWith(
+      "Update pull request?",
+      [
+        "Repository  agntn/forges on GitHub",
+        "Account     oritwoen",
+        "Number      #5",
+        "State       Close",
+        "Assignees   +reviewer",
+        "Labels      +docs, -stale",
+        "",
+        "Title",
+        "(unchanged)",
+        "",
+        "Description",
+        "(unchanged)",
+      ].join("\n"),
+      { signal: undefined },
+    );
+    expect(mocks.pullRequests.update).toHaveBeenCalledWith("agntn", "forges", 5, {
+      title: undefined,
+      body: undefined,
+      state: "closed",
+      addAssignees: ["reviewer"],
+      removeAssignees: undefined,
+      addLabels: ["docs"],
+      removeLabels: ["stale"],
+    });
+  });
+
+  it("fails closed when a pull-request update has no approval UI or is declined", async () => {
+    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_update");
+    const params = { repo: "agntn/forges", number: 5, body: "edited" };
+
+    await expect(
+      tool.execute("test", params, undefined, undefined, approvalPiContext(vi.fn(), false)),
+    ).rejects.toThrow("Pull request update requires interactive approval");
+    await expect(
+      tool.execute(
+        "test",
+        params,
+        undefined,
+        undefined,
+        approvalPiContext(vi.fn().mockResolvedValue(false)),
+      ),
+    ).rejects.toThrow("Pull request update was cancelled by the user");
+    expect(mocks.pullRequests.update).not.toHaveBeenCalled();
+  });
+
   it("fails closed when pull-request creation has no approval UI", async () => {
     const confirm = vi.fn();
     const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
@@ -1400,6 +1472,7 @@ describe("Forges OMP extension", () => {
     const mutationTools: Record<string, true> = {
       forges_issues_create: true,
       forges_pull_requests_create: true,
+      forges_pull_requests_update: true,
       forges_releases_create: true,
       forges_releases_update: true,
       forges_auth_reload: true,

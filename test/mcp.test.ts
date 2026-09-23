@@ -103,6 +103,7 @@ const toolNames = [
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
   "forges_pull_requests_create",
+  "forges_pull_requests_update",
   "forges_users_get",
   "forges_users_authenticated",
   "forges_auth_reload",
@@ -118,6 +119,7 @@ const toolNames = [
 const writingTools = new Set([
   "forges_issues_create",
   "forges_pull_requests_create",
+  "forges_pull_requests_update",
   "forges_releases_create",
   "forges_releases_update",
   "forges_auth_reload",
@@ -230,8 +232,9 @@ describe("forges MCP server", () => {
           "forges_threads_reply",
           "forges_auth_reload",
         ].includes(tool.name),
-        // A release edit replaces the title and notes that were there; nothing else overwrites.
-        destructiveHint: tool.name === "forges_releases_update",
+        // A release or pull-request edit replaces the text that was there; nothing else overwrites.
+        destructiveHint:
+          tool.name === "forges_releases_update" || tool.name === "forges_pull_requests_update",
         openWorldHint: !tool.name.startsWith("forges_local_"),
       });
       expect(tool.title).not.toBe(tool.name);

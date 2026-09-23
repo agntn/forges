@@ -160,6 +160,7 @@ describe("createProvider factory", () => {
     ["getRelease", "Releases are not supported by this provider"],
     ["createRelease", "Release creation is not supported by this provider"],
     ["updateRelease", "Release updates are not supported by this provider"],
+    ["updatePullRequest", "Pull request updates are not supported by this provider"],
     ["searchIssues", "Issue search is not supported by this provider"],
     ["searchPullRequests", "Pull-request search is not supported by this provider"],
   ])("keeps a default %s fallback for custom providers", async (method, message) => {

@@ -401,6 +401,48 @@ export function forgesToolSchemas() {
     assignees,
     account,
   });
+  const updatePullRequestParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    title: Type.Optional(Type.String({ description: "New pull-request title", minLength: 1 })),
+    body: Type.Optional(
+      Type.String({ description: "New pull-request body; replaces the old one" }),
+    ),
+    state: Type.Optional(
+      Type.Unsafe<"open" | "closed">({
+        type: "string",
+        enum: ["open", "closed"],
+        description: "Close or reopen; a merged pull request stays merged",
+      }),
+    ),
+    addAssignees: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description: "Logins to assign next to the current ones. GitLab Free keeps one.",
+        maxItems: 10,
+      }),
+    ),
+    removeAssignees: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description: "Logins to unassign; the others stay",
+        maxItems: 10,
+      }),
+    ),
+    addLabels: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description: "Label names to add next to the current ones",
+        maxItems: 100,
+      }),
+    ),
+    removeLabels: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description: "Label names to remove; the others stay",
+        maxItems: 100,
+      }),
+    ),
+    account,
+  });
   const userParameters = closed({
     platform,
     username: Type.String({ description: "Platform username", minLength: 1 }),
@@ -509,6 +551,7 @@ export function forgesToolSchemas() {
     commentParameters,
     createIssueParameters,
     createPullRequestParameters,
+    updatePullRequestParameters,
     userParameters,
     authenticatedUserParameters,
     listThreadsParameters,

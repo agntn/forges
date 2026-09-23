@@ -1,9 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
   encodeApiResponsePathSegment,
+  encodeLabelPathSegment,
   encodePathSegment,
   encodeRefPathSegment,
 } from "../src/providers/base-url.ts";
+
+describe("encodeLabelPathSegment", () => {
+  it.each([
+    ["kind/bug", "kind%2Fbug"],
+    ["100%", "100%25"],
+    ["good first issue", "good%20first%20issue"],
+    ["a\\b", "a%5Cb"],
+  ])("encodes the label %j as one path segment", (name, expected) => {
+    expect(encodeLabelPathSegment(name)).toBe(expected);
+  });
+
+  it.each(["", ".", ".."])("rejects %j", (name) => {
+    expect(() => encodeLabelPathSegment(name)).toThrow("Invalid label name");
+  });
+});
 
 describe("encodePathSegment", () => {
   it.each([

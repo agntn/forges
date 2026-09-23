@@ -94,21 +94,48 @@ function releaseApprovalMessage(
   ].join("\n");
 }
 
-/** Release writes go public or overwrite public text, so Pi asks before either one. */
-async function confirmReleaseWrite(
+/** An update lists only what it changes; everything else stays as it is. */
+function pullRequestUpdateApprovalMessage(
+  params: Resolved<ForgesTools.UpdatePullRequestParams>,
+): string {
+  const changes = (added: string[] | undefined, removed: string[] | undefined) =>
+    [
+      ...(added ?? []).map((value) => `+${approvalField(value)}`),
+      ...(removed ?? []).map((value) => `-${approvalField(value)}`),
+    ].join(", ") || "Unchanged";
+  const state =
+    params.state === undefined ? "Unchanged" : params.state === "closed" ? "Close" : "Reopen";
+  return [
+    `Repository  ${approvalField(params.owner)}/${approvalField(params.repo)} on ${platformLabels[params.platform]}`,
+    ...accountLine(params.account),
+    `Number      #${params.number}`,
+    `State       ${state}`,
+    `Assignees   ${changes(params.addAssignees, params.removeAssignees)}`,
+    `Labels      ${changes(params.addLabels, params.removeLabels)}`,
+    "",
+    "Title",
+    params.title === undefined ? "(unchanged)" : approvalField(params.title),
+    "",
+    "Description",
+    params.body === undefined ? "(unchanged)" : sanitizeApprovalText(params.body) || "(none)",
+  ].join("\n");
+}
+
+/** These writes go public or overwrite public text, so Pi asks before each one. */
+async function confirmWrite(
   ctx: ExtensionContext,
   signal: AbortSignal | undefined,
   question: string,
   message: string,
-  verb: string,
+  action: string,
 ): Promise<void> {
   if (!ctx.hasUI) {
-    throw new Error(`Release ${verb} requires interactive approval in Pi TUI or RPC mode`);
+    throw new Error(`${action} requires interactive approval in Pi TUI or RPC mode`);
   }
   const approved = await ctx.ui.confirm(question, message, { signal });
   if (!approved) {
     throw new Error(
-      `Release ${verb} was cancelled by the user. Do not retry unless the user asks again.`,
+      `${action} was cancelled by the user. Do not retry unless the user asks again.`,
     );
   }
 }
@@ -394,12 +421,12 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     async execute(_toolCallId, args, signal, _onUpdate, ctx) {
       const operations = await loadToolOperations();
       const params = operations.repositoryTarget(args);
-      await confirmReleaseWrite(
+      await confirmWrite(
         ctx,
         signal,
         "Create release?",
         releaseApprovalMessage(params, true),
-        "creation",
+        "Release creation",
       );
       return operations.createRelease(params);
     },
@@ -419,12 +446,12 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     async execute(_toolCallId, args, signal, _onUpdate, ctx) {
       const operations = await loadToolOperations();
       const params = operations.repositoryTarget(args);
-      await confirmReleaseWrite(
+      await confirmWrite(
         ctx,
         signal,
         "Update release?",
         releaseApprovalMessage(params, false),
-        "update",
+        "Release update",
       );
       return operations.updateRelease(params);
     },
@@ -703,6 +730,31 @@ export default function forgesExtension(pi: ExtensionAPI): void {
       }
 
       return operations.createPullRequest(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_update",
+    label: "Update Forges Pull Request",
+    description:
+      "Change a pull request's title, body, state, assignees or labels; this mutates the selected Git platform",
+    promptSnippet: "Edit a pull request on GitHub, GitLab, or Gitea after it is open.",
+    promptGuidelines: [
+      "Use forges_pull_requests_update only when the user explicitly asks to change a pull request; read it with forges_pull_requests_get first, a new body replaces the old one.",
+    ],
+    parameters: schemas.updatePullRequestParameters,
+    ...statusRenderers("forges_pull_requests_update", "Update Forges Pull Request"),
+    async execute(_toolCallId, args, signal, _onUpdate, ctx) {
+      const operations = await loadToolOperations();
+      const params = operations.repositoryTarget(args);
+      await confirmWrite(
+        ctx,
+        signal,
+        "Update pull request?",
+        pullRequestUpdateApprovalMessage(params),
+        "Pull request update",
+      );
+      return operations.updatePullRequest(params);
     },
   });
 

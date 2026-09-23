@@ -45,6 +45,19 @@ export function encodeApiResponsePathSegment(value: string): string {
 }
 
 /**
+ * Encode a label name as one URL path segment. Names such as `kind/bug` or
+ * `100%` are ordinary labels, so every character is percent-encoded instead of
+ * refused. A dot segment is refused: URL parsing collapses it even encoded.
+ */
+export function encodeLabelPathSegment(name: string): string {
+  if (name.length === 0 || name === "." || name === "..") {
+    throw new TypeError("Invalid label name");
+  }
+
+  return encodeURIComponent(name);
+}
+
+/**
  * What `git check-ref-format` refuses: control characters, space, `~ ^ : ? * [ \`,
  * `..`, `@{`, a leading or trailing or doubled `/`, a trailing `.`, a component
  * starting with `.` or ending in `.lock`.

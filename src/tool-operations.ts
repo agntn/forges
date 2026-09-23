@@ -6,6 +6,7 @@ import type {
   VerifyLocalMergeOptions,
 } from "./local.ts";
 import { assertAssignees } from "./assignees.ts";
+import { assertPullRequestUpdate } from "./pull-request-update.ts";
 import { waitForChecks, type WaitedCheckPage } from "./check-wait.ts";
 import { AuthenticationError, ForgesError } from "./errors.ts";
 import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
@@ -59,6 +60,7 @@ import type {
   Thread,
   ThreadComment,
   ThreadState,
+  UpdatePullRequestInput,
   UpdateReleaseInput,
   User,
 } from "./types.ts";
@@ -450,6 +452,10 @@ export type CreateIssueParams = RepositoryParams & AccountParams & CreateIssueIn
 
 export type CreatePullRequestParams = RepositoryParams & AccountParams & CreatePullRequestInput;
 
+export type UpdatePullRequestParams = GetRepositoryItemParams &
+  AccountParams &
+  UpdatePullRequestInput;
+
 export interface ListCommentsParams extends RepositoryParams {
   number: number;
   page?: number;
@@ -514,6 +520,22 @@ function assignmentNote(
   const missing = requested.filter((login) => !assigned.has(login.toLowerCase()));
   if (missing.length === 0) return undefined;
   return `Creation succeeded, but requested assignees are missing: ${missing.join(", ")}. Do not retry the create call; the result is the created object.`;
+}
+
+/** A platform can accept an assignee change and still not apply it, GitLab Free past one. */
+function reassignmentNote(
+  params: Pick<UpdatePullRequestInput, "addAssignees" | "removeAssignees">,
+  actual: Array<{ login: string }>,
+): string | undefined {
+  const assigned = new Set(actual.map(({ login }) => login.toLowerCase()));
+  const missing = (params.addAssignees ?? []).filter((login) => !assigned.has(login.toLowerCase()));
+  const kept = (params.removeAssignees ?? []).filter((login) => assigned.has(login.toLowerCase()));
+  const problems = [
+    ...(missing.length > 0 ? [`not assigned: ${missing.join(", ")}`] : []),
+    ...(kept.length > 0 ? [`still assigned: ${kept.join(", ")}`] : []),
+  ];
+  if (problems.length === 0) return undefined;
+  return `Update succeeded, but the assignees did not change as asked (${problems.join("; ")}). The result shows who is assigned now.`;
 }
 
 function summarizeIssuePage<T extends Issue>(
@@ -1084,6 +1106,32 @@ export async function createPullRequest(
       pullRequest,
       assignmentNote(params.assignees, pullRequest.assignees),
     );
+  });
+}
+
+export async function updatePullRequest(
+  args: UpdatePullRequestParams,
+): Promise<ForgesToolResult<PullRequest>> {
+  const params = repositoryTarget(args);
+  const input: UpdatePullRequestInput = {
+    title: params.title,
+    body: params.body,
+    state: params.state,
+    addAssignees: params.addAssignees,
+    removeAssignees: params.removeAssignees,
+    addLabels: params.addLabels,
+    removeLabels: params.removeLabels,
+  };
+  assertPullRequestUpdate(input, params.platform);
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform, params.account);
+    const pullRequest = await provider.pullRequests.update(
+      params.owner,
+      params.repo,
+      params.number,
+      input,
+    );
+    return result(params.platform, pullRequest, reassignmentNote(input, pullRequest.assignees));
   });
 }
 

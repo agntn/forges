@@ -323,6 +323,14 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       execute: (operations, args) => operations.createPullRequest(args),
     }),
     defineTool({
+      name: "forges_pull_requests_update",
+      title: "Update Pull Request",
+      description:
+        "Change a pull request: its title, its body, its open or closed state, and assignees or labels to add or remove. Pass at least one change; everything not named keeps its value. A new body replaces the old one, so read the pull request first and confirm the text with the user; this writes as the account the local credentials belong to. Returns the pull request as it is after the update, with a note when an assignee change did not apply.",
+      inputSchema: schemas.updatePullRequestParameters,
+      execute: (operations, args) => operations.updatePullRequest(args),
+    }),
+    defineTool({
       name: "forges_users_get",
       title: "Get User",
       description:

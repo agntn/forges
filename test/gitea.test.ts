@@ -2075,6 +2075,121 @@ describe("Gitea Provider", () => {
 
   // --- comments ---
 
+  describe("pullRequests.update", () => {
+    const pull = "/repos/testowner/test-repo/pulls/5";
+    const issue = "/repos/testowner/test-repo/issues/5";
+
+    it("patches only the title when nothing else changes", async () => {
+      mockClient.mockResolvedValueOnce(giteaPullRequest({ title: "Renamed" }));
+
+      const result = await provider.pullRequests.update("testowner", "test-repo", 5, {
+        title: "Renamed",
+      });
+
+      expect(mockClient.mock.calls).toEqual([
+        [pull, { method: "PATCH", body: { title: "Renamed" } }],
+      ]);
+      expect(result.title).toBe("Renamed");
+      expect(result.assignees).toEqual([{ login: "maintainer" }]);
+    });
+
+    it("keeps the current assignees and changes labels by id", async () => {
+      mockClient
+        .mockResolvedValueOnce(
+          giteaPullRequest({
+            labels: [
+              { id: 2, name: "enhancement" },
+              { id: 3, name: "stale" },
+            ],
+          }),
+        )
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(
+          giteaPullRequest({
+            state: "closed",
+            labels: [
+              { id: 2, name: "enhancement" },
+              { id: 1, name: "bug" },
+            ],
+            assignees: [giteaUser({ login: "maintainer" }), giteaUser({ login: "reviewer" })],
+          }),
+        );
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [{ id: 1, name: "bug" }],
+        headers: makeHeaders(),
+        status: 200,
+      });
+
+      const result = await provider.pullRequests.update("testowner", "test-repo", 5, {
+        state: "closed",
+        addAssignees: ["reviewer"],
+        addLabels: ["bug"],
+        removeLabels: ["stale", "never-set"],
+      });
+
+      expect(mockClient.mock.calls).toEqual([
+        [pull],
+        [`${issue}/labels`, { method: "POST", body: { labels: [1] } }],
+        [`${issue}/labels/3`, { method: "DELETE" }],
+        [
+          pull,
+          { method: "PATCH", body: { state: "closed", assignees: ["maintainer", "reviewer"] } },
+        ],
+      ]);
+      expect(result.state).toBe("closed");
+      expect(result.labels).toEqual(["enhancement", "bug"]);
+    });
+
+    it("sends an empty assignee list when the last one is removed", async () => {
+      mockClient
+        .mockResolvedValueOnce(giteaPullRequest())
+        .mockResolvedValueOnce(giteaPullRequest({ assignees: [] }));
+
+      await provider.pullRequests.update("testowner", "test-repo", 5, {
+        removeAssignees: ["Maintainer"],
+      });
+
+      expect(mockClient).toHaveBeenLastCalledWith(pull, {
+        method: "PATCH",
+        body: { assignees: [] },
+      });
+    });
+
+    it("reads the pull request back after a label-only change", async () => {
+      mockClient
+        .mockResolvedValueOnce(giteaPullRequest())
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(giteaPullRequest({ labels: [] }));
+
+      const result = await provider.pullRequests.update("testowner", "test-repo", 5, {
+        removeLabels: ["enhancement"],
+      });
+
+      expect(mockClient.mock.calls).toEqual([
+        [pull],
+        [`${issue}/labels/2`, { method: "DELETE" }],
+        [pull],
+      ]);
+      expect(result.labels).toEqual([]);
+    });
+
+    it("rejects an unknown label before changing anything", async () => {
+      mockClient.mockResolvedValueOnce(giteaPullRequest());
+      mockedRawFetch
+        .mockResolvedValueOnce({ data: [], headers: makeHeaders(), status: 200 })
+        .mockResolvedValueOnce({ data: [], headers: makeHeaders(), status: 200 });
+
+      await expect(
+        provider.pullRequests.update("testowner", "test-repo", 5, {
+          title: "Renamed",
+          addLabels: ["missing"],
+        }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      expect(mockClient).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("issues.listComments", () => {
     it("cuts the requested page locally because the route ignores paging", async () => {
       mockedRawFetch.mockResolvedValueOnce({

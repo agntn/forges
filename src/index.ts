@@ -81,6 +81,7 @@ export type {
   CreateIssueInput,
   CreatePullRequestInput,
   CreateReleaseInput,
+  UpdatePullRequestInput,
   UpdateReleaseInput,
   ReplyThreadInput,
   ProviderConfig,

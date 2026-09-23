@@ -6,6 +6,7 @@ import { assertAssignees } from "./assignees.ts";
 import { ForgesError, NotFoundError } from "./errors.ts";
 import { assertCommitPatchOptions } from "./commit-patch.ts";
 import { assertCiId, assertCiJobLogOptions } from "./ci-job-log.ts";
+import { assertPullRequestUpdate } from "./pull-request-update.ts";
 import { assertRepositoryContentsOptions, normalizeRepositoryPath } from "./repository-contents.ts";
 import type {
   CiJob,
@@ -67,6 +68,7 @@ import type {
   ThreadComment,
   ThreadResource,
   ThreadState,
+  UpdatePullRequestInput,
   UpdateReleaseInput,
   User,
   UserResource,
@@ -306,6 +308,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       create: async (owner, repo, input) => {
         assertAssignees(input.assignees);
         return this.createPullRequest(owner, repo, input);
+      },
+      update: async (owner, repo, number, input) => {
+        assertPullRequestUpdate(input);
+        return this.updatePullRequest(owner, repo, number, input);
       },
       listComments: (owner, repo, number, options) =>
         this.listPullRequestComments(owner, repo, number, options),
@@ -552,6 +558,16 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     repo: string,
     input: CreatePullRequestInput,
   ): Promise<PullRequest>;
+  protected updatePullRequest(
+    _owner: string,
+    _repo: string,
+    _number: number,
+    _input: UpdatePullRequestInput,
+  ): Promise<PullRequest> {
+    return Promise.reject(
+      new ForgesError("Pull request updates are not supported by this provider", 501),
+    );
+  }
   protected abstract listIssueComments(
     owner: string,
     repo: string,

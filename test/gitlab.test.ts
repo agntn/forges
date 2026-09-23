@@ -2333,6 +2333,141 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("pullRequests.update", () => {
+    const mr = "/projects/278964/merge_requests/33";
+
+    it("sends only the changed fields in one PUT", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce({
+        ...glMergeRequest,
+        state: "closed",
+        labels: ["refactor", "docs"],
+      });
+
+      const pr = await gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, {
+        body: "New description",
+        state: "closed",
+        addLabels: ["docs", "api"],
+        removeLabels: ["stale"],
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(mr, {
+        method: "PUT",
+        body: {
+          description: "New description",
+          state_event: "close",
+          add_labels: "docs,api",
+          remove_labels: "stale",
+        },
+      });
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(pr.state).toBe("closed");
+    });
+
+    it("removes a dot-named label, which travels in the body rather than a path", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glMergeRequest);
+
+      await gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, { removeLabels: ["."] });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(mr, {
+        method: "PUT",
+        body: { remove_labels: "." },
+      });
+    });
+
+    it("refuses a comma in a label name before any request, since GitLab would split it", async () => {
+      await expect(
+        gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, {
+          title: "Renamed",
+          addLabels: ["frontend,backend"],
+        }),
+      ).rejects.toMatchObject({
+        status: 400,
+        message: expect.stringContaining("frontend,backend"),
+      });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("reopens with the reopen state event", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glMergeRequest);
+
+      await gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, { state: "open" });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(mr, {
+        method: "PUT",
+        body: { state_event: "reopen" },
+      });
+    });
+
+    it("keeps the current assignees and resolves only the added one", async () => {
+      mockProjectResolve(278964);
+      mocks.client
+        .mockResolvedValueOnce({
+          ...glMergeRequest,
+          assignees: [
+            { id: 9, username: "maintainer" },
+            { id: 11, username: "former" },
+          ],
+        })
+        .mockResolvedValueOnce([{ ...glUserSearchHit, id: 10, username: "reviewer" }])
+        .mockResolvedValueOnce(glMergeRequest);
+
+      await gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, {
+        addAssignees: ["reviewer"],
+        removeAssignees: ["Former"],
+      });
+
+      expect(mocks.client).toHaveBeenNthCalledWith(2, mr);
+      expect(mocks.client).toHaveBeenNthCalledWith(3, "/users", {
+        query: { username: "reviewer" },
+      });
+      expect(mocks.client).toHaveBeenLastCalledWith(mr, {
+        method: "PUT",
+        body: { assignee_ids: [9, 10] },
+      });
+    });
+
+    it("looks up a current assignee the response names without an id instead of dropping them", async () => {
+      mockProjectResolve(278964);
+      mocks.client
+        .mockResolvedValueOnce(glMergeRequest)
+        .mockResolvedValueOnce([{ ...glUserSearchHit, id: 9, username: "maintainer" }])
+        .mockResolvedValueOnce([{ ...glUserSearchHit, id: 10, username: "reviewer" }])
+        .mockResolvedValueOnce(glMergeRequest);
+
+      await gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, {
+        addAssignees: ["reviewer"],
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(mr, {
+        method: "PUT",
+        body: { assignee_ids: [9, 10] },
+      });
+    });
+
+    it("unassigns everyone with assignee_id 0 when the last one is removed", async () => {
+      mockProjectResolve(278964);
+      mocks.client
+        .mockResolvedValueOnce({
+          ...glMergeRequest,
+          assignees: [{ id: 9, username: "maintainer" }],
+        })
+        .mockResolvedValueOnce({ ...glMergeRequest, assignees: [] });
+
+      const pr = await gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, {
+        removeAssignees: ["maintainer"],
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(mr, {
+        method: "PUT",
+        body: { assignee_id: 0 },
+      });
+      expect(pr.assignees).toEqual([]);
+    });
+  });
+
   describe("pullRequests.listComments", () => {
     it("fetches merge-request notes by iid and keeps diff notes out", async () => {
       mockProjectResolve(278964);
