@@ -30,6 +30,7 @@ export type {
   ListThreadOptions,
   CreateIssueInput,
   CreatePullRequestInput,
+  UpdatePullRequestInput,
   ReplyThreadInput,
   ProviderConfig,
   RepositoryResource,
