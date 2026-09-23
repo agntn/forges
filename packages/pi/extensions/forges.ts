@@ -531,6 +531,22 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_issues_comments_create",
+    label: "Create Forges Issue Comment",
+    description:
+      "Post a new comment in an issue's discussion; this mutates the selected Git platform",
+    promptSnippet: "Comment on an issue on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_issues_comments_create only when the user explicitly asks to comment on an issue; a second call posts a second comment.",
+    ],
+    parameters: schemas.createCommentParameters,
+    ...statusRenderers("forges_issues_comments_create", "Create Forges Issue Comment"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).createIssueComment(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_issues_create",
     label: "Create Forges Issue",
     description: "Create an issue in a repository; this mutates the selected Git platform",
@@ -696,6 +712,25 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     ...statusRenderers("forges_pull_requests_comments_get", "Forges Pull Request Comment"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).getPullRequestComment(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_comments_create",
+    label: "Create Forges Pull Request Comment",
+    description:
+      "Post a new conversation comment on a pull request; this mutates the selected Git platform",
+    promptSnippet: "Comment on a pull request on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_pull_requests_comments_create only when the user explicitly asks to comment on a pull request; answer a review thread with forges_threads_reply instead.",
+    ],
+    parameters: schemas.createCommentParameters,
+    ...statusRenderers(
+      "forges_pull_requests_comments_create",
+      "Create Forges Pull Request Comment",
+    ),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).createPullRequestComment(params);
     },
   });
 

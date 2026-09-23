@@ -78,6 +78,7 @@ export type {
   ListPullRequestReviewsOptions,
   ListReleasesOptions,
   ListThreadOptions,
+  CreateCommentInput,
   CreateIssueInput,
   CreatePullRequestInput,
   CreateReleaseInput,

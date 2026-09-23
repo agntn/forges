@@ -54,6 +54,7 @@ import type {
   ListPullRequestFilesOptions,
   ListThreadOptions,
   Comment,
+  CreateCommentInput,
   CreateIssueInput,
   CreatePullRequestInput,
   CreateReleaseInput,
@@ -2009,6 +2010,43 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     commentId: string,
   ): Promise<Comment> {
     return this.getNote(owner, repo, "merge_requests", number, commentId);
+  }
+
+  protected override async createIssueComment(
+    owner: string,
+    repo: string,
+    number: number,
+    input: CreateCommentInput,
+  ): Promise<Comment> {
+    return this.createNote(owner, repo, "issues", number, input);
+  }
+
+  protected override async createPullRequestComment(
+    owner: string,
+    repo: string,
+    number: number,
+    input: CreateCommentInput,
+  ): Promise<Comment> {
+    return this.createNote(owner, repo, "merge_requests", number, input);
+  }
+
+  private async createNote(
+    owner: string,
+    repo: string,
+    resource: "issues" | "merge_requests",
+    number: number,
+    input: CreateCommentInput,
+  ): Promise<Comment> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const note = await this.client<GitLabNote>(
+        `/projects/${projectId}/${resource}/${encodePathSegment(number)}/notes`,
+        { method: "POST", body: { body: input.body } },
+      );
+      return this.mapComment(note);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
   }
 
   /** System notes and diff notes are not discussion, so both list and get drop them. */

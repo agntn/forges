@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => {
     get: vi.fn(),
     create: vi.fn(),
     listComments: vi.fn(),
+    createComment: vi.fn(),
   };
   const pullRequests = {
     list: vi.fn(),
@@ -42,6 +43,7 @@ const mocks = vi.hoisted(() => {
     create: vi.fn(),
     update: vi.fn(),
     listComments: vi.fn(),
+    createComment: vi.fn(),
   };
   const users = { get: vi.fn(), authenticated: vi.fn() };
   const threads = {
@@ -116,6 +118,7 @@ const toolNames = [
   "forges_issues_get",
   "forges_issues_comments",
   "forges_issues_comments_get",
+  "forges_issues_comments_create",
   "forges_issues_create",
   "forges_pull_requests_list",
   "forges_pull_requests_search_global",
@@ -127,6 +130,7 @@ const toolNames = [
   "forges_pull_requests_reviews_get",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
+  "forges_pull_requests_comments_create",
   "forges_pull_requests_create",
   "forges_pull_requests_update",
   "forges_users_get",
@@ -1008,6 +1012,35 @@ describe("Forges Pi extension", () => {
     expect(mocks.pullRequests.update).not.toHaveBeenCalled();
   });
 
+  it("posts issue and pull-request comments to the discussion the tool names", async () => {
+    mocks.issues.createComment.mockResolvedValue({ id: "31", body: "Fixed in #43." });
+    mocks.pullRequests.createComment.mockResolvedValue({ id: "32", body: "Rebased." });
+    const tools = registerPiTools();
+
+    const issue = await requirePiTool(tools, "forges_issues_comments_create").execute(
+      "test",
+      { repo: "agntn/forges", number: 42, body: "Fixed in #43." },
+      undefined,
+      undefined,
+      approvalPiContext(vi.fn()),
+    );
+    await requirePiTool(tools, "forges_pull_requests_comments_create").execute(
+      "test",
+      { platform: "gitlab", owner: "gitlab-org", repo: "gitlab-foss", number: 7, body: "Rebased." },
+      undefined,
+      undefined,
+      approvalPiContext(vi.fn()),
+    );
+
+    expect(mocks.issues.createComment).toHaveBeenCalledWith("agntn", "forges", 42, {
+      body: "Fixed in #43.",
+    });
+    expect(mocks.pullRequests.createComment).toHaveBeenCalledWith("gitlab-org", "gitlab-foss", 7, {
+      body: "Rebased.",
+    });
+    expect(issue.details.result).toMatchObject({ id: "31" });
+  });
+
   it("fails closed when pull-request creation has no approval UI", async () => {
     const confirm = vi.fn();
     const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
@@ -1471,7 +1504,9 @@ describe("Forges OMP extension", () => {
     const { tools } = registerOmpTools();
     const mutationTools: Record<string, true> = {
       forges_issues_create: true,
+      forges_issues_comments_create: true,
       forges_pull_requests_create: true,
+      forges_pull_requests_comments_create: true,
       forges_pull_requests_update: true,
       forges_releases_create: true,
       forges_releases_update: true,

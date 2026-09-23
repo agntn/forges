@@ -1909,6 +1909,56 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("issues.createComment", () => {
+    it("posts the body to the issue discussion and returns the stored comment", async () => {
+      mocks.client.mockResolvedValueOnce(ghComment);
+
+      const comment = await gh.issues.createComment("octocat", "hello-world", 42, {
+        body: "Reproduced on 1.2.3 as well",
+      });
+
+      expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/42/comments", {
+        method: "POST",
+        body: { body: "Reproduced on 1.2.3 as well" },
+      });
+      expect(comment).toMatchObject({ id: "3001", body: "Reproduced on 1.2.3 as well" });
+    });
+
+    it("refuses a blank body before any request", async () => {
+      await expect(
+        gh.issues.createComment("octocat", "hello-world", 42, { body: " \n" }),
+      ).rejects.toMatchObject({ status: 400, message: "Comment body must not be empty" });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("normalizes a refused write", async () => {
+      mocks.client.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(
+        gh.issues.createComment("octocat", "hello-world", 42, { body: "Hi" }),
+      ).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  describe("pullRequests.createComment", () => {
+    it("posts through the issue, which carries the pull-request discussion", async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...ghComment,
+        issue_url: "https://api.github.com/repos/octocat/hello-world/issues/99",
+      });
+
+      const comment = await gh.pullRequests.createComment("octocat", "hello-world", 99, {
+        body: "Rebased",
+      });
+
+      expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/99/comments", {
+        method: "POST",
+        body: { body: "Rebased" },
+      });
+      expect(comment.id).toBe("3001");
+    });
+  });
+
   // --- Pull Requests ---
 
   describe("pullRequests.list", () => {

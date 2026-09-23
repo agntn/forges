@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthenticationError } from "../src/errors.ts";
 import {
   createIssue,
+  createIssueComment,
+  createPullRequestComment,
   createRelease,
   getAuthenticatedUser,
   getContributionTemplate,
@@ -120,6 +122,12 @@ const mocks = vi.hoisted(() => {
               author: { login },
             };
           }),
+          createComment: vi.fn(async (_owner: string, _repo: string, _number: number) => {
+            if (anonymous) {
+              anonymousWrites.current += 1;
+            }
+            return { id: "31", body: "posted", author: { login } };
+          }),
         },
         pullRequests: {
           // A platform that keeps its one assignee, the way GitLab Free does.
@@ -128,6 +136,7 @@ const mocks = vi.hoisted(() => {
             assignees: [{ login: "maintainer" }],
             updatedBy: login,
           })),
+          createComment: vi.fn(async () => ({ id: "32", body: "posted", author: { login } })),
         },
         users: {
           authenticated: vi.fn(async () => ({ id: "1", login })),
@@ -314,7 +323,28 @@ describe("configured provider", () => {
     expect(repository.details.result.owner.login).toBe("anonymous");
     await expect(getAuthenticatedUser({ platform: "github" })).rejects.toThrow(AuthenticationError);
     await expect(createIssue(issueParams)).rejects.toThrow(AuthenticationError);
+    await expect(
+      createIssueComment({ repo: "agntn/forges", number: 7, body: "posted" }),
+    ).rejects.toThrow(AuthenticationError);
     expect(mocks.anonymousWrites.current).toBe(0);
+  });
+
+  it("posts a comment as the named account, never the local one", async () => {
+    const issueComment = await createIssueComment({
+      repo: "agntn/forges",
+      number: 7,
+      body: "posted",
+      account: "oritwoen",
+    });
+    const pullRequestComment = await createPullRequestComment({
+      repo: "agntn/forges",
+      number: 5,
+      body: "posted",
+      account: "oritwoen",
+    });
+
+    expect(issueComment.details.result.author.login).toBe("oritwoen");
+    expect(pullRequestComment.details.result.author.login).toBe("oritwoen");
   });
 
   it("replaces an anonymous read provider when credentials appear", async () => {

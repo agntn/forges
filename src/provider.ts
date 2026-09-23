@@ -29,6 +29,7 @@ import type {
   CommitSummary,
   CommitSearchOptions,
   CommitSearchResult,
+  CreateCommentInput,
   CreateIssueInput,
   CreatePullRequestInput,
   CreateReleaseInput,
@@ -141,6 +142,13 @@ function paginateContributionTemplates(
 function assertReleaseTag(tag: string): void {
   if (tag.trim() === "") {
     throw new ForgesError("Release tag must not be empty", 400);
+  }
+}
+
+/** A blank comment is never what the caller meant, so it fails here without a request. */
+function assertCommentBody(body: string): void {
+  if (body.trim() === "") {
+    throw new ForgesError("Comment body must not be empty", 400);
   }
 }
 
@@ -265,6 +273,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         this.listIssueComments(owner, repo, number, options),
       getComment: (owner, repo, number, commentId) =>
         this.getIssueComment(owner, repo, number, commentId),
+      createComment: async (owner, repo, number, input) => {
+        assertCommentBody(input.body);
+        return this.createIssueComment(owner, repo, number, input);
+      },
     };
     this.pullRequests = {
       searchGlobal: async (query, options) => {
@@ -317,6 +329,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         this.listPullRequestComments(owner, repo, number, options),
       getComment: (owner, repo, number, commentId) =>
         this.getPullRequestComment(owner, repo, number, commentId),
+      createComment: async (owner, repo, number, input) => {
+        assertCommentBody(input.body);
+        return this.createPullRequestComment(owner, repo, number, input);
+      },
     };
     this.users = {
       get: (username) => this.getUser(username),
@@ -592,6 +608,26 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     number: number,
     commentId: string,
   ): Promise<Comment>;
+  protected createIssueComment(
+    _owner: string,
+    _repo: string,
+    _number: number,
+    _input: CreateCommentInput,
+  ): Promise<Comment> {
+    return Promise.reject(
+      new ForgesError("Issue comments are not supported by this provider", 501),
+    );
+  }
+  protected createPullRequestComment(
+    _owner: string,
+    _repo: string,
+    _number: number,
+    _input: CreateCommentInput,
+  ): Promise<Comment> {
+    return Promise.reject(
+      new ForgesError("Pull request comments are not supported by this provider", 501),
+    );
+  }
   protected abstract getUser(username: string): Promise<User>;
   protected abstract getAuthenticatedUser(): Promise<User>;
   protected abstract listThreads(

@@ -1496,6 +1496,35 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("createComment", () => {
+    it("posts a note on the issue", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glNote);
+
+      const comment = await gl.issues.createComment("gitlab-org", "gitlab-foss", 7, {
+        body: "Hit the same thing on 16.9",
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/issues/7/notes", {
+        method: "POST",
+        body: { body: "Hit the same thing on 16.9" },
+      });
+      expect(comment).toMatchObject({ id: "2201", body: "Hit the same thing on 16.9" });
+    });
+
+    it("posts on the merge request, not on the issue with the same number", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glNote);
+
+      await gl.pullRequests.createComment("gitlab-org", "gitlab-foss", 7, { body: "Rebased" });
+
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/merge_requests/7/notes", {
+        method: "POST",
+        body: { body: "Rebased" },
+      });
+    });
+  });
+
   // --- Merge Requests → Pull Requests ---
 
   describe("pullRequests.list", () => {
