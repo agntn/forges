@@ -27,6 +27,7 @@ import type {
   ContributionTemplateKind,
   ContributionTemplateSummary,
   CommitSummary,
+  CommitSearchItem,
   CommitSearchOptions,
   CommitSearchResult,
   CreateCommentInput,
@@ -642,6 +643,30 @@ function summarizeReviewPage(page: PageResult<PullRequestReview>): PageResult<Pu
   };
 }
 
+/** A list is for picking commits; forges_commits_get reads one message whole. */
+const COMMIT_SUBJECT_MAX_CHARS = 200;
+
+/** A commit row whose message may be cut to its subject line. */
+export type CommitListItem<T extends CommitSummary = CommitSummary> = T & {
+  messageTruncated?: true;
+};
+
+export interface CommitSearchListResult extends CommitSearchResult {
+  items: CommitListItem<CommitSearchItem>[];
+}
+
+/** Surrounding whitespace, such as the trailing newline Gitea and GitLab often return, is not lost text. */
+function summarizeCommit<T extends CommitSummary>(commit: T): CommitListItem<T> {
+  const message = commit.message.trim();
+  const lineEnd = message.search(/\r?\n/);
+  const subject = (lineEnd === -1 ? message : message.slice(0, lineEnd)).slice(
+    0,
+    COMMIT_SUBJECT_MAX_CHARS,
+  );
+  if (subject === message) return { ...commit, message };
+  return { ...commit, message: subject, messageTruncated: true };
+}
+
 function listOptions(params: {
   page?: number;
   perPage?: number;
@@ -760,7 +785,7 @@ export async function readCiJobLog(args: ReadCiJobLogParams): Promise<ForgesTool
 
 export async function searchCommits(
   args: SearchCommitsParams,
-): Promise<ForgesToolResult<CommitSearchResult>> {
+): Promise<ForgesToolResult<CommitSearchListResult>> {
   const params = searchTarget(args);
   const provider = await readProvider(params.platform);
   const search = await provider.commits.search(params.query, {
@@ -769,12 +794,16 @@ export async function searchCommits(
     page: params.page,
     perPage: params.perPage,
   });
-  return result(params.platform, search);
+  return result(
+    params.platform,
+    { ...search, items: search.items.map(summarizeCommit) },
+    "Commit messages are cut to their subject line in search output, and messageTruncated marks each one that lost text; use forges_commits_get with the item's repository and sha to read one in full.",
+  );
 }
 
 export async function listCommits(
   args: ListCommitsParams,
-): Promise<ForgesToolResult<PageResult<CommitSummary>>> {
+): Promise<ForgesToolResult<PageResult<CommitListItem>>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const commits = await provider.commits.list(params.owner, params.repo, {
@@ -785,7 +814,11 @@ export async function listCommits(
     page: params.page,
     perPage: params.perPage,
   });
-  return result(params.platform, commits);
+  return result(
+    params.platform,
+    { ...commits, items: commits.items.map(summarizeCommit) },
+    "Commit messages are cut to their subject line in list output, and messageTruncated marks each one that lost text; use forges_commits_get to read one in full.",
+  );
 }
 
 export async function readRepositoryContents(

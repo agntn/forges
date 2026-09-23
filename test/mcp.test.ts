@@ -449,7 +449,10 @@ describe("forges MCP server", () => {
       page: 2,
       perPage: 10,
     });
-    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: search });
+    expect(JSON.parse(text(response.content))).toMatchObject({
+      platform: "github",
+      result: search,
+    });
   });
 
   it("lists CI runs through the shared operation", async () => {
@@ -569,13 +572,85 @@ describe("forges MCP server", () => {
       page: 2,
       perPage: 10,
     });
-    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: commits });
+    expect(JSON.parse(text(response.content))).toMatchObject({
+      platform: "github",
+      result: commits,
+    });
+  });
+
+  it("cuts commit messages to their subject line in list and search output", async () => {
+    const identity = { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" };
+    const row = (sha: string, message: string) => ({
+      sha,
+      message,
+      author: identity,
+      committer: identity,
+      parents: ["parent"],
+      url: `https://github.com/agntn/forges/commit/${sha}`,
+    });
+    const body = "Explain the change.\n".repeat(400);
+    const longLine = "y".repeat(5000);
+    mocks.commits.list.mockResolvedValue({
+      items: [
+        row("a1", `feat: bound messages\r\n\r\n${body}Co-authored-by: A <a@example.com>`),
+        row("b2", longLine),
+        row("c3", "\nfix: keep short messages\n"),
+      ],
+      hasNextPage: false,
+    });
+    mocks.commits.search.mockResolvedValue({
+      items: [{ ...row("d4", `chore: release\n\n${body}`), repository: "agntn/forges" }],
+      totalCount: 1,
+      incomplete: false,
+      resultLimit: 1000,
+      hasNextPage: false,
+    });
+    const client = await connectTestClient();
+
+    const listed = text(
+      (
+        await client.callTool({
+          name: "forges_commits_list",
+          arguments: { owner: "agntn", repo: "forges" },
+        })
+      ).content,
+    );
+    const searched = text(
+      (
+        await client.callTool({
+          name: "forges_commits_search",
+          arguments: { query: "author:oritwoen" },
+        })
+      ).content,
+    );
+
+    expect(listed).not.toContain("Explain the change.");
+    expect(listed).not.toContain("Co-authored-by");
+    expect(searched).not.toContain("Explain the change.");
+    const list = JSON.parse(listed);
+    expect(list.result.items.map((item: { message: string }) => item.message)).toEqual([
+      "feat: bound messages",
+      "y".repeat(200),
+      "fix: keep short messages",
+    ]);
+    expect(
+      list.result.items.map((item: { messageTruncated?: true }) => item.messageTruncated),
+    ).toEqual([true, true, undefined]);
+    expect(list.note).toContain("forges_commits_get");
+    const search = JSON.parse(searched);
+    expect(search.result.items[0]).toMatchObject({
+      message: "chore: release",
+      messageTruncated: true,
+      repository: "agntn/forges",
+    });
+    expect(search.result.totalCount).toBe(1);
+    expect(search.note).toContain("forges_commits_get");
   });
 
   it("gets one commit through the shared operation", async () => {
     const commit = {
       sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
-      message: "fix: preserve commit metadata",
+      message: `fix: preserve commit metadata\n\n${"Body line.\n".repeat(50)}`,
       author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
       committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
       parents: ["parent"],

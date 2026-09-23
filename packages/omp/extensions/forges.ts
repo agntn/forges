@@ -611,7 +611,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     name: "forges_commits_search",
     label: "Search Forges Commits",
     description:
-      "Search commits across repositories with optional owner and repository scope. GitHub returns repository identity, author and committer dates, totalCount, incomplete, and resultLimit (1000). Results are paged; follow nextPage while hasNextPage is true. incomplete means the search is known to be partial; narrow the query when it is true. Other providers report unsupported search.",
+      "Search commits across repositories with optional owner and repository scope. GitHub returns repository identity, author and committer dates, totalCount, incomplete, and resultLimit (1000). Messages are cut to their subject line and messageTruncated marks the cut ones; read one whole with forges_commits_get. Results are paged; follow nextPage while hasNextPage is true. incomplete means the search is known to be partial; narrow the query when it is true. Other providers report unsupported search.",
     parameters: commitSearchParameters,
     ...statusRenderers("forges_commits_search", "Search Forges Commits"),
     approval: toolApproval("forges_commits_search"),
@@ -624,7 +624,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     name: "forges_commits_list",
     label: "Forges Commits",
     description:
-      "List paged commits, optionally filtered by ref, path, or date range; Gitea rejects path because its API ignores pagination limits; Forgejo paginates it",
+      "List paged commits, optionally filtered by ref, path, or date range; messages are cut to their subject line; Gitea rejects path because its API ignores pagination limits; Forgejo paginates it",
     parameters: listCommitsParameters,
     ...statusRenderers("forges_commits_list", "Forges Commits"),
     approval: toolApproval("forges_commits_list"),

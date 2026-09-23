@@ -318,7 +318,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     name: "forges_commits_search",
     label: "Search Forges Commits",
     description:
-      "Search commits across repositories with optional owner and repository scope. GitHub returns repository identity, author and committer dates, totalCount, incomplete, and resultLimit (1000). Results are paged; follow nextPage while hasNextPage is true. incomplete means the search is known to be partial; narrow the query when it is true. Other providers report unsupported search.",
+      "Search commits across repositories with optional owner and repository scope. GitHub returns repository identity, author and committer dates, totalCount, incomplete, and resultLimit (1000). Messages are cut to their subject line and messageTruncated marks the cut ones; read one whole with forges_commits_get. Results are paged; follow nextPage while hasNextPage is true. incomplete means the search is known to be partial; narrow the query when it is true. Other providers report unsupported search.",
     parameters: schemas.commitSearchParameters,
     ...statusRenderers("forges_commits_search", "Search Forges Commits"),
     promptSnippet: "Find commits without knowing their repository first.",
@@ -333,10 +333,11 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_commits_list",
     label: "Forges Commits",
-    description: "List paged commits, optionally filtered by ref, path, or date range",
+    description:
+      "List paged commits, optionally filtered by ref, path, or date range; messages are cut to their subject line",
     promptSnippet: "Read repository commit history from GitHub, GitLab, or Gitea.",
     promptGuidelines: [
-      "Use forges_commits_list for repository history; use forges_commits_get only when one commit's changed files are needed.",
+      "Use forges_commits_list for repository history; use forges_commits_get only when one commit's changed files or full message are needed.",
       "forges_commits_list rejects path on Gitea because that API ignores pagination limits for the filter; Forgejo paginates it.",
     ],
     parameters: schemas.listCommitsParameters,
