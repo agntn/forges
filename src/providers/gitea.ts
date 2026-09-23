@@ -40,6 +40,9 @@ import type {
   PullRequestReview,
   PullRequestFile,
   PullRequestSearchItem,
+  GlobalPullRequestSearchItem,
+  GlobalPullRequestSearchOptions,
+  GlobalPullRequestSearchResult,
   User,
   Owner,
   PageResult,
@@ -207,6 +210,7 @@ interface GiteaIssue {
     merged?: boolean;
     draft?: boolean;
   } | null;
+  repository?: { full_name?: string | null } | null;
 }
 
 interface GiteaPullRequest {
@@ -1554,6 +1558,70 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       return {
         ...buildPageResult(data ?? [], headers, (raw) => this.mapPullRequestSearchItem(raw)),
         incomplete: false,
+      };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  /**
+   * Gitea matches keywords, answers newest first and caps nothing. Its search route has
+   * no repository filter, so a repository scope goes to that repository's issue list.
+   */
+  protected override async searchPullRequestsGlobal(
+    searchQuery: string,
+    options?: GlobalPullRequestSearchOptions,
+  ): Promise<GlobalPullRequestSearchResult> {
+    try {
+      const page = options?.page ?? 1;
+      const perPage = options?.perPage ?? 30;
+      if (
+        !Number.isSafeInteger(page) ||
+        page < 1 ||
+        !Number.isSafeInteger(perPage) ||
+        perPage < 1 ||
+        perPage > 100
+      ) {
+        throw new ForgesError(
+          "Pull-request search requires a positive page and perPage from 1 to 100",
+          400,
+          PLATFORM,
+        );
+      }
+      if ((options?.sort ?? "created") !== "created" || (options?.order ?? "desc") !== "desc") {
+        throw new ForgesError(
+          "Gitea pull-request search only returns the newest first",
+          501,
+          PLATFORM,
+        );
+      }
+      const query: Record<string, string> = {
+        q: searchQuery,
+        type: "pulls",
+        state: "all",
+        page: String(page),
+        limit: String(perPage),
+      };
+      let path = "/repos/issues/search";
+      if (options?.owner !== undefined && options.repo !== undefined) {
+        path = `/repos/${encodePathSegment(options.owner)}/${encodePathSegment(options.repo)}/issues`;
+      } else if (options?.owner !== undefined) {
+        query.owner = options.owner;
+      }
+      const { data, headers } = await rawFetch<GiteaIssue[]>(this.client, path, { query });
+      const rawItems = data ?? [];
+      const items: GlobalPullRequestSearchItem[] = [];
+      for (const raw of rawItems) {
+        const repository = raw.repository?.full_name;
+        if (!raw.pull_request || !repository) continue;
+        items.push({ ...this.mapPullRequestSearchItem(raw), repository });
+      }
+      const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
+      return {
+        ...buildPageResult(items, headers, (item) => item),
+        totalCount: Number.isFinite(total) ? total : undefined,
+        incomplete: items.length !== rawItems.length,
+        resultLimit: null,
       };
     } catch (error) {
       throw normalizeError(error, PLATFORM);

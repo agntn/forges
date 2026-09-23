@@ -1142,7 +1142,7 @@ export async function searchPullRequestsGlobal(
   args: SearchPullRequestsGlobalParams,
 ): Promise<
   ForgesToolResult<
-    SearchPageResult<Omit<GlobalPullRequestSearchItem, "body">> & { resultLimit: number }
+    SearchPageResult<Omit<GlobalPullRequestSearchItem, "body">> & { resultLimit: number | null }
   >
 > {
   const params = searchTarget(args);
