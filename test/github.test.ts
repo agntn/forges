@@ -3136,6 +3136,16 @@ describe("GitHubProvider", () => {
       );
     });
 
+    it("refuses a dot label before the title changes, since its path would collapse", async () => {
+      await expect(
+        gh.pullRequests.update("octocat", "hello-world", 99, {
+          title: "Renamed",
+          removeLabels: [".."],
+        }),
+      ).rejects.toMatchObject({ status: 400, message: expect.stringContaining('"..') });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
     it("keeps a failed label removal other than 404 as the error", async () => {
       mocks.client.mockResolvedValueOnce(ghPullRequest).mockRejectedValueOnce(makeFetchError(403));
 
@@ -3152,7 +3162,6 @@ describe("GitHubProvider", () => {
       [{ addAssignees: ["Octocat"], removeAssignees: ["octocat"] }, "both add and remove: Octocat"],
       [{ addLabels: ["docs"], removeLabels: ["docs"] }, "both add and remove: docs"],
       [{ addLabels: [""] }, "addLabels must be an array"],
-      [{ title: "Renamed", removeLabels: [".."] }, "removeLabels must be an array"],
     ])("rejects %j before any request", async (input, message) => {
       await expect(
         gh.pullRequests.update(

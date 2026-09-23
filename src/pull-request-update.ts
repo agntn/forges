@@ -4,24 +4,15 @@ import type { UpdatePullRequestInput } from "./types.ts";
 
 const MAX_LABELS = 100;
 
-/** A label name can hold `/` or `%`; a dot segment or a control character cannot be one. */
 function assertLabels(labels: unknown, field: string, platform?: string): void {
   if (labels === undefined) return;
   if (
     !Array.isArray(labels) ||
     labels.length > MAX_LABELS ||
-    labels.some(
-      (name) =>
-        typeof name !== "string" ||
-        name.length === 0 ||
-        name === "." ||
-        name === ".." ||
-        /* oxlint-disable-next-line no-control-regex */
-        /[\u0000-\u001F\u007F]/.test(name),
-    )
+    labels.some((name) => typeof name !== "string" || name.length === 0)
   ) {
     throw new ForgesError(
-      `${field} must be an array of at most ${MAX_LABELS} label names`,
+      `${field} must be an array of at most ${MAX_LABELS} non-empty names`,
       400,
       platform,
     );

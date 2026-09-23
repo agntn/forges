@@ -2364,6 +2364,18 @@ describe("GitLabProvider", () => {
       expect(pr.state).toBe("closed");
     });
 
+    it("removes a dot-named label, which travels in the body rather than a path", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glMergeRequest);
+
+      await gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, { removeLabels: ["."] });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(mr, {
+        method: "PUT",
+        body: { remove_labels: "." },
+      });
+    });
+
     it("reopens with the reopen state event", async () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glMergeRequest);

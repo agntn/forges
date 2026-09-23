@@ -2310,9 +2310,16 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     const issuePath = `${repository}/issues/${encodePathSegment(prNumber)}`;
     try {
       // Every label path is built before the first write, so a bad name changes nothing.
-      const removedLabelPaths = (input.removeLabels ?? []).map(
-        (label) => `${issuePath}/labels/${encodeLabelPathSegment(label)}`,
-      );
+      const removedLabelPaths = (input.removeLabels ?? []).map((label) => {
+        if (label === "." || label === "..") {
+          throw new ForgesError(
+            `GitHub has no route to remove the label "${label}"`,
+            400,
+            "github",
+          );
+        }
+        return `${issuePath}/labels/${encodeLabelPathSegment(label)}`;
+      });
       const fields = { title: input.title, body: input.body, state: input.state };
       const patched = Object.values(fields).some((value) => value !== undefined);
       let data = await this.client<GitHubPullRequest>(
