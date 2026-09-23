@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AuthenticationError } from "../src/errors.ts";
+import { FetchError } from "ofetch";
+
+import { AuthenticationError, NotFoundError, RateLimitError } from "../src/errors.ts";
 import {
   createIssue,
   createIssueComment,
@@ -32,6 +34,8 @@ const mocks = vi.hoisted(() => {
   /** A `GH_TOKEN` in the environment answers every lookup, a named account's too. */
   const envCredential = { current: false };
   const issueAuthors = { current: [] as string[] };
+  /** One rejection handed to every caller, the way GitLab shares an in-flight project lookup. */
+  const sharedRefusal = { current: new Error("unset") };
 
   const resolveToken = vi.fn((_platform: string, options?: { account?: string }) => {
     const account = options?.account;
@@ -98,14 +102,29 @@ const mocks = vi.hoisted(() => {
         },
         repos: {
           list: vi.fn(),
-          get: vi.fn(async (owner: string, repo: string) => ({
-            id: "1",
-            name: repo,
-            fullName: `${owner}/${repo}`,
-            owner: { login },
-            private: false,
-            defaultBranch: "main",
-          })),
+          get: vi.fn(async (owner: string, repo: string) => {
+            if (repo === "missing" || (repo === "hidden" && anonymous)) {
+              throw new NotFoundError("Resource not found: 404 ", "github", new FetchError("404"));
+            }
+            if (repo === "shared" && anonymous) throw sharedRefusal.current;
+            if (repo === "busy" && anonymous) {
+              throw new RateLimitError(
+                "Rate limit exceeded: 403",
+                60,
+                "github",
+                new FetchError("403"),
+              );
+            }
+            if (repo === "gone") throw new NotFoundError("Repository not found: gone", "github");
+            return {
+              id: "1",
+              name: repo,
+              fullName: `${owner}/${repo}`,
+              owner: { login },
+              private: false,
+              defaultBranch: "main",
+            };
+          }),
         },
         issues: {
           create: vi.fn(async (_owner: string, _repo: string, input: { title: string }) => {
@@ -153,6 +172,7 @@ const mocks = vi.hoisted(() => {
     ghLogins,
     envCredential,
     issueAuthors,
+    sharedRefusal,
     resolveToken,
     createProvider,
   };
@@ -180,6 +200,11 @@ beforeEach(() => {
   mocks.ghLogins.current = new Set(["aeitwoen", "oritwoen"]);
   mocks.envCredential.current = false;
   mocks.issueAuthors.current = [];
+  mocks.sharedRefusal.current = new NotFoundError(
+    "Resource not found: 404",
+    "gitlab",
+    new FetchError("404"),
+  );
   mocks.resolveToken.mockClear();
   mocks.createProvider.mockClear();
   vi.stubEnv("FORGES_GITHUB_BASE_URL", undefined);
@@ -327,6 +352,53 @@ describe("configured provider", () => {
       createIssueComment({ repo: "agntn/forges", number: 7, body: "posted" }),
     ).rejects.toThrow(AuthenticationError);
     expect(mocks.anonymousWrites.current).toBe(0);
+  });
+
+  it("says a tokenless read was refused for want of a token", async () => {
+    mocks.credentialToken.current = null;
+
+    const refused = getRepository({ repo: "oritwoen/hidden" });
+
+    await expect(refused).rejects.toThrow(NotFoundError);
+    await expect(refused).rejects.toThrow(
+      "Resource not found: 404. The request carried no token, and github answers 404 for a private repository as well as a missing one. Set GITHUB_TOKEN or log in with `gh auth login`. Then retry.",
+    );
+    await expect(refused).rejects.toMatchObject({ status: 404, platform: "github" });
+
+    const throttled = getRepository({ repo: "agntn/busy" });
+
+    await expect(throttled).rejects.toThrow(
+      "Rate limit exceeded: 403. The request carried no token, and requests without one get a far lower rate limit.",
+    );
+    await expect(throttled).rejects.toMatchObject({ retryAfter: 60 });
+  });
+
+  it("explains a refusal shared by concurrent reads once", async () => {
+    mocks.credentialToken.current = null;
+
+    const refusals = await Promise.allSettled([
+      getRepository({ repo: "agntn/shared" }),
+      getRepository({ repo: "agntn/shared" }),
+    ]);
+
+    for (const refusal of refusals) {
+      expect(refusal.status).toBe("rejected");
+      if (refusal.status === "rejected") {
+        expect(String(refusal.reason.message).match(/Then retry\./g)).toHaveLength(1);
+      }
+    }
+  });
+
+  it("leaves a 404 alone when a token was sent or the provider found nothing", async () => {
+    await expect(getRepository({ repo: "oritwoen/missing" })).rejects.toThrow(
+      /^Resource not found: 404 $/,
+    );
+
+    resetPinnedProviders();
+    mocks.credentialToken.current = null;
+    await expect(getRepository({ repo: "oritwoen/gone" })).rejects.toThrow(
+      /^Repository not found: gone$/,
+    );
   });
 
   it("posts a comment as the named account, never the local one", async () => {
