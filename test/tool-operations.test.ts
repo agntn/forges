@@ -12,6 +12,7 @@ import {
   reloadAuthentication,
   searchCode,
   resetPinnedProviders,
+  updatePullRequest,
 } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
@@ -119,6 +120,14 @@ const mocks = vi.hoisted(() => {
               author: { login },
             };
           }),
+        },
+        pullRequests: {
+          // A platform that keeps its one assignee, the way GitLab Free does.
+          update: vi.fn(async (_owner: string, _repo: string, number: number) => ({
+            number,
+            assignees: [{ login: "maintainer" }],
+            updatedBy: login,
+          })),
         },
         users: {
           authenticated: vi.fn(async () => ({ id: "1", login })),
@@ -257,6 +266,41 @@ describe("configured provider", () => {
         assignees: Array.from({ length: 11 }, (_, index) => `user-${index}`),
       }),
     ).rejects.toThrow("Assignees must be an array of at most 10 non-empty logins");
+
+    expect(mocks.resolveToken).not.toHaveBeenCalled();
+    expect(mocks.createProvider).not.toHaveBeenCalled();
+  });
+
+  it("updates a pull request as the named account and says which assignee change did not apply", async () => {
+    const updated = await updatePullRequest({
+      repo: "agntn/forges",
+      number: 5,
+      addAssignees: ["reviewer"],
+      removeAssignees: ["Maintainer"],
+      account: "oritwoen",
+    });
+
+    expect(updated.details.result).toMatchObject({ number: 5, updatedBy: "oritwoen" });
+    expect(JSON.parse(updated.content[0].text).note).toBe(
+      "Update succeeded, but the assignees did not change as asked (not assigned: reviewer; still assigned: Maintainer). The result shows who is assigned now.",
+    );
+  });
+
+  it("leaves the note out when the assignees changed as asked", async () => {
+    const updated = await updatePullRequest({
+      repo: "agntn/forges",
+      number: 5,
+      body: "Closes #168.",
+      addAssignees: ["maintainer"],
+    });
+
+    expect(JSON.parse(updated.content[0].text).note).toBeUndefined();
+  });
+
+  it("rejects an update that changes nothing before resolving credentials", async () => {
+    await expect(
+      updatePullRequest({ repo: "agntn/forges", number: 5, addLabels: [] }),
+    ).rejects.toThrow("Pull request update needs at least one change");
 
     expect(mocks.resolveToken).not.toHaveBeenCalled();
     expect(mocks.createProvider).not.toHaveBeenCalled();

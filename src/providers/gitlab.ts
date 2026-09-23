@@ -63,6 +63,7 @@ import type {
   ReplyThreadInput,
   Thread,
   ThreadComment,
+  UpdatePullRequestInput,
   UpdateReleaseInput,
 } from "../types.ts";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
@@ -77,6 +78,7 @@ import {
 import { normalizeCiRunState } from "../ci-run.ts";
 import { normalizeReviewState } from "../review.ts";
 import { countDiffLines } from "../changed-file.ts";
+import { changesAssignees, nextAssignees } from "../pull-request-update.ts";
 import { buildCommitPatch } from "../commit-patch.ts";
 import { buildCiJobLog, cleanGitLabTrace, jobStarted, readJobLogText } from "../ci-job-log.ts";
 import {
@@ -191,7 +193,7 @@ interface GitLabMergeRequest {
   author: {
     username: string;
   };
-  assignees?: Array<{ username: string }>;
+  assignees?: Array<{ id?: number; username: string }>;
   created_at: string;
   updated_at: string;
   web_url: string;
@@ -680,19 +682,25 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   private async resolveAssigneeFields(assignees?: string[]): Promise<Record<string, unknown>> {
     if (!assignees?.length) return {};
+    return this.assigneeFields(await this.resolveUserIds(assignees));
+  }
 
-    const ids = await Promise.all(
-      assignees.map(async (username) => {
+  private assigneeFields(ids: readonly number[]): Record<string, unknown> {
+    const onlyAssignee = ids[0];
+    return ids.length === 1 && onlyAssignee !== undefined
+      ? { assignee_id: onlyAssignee }
+      : { assignee_ids: ids };
+  }
+
+  private resolveUserIds(usernames: readonly string[]): Promise<number[]> {
+    return Promise.all(
+      usernames.map(async (username) => {
         const users = await this.client<GitLabUser[]>("/users", { query: { username } });
         const match = users.find((user) => user.username.toLowerCase() === username.toLowerCase());
         if (!match) throw new NotFoundError(`User not found: ${username}`, "gitlab");
         return match.id;
       }),
     );
-    const onlyAssignee = ids[0];
-    return ids.length === 1 && onlyAssignee !== undefined
-      ? { assignee_id: onlyAssignee }
-      : { assignee_ids: ids };
   }
 
   private getCachedProjectId(key: string): number | undefined {
@@ -1848,6 +1856,59 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         method: "POST",
         body,
       });
+      return this.mapPullRequest(mr);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  /**
+   * One PUT carries the whole update. Labels have add and remove fields of their
+   * own, assignees only the full `assignee_ids`, so an assignee change reads the
+   * merge request first and keeps whoever the update does not remove. An empty
+   * list goes out as `assignee_id: 0`, GitLab's way to unassign everyone.
+   */
+  protected override async updatePullRequest(
+    owner: string,
+    repo: string,
+    iid: number,
+    input: UpdatePullRequestInput,
+  ): Promise<PullRequest> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const path = `/projects/${projectId}/merge_requests/${encodePathSegment(iid)}`;
+      const body: Record<string, unknown> = {};
+      if (input.title !== undefined) body.title = input.title;
+      if (input.body !== undefined) body.description = input.body;
+      if (input.state !== undefined) {
+        body.state_event = input.state === "closed" ? "close" : "reopen";
+      }
+      if (input.addLabels?.length) body.add_labels = input.addLabels.join(",");
+      if (input.removeLabels?.length) body.remove_labels = input.removeLabels.join(",");
+
+      if (changesAssignees(input)) {
+        const current = (await this.client<GitLabMergeRequest>(path)).assignees ?? [];
+        // An assignee without an id would drop out of the list, so it is looked up instead.
+        const known = new Map(
+          current.flatMap(({ id, username }) =>
+            typeof id === "number" ? [[username.toLowerCase(), id] as const] : [],
+          ),
+        );
+        const next = nextAssignees(
+          current.map(({ username }) => username),
+          input,
+        );
+        const added = next.filter((username) => !known.has(username.toLowerCase()));
+        const addedIds = await this.resolveUserIds(added);
+        added.forEach((username, index) => {
+          const id = addedIds[index];
+          if (id !== undefined) known.set(username.toLowerCase(), id);
+        });
+        const ids = next.flatMap((username) => known.get(username.toLowerCase()) ?? []);
+        Object.assign(body, ids.length === 0 ? { assignee_id: 0 } : this.assigneeFields(ids));
+      }
+
+      const mr = await this.client<GitLabMergeRequest>(path, { method: "PUT", body });
       return this.mapPullRequest(mr);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");

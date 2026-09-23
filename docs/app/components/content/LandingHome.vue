@@ -6,7 +6,7 @@ const { samples, tick, paused, current, step } = useLandingForge();
 const stats = [
   { value: "4", label: "platforms" },
   { value: "10", label: "resources" },
-  { value: "44", label: "agent tools" },
+  { value: "45", label: "agent tools" },
   { value: "3", label: "agent surfaces" },
 ] as const;
 
@@ -250,7 +250,7 @@ const activePlatform = computed(() => current.value.platform);
 
     <LandingFeature
       eyebrow="Agents"
-      title="44 tools, three hosts"
+      title="45 tools, three hosts"
       to="/guide/agents"
       link="MCP, Pi and OMP"
       :checks="[

@@ -413,6 +413,46 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     assignees,
     account,
   });
+  const updatePullRequestParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    title: Type.Optional(Type.String({ description: "New pull-request title", minLength: 1 })),
+    body: Type.Optional(
+      Type.String({ description: "New pull-request body; replaces the old one" }),
+    ),
+    state: Type.Optional(
+      Type.Union([Type.Literal("open"), Type.Literal("closed")], {
+        description: "Close or reopen; a merged pull request stays merged",
+      }),
+    ),
+    addAssignees: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description: "Logins to assign next to the current ones. GitLab Free keeps one.",
+        maxItems: 10,
+      }),
+    ),
+    removeAssignees: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description: "Logins to unassign; the others stay",
+        maxItems: 10,
+      }),
+    ),
+    addLabels: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description: "Label names to add next to the current ones",
+        maxItems: 100,
+      }),
+    ),
+    removeLabels: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description: "Label names to remove; the others stay",
+        maxItems: 100,
+      }),
+    ),
+    account,
+  });
   const userParameters = closed({
     platform,
     username: Type.String({ description: "Platform username", minLength: 1 }),
@@ -864,6 +904,19 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: toolApproval("forges_pull_requests_create"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).createPullRequest(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_update",
+    label: "Update Forges Pull Request",
+    description:
+      "Change a pull request's title, body, state, assignees or labels; this mutates the selected Git platform",
+    parameters: updatePullRequestParameters,
+    ...statusRenderers("forges_pull_requests_update", "Update Forges Pull Request"),
+    approval: toolApproval("forges_pull_requests_update"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).updatePullRequest(params);
     },
   });
 

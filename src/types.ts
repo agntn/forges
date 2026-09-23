@@ -564,6 +564,24 @@ export interface CreatePullRequestInput {
 }
 
 /**
+ * Input for updating a pull request. Omitted fields keep their value, and the
+ * assignee and label lists change by the logins and names given, so the ones
+ * already there stay unless they are removed.
+ */
+export interface UpdatePullRequestInput {
+  title?: string;
+  body?: string;
+  /** Closes or reopens it. A merged pull request stays merged. */
+  state?: IssueState;
+  /** GitLab Free keeps one assignee. */
+  addAssignees?: string[];
+  removeAssignees?: string[];
+  /** Gitea rejects a label that neither the repository nor its organization has. */
+  addLabels?: string[];
+  removeLabels?: string[];
+}
+
+/**
  * One comment in an issue or pull-request discussion
  */
 export interface Comment {
@@ -812,6 +830,12 @@ export interface PullRequestResource {
     options?: GetPullRequestOptions,
   ): Promise<PullRequest>;
   create(owner: string, repo: string, input: CreatePullRequestInput): Promise<PullRequest>;
+  update(
+    owner: string,
+    repo: string,
+    number: number,
+    input: UpdatePullRequestInput,
+  ): Promise<PullRequest>;
   listComments(
     owner: string,
     repo: string,

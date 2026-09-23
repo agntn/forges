@@ -58,6 +58,7 @@ import type {
   ReplyThreadInput,
   Thread,
   ThreadComment,
+  UpdatePullRequestInput,
   UpdateReleaseInput,
 } from "../types.ts";
 import { FetchError } from "ofetch";
@@ -2285,6 +2286,71 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       } catch {
         return this.mapPullRequest(data);
       }
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /**
+   * Title, body and state go through the pull request; assignees and labels only
+   * through its issue, which the add and remove endpoints change without
+   * touching the rest. The pull request is read or patched first, so an issue
+   * number never gets its assignees or labels changed by mistake, and read again
+   * after the issue writes so the result shows them.
+   */
+  protected override async updatePullRequest(
+    owner: string,
+    repo: string,
+    prNumber: number,
+    input: UpdatePullRequestInput,
+  ): Promise<PullRequest> {
+    const repository = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`;
+    const pullPath = `${repository}/pulls/${encodePathSegment(prNumber)}`;
+    const issuePath = `${repository}/issues/${encodePathSegment(prNumber)}`;
+    try {
+      const fields = { title: input.title, body: input.body, state: input.state };
+      const patched = Object.values(fields).some((value) => value !== undefined);
+      let data = await this.client<GitHubPullRequest>(
+        pullPath,
+        patched ? { method: "PATCH", body: fields } : {},
+      );
+
+      let issueWrites = false;
+      if (input.addAssignees?.length) {
+        await this.client(`${issuePath}/assignees`, {
+          method: "POST",
+          body: { assignees: input.addAssignees },
+        });
+        issueWrites = true;
+      }
+      if (input.removeAssignees?.length) {
+        await this.client(`${issuePath}/assignees`, {
+          method: "DELETE",
+          body: { assignees: input.removeAssignees },
+        });
+        issueWrites = true;
+      }
+      if (input.addLabels?.length) {
+        await this.client(`${issuePath}/labels`, {
+          method: "POST",
+          body: { labels: input.addLabels },
+        });
+        issueWrites = true;
+      }
+      for (const label of input.removeLabels ?? []) {
+        try {
+          await this.client(`${issuePath}/labels/${encodePathSegment(label)}`, {
+            method: "DELETE",
+          });
+        } catch (error) {
+          // The pull request was just read, so a 404 here is a label it does not carry.
+          if (!(error instanceof FetchError && error.status === 404)) throw error;
+        }
+        issueWrites = true;
+      }
+
+      if (issueWrites) data = await this.client<GitHubPullRequest>(pullPath);
+      return this.mapPullRequest(data);
     } catch (error) {
       throw normalizeError(error, "github");
     }
