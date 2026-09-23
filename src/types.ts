@@ -349,7 +349,8 @@ export interface CommitSearchOptions {
 
 /** Search may match more commits than the provider allows callers to retrieve. */
 export interface CommitSearchResult extends SearchPageResult<CommitSearchItem> {
-  resultLimit: number;
+  /** Hits the provider lets callers page through; null when it sets no cap. */
+  resultLimit: number | null;
 }
 
 /** One commit with normalized metadata and changed-file rows. filesComplete is null when provider or safety limits prevent certainty. */

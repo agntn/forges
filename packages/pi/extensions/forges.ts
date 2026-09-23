@@ -316,12 +316,12 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     name: "forges_commits_search",
     label: "Search Forges Commits",
     description:
-      "Search commits across repositories with optional owner and repository scope. GitHub returns repository identity, author and committer dates, totalCount, incomplete, and resultLimit (1000). Messages are cut to their subject line and messageTruncated marks the cut ones; read one whole with forges_commits_get. Results are paged; follow nextPage while hasNextPage is true. incomplete means the search is known to be partial; narrow the query when it is true. Other providers report unsupported search.",
+      "Search commits across repositories with optional owner and repository scope. Rows carry repository identity and author and committer dates. GitHub takes its native qualifiers and returns totalCount and resultLimit (1000). GitLab matches message keywords or a SHA on the default branch, returns no totalCount and resultLimit null, and searches a group or the whole instance only with advanced search, so pass owner and repo on other hosts. Messages are cut to their subject line and messageTruncated marks the cut ones; read one whole with forges_commits_get. Results are paged; follow nextPage while hasNextPage is true. incomplete means the search is known to be partial; narrow the query when it is true. Gitea reports unsupported search.",
     parameters: schemas.commitSearchParameters,
     ...statusRenderers("forges_commits_search", "Search Forges Commits"),
     promptSnippet: "Find commits without knowing their repository first.",
     promptGuidelines: [
-      "Use forges_commits_search for native GitHub commit queries, including author-date: and committer-date: qualifiers; narrow the query when incomplete is true or totalCount exceeds resultLimit.",
+      "Use forges_commits_search for native GitHub commit queries, including author-date: and committer-date: qualifiers, or GitLab message keywords; narrow the query when incomplete is true or totalCount exceeds resultLimit.",
     ],
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).searchCommits(params);
