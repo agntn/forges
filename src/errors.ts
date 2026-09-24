@@ -123,6 +123,9 @@ export function normalizeError(error: unknown, platform?: string): ForgesError {
 /** Longest provider reason a message repeats; the rest of a longer one is cut. */
 const REASON_LIMIT = 200;
 
+/** Body text read before masking; the token this cut splits is dropped whole. */
+const REASON_SCAN = REASON_LIMIT * 8;
+
 /** Items read from one list or field map of an error body. */
 const REASON_ITEMS = 5;
 
@@ -130,6 +133,7 @@ const REASON_ITEMS = 5;
 const IPV4 = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
 const IPV6 =
   /(?<![\w:])(?:[\da-f]{1,4}:){3,7}[\da-f]{1,4}(?![\w:])|(?<![\w:])(?:[\da-f]{1,4}:)*[\da-f]{0,4}::(?:[\da-f]{1,4}(?::[\da-f]{1,4})*)?(?![\w:])/gi;
+const USERINFO = /(\b[a-z][\w+.-]*:\/\/)[^\s/@]*@/gi;
 const INVISIBLE = /[\p{Cc}\p{Cf}\u2028\u2029]/gu;
 
 /** ofetch's message stops at the status; the reason from the body goes after it. */
@@ -144,29 +148,37 @@ function withProviderReason(message: string, error: FetchError): string {
 }
 
 /**
- * `message`, GitLab's `error` and GitHub's `errors` as one printable line.
+ * `message`, GitLab's `error` and GitHub's `errors` as one printable line, without URL credentials.
  * An HTML page or plain text body gives no reason at all.
  */
 function providerReason(data: unknown): string | undefined {
   if (typeof data !== "object" || data === null || Array.isArray(data)) return undefined;
   const body = data as Record<string, unknown>;
 
-  const parts = [reasonText(body.message) ?? reasonText(body.error)];
+  const parts = [body.message, body.error, body.error_description].map(reasonText);
   if (Array.isArray(body.errors)) {
     parts.push(joinReasons(body.errors.slice(0, REASON_ITEMS).map(fieldError)));
   }
 
-  const reason = parts
+  const text = [...new Set(parts)]
     .filter((part) => part !== undefined)
     .join(": ")
-    .slice(0, REASON_LIMIT * 4)
     .replace(INVISIBLE, " ")
-    .replace(/\s+/g, " ")
+    .replace(/\s+/g, " ");
+  const reason = withoutCutToken(text, REASON_SCAN)
+    .replace(USERINFO, "$1")
     .replace(IPV4, "<address>")
     .replace(IPV6, "<address>")
     .trim();
   if (!reason) return undefined;
   return reason.length > REASON_LIMIT ? `${reason.slice(0, REASON_LIMIT - 1).trimEnd()}…` : reason;
+}
+
+/** Half an address or credential would slip past the masks, so a split token goes whole. */
+function withoutCutToken(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  const cut = text.slice(0, limit);
+  return text[limit] === " " ? cut : cut.replace(/\S*$/, "");
 }
 
 /** A string, a list of them, or GitLab's map from field to its errors. */

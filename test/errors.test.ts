@@ -437,6 +437,64 @@ describe("normalizeError provider reasons", () => {
     ).toMatch(/400 Bad Request: f0 x; f1 x; f2 x; f3 x; f4 x$/);
   });
 
+  it("joins GitLab's OAuth error with its description", () => {
+    const result = normalizeError(
+      rejected(401, "Unauthorized", {
+        error: "invalid_token",
+        error_description: "Token was revoked. You have to re-authorize from the user.",
+      }),
+      "gitlab",
+    );
+
+    expect(result.message).toMatch(
+      /401 Unauthorized: invalid_token: Token was revoked\. You have to re-authorize from the user\.$/,
+    );
+    expect(
+      normalizeError(
+        rejected(400, "Bad Request", { message: "Validation Failed", error: "Validation Failed" }),
+        "gitlab",
+      ).message,
+    ).toMatch(/400 Bad Request: Validation Failed$/);
+  });
+
+  it("never keeps half of an address or credential the cut split", () => {
+    const shifted = normalizeError(
+      rejected(403, "Forbidden", {
+        message: `${"\t".repeat(700)}${"x".repeat(93)} 104.28.193.185`,
+      }),
+      "github",
+    );
+    expect(shifted.message).not.toMatch(/\b104\b/);
+
+    const behindCredentials = normalizeError(
+      rejected(403, "Forbidden", {
+        message: `https://${"a".repeat(1500)}@h ${"x".repeat(85)} 104.28.193.185`,
+      }),
+      "github",
+    );
+    expect(behindCredentials.message).toMatch(/: https:\/\/h x+$/);
+
+    const longSecret = normalizeError(
+      rejected(502, "Bad Gateway", {
+        message: `mirror https://ci:${"s".repeat(2000)}@host failed`,
+      }),
+      "gitea",
+    );
+    expect(longSecret.message).toMatch(/502 Bad Gateway: mirror$/);
+  });
+
+  it("drops credentials from a URL in the reason", () => {
+    const result = normalizeError(
+      rejected(502, "Bad Gateway", {
+        message: "mirror https://ci:s3cret@git.example.com/repo.git failed",
+      }),
+      "gitea",
+    );
+
+    expect(result.message).not.toContain("s3cret");
+    expect(result.message).toMatch(/: mirror https:\/\/git\.example\.com\/repo\.git failed$/);
+  });
+
   it("detects a secondary rate limit from the body alone", () => {
     const result = normalizeError(
       rejected(403, "Forbidden", {
