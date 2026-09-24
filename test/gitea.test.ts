@@ -1254,6 +1254,18 @@ describe("Gitea Provider", () => {
         nextPage: 3,
       });
     });
+
+    it("searches every state when none is given, like GitHub and GitLab", async () => {
+      mockedRawFetch.mockResolvedValueOnce({ data: [], headers: makeHeaders(), status: 200 });
+
+      await provider.issues.search("testowner", "test-repo", "runner timeout");
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        expect.anything(),
+        "/repos/testowner/test-repo/issues",
+        { query: { q: "runner timeout", state: "all", type: "issues" } },
+      );
+    });
   });
 
   describe("issues.get", () => {
@@ -1924,6 +1936,20 @@ describe("Gitea Provider", () => {
       });
       expect(result.items[0]).not.toHaveProperty("sourceBranch");
       expect(result.items[0]).not.toHaveProperty("headSha");
+    });
+
+    it("searches every state when none is given, like GitHub and GitLab", async () => {
+      mockedRawFetch.mockResolvedValueOnce({ data: [], headers: makeHeaders(), status: 200 });
+
+      await provider.pullRequests.search("testowner", "test-repo", "runner timeout", {
+        page: 2,
+      });
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        expect.anything(),
+        "/repos/testowner/test-repo/issues",
+        { query: { q: "runner timeout", state: "all", type: "pulls", page: "2" } },
+      );
     });
   });
 
