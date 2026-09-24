@@ -1285,6 +1285,8 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     try {
       const query = buildListQuery(options);
       query.q = searchQuery;
+      // Gitea lists open items by default; GitHub and GitLab search every state.
+      query.state = options?.state ?? "all";
       query.type = "issues";
       const { data, headers } = await rawFetch<GiteaIssue[]>(
         this.client,
@@ -1549,6 +1551,8 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     try {
       const query = buildListQuery(options);
       query.q = searchQuery;
+      // Gitea lists open items by default; GitHub and GitLab search every state.
+      query.state = options?.state ?? "all";
       query.type = "pulls";
       const { data, headers } = await rawFetch<GiteaIssue[]>(
         this.client,
