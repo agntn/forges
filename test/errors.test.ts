@@ -236,3 +236,215 @@ describe("normalizeError", () => {
     expect(result.platform).toBe("github");
   });
 });
+
+describe("normalizeError provider reasons", () => {
+  function rejected(status: number, statusText: string, data: unknown): FetchError {
+    const err = createFetchError(
+      `[GET] "https://forge.example/api/resource": ${status} ${statusText}`,
+      status,
+    );
+    err.statusText = statusText;
+    err.data = data;
+    return err;
+  }
+
+  it("keeps the reason Gitea gives for an unknown owner", () => {
+    const result = normalizeError(
+      rejected(400, "Bad Request", {
+        message: "user does not exist [uid: 0, name: nonexistent-owner-zq9]",
+        url: "https://gitea.com/api/swagger",
+      }),
+      "gitea",
+    );
+
+    expect(result.status).toBe(400);
+    expect(result.message).toBe(
+      '[GET] "https://forge.example/api/resource": 400 Bad Request: user does not exist [uid: 0, name: nonexistent-owner-zq9]',
+    );
+  });
+
+  it("names the fields behind GitHub's Validation Failed", () => {
+    const result = normalizeError(
+      rejected(422, "", {
+        message: "Validation Failed",
+        errors: [{ value: "bogus", resource: "Issue", field: "state", code: "invalid" }],
+        documentation_url: "https://docs.github.com/v3/issues/#list-issues",
+        status: "422",
+      }),
+      "github",
+    );
+
+    expect(result.message).toBe(
+      '[GET] "https://forge.example/api/resource": 422: Validation Failed: state invalid',
+    );
+  });
+
+  it("prefers the message of a custom GitHub validation error", () => {
+    const result = normalizeError(
+      rejected(422, "Unprocessable Entity", {
+        message: "Validation Failed",
+        errors: [
+          { resource: "PullRequest", code: "custom", message: "A pull request already exists" },
+          "base is invalid",
+        ],
+      }),
+      "github",
+    );
+
+    expect(result.message).toMatch(
+      /: Validation Failed: A pull request already exists; base is invalid$/,
+    );
+  });
+
+  it("reads GitLab's error field and its field map", () => {
+    expect(
+      normalizeError(
+        rejected(400, "Bad Request", { error: "state does not have a valid value" }),
+        "gitlab",
+      ).message,
+    ).toMatch(/400 Bad Request: state does not have a valid value$/);
+
+    expect(
+      normalizeError(
+        rejected(400, "Bad Request", {
+          message: { title: ["can't be blank"], labels: ["is invalid", "is too long"] },
+        }),
+        "gitlab",
+      ).message,
+    ).toMatch(/400 Bad Request: title can't be blank; labels is invalid; is too long$/);
+  });
+
+  it("keeps the reason after the class prefix", () => {
+    const result = normalizeError(
+      rejected(404, "Not Found", { message: "404 Project Not Found" }),
+      "gitlab",
+    );
+
+    expect(result).toBeInstanceOf(NotFoundError);
+    expect(result.message).toBe(
+      'Resource not found: [GET] "https://forge.example/api/resource": 404 Not Found: 404 Project Not Found',
+    );
+  });
+
+  it("leaves out a reason the status already says", () => {
+    const result = normalizeError(
+      rejected(404, "Not Found", { message: "Not Found", documentation_url: "https://docs" }),
+      "github",
+    );
+
+    expect(result.message).toBe(
+      'Resource not found: [GET] "https://forge.example/api/resource": 404 Not Found',
+    );
+    expect(
+      normalizeError(rejected(404, "Not Found", { message: "404 not found" }), "gitea").message,
+    ).toMatch(/: 404 Not Found$/);
+  });
+
+  it("gives the status alone for an HTML, text or empty body", () => {
+    for (const data of [
+      "<!DOCTYPE html><html><body><h1>502 Bad Gateway</h1></body></html>",
+      "upstream connect error",
+      undefined,
+      {},
+      { message: "" },
+      [{ message: "array bodies are not error objects" }],
+    ]) {
+      expect(normalizeError(rejected(502, "Bad Gateway", data), "gitea").message).toBe(
+        '[GET] "https://forge.example/api/resource": 502 Bad Gateway',
+      );
+    }
+  });
+
+  it("cuts a long reason to one bounded line", () => {
+    const result = normalizeError(
+      rejected(500, "Internal Server Error", { message: `first\n\tline ${"x".repeat(500)}` }),
+      "gitea",
+    );
+    const reason = result.message.split("500 Internal Server Error: ")[1] ?? "";
+
+    expect(reason).toHaveLength(200);
+    expect(reason.startsWith("first line x")).toBe(true);
+    expect(reason.endsWith("…")).toBe(true);
+  });
+
+  it("masks the caller's address in GitHub's rate limit text", () => {
+    const result = normalizeError(
+      rejected(403, "Forbidden", {
+        message:
+          "API rate limit exceeded for 104.28.193.185. (But here's the good news: Authenticated requests get a higher rate limit.)",
+      }),
+      "github",
+    );
+
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect(result.message).not.toContain("104.28.193.185");
+    expect(result.message).toContain("API rate limit exceeded for <address>.");
+
+    const v6 = normalizeError(
+      rejected(403, "Forbidden", { message: "API rate limit exceeded for 2001:db8::1." }),
+      "github",
+    );
+    expect(v6.message).toContain("exceeded for <address>.");
+  });
+
+  it("keeps times and Ruby constants that look like addresses", () => {
+    const result = normalizeError(
+      rejected(500, "Internal Server Error", {
+        message: "Gitlab::Git::CommandError at 12:30:45",
+      }),
+      "gitlab",
+    );
+
+    expect(result.message).toMatch(/: Gitlab::Git::CommandError at 12:30:45$/);
+  });
+
+  it("keeps a reason that happens to appear in the URL", () => {
+    const result = normalizeError(rejected(410, "Gone", { message: "resource" }), "gitea");
+
+    expect(result.message).toMatch(/410 Gone: resource$/);
+  });
+
+  it("turns controls and directional marks into spaces", () => {
+    const result = normalizeError(
+      rejected(400, "Bad Request", { message: "bad\u001b]0;title\u0007 input\u202eflip" }),
+      "gitea",
+    );
+
+    expect(result.message).toMatch(/400 Bad Request: bad ]0;title input flip$/);
+  });
+
+  it("reads only the first items of a huge or nested body", () => {
+    const nested: Record<string, unknown> = {};
+    let level = nested;
+    for (let depth = 0; depth < 10_000; depth++) {
+      level.inner = {};
+      level = level.inner as Record<string, unknown>;
+    }
+    const result = normalizeError(
+      rejected(400, "Bad Request", {
+        message: { ...nested, title: Array.from({ length: 100_000 }, () => "is invalid") },
+      }),
+      "gitlab",
+    );
+
+    expect(result.message).toMatch(
+      /400 Bad Request: title is invalid; is invalid; is invalid; is invalid; is invalid$/,
+    );
+
+    const fields = Object.fromEntries(Array.from({ length: 1000 }, (_, i) => [`f${i}`, ["x"]]));
+    expect(
+      normalizeError(rejected(400, "Bad Request", { message: fields }), "gitlab").message,
+    ).toMatch(/400 Bad Request: f0 x; f1 x; f2 x; f3 x; f4 x$/);
+  });
+
+  it("detects a secondary rate limit from the body alone", () => {
+    const result = normalizeError(
+      rejected(403, "Forbidden", {
+        message: "You have exceeded a secondary rate limit. Please wait a few minutes.",
+      }),
+      "github",
+    );
+
+    expect(result).toBeInstanceOf(RateLimitError);
+  });
+});

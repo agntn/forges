@@ -79,7 +79,7 @@ export function normalizeError(error: unknown, platform?: string): ForgesError {
   // FetchError from ofetch
   if (error instanceof FetchError) {
     const status = error.status;
-    const message = error.message || `HTTP ${status}`;
+    const message = withProviderReason(error.message || `HTTP ${status}`, error);
 
     switch (status) {
       case 401:
@@ -118,6 +118,91 @@ export function normalizeError(error: unknown, platform?: string): ForgesError {
     platform,
     error instanceof Error ? error : undefined,
   );
+}
+
+/** Longest provider reason a message repeats; the rest of a longer one is cut. */
+const REASON_LIMIT = 200;
+
+/** Items read from one list or field map of an error body. */
+const REASON_ITEMS = 5;
+
+/** The caller's address, which GitHub repeats in its rate limit text. */
+const IPV4 = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
+const IPV6 =
+  /(?<![\w:])(?:[\da-f]{1,4}:){3,7}[\da-f]{1,4}(?![\w:])|(?<![\w:])(?:[\da-f]{1,4}:)*[\da-f]{0,4}::(?:[\da-f]{1,4}(?::[\da-f]{1,4})*)?(?![\w:])/gi;
+const INVISIBLE = /[\p{Cc}\p{Cf}\u2028\u2029]/gu;
+
+/** ofetch's message stops at the status; the reason from the body goes after it. */
+function withProviderReason(message: string, error: FetchError): string {
+  const reason = providerReason(error.data);
+  if (reason === undefined) return message;
+
+  const said = reason.toLowerCase();
+  const statusText = (error.statusText ?? "").toLowerCase();
+  if (said === statusText || said === `${error.status} ${statusText}`) return message;
+  return `${message.trimEnd()}: ${reason}`;
+}
+
+/**
+ * `message`, GitLab's `error` and GitHub's `errors` as one printable line.
+ * An HTML page or plain text body gives no reason at all.
+ */
+function providerReason(data: unknown): string | undefined {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return undefined;
+  const body = data as Record<string, unknown>;
+
+  const parts = [reasonText(body.message) ?? reasonText(body.error)];
+  if (Array.isArray(body.errors)) {
+    parts.push(joinReasons(body.errors.slice(0, REASON_ITEMS).map(fieldError)));
+  }
+
+  const reason = parts
+    .filter((part) => part !== undefined)
+    .join(": ")
+    .slice(0, REASON_LIMIT * 4)
+    .replace(INVISIBLE, " ")
+    .replace(/\s+/g, " ")
+    .replace(IPV4, "<address>")
+    .replace(IPV6, "<address>")
+    .trim();
+  if (!reason) return undefined;
+  return reason.length > REASON_LIMIT ? `${reason.slice(0, REASON_LIMIT - 1).trimEnd()}…` : reason;
+}
+
+/** A string, a list of them, or GitLab's map from field to its errors. */
+function reasonText(value: unknown): string | undefined {
+  if (typeof value === "string" || Array.isArray(value)) return messages(value);
+  if (typeof value !== "object" || value === null) return undefined;
+  return joinReasons(
+    Object.entries(value)
+      .slice(0, REASON_ITEMS)
+      .map(([field, errors]) => {
+        const text = messages(errors);
+        return text === undefined ? undefined : `${field} ${text}`;
+      }),
+  );
+}
+
+function messages(value: unknown): string | undefined {
+  if (typeof value === "string") return value || undefined;
+  if (!Array.isArray(value)) return undefined;
+  return joinReasons(
+    value.slice(0, REASON_ITEMS).map((item) => (typeof item === "string" ? item : undefined)),
+  );
+}
+
+/** One entry of GitHub's `errors`: its own message, or the field and the code. */
+function fieldError(entry: unknown): string | undefined {
+  if (typeof entry === "string") return entry || undefined;
+  if (typeof entry !== "object" || entry === null) return undefined;
+  const { message, field, code } = entry as Record<string, unknown>;
+  if (typeof message === "string" && message) return message;
+  if (typeof field === "string" && typeof code === "string") return `${field} ${code}`;
+  return undefined;
+}
+
+function joinReasons(items: (string | undefined)[]): string | undefined {
+  return items.filter((item) => item !== undefined && item !== "").join("; ") || undefined;
 }
 
 /**
