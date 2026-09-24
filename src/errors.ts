@@ -188,14 +188,14 @@ function bounded(text: string): string {
 function reasonText(value: unknown): string | undefined {
   if (typeof value === "string" || Array.isArray(value)) return messages(value);
   if (typeof value !== "object" || value === null) return undefined;
-  return joinReasons(
-    Object.entries(value)
-      .slice(0, REASON_ITEMS)
-      .map(([field, errors]) => {
-        const text = messages(errors);
-        return text === undefined ? undefined : bounded(`${field} ${text}`);
-      }),
-  );
+  const fields: (string | undefined)[] = [];
+  for (const field in value) {
+    if (!Object.hasOwn(value, field)) continue;
+    const text = messages((value as Record<string, unknown>)[field]);
+    fields.push(text === undefined ? undefined : bounded(`${field} ${text}`));
+    if (fields.length === REASON_ITEMS) break;
+  }
+  return joinReasons(fields);
 }
 
 function messages(value: unknown): string | undefined {
