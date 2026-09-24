@@ -123,7 +123,7 @@ export function normalizeError(error: unknown, platform?: string): ForgesError {
 /** Longest provider reason a message repeats; the rest of a longer one is cut. */
 const REASON_LIMIT = 200;
 
-/** Body text read before masking; the token this cut splits is dropped whole. */
+/** Longest text read from one field of an error body. */
 const REASON_SCAN = REASON_LIMIT * 8;
 
 /** Items read from one list or field map of an error body. */
@@ -160,25 +160,28 @@ function providerReason(data: unknown): string | undefined {
     parts.push(joinReasons(body.errors.slice(0, REASON_ITEMS).map(fieldError)));
   }
 
-  const text = [...new Set(parts)]
+  const reason = [...new Set(parts)]
     .filter((part) => part !== undefined)
     .join(": ")
     .replace(INVISIBLE, " ")
-    .replace(/\s+/g, " ");
-  const reason = withoutCutToken(text, REASON_SCAN)
+    .replace(/\s+/g, " ")
     .replace(USERINFO, "$1")
     .replace(IPV4, "<address>")
     .replace(IPV6, "<address>")
     .trim();
   if (!reason) return undefined;
-  return reason.length > REASON_LIMIT ? `${reason.slice(0, REASON_LIMIT - 1).trimEnd()}…` : reason;
+  if (reason.length <= REASON_LIMIT) return reason;
+  const end = /[\uD800-\uDBFF]/.test(reason.charAt(REASON_LIMIT - 2))
+    ? REASON_LIMIT - 2
+    : REASON_LIMIT - 1;
+  return `${reason.slice(0, end).trimEnd()}…`;
 }
 
-/** Half an address or credential would slip past the masks, so a split token goes whole. */
-function withoutCutToken(text: string, limit: number): string {
-  if (text.length <= limit) return text;
-  const cut = text.slice(0, limit);
-  return text[limit] === " " ? cut : cut.replace(/\S*$/, "");
+/** Half an address or credential would slip past the masks, so a token the cut splits goes whole. */
+function bounded(text: string): string {
+  if (text.length <= REASON_SCAN) return text;
+  const cut = text.slice(0, REASON_SCAN);
+  return /\s/.test(text.charAt(REASON_SCAN)) ? cut : cut.replace(/\S*$/, "");
 }
 
 /** A string, a list of them, or GitLab's map from field to its errors. */
@@ -190,26 +193,28 @@ function reasonText(value: unknown): string | undefined {
       .slice(0, REASON_ITEMS)
       .map(([field, errors]) => {
         const text = messages(errors);
-        return text === undefined ? undefined : `${field} ${text}`;
+        return text === undefined ? undefined : bounded(`${field} ${text}`);
       }),
   );
 }
 
 function messages(value: unknown): string | undefined {
-  if (typeof value === "string") return value || undefined;
+  if (typeof value === "string") return bounded(value) || undefined;
   if (!Array.isArray(value)) return undefined;
   return joinReasons(
-    value.slice(0, REASON_ITEMS).map((item) => (typeof item === "string" ? item : undefined)),
+    value
+      .slice(0, REASON_ITEMS)
+      .map((item) => (typeof item === "string" ? bounded(item) : undefined)),
   );
 }
 
 /** One entry of GitHub's `errors`: its own message, or the field and the code. */
 function fieldError(entry: unknown): string | undefined {
-  if (typeof entry === "string") return entry || undefined;
+  if (typeof entry === "string") return bounded(entry) || undefined;
   if (typeof entry !== "object" || entry === null) return undefined;
   const { message, field, code } = entry as Record<string, unknown>;
-  if (typeof message === "string" && message) return message;
-  if (typeof field === "string" && typeof code === "string") return `${field} ${code}`;
+  if (typeof message === "string" && message) return bounded(message);
+  if (typeof field === "string" && typeof code === "string") return bounded(`${field} ${code}`);
   return undefined;
 }
 

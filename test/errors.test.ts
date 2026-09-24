@@ -483,6 +483,25 @@ describe("normalizeError provider reasons", () => {
     expect(longSecret.message).toMatch(/502 Bad Gateway: mirror$/);
   });
 
+  it("reads a bounded start of a huge field", () => {
+    const result = normalizeError(
+      rejected(400, "Bad Request", { message: `${" ".repeat(5_000_000)}hidden reason` }),
+      "gitea",
+    );
+
+    expect(result.message).toMatch(/: 400 Bad Request$/);
+  });
+
+  it("never cuts an emoji in half", () => {
+    const result = normalizeError(
+      rejected(400, "Bad Request", { message: `${"x".repeat(198)}😀${"y".repeat(10)}` }),
+      "gitea",
+    );
+
+    expect(result.message.isWellFormed()).toBe(true);
+    expect(result.message).toMatch(/: x{198}…$/);
+  });
+
   it("drops credentials from a URL in the reason", () => {
     const result = normalizeError(
       rejected(502, "Bad Gateway", {
