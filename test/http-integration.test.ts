@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 
 import { describe, expect, it } from "vite-plus/test";
 
+import { normalizeError } from "../src/errors.ts";
 import { createHttpClient } from "../src/http.ts";
 
 describe("createHttpClient with ofetch", () => {
@@ -85,6 +86,58 @@ describe("createHttpClient with ofetch", () => {
       hits.clear();
       await expect(client("/", { method: "POST", retry: 1, retryDelay: 0 })).rejects.toThrow();
       expect(hits.get("POST")).toBe(2);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+    }
+  });
+
+  it("carries the platform's reason from a real error response", async () => {
+    const server = createServer((request, response) => {
+      if (request.url === "/html") {
+        response.writeHead(502, { "content-type": "text/html" });
+        response.end("<html><body>Bad Gateway</body></html>");
+        return;
+      }
+      response.writeHead(400, { "content-type": "application/json;charset=utf-8" });
+      response.end(
+        '{"message":"user does not exist [uid: 0, name: ghost]","url":"https://gitea.com/api/swagger"}',
+      );
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("Expected a TCP server address");
+
+      const client = createHttpClient({
+        baseURL: `http://127.0.0.1:${address.port}`,
+        token: "",
+      });
+      const failure = async (path: string) => {
+        try {
+          await client(path, { retry: 0 });
+        } catch (error) {
+          return normalizeError(error, "gitea").message;
+        }
+        throw new Error("Expected the request to fail");
+      };
+
+      expect(await failure("/search")).toMatch(
+        /: 400 Bad Request: user does not exist \[uid: 0, name: ghost\]$/,
+      );
+      expect(await failure("/html")).toMatch(/: 502 Bad Gateway$/);
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
