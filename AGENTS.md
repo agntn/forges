@@ -46,7 +46,7 @@ src/
 ├── changed-file.ts       # Changed-file status normalization + GitLab diff line counts
 ├── commit-patch.ts       # Bounded commit patch stream rendering and continuation
 ├── update-input.ts       # Issue and pull request update checks + whole-list assignee merge for GitLab and Gitea
-├── pagination.ts         # Link header + x-next-page async generator
+├── pagination.ts         # Link header + x-next-page async generator, local page slicing
 ├── version.ts            # Package version — the one source for it in src/
 ├── tool-operations.ts    # Executors behind every agent surface (MCP, Pi, OMP)
 ├── mcp.ts                # createMcpServer() over the low-level MCP Server; tool table on first tools/list, executors on first tools/call

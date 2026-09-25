@@ -20,6 +20,7 @@ export const toolEffects = {
   forges_ci_jobs_log: "hostedRead",
   forges_commits_search: "hostedRead",
   forges_commits_list: "hostedRead",
+  forges_commits_compare: "hostedRead",
   forges_commits_get: "hostedRead",
   forges_commits_patch: "hostedRead",
   forges_releases_list: "hostedRead",

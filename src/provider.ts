@@ -19,6 +19,7 @@ import type {
   CodeSearchResource,
   Comment,
   Commit,
+  CommitComparison,
   CommitPatch,
   CommitPatchOptions,
   ContributionTemplate,
@@ -29,6 +30,7 @@ import type {
   CommitSummary,
   CommitSearchOptions,
   CommitSearchResult,
+  CompareCommitsOptions,
   CreateCommentInput,
   CreateIssueInput,
   CreatePullRequestInput,
@@ -234,6 +236,15 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       },
       list: (owner, repo, options) => this.listCommits(owner, repo, options),
       get: (owner, repo, sha) => this.getCommit(owner, repo, sha),
+      compare: async (owner, repo, base, head, options) => {
+        if (base.trim() === "" || head.trim() === "") {
+          throw new ForgesError("Commit comparison needs a base and a head ref", 400);
+        }
+        return this.compareCommits(owner, repo, base, head, {
+          page: paginationPageValue(options?.page, 1, "page"),
+          perPage: paginationPageValue(options?.perPage, 30, "perPage", 100),
+        });
+      },
       readPatch: async (owner, repo, sha, options) => {
         assertCommitPatchOptions(options);
         return this.readCommitPatch(owner, repo, sha, options);
@@ -451,6 +462,17 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     return Promise.reject(new ForgesError("Commit listing is not supported by this provider", 501));
   }
   protected abstract getCommit(owner: string, repo: string, sha: string): Promise<Commit>;
+  protected compareCommits(
+    _owner: string,
+    _repo: string,
+    _base: string,
+    _head: string,
+    _options?: CompareCommitsOptions,
+  ): Promise<CommitComparison> {
+    return Promise.reject(
+      new ForgesError("Commit comparison is not supported by this provider", 501),
+    );
+  }
   protected readCommitPatch(
     _owner: string,
     _repo: string,

@@ -257,6 +257,27 @@ export function forgesToolSchemas() {
     page,
     perPage,
   });
+  const compareCommitsParameters = closed({
+    platform,
+    owner,
+    repo,
+    base: Type.String({
+      description: "Branch, tag, or commit SHA the range starts from, as in git log base..head",
+      minLength: 1,
+    }),
+    head: Type.String({
+      description: "Branch, tag, or commit SHA the range ends at",
+      minLength: 1,
+    }),
+    files: Type.Optional(
+      Type.Boolean({
+        description:
+          "Also return the net changed files from the merge base to head, on the first page only",
+      }),
+    ),
+    page,
+    perPage,
+  });
   const listCiRunsParameters = closed({ platform, owner, repo, branch, page, perPage });
   const listCiJobsParameters = closed({
     platform,
@@ -583,6 +604,7 @@ export function forgesToolSchemas() {
     commitParameters,
     commitPatchParameters,
     listCommitsParameters,
+    compareCommitsParameters,
     commitSearchParameters,
     globalPullRequestSearchParameters,
     listCiRunsParameters,

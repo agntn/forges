@@ -982,6 +982,50 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("commits.compare", () => {
+    const commit = (sha: string, message: string) => ({
+      sha,
+      html_url: `https://gitea.com/gitea/tea/commit/${sha}`,
+      commit: {
+        message,
+        author: { name: "Renovate Bot", email: "bot@example.com", date: "2025-06-16T17:07:00Z" },
+        committer: { name: "Gitea", email: "noreply@gitea.com", date: "2025-06-16T17:07:00Z" },
+      },
+      parents: [{ sha: "parent-sha" }],
+    });
+
+    it("reverses the range Gitea sends newest first and pages it locally", async () => {
+      mockClient.mockResolvedValueOnce({
+        total_commits: 3,
+        commits: [
+          commit("8212d5f", "Update release ci (#768)"),
+          commit("d536242", "chore(deps): update crazy-max/ghaction-import-gpg"),
+          commit("ffff540", "fix(deps): update module github.com/urfave/cli/v3"),
+        ],
+      });
+
+      const result = await provider.commits.compare("gitea", "tea", "v0.10.0", "release/v0.10", {
+        perPage: 2,
+      });
+
+      expect(mockClient).toHaveBeenCalledWith(
+        "/repos/gitea/tea/compare/v0.10.0...release%2Fv0.10",
+        { query: { files: "false", verification: "false" } },
+      );
+      expect(result.items.map(({ sha }) => sha)).toEqual(["ffff540", "d536242"]);
+      expect(result).toMatchObject({
+        totalCount: 3,
+        hasNextPage: true,
+        nextPage: 2,
+        status: null,
+        aheadBy: 3,
+        behindBy: null,
+        mergeBaseSha: null,
+        files: null,
+        filesComplete: null,
+      });
+    });
+  });
   describe("commits.get", () => {
     it("returns commit metadata with null counts when Gitea omits them", async () => {
       const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";

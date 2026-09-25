@@ -140,6 +140,14 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       execute: (operations, args) => operations.listCommits(args),
     }),
     defineTool({
+      name: "forges_commits_compare",
+      title: "Compare Commits",
+      description:
+        "Compare two refs: the commits head has that base lacks, as git log base..head lists them, oldest first, with aheadBy and totalCount for the whole range. Messages are cut to their subject line, with messageTruncated on the cut ones. Pass files to get the net change from the merge base to head with per-file counts on the first page; later pages have files null. GitHub also reports status, behindBy and mergeBaseSha, and lists at most 300 files, so filesComplete is null at that cap. GitLab and Gitea return null for status, behindBy, mergeBaseSha and filesComplete; Gitea has no range file list, so files is null there. To ask what head lacks, swap base and head.",
+      inputSchema: schemas.compareCommitsParameters,
+      execute: (operations, args) => operations.compareCommits(args),
+    }),
+    defineTool({
       name: "forges_commits_get",
       title: "Get Commit",
       description:

@@ -1374,6 +1374,164 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("commits.compare", () => {
+    const commit = (sha: string, message: string) => ({
+      sha,
+      commit: {
+        message,
+        author: { name: "Ori", email: "ori@example.com", date: "2026-09-23T10:53:17Z" },
+        committer: { name: "GitHub", email: "noreply@github.com", date: "2026-09-23T10:53:17Z" },
+      },
+      html_url: `https://github.com/agntn/forges/commit/${sha}`,
+      parents: [{ sha: "parent-sha" }],
+    });
+
+    it("maps the range, both counts, the merge base and the first page of files", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: {
+          status: "diverged",
+          ahead_by: 16,
+          behind_by: 3,
+          total_commits: 16,
+          merge_base_commit: { sha: "5e23d3eb0079df44da87f0e2299ed9c786b3a542" },
+          commits: [commit("6d8eb75", "feat: edit a pull request once it is open (#171)")],
+          files: [
+            {
+              filename: ".github/workflows/publish.yml",
+              status: "modified",
+              additions: 1,
+              deletions: 6,
+              patch: "@@ -1 +1 @@",
+            },
+          ],
+        },
+        headers: makeHeaders(
+          '<https://api.github.com/repositories/1/compare/v0.3.4...main?per_page=1&page=2>; rel="next"',
+        ),
+      });
+
+      const result = await gh.commits.compare("agntn", "forges", "v0.3.4", "renovate/deps", {
+        perPage: 1,
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/agntn/forges/compare/v0.3.4...renovate%2Fdeps",
+        { query: { page: "1", per_page: "1" } },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            sha: "6d8eb75",
+            message: "feat: edit a pull request once it is open (#171)",
+            author: { name: "Ori", email: "ori@example.com", date: "2026-09-23T10:53:17Z" },
+            committer: {
+              name: "GitHub",
+              email: "noreply@github.com",
+              date: "2026-09-23T10:53:17Z",
+            },
+            parents: ["parent-sha"],
+            url: "https://github.com/agntn/forges/commit/6d8eb75",
+          },
+        ],
+        totalCount: 16,
+        hasNextPage: true,
+        nextPage: 2,
+        status: "diverged",
+        aheadBy: 16,
+        behindBy: 3,
+        mergeBaseSha: "5e23d3eb0079df44da87f0e2299ed9c786b3a542",
+        files: [
+          {
+            path: ".github/workflows/publish.yml",
+            status: "modified",
+            additions: 1,
+            deletions: 6,
+          },
+        ],
+        filesComplete: true,
+      });
+    });
+
+    it("has no files on later pages, which GitHub sends without them", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: {
+          status: "ahead",
+          ahead_by: 16,
+          behind_by: 0,
+          total_commits: 16,
+          merge_base_commit: { sha: "base" },
+          commits: [commit("7100c43", "perf: cut commit messages to their subject line (#176)")],
+        },
+        headers: makeHeaders(),
+      });
+
+      const result = await gh.commits.compare("agntn", "forges", "v0.3.4", "main", { page: 2 });
+
+      expect(result).toMatchObject({ hasNextPage: false, files: null, filesComplete: null });
+    });
+
+    it("cannot vouch for the file list at the 300-file cap", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: {
+          status: "diverged",
+          ahead_by: 2493,
+          behind_by: 72,
+          total_commits: 2493,
+          merge_base_commit: { sha: "base" },
+          commits: [],
+          files: Array.from({ length: 300 }, (_, index) => ({
+            filename: `lib/${index}.js`,
+            status: "modified",
+            additions: 1,
+            deletions: 1,
+          })),
+        },
+        headers: makeHeaders(),
+      });
+
+      const result = await gh.commits.compare("nodejs", "node", "v20.0.0", "v22.0.0");
+
+      expect(result.files).toHaveLength(300);
+      expect(result.filesComplete).toBeNull();
+    });
+
+    it("needs a base and a head before any request", async () => {
+      await expect(gh.commits.compare("agntn", "forges", " ", "main")).rejects.toMatchObject({
+        status: 400,
+        message: "Commit comparison needs a base and a head ref",
+      });
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    });
+
+    it("refuses a page outside 1 and a perPage outside 1 to 100", async () => {
+      await expect(
+        gh.commits.compare("agntn", "forges", "v0.3.4", "main", { page: 0 }),
+      ).rejects.toMatchObject({
+        status: 400,
+        message: "page must be a positive integer",
+      });
+      await expect(
+        gh.commits.compare("agntn", "forges", "v0.3.4", "main", { perPage: 101 }),
+      ).rejects.toMatchObject({ status: 400, message: "perPage must be an integer from 1 to 100" });
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    });
+
+    it("refuses a ref git would not accept before any request", async () => {
+      await expect(gh.commits.compare("agntn", "forges", "main~3", "main")).rejects.toThrow(
+        "Invalid git ref path segment",
+      );
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    });
+
+    it("answers a missing ref with NotFoundError", async () => {
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(
+        gh.commits.compare("agntn", "forges", "v0.3.4", "no-such-branch"),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
   describe("commits.get", () => {
     it("returns commit metadata and drains changed-file pages without patches", async () => {
       const commit = {

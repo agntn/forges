@@ -1129,6 +1129,90 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("commits.compare", () => {
+    const commit = (sha: string, message: string) => ({
+      id: sha,
+      message,
+      author_name: "Ori",
+      author_email: "ori@example.com",
+      authored_date: "2024-11-29T01:00:32.000+00:00",
+      committer_name: "Ori",
+      committer_email: "ori@example.com",
+      committed_date: "2024-11-29T01:00:32.000+00:00",
+      parent_ids: ["parent-sha"],
+      web_url: `https://gitlab.com/gitlab-org/cli/-/commit/${sha}`,
+    });
+
+    it("pages the whole range locally and maps diffs to files on the first page", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        commit: commit("c", "third"),
+        commits: [commit("a", "first"), commit("b", "second"), commit("c", "third")],
+        diffs: [
+          {
+            old_path: ".gitlab-ci.yml",
+            new_path: ".gitlab-ci.yml",
+            new_file: false,
+            renamed_file: false,
+            deleted_file: false,
+            diff: "@@ -1 +1 @@\n-old\n+new\n",
+          },
+          {
+            old_path: "go.sum",
+            new_path: "go.sum",
+            new_file: false,
+            renamed_file: false,
+            deleted_file: false,
+            collapsed: true,
+            too_large: false,
+            diff: "",
+          },
+        ],
+        compare_timeout: false,
+        compare_same_ref: false,
+        web_url: "https://gitlab.com/gitlab-org/cli/-/compare/v1.50.0...v1.51.0",
+      });
+
+      const result = await gl.commits.compare("gitlab-org", "cli", "v1.50.0", "release/v1.51", {
+        perPage: 2,
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/repository/compare", {
+        query: { from: "v1.50.0", to: "release/v1.51" },
+      });
+      expect(result.items.map(({ sha }) => sha)).toEqual(["a", "b"]);
+      expect(result).toMatchObject({
+        totalCount: 3,
+        hasNextPage: true,
+        nextPage: 2,
+        status: null,
+        aheadBy: 3,
+        behindBy: null,
+        mergeBaseSha: null,
+        files: [
+          { path: ".gitlab-ci.yml", status: "modified", additions: 1, deletions: 1 },
+          { path: "go.sum", status: "modified", additions: null, deletions: null },
+        ],
+        filesComplete: null,
+      });
+    });
+
+    it("leaves files off later pages", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({
+        commits: [commit("a", "first"), commit("b", "second"), commit("c", "third")],
+        diffs: [],
+      });
+
+      const result = await gl.commits.compare("gitlab-org", "cli", "v1.50.0", "v1.51.0", {
+        page: 2,
+        perPage: 2,
+      });
+
+      expect(result.items.map(({ sha }) => sha)).toEqual(["c"]);
+      expect(result).toMatchObject({ hasNextPage: false, files: null });
+    });
+  });
   describe("commits.get", () => {
     it("returns commit metadata and drains diff pages without returning diffs", async () => {
       const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
