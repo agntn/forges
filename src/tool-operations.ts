@@ -380,9 +380,10 @@ function targetError(message: string, platform: ForgesPlatform): ForgesError {
  * Split an `owner/name` slug written into `repo`.
  *
  * Every forge, its web UI and its CLI write a repository that way, so a caller
- * holding the slug tends to pass it whole. An explicit `owner` alongside a
- * slashed `repo` is contradictory rather than redundant, and is rejected instead
- * of one of the two being picked silently.
+ * holding the slug tends to pass it whole, often with `owner` repeated next to
+ * it. A repeated owner is redundant and the slug wins. An `owner` that names
+ * someone else is contradictory, and is rejected instead of one of the two being
+ * picked silently. Logins compare without case, as all three forges treat them.
  */
 function splitRepository(
   repo: string,
@@ -391,18 +392,18 @@ function splitRepository(
 ): { owner: string | undefined; repo: string } {
   if (!repo.includes("/")) return { owner, repo };
 
-  if (owner !== undefined) {
-    throw targetError(
-      `Ambiguous repository: owner "${owner}" was passed with repo "${repo}". Pass either owner and a bare repo name, or repo alone as "owner/name".`,
-      platform,
-    );
-  }
-
   const segments = repo.split("/");
   const [slugOwner, slugRepo] = segments;
   if (segments.length !== 2 || !slugOwner || !slugRepo) {
     throw targetError(
       `Invalid repository "${repo}": pass a bare name, or "owner/name" with exactly one slash.`,
+      platform,
+    );
+  }
+
+  if (owner !== undefined && owner.toLowerCase() !== slugOwner.toLowerCase()) {
+    throw targetError(
+      `Ambiguous repository: owner "${owner}" was passed with repo "${repo}". Pass either owner and a bare repo name, or repo alone as "owner/name".`,
       platform,
     );
   }
