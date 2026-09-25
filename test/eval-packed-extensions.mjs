@@ -267,10 +267,10 @@ async function assertHelpStaysLight(root) {
  * loaded. stdin closes at once, so the server ends as soon as it has started.
  * An inherited FORGES_DIST is dropped, so only `environment` sets it.
  */
-async function mcpLoads(bin, environment = {}) {
+async function mcpLoads(bin, environment = {}, flags = []) {
   const hook = new URL("./record-loads.mjs", import.meta.url).href;
   const { FORGES_DIST: _inherited, ...inherited } = process.env;
-  const pending = execFileAsync(process.execPath, ["--import", hook, bin, "mcp"], {
+  const pending = execFileAsync(process.execPath, [...flags, "--import", hook, bin, "mcp"], {
     cwd: root,
     encoding: "utf8",
     env: { ...inherited, ...environment, FORGES_REPORT_LOADS: "1" },
@@ -285,8 +285,9 @@ async function mcpLoads(bin, environment = {}) {
 
 /**
  * The checkout's own build serves `mcp` from src/, so a local server takes a
- * change on restart instead of `pnpm build`. FORGES_DIST=1 keeps the bundle, and
- * so does a copy under node_modules, where Node refuses to strip types. The
+ * change on restart instead of `pnpm build`. FORGES_DIST=1 keeps the bundle, so
+ * does a Node that does not strip types, and so does a copy under node_modules,
+ * where Node refuses to. The
  * packed bin has no src/ at all; the stdio search run covers it.
  */
 async function assertCheckoutBin() {
@@ -305,6 +306,14 @@ async function assertCheckoutBin() {
     "mcp under FORGES_DIST=1 keeps the bundle",
   );
   assert(bundled.includes(pathToFileURL(join(root, "dist/mcp.mjs")).href));
+  /* Node before 22.18 does not strip types unless asked; the bin has to keep the bundle there. */
+  const unstripped = await mcpLoads(bin, {}, ["--no-experimental-strip-types"]);
+  assert.deepEqual(
+    unstripped.filter((url) => url.startsWith(source)),
+    [],
+    "mcp on a Node that does not strip types keeps the bundle",
+  );
+  assert(unstripped.includes(pathToFileURL(join(root, "dist/mcp.mjs")).href));
 
   const cache = join(root, "node_modules/.cache");
   await mkdir(cache, { recursive: true });

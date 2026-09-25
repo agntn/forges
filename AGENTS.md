@@ -155,7 +155,7 @@ Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 - **No hardcoded URLs** — all providers accept `baseURL` config.
 - **No `execSync`** — use `execFileSync` with arg arrays (command injection prevention).
 - **No CJS** — ESM only everywhere.
-- **Local MCP serves `src/`.** Inside a checkout, the built `dist/cli.mjs` loads the `mcp` command from `src/`, like the Pi and OMP extensions, so a local server needs only a restart after a change. The npm package ships no `src/` and runs the bundle, and so does a copy under `node_modules`, where Node does not strip types. `FORGES_DIST=1` forces the bundle. A change to `src/cli.ts` itself still needs `pnpm build`; `test:packed` runs `mcp` in each of these layouts.
+- **Local MCP serves `src/`.** Inside a checkout, the built `dist/cli.mjs` loads the `mcp` command from `src/`, like the Pi and OMP extensions, so a local server needs only a restart after a change. The npm package ships no `src/` and runs the bundle, and so does a copy under `node_modules` or a Node that does not strip types (before 22.18 without a flag). `FORGES_DIST=1` forces the bundle. A change to `src/cli.ts` itself still needs `pnpm build`; `test:packed` runs `mcp` in each of these layouts.
 - **Nothing runs at import.** `sideEffects: false` is a claim about every module: no calls, registrations, or `process.env` reads at module scope, and heavy dependencies (provider modules, `typebox/value`, the MCP SDK) load on the call path through literal `import()`. Literals, `new Set([...])` and `Symbol.for()` need no hint, rolldown drops them unused; a module-scope call to a project helper such as `lazy()` carries `/* @__PURE__ */`.
 
 ## Testing
