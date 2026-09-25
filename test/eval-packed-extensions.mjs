@@ -262,6 +262,79 @@ async function assertHelpStaysLight(root) {
   assert.deepEqual(typebox, [], "forges --help must not load the tool schemas");
 }
 
+/**
+ * Runs `mcp` from a built bin under the load hook and returns every module it
+ * loaded. stdin closes at once, so the server ends as soon as it has started.
+ * An inherited FORGES_DIST is dropped, so only `environment` sets it.
+ */
+async function mcpLoads(bin, environment = {}, flags = []) {
+  const hook = new URL("./record-loads.mjs", import.meta.url).href;
+  const { FORGES_DIST: _inherited, ...inherited } = process.env;
+  const pending = execFileAsync(process.execPath, [...flags, "--import", hook, bin, "mcp"], {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...inherited, ...environment, FORGES_REPORT_LOADS: "1" },
+    timeout: 60_000,
+  });
+  pending.child.stdin?.end();
+  const { stderr } = await pending;
+  const recorded = stderr.match(/@loaded (\[.*\])/u);
+  assert(recorded, `the load hook reported nothing for ${bin} mcp`);
+  return JSON.parse(recorded[1]);
+}
+
+/**
+ * The checkout's own build serves `mcp` from src/, so a local server takes a
+ * change on restart instead of `pnpm build`. FORGES_DIST=1 keeps the bundle, so
+ * does a Node that does not strip types, and so does a copy under node_modules,
+ * where Node refuses to. The
+ * packed bin has no src/ at all; the stdio search run covers it.
+ */
+async function assertCheckoutBin() {
+  const source = pathToFileURL(join(root, "src/")).href;
+  const bin = join(root, "dist/cli.mjs");
+  const live = await mcpLoads(bin);
+  assert(live.includes(`${source}mcp.ts`), "the checkout's mcp serves src/mcp.ts");
+  assert(
+    !live.includes(pathToFileURL(join(root, "dist/mcp.mjs")).href),
+    "the checkout's mcp does not load the bundled server as well",
+  );
+  const bundled = await mcpLoads(bin, { FORGES_DIST: "1" });
+  assert.deepEqual(
+    bundled.filter((url) => url.startsWith(source)),
+    [],
+    "mcp under FORGES_DIST=1 keeps the bundle",
+  );
+  assert(bundled.includes(pathToFileURL(join(root, "dist/mcp.mjs")).href));
+  /* Node before 22.18 does not strip types unless asked; the bin has to keep the bundle there. */
+  const unstripped = await mcpLoads(bin, {}, ["--no-experimental-strip-types"]);
+  assert.deepEqual(
+    unstripped.filter((url) => url.startsWith(source)),
+    [],
+    "mcp on a Node that does not strip types keeps the bundle",
+  );
+  assert(unstripped.includes(pathToFileURL(join(root, "dist/mcp.mjs")).href));
+
+  const cache = join(root, "node_modules/.cache");
+  await mkdir(cache, { recursive: true });
+  const copy = await mkdtemp(join(cache, "forges-bin-"));
+  try {
+    for (const entry of ["dist", "src", "packages", "package.json"]) {
+      await cp(join(root, entry), join(copy, entry), { recursive: true });
+    }
+    const installed = await mcpLoads(join(copy, "dist/cli.mjs"));
+    const copiedSource = pathToFileURL(join(copy, "src/")).href;
+    assert.deepEqual(
+      installed.filter((url) => url.startsWith(copiedSource)),
+      [],
+      "mcp under node_modules keeps the bundle",
+    );
+    assert(installed.includes(pathToFileURL(join(copy, "dist/mcp.mjs")).href));
+  } finally {
+    await rm(copy, { recursive: true, force: true });
+  }
+}
+
 async function assertPackedCommitSearch(piTools, ompTools, root = packageRoot) {
   const identity = { name: "Contributor", email: "test@example.com", date: "2026-09-20T00:00:00Z" };
   const raw = {
@@ -540,6 +613,7 @@ try {
   await assertDistributionFallback(piTool);
   await assertDistributionFallback(ompTool);
   await helpStaysLight;
+  await assertCheckoutBin();
   await assertPackedCommitSearch(piTools, ompTools);
   await assertPackedPrSearch(piTools, ompTools);
   await assert.rejects(assertPackedCommitSearch(piTools, ompTools, join(packageRoot, "missing")), {
@@ -554,5 +628,5 @@ try {
 }
 
 console.log(
-  `Packed Pi and OMP extensions loaded dist/tool-operations.mjs on first call; packed dist/mcp.mjs served ${expectedToolNames.length} tools before loading them; forges --help stayed off the MCP SDK`,
+  `Packed Pi and OMP extensions loaded dist/tool-operations.mjs on first call; packed dist/mcp.mjs served ${expectedToolNames.length} tools before loading them; forges --help stayed off the MCP SDK; the checkout's dist/cli.mjs served mcp from src/`,
 );
