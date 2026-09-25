@@ -291,19 +291,118 @@ describe("inspectLocal", () => {
     } while (recovered.length <= paths.length);
     expect(recovered).toEqual(paths);
   });
-  it.each([
-    'process.stdout.write("partial\\0"); process.exitCode = 7',
-    'process.stdout.write("unterminated")',
-    'process.stdout.write("x".repeat(65537) + "\\0")',
-    'process.stdout.write("x".repeat(65537))',
-  ])("rejects failed or malformed inventory streams: %s", async (program) => {
+
+  it("pages a status larger than the subprocess buffer without losing rows", async () => {
+    commit("base");
+    const paths = Array.from(
+      { length: 9000 },
+      (_, i) => `${String(i).padStart(5, "0")}${"y".repeat(120)}`,
+    );
+    for (const path of paths) writeFileSync(join(cwd, path), "");
+    const recovered: string[] = [];
+    let statusOffset = 0;
+    do {
+      const result = await inspectLocal({ cwd, statusOffset, filesLimit: 1 });
+      expect(result.trackedFiles).toEqual(["file.txt"]);
+      expect(result.status.length).toBeGreaterThan(0);
+      expect(result.status.length).toBeLessThanOrEqual(1000);
+      expect(Buffer.byteLength(result.status.map((entry) => entry.path).join(""))).toBeLessThan(
+        64 * 1024,
+      );
+      recovered.push(...result.status.map((entry) => entry.path));
+      if (result.nextStatusOffset === null) break;
+      expect(result.nextStatusOffset).toBeGreaterThan(statusOffset);
+      statusOffset = result.nextStatusOffset;
+    } while (recovered.length <= paths.length);
+    expect(recovered).toEqual(paths);
+  });
+
+  it("bounds status rows separately from tracked paths", async () => {
+    commit("base");
+    for (const name of ["a.txt", "b.txt", "c.txt"]) writeFileSync(join(cwd, name), name);
+    expect(await inspectLocal({ cwd, statusLimit: 2 })).toMatchObject({
+      status: [
+        { index: "?", worktree: "?", path: "a.txt" },
+        { index: "?", worktree: "?", path: "b.txt" },
+      ],
+      nextStatusOffset: 2,
+      trackedFiles: ["file.txt"],
+      nextFilesOffset: null,
+    });
+    expect(await inspectLocal({ cwd, statusLimit: 2, statusOffset: 2 })).toMatchObject({
+      status: [{ index: "?", worktree: "?", path: "c.txt" }],
+      nextStatusOffset: null,
+    });
+    expect(await inspectLocal({ cwd, statusOffset: 10 })).toMatchObject({
+      status: [],
+      nextStatusOffset: null,
+    });
+  });
+
+  it("keeps a rename pair larger than the page budget as its own page", async () => {
     commit("base");
     const spawn = childProcess.spawn;
-    vi.spyOn(childProcess, "spawn").mockImplementationOnce(() =>
-      spawn(process.execPath, ["-e", program]),
-    );
-    await expect(inspectLocal({ cwd })).rejects.toBeInstanceOf(LocalGitError);
+    const program = [
+      'process.stdout.write("R  " + "a".repeat(40000) + "\\0" + "b".repeat(40000) + "\\0")',
+      'process.stdout.write("?? c.txt\\0")',
+    ].join(";");
+    vi.spyOn(childProcess, "spawn").mockImplementation(((
+      file: string,
+      args: string[],
+      options: childProcess.SpawnOptions,
+    ) =>
+      args.includes("status")
+        ? spawn(process.execPath, ["-e", program])
+        : spawn(file, args, options)) as typeof childProcess.spawn);
+    expect(await inspectLocal({ cwd })).toMatchObject({
+      status: [
+        { index: "R", worktree: " ", path: "a".repeat(40000), originalPath: "b".repeat(40000) },
+      ],
+      nextStatusOffset: 1,
+    });
+    expect(await inspectLocal({ cwd, statusOffset: 1 })).toMatchObject({
+      status: [{ index: "?", worktree: "?", path: "c.txt" }],
+      nextStatusOffset: null,
+    });
   });
+
+  it.each([-1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects statusOffset %s",
+    async (statusOffset) => {
+      await expect(inspectLocal({ cwd, statusOffset })).rejects.toThrow("statusOffset");
+    },
+  );
+
+  it.each([0, 1001, 1.5, NaN])("rejects statusLimit %s", async (statusLimit) => {
+    await expect(inspectLocal({ cwd, statusLimit })).rejects.toThrow("statusLimit");
+  });
+
+  it.each([
+    ...["ls-files", "status"].flatMap((command) =>
+      [
+        'process.stdout.write("?? partial\\0"); process.exitCode = 7',
+        'process.stdout.write("?? unterminated")',
+        'process.stdout.write("x".repeat(65537) + "\\0")',
+        'process.stdout.write("x".repeat(65537))',
+      ].map((program): [string, string] => [command, program]),
+    ),
+    ["status", 'process.stdout.write("R  renamed\\0")'],
+  ] satisfies [string, string][])(
+    "rejects failed or malformed %s streams: %s",
+    async (command, program) => {
+      commit("base");
+      const spawn = childProcess.spawn;
+      vi.spyOn(childProcess, "spawn").mockImplementation(((
+        file: string,
+        args: string[],
+        options: childProcess.SpawnOptions,
+      ) =>
+        args.includes(command)
+          ? spawn(process.execPath, ["-e", program])
+          : spawn(file, args, options)) as typeof childProcess.spawn);
+      await expect(inspectLocal({ cwd })).rejects.toThrow(`Git ${command} failed`);
+    },
+  );
 
   it("uses an exact page boundary and allows offsets beyond the inventory", async () => {
     writeFileSync(join(cwd, "a.txt"), "a");
@@ -354,6 +453,7 @@ describe("inspectLocal", () => {
       root: cwd,
       headSha: second,
       status: [{ index: "M", worktree: "M", path: "nested/AGENTS.md" }],
+      nextStatusOffset: null,
       trackedFiles: ["nested/AGENTS.md"],
       nextFilesOffset: null,
       commits: [
@@ -409,6 +509,7 @@ describe("inspectLocal", () => {
       root: cwd,
       headSha: null,
       status: [{ index: "A", worktree: " ", path: "staged.txt" }],
+      nextStatusOffset: null,
       trackedFiles: ["staged.txt"],
       nextFilesOffset: null,
       commits: [],

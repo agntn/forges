@@ -942,7 +942,7 @@ export default function forgesExtension(pi: ExtensionAPI): void {
     name: "forges_local_inspect",
     label: "Inspect Local Repository",
     description:
-      "Read local Git status, a page of tracked paths and recent HEAD commit messages. Follow nextFilesOffset until null, keeping paths unchanged. No fetch or writes; concurrent index edits can change pagination.",
+      "Read local Git status, tracked paths and recent HEAD commit messages. Status rows and tracked paths page separately: follow nextStatusOffset or nextFilesOffset until null, keeping paths unchanged. No fetch or writes; concurrent edits can change pagination.",
     parameters: schemas.localInspectParameters,
     ...statusRenderers("forges_local_inspect", "Inspect Local Repository"),
     promptSnippet: "Read local status, tracked files and path history without shell chains.",

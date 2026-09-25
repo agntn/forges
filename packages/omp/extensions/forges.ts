@@ -1136,6 +1136,22 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
           maximum: 1000,
         }),
       ),
+      statusOffset: Type.Optional(
+        Type.Integer({
+          description:
+            "Zero-based status row offset; use nextStatusOffset to continue with the same paths",
+          minimum: 0,
+          maximum: Number.MAX_SAFE_INTEGER,
+        }),
+      ),
+      statusLimit: Type.Optional(
+        Type.Integer({
+          description:
+            "Maximum status rows per page, default 1000; paths also have a 64 KiB page budget",
+          minimum: 1,
+          maximum: 1000,
+        }),
+      ),
       historyLimit: Type.Optional(
         Type.Integer({
           description: "Maximum HEAD commits to return, including message bodies; defaults to 3",
@@ -1151,7 +1167,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     name: "forges_local_inspect",
     label: "Inspect Local Repository",
     description:
-      "Read local Git status, a page of tracked paths and recent HEAD commit messages. Follow nextFilesOffset until null, keeping paths unchanged. No fetch or writes; concurrent index edits can change pagination.",
+      "Read local Git status, tracked paths and recent HEAD commit messages. Status rows and tracked paths page separately: follow nextStatusOffset or nextFilesOffset until null, keeping paths unchanged. No fetch or writes; concurrent edits can change pagination.",
     parameters: localInspectParameters,
     ...statusRenderers("forges_local_inspect", "Inspect Local Repository"),
     approval: toolApproval("forges_local_inspect"),
