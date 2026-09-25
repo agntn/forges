@@ -52,25 +52,29 @@ function gitOptions(cwd: string) {
   };
 }
 
-function trackedFilesPage(
+/**
+ * Streams NUL-terminated Git output and keeps one page of records.
+ *
+ * `span` says how many fields the record opened by a field covers. A page holds at
+ * most `limit` records and 64 KiB of their bytes, but always its first record, so a
+ * rename pair past the budget cannot stall the continuation.
+ */
+function gitPage<T>(
   cwd: string,
-  paths: string[],
+  args: string[],
   offset: number,
   limit: number,
-): Promise<{
-  trackedFiles: string[];
-  nextFilesOffset: number | null;
-}> {
+  span: (first: Buffer) => number,
+  read: (fields: Buffer[]) => T,
+): Promise<{ items: T[]; next: number | null }> {
+  const command = args[0];
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      "git",
-      gitArgs(["ls-files", "--cached", "--deduplicate", "-z", "--", ...paths], "git"),
-      {
-        ...gitOptions(cwd),
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
-    const trackedFiles: string[] = [];
+    const child = spawn("git", gitArgs(args, "git"), {
+      ...gitOptions(cwd),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const items: T[] = [];
+    let record: Buffer[] = [];
     let pending = Buffer.alloc(0);
     let stderr = "";
     let count = 0;
@@ -89,37 +93,42 @@ function trackedFilesPage(
       pending = Buffer.concat([pending, chunk]);
       let end: number;
       while ((end = pending.indexOf(0)) !== -1) {
-        const path = pending.subarray(0, end);
+        const field = pending.subarray(0, end);
         pending = pending.subarray(end + 1);
-        if (path.length > 64 * 1024) {
-          failure = new LocalGitError("Git ls-files returned a path exceeding 64 KiB");
+        if (field.length > 64 * 1024) {
+          failure = new LocalGitError(`Git ${command} returned a path exceeding 64 KiB`);
           child.kill();
           return;
         }
+        record.push(field);
+        if (record.length < span(record[0]!)) continue;
+        const fields = record;
+        record = [];
         if (count++ < offset || full) continue;
-        if (trackedFiles.length >= limit || bytes + path.length > 64 * 1024) {
+        const size = fields.reduce((total, part) => total + part.length, 0);
+        if (items.length >= limit || (items.length > 0 && bytes + size > 64 * 1024)) {
           full = true;
           continue;
         }
-        trackedFiles.push(path.toString("utf8"));
-        bytes += path.length;
+        items.push(read(fields));
+        bytes += size;
       }
       if (pending.length > 64 * 1024) {
-        failure = new LocalGitError("Git ls-files returned a path exceeding 64 KiB");
+        failure = new LocalGitError(`Git ${command} returned a path exceeding 64 KiB`);
         child.kill();
       }
     });
     child.on("close", (code, signal) => {
-      if (failure || code !== 0 || signal || pending.length) {
+      if (failure || code !== 0 || signal || pending.length || record.length) {
         reject(
           new LocalGitError(
-            `Git ls-files failed: ${failure?.message || stderr.trim() || signal || code || "incomplete path"}`,
+            `Git ${command} failed: ${failure?.message || stderr.trim() || signal || code || "incomplete path"}`,
             { cause: failure },
           ),
         );
         return;
       }
-      resolve({ trackedFiles, nextFilesOffset: full ? offset + trackedFiles.length : null });
+      resolve({ items, next: full ? offset + items.length : null });
     });
   });
 }
@@ -235,6 +244,10 @@ export interface InspectLocalOptions {
   filesOffset?: number;
   /** Maximum names per page, 1-1000 (default 1000), also bounded by 64 KiB of path bytes. */
   filesLimit?: number;
+  /** Zero-based status row offset; continue with nextStatusOffset and unchanged pathspecs. */
+  statusOffset?: number;
+  /** Maximum status rows per page, 1-1000 (default 1000), also bounded by 64 KiB of path bytes. */
+  statusLimit?: number;
 }
 
 export interface LocalStatusEntry {
@@ -248,34 +261,39 @@ export interface LocalInspection {
   root: string;
   headSha: string | null;
   status: LocalStatusEntry[];
+  /** Null when this scan reached the end; pages are not an atomic worktree snapshot. */
+  nextStatusOffset: number | null;
   trackedFiles: string[];
   /** Null when this scan reached the end; pages are not an atomic index snapshot. */
   nextFilesOffset: number | null;
   commits: { sha: string; subject: string; body: string }[];
 }
 
-function parseStatus(output: string): LocalStatusEntry[] {
-  const fields = output.split("\0");
-  fields.pop();
-  const entries: LocalStatusEntry[] = [];
-  for (let i = 0; i < fields.length; i++) {
-    const field = fields[i]!;
-    const entry: LocalStatusEntry = {
-      index: field[0]!,
-      worktree: field[1]!,
-      path: field.slice(3),
-    };
-    if (
-      entry.index === "R" ||
-      entry.index === "C" ||
-      entry.worktree === "R" ||
-      entry.worktree === "C"
-    ) {
-      entry.originalPath = fields[++i]!;
-    }
-    entries.push(entry);
+function isRenameOrCopy(field: Buffer): boolean {
+  return [field[0], field[1]].some((code) => code === 0x52 || code === 0x43);
+}
+
+function statusEntry([field, original]: Buffer[]): LocalStatusEntry {
+  const text = field!.toString("utf8");
+  const entry: LocalStatusEntry = { index: text[0]!, worktree: text[1]!, path: text.slice(3) };
+  if (original) entry.originalPath = original.toString("utf8");
+  return entry;
+}
+
+function pageOffset(value: number | undefined, label: string): number {
+  const offset = value ?? 0;
+  if (!Number.isSafeInteger(offset) || offset < 0) {
+    throw new TypeError(`${label} must be a nonnegative safe integer`);
   }
-  return entries;
+  return offset;
+}
+
+function pageLimit(value: number | undefined, label: string): number {
+  const limit = value ?? 1000;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
+    throw new TypeError(`${label} must be an integer between 1 and 1000`);
+  }
+  return limit;
 }
 
 /** Local reads only; concurrent edits can change the checkout between reads. */
@@ -293,14 +311,10 @@ export async function inspectLocal(options: InspectLocalOptions): Promise<LocalI
   if (!Number.isInteger(historyLimit) || historyLimit < 1 || historyLimit > 100) {
     throw new TypeError("historyLimit must be an integer between 1 and 100");
   }
-  const filesOffset = options.filesOffset ?? 0;
-  const filesLimit = options.filesLimit ?? 1000;
-  if (!Number.isSafeInteger(filesOffset) || filesOffset < 0) {
-    throw new TypeError("filesOffset must be a nonnegative safe integer");
-  }
-  if (!Number.isInteger(filesLimit) || filesLimit < 1 || filesLimit > 1000) {
-    throw new TypeError("filesLimit must be an integer between 1 and 1000");
-  }
+  const filesOffset = pageOffset(options.filesOffset, "filesOffset");
+  const filesLimit = pageLimit(options.filesLimit, "filesLimit");
+  const statusOffset = pageOffset(options.statusOffset, "statusOffset");
+  const statusLimit = pageLimit(options.statusLimit, "statusLimit");
   const root = (await git(options.cwd, ["rev-parse", "--show-toplevel"])).output.replace(/\n$/, "");
   const head = await git(root, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], true);
   if (!head.ok) {
@@ -311,7 +325,7 @@ export async function inspectLocal(options: InspectLocalOptions): Promise<LocalI
   }
   const headSha = head.ok ? head.output.trim() : null;
   const [status, files, history] = await Promise.all([
-    git(
+    gitPage(
       root,
       [
         "status",
@@ -323,10 +337,19 @@ export async function inspectLocal(options: InspectLocalOptions): Promise<LocalI
         "--",
         ...paths,
       ],
-      false,
-      "git",
+      statusOffset,
+      statusLimit,
+      (first) => (isRenameOrCopy(first) ? 2 : 1),
+      statusEntry,
     ),
-    trackedFilesPage(root, paths, filesOffset, filesLimit),
+    gitPage(
+      root,
+      ["ls-files", "--cached", "--deduplicate", "-z", "--", ...paths],
+      filesOffset,
+      filesLimit,
+      () => 1,
+      ([path]) => path!.toString("utf8"),
+    ),
     headSha === null
       ? Promise.resolve({ output: "" })
       : git(
@@ -358,8 +381,10 @@ export async function inspectLocal(options: InspectLocalOptions): Promise<LocalI
   return {
     root,
     headSha,
-    status: parseStatus(status.output),
-    ...files,
+    status: status.items,
+    nextStatusOffset: status.next,
+    trackedFiles: files.items,
+    nextFilesOffset: files.next,
     commits,
   };
 }

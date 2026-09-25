@@ -546,6 +546,22 @@ export function forgesToolSchemas() {
         maximum: 1000,
       }),
     ),
+    statusOffset: Type.Optional(
+      Type.Integer({
+        description:
+          "Zero-based status row offset; use nextStatusOffset to continue with the same paths",
+        minimum: 0,
+        maximum: Number.MAX_SAFE_INTEGER,
+      }),
+    ),
+    statusLimit: Type.Optional(
+      Type.Integer({
+        description:
+          "Maximum status rows per page, default 1000; paths also have a 64 KiB page budget",
+        minimum: 1,
+        maximum: 1000,
+      }),
+    ),
     historyLimit: Type.Optional(
       Type.Integer({
         description: "Maximum HEAD commits to return, including message bodies; defaults to 3",

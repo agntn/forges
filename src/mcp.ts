@@ -423,7 +423,7 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       name: "forges_local_inspect",
       title: "Inspect Local Repository",
       description:
-        "Read local Git status, a page of tracked paths and recent HEAD commit messages. Follow nextFilesOffset until null, keeping paths unchanged. No fetch or writes; concurrent index edits can change pagination.",
+        "Read local Git status, tracked paths and recent HEAD commit messages. Status rows and tracked paths page separately: follow nextStatusOffset or nextFilesOffset until null, keeping paths unchanged. No fetch or writes; concurrent edits can change pagination.",
       inputSchema: schemas.localInspectParameters,
       execute: (operations, args) => operations.inspectLocal(args),
     }),
