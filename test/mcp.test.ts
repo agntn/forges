@@ -13,7 +13,13 @@ const mocks = vi.hoisted(() => {
   const contributionTemplates = { list: vi.fn(), get: vi.fn() };
   const code = { search: vi.fn() };
   const ciRuns = { list: vi.fn(), listJobs: vi.fn(), readJobLog: vi.fn() };
-  const commits = { search: vi.fn(), list: vi.fn(), get: vi.fn(), readPatch: vi.fn() };
+  const commits = {
+    search: vi.fn(),
+    list: vi.fn(),
+    compare: vi.fn(),
+    get: vi.fn(),
+    readPatch: vi.fn(),
+  };
   const releases = { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn() };
   const issues = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
   const pullRequests = {
@@ -80,6 +86,7 @@ const toolNames = [
   "forges_ci_jobs_log",
   "forges_commits_search",
   "forges_commits_list",
+  "forges_commits_compare",
   "forges_commits_get",
   "forges_commits_patch",
   "forges_releases_list",
@@ -650,6 +657,77 @@ describe("forges MCP server", () => {
     });
     expect(search.result.totalCount).toBe(1);
     expect(search.note).toContain("forges_commits_get");
+  });
+
+  it("compares two refs and leaves files out unless asked", async () => {
+    const identity = { name: "Ori", email: "ori@example.com", date: "2026-09-23T10:53:17Z" };
+    const comparison = {
+      items: [
+        {
+          sha: "6d8eb75",
+          message: "feat: edit a pull request once it is open (#171)\n\nBody that stays out.",
+          author: identity,
+          committer: identity,
+          parents: ["parent"],
+          url: "https://github.com/agntn/forges/commit/6d8eb75",
+        },
+      ],
+      totalCount: 16,
+      hasNextPage: true,
+      nextPage: 2,
+      status: "ahead",
+      aheadBy: 16,
+      behindBy: 0,
+      mergeBaseSha: "5e23d3eb",
+      files: [{ path: "src/mcp.ts", status: "modified", additions: 8, deletions: 0 }],
+      filesComplete: true,
+    };
+    mocks.commits.compare.mockResolvedValue(comparison);
+    const client = await connectTestClient();
+
+    const counts = JSON.parse(
+      text(
+        (
+          await client.callTool({
+            name: "forges_commits_compare",
+            arguments: { repo: "agntn/forges", base: "v0.3.4", head: "main", perPage: 1 },
+          })
+        ).content,
+      ),
+    );
+    const withFiles = JSON.parse(
+      text(
+        (
+          await client.callTool({
+            name: "forges_commits_compare",
+            arguments: { repo: "agntn/forges", base: "v0.3.4", head: "main", files: true },
+          })
+        ).content,
+      ),
+    );
+
+    expect(mocks.commits.compare).toHaveBeenNthCalledWith(1, "agntn", "forges", "v0.3.4", "main", {
+      page: undefined,
+      perPage: 1,
+    });
+    expect(counts.result).toEqual({
+      items: [
+        {
+          ...comparison.items[0],
+          message: "feat: edit a pull request once it is open (#171)",
+          messageTruncated: true,
+        },
+      ],
+      totalCount: 16,
+      hasNextPage: true,
+      nextPage: 2,
+      status: "ahead",
+      aheadBy: 16,
+      behindBy: 0,
+      mergeBaseSha: "5e23d3eb",
+    });
+    expect(counts.note).toContain("forges_commits_get");
+    expect(withFiles.result).toMatchObject({ files: comparison.files, filesComplete: true });
   });
 
   it("gets one commit through the shared operation", async () => {

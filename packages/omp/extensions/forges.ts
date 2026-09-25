@@ -268,6 +268,27 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     page,
     perPage,
   });
+  const compareCommitsParameters = closed({
+    platform,
+    owner,
+    repo,
+    base: Type.String({
+      description: "Branch, tag, or commit SHA the range starts from, as in git log base..head",
+      minLength: 1,
+    }),
+    head: Type.String({
+      description: "Branch, tag, or commit SHA the range ends at",
+      minLength: 1,
+    }),
+    files: Type.Optional(
+      Type.Boolean({
+        description:
+          "Also return the net changed files from the merge base to head, on the first page only",
+      }),
+    ),
+    page,
+    perPage,
+  });
   const listCiRunsParameters = closed({ platform, owner, repo, branch, page, perPage });
   const listCiJobsParameters = closed({
     platform,
@@ -657,6 +678,19 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: toolApproval("forges_commits_list"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listCommits(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_commits_compare",
+    label: "Forges Compare",
+    description:
+      "Compare two refs: commits in head but not base, oldest first, with aheadBy; pass files for the net changed files on the first page; messages are cut to their subject line; only GitHub reports status, behindBy and mergeBaseSha, and Gitea has no file list",
+    parameters: compareCommitsParameters,
+    ...statusRenderers("forges_commits_compare", "Forges Compare"),
+    approval: toolApproval("forges_commits_compare"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).compareCommits(params);
     },
   });
 

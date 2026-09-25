@@ -26,6 +26,7 @@ import type {
   CiJobLogOptions,
   CiRun,
   Commit,
+  CommitComparison,
   CommitPatch,
   CommitPatchFile,
   CommitPatchOptions,
@@ -33,6 +34,7 @@ import type {
   CommitSearchOptions,
   CommitSearchResult,
   CommitSummary,
+  CompareCommitsOptions,
   ContributionTemplateKind,
   ContributionTemplateSummary,
   Issue,
@@ -89,6 +91,7 @@ import { normalizeReviewState } from "../review.ts";
 import { countDiffLines } from "../changed-file.ts";
 import { changesAssignees, nextAssignees } from "../update-input.ts";
 import { buildCommitPatch } from "../commit-patch.ts";
+import { slicePage } from "../pagination.ts";
 import { buildCiJobLog, cleanGitLabTrace, jobStarted, readJobLogText } from "../ci-job-log.ts";
 import {
   assertContinuationRef,
@@ -255,6 +258,11 @@ interface GitLabTreeEntry {
   path: string;
   type: string;
   mode: string;
+}
+
+interface GitLabComparison {
+  commits: GitLabCommit[];
+  diffs: GitLabMergeRequestDiff[];
 }
 
 interface GitLabCommit {
@@ -1234,6 +1242,40 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       return {
         ...this.mapCommitSummary(commit),
         files,
+        filesComplete: null,
+      };
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  /**
+   * The compare route answers with every commit and diff at once, oldest commit first, and tells
+   * neither what base has that head lacks nor whether it cut the file list.
+   */
+  protected override async compareCommits(
+    owner: string,
+    repo: string,
+    base: string,
+    head: string,
+    options?: CompareCommitsOptions,
+  ): Promise<CommitComparison> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const comparison = await this.client<GitLabComparison>(
+        `/projects/${projectId}/repository/compare`,
+        { query: { from: base, to: head } },
+      );
+      const page = options?.page ?? 1;
+      const commits = comparison.commits.map((raw) => this.mapCommitSummary(raw));
+      return {
+        ...slicePage(commits, page, options?.perPage),
+        totalCount: commits.length,
+        status: null,
+        aheadBy: commits.length,
+        behindBy: null,
+        mergeBaseSha: null,
+        files: page === 1 ? comparison.diffs.map((diff) => this.mapPullRequestFile(diff)) : null,
         filesComplete: null,
       };
     } catch (error: unknown) {

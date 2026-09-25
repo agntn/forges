@@ -390,6 +390,31 @@ export interface CommitPatch {
   states: Record<CommitPatchState, number>;
 }
 
+/** How head relates to base in a comparison. */
+export type CommitComparisonStatus = "identical" | "ahead" | "behind" | "diverged";
+
+/** Paging for the commits of a comparison. */
+export interface CompareCommitsOptions {
+  page?: number;
+  perPage?: number;
+}
+
+/**
+ * Commits reachable from head but not from base, as `git log base..head` lists them, oldest
+ * first. totalCount is the whole range. Only GitHub reports the commits head lacks, so status,
+ * behindBy and mergeBaseSha are null elsewhere. files is the net change from the merge base to
+ * head on the first page, null on later pages and on Gitea, which returns no such list.
+ */
+export interface CommitComparison extends PageResult<CommitSummary> {
+  totalCount: number;
+  status: CommitComparisonStatus | null;
+  aheadBy: number;
+  behindBy: number | null;
+  mergeBaseSha: string | null;
+  files: ChangedFile[] | null;
+  filesComplete: boolean | null;
+}
+
 /** Kind of one entry in a repository tree. */
 export type RepositoryEntryType = "file" | "directory" | "symlink" | "submodule";
 
@@ -765,6 +790,13 @@ export interface CommitResource {
     options?: ListCommitOptions,
   ): Promise<PageResult<CommitSummary>>;
   get(owner: string, repo: string, sha: string): Promise<Commit>;
+  compare(
+    owner: string,
+    repo: string,
+    base: string,
+    head: string,
+    options?: CompareCommitsOptions,
+  ): Promise<CommitComparison>;
   readPatch(
     owner: string,
     repo: string,

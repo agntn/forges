@@ -8,7 +8,7 @@
 
 import { Buffer } from "node:buffer";
 import { createHttpClient, rawFetch, type HttpClient } from "../http.ts";
-import { parseLinkHeader } from "../pagination.ts";
+import { parseLinkHeader, slicePage } from "../pagination.ts";
 import { ForgesError, normalizeError, NotFoundError } from "../errors.ts";
 import {
   encodeApiResponsePathSegment,
@@ -28,10 +28,12 @@ import type {
   CiJobLogOptions,
   CiRun,
   Commit,
+  CommitComparison,
   CommitPatch,
   CommitPatchFile,
   CommitPatchOptions,
   CommitSummary,
+  CompareCommitsOptions,
   ContributionTemplateKind,
   ContributionTemplateSummary,
   Issue,
@@ -259,6 +261,10 @@ interface GiteaCommit {
   };
   parents?: Array<{ sha: string }>;
   files?: GiteaPullRequestFile[];
+}
+
+interface GiteaComparison {
+  commits: GiteaCommit[];
 }
 
 interface GiteaComment {
@@ -1109,6 +1115,38 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       return {
         ...this.mapCommitSummary(commit),
         files: (commit.files ?? []).map((file) => this.mapPullRequestFile(file)),
+        filesComplete: null,
+      };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  /**
+   * The compare route answers with every commit at once, newest first, and has no changed-file
+   * list for the range or count of what base has that head lacks.
+   */
+  protected override async compareCommits(
+    owner: string,
+    repo: string,
+    base: string,
+    head: string,
+    options?: CompareCommitsOptions,
+  ): Promise<CommitComparison> {
+    try {
+      const comparison = await this.client<GiteaComparison>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/compare/${encodeRefPathSegment(base)}...${encodeRefPathSegment(head)}`,
+        { query: { files: "false", verification: "false" } },
+      );
+      const commits = comparison.commits.map((raw) => this.mapCommitSummary(raw)).toReversed();
+      return {
+        ...slicePage(commits, options?.page, options?.perPage),
+        totalCount: commits.length,
+        status: null,
+        aheadBy: commits.length,
+        behindBy: null,
+        mergeBaseSha: null,
+        files: null,
         filesComplete: null,
       };
     } catch (error) {

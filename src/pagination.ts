@@ -4,6 +4,7 @@
  */
 
 import { normalizeError } from "./errors.ts";
+import type { PageResult } from "./types.ts";
 
 /**
  * Parsed Link header entry
@@ -195,4 +196,16 @@ export async function fetchAllPages<T>(
   }
 
   return results;
+}
+
+/** One page of a list the platform returned whole. */
+export function slicePage<T>(items: readonly T[], page = 1, perPage = 30): PageResult<T> {
+  const start = (page - 1) * perPage;
+  const hasNextPage = start + perPage < items.length;
+  return {
+    items: items.slice(start, start + perPage),
+    totalCount: items.length,
+    hasNextPage,
+    nextPage: hasNextPage ? page + 1 : undefined,
+  };
 }

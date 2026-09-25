@@ -109,6 +109,7 @@ const toolNames = [
   "forges_ci_jobs_log",
   "forges_commits_search",
   "forges_commits_list",
+  "forges_commits_compare",
   "forges_commits_get",
   "forges_commits_patch",
   "forges_releases_list",

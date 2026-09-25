@@ -346,6 +346,24 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_commits_compare",
+    label: "Forges Compare",
+    description:
+      "Compare two refs: commits in head but not base, oldest first, with aheadBy; pass files for the net changed files on the first page; messages are cut to their subject line; only GitHub reports status, behindBy and mergeBaseSha, and Gitea has no file list",
+    promptSnippet:
+      "Compare two branches, tags, or commits on GitHub, GitLab, or Gitea without a checkout.",
+    promptGuidelines: [
+      "Use forges_commits_compare for the commits and files between two refs, such as a tag and main for release notes, instead of listing history and filtering by hand.",
+      "forges_commits_compare reports behindBy only on GitHub; elsewhere swap base and head to see what head lacks.",
+    ],
+    parameters: schemas.compareCommitsParameters,
+    ...statusRenderers("forges_commits_compare", "Forges Compare"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).compareCommits(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_commits_get",
     label: "Forges Commit",
     description: "Get one commit with metadata and changed-file rows",

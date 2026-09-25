@@ -17,12 +17,15 @@ import type {
   CiJobLogOptions,
   CiRun,
   Commit,
+  CommitComparison,
+  CommitComparisonStatus,
   CommitPatch,
   CommitPatchFile,
   CommitPatchOptions,
   CommitSummary,
   CommitSearchOptions,
   CommitSearchResult,
+  CompareCommitsOptions,
   ContributionTemplateKind,
   ContributionTemplateSummary,
   Issue,
@@ -97,6 +100,8 @@ import {
 } from "../repository-contents.ts";
 
 const MAX_COMMIT_FILE_PAGES = 30;
+/** A comparison lists at most this many changed files and says nothing of the rest. */
+const COMPARE_FILE_LIMIT = 300;
 const MAX_DRAFT_RELEASE_PAGES = 5;
 /** GitHub lists at most this many entries of one directory through the contents API. */
 const GITHUB_DIRECTORY_ENTRY_LIMIT = 1000;
@@ -303,6 +308,16 @@ interface GitHubCommit {
   };
   html_url: string;
   parents: Array<{ sha: string }>;
+  files?: GitHubPullRequestFile[];
+}
+
+interface GitHubComparison {
+  status: string;
+  ahead_by: number;
+  behind_by: number;
+  total_commits: number;
+  merge_base_commit: { sha: string } | null;
+  commits: GitHubCommit[];
   files?: GitHubPullRequestFile[];
 }
 
@@ -561,6 +576,15 @@ function reviewCommentId(comment: GitHubGraphQLReviewComment): string {
 
 function presentGraphQLNodes<T>(nodes: Array<T | null> | null | undefined): T[] {
   return (nodes ?? []).filter((node): node is T => node !== null);
+}
+
+function comparisonStatus(status: string): CommitComparisonStatus | null {
+  return status === "identical" ||
+    status === "ahead" ||
+    status === "behind" ||
+    status === "diverged"
+    ? status
+    : null;
 }
 
 // --- Pagination helper ---
@@ -1421,6 +1445,40 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         ...this.mapCommitSummary(commit),
         files,
         filesComplete: files.length < 3000 ? filesComplete : null,
+      };
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /** Files come only with the first page of commits. */
+  protected override async compareCommits(
+    owner: string,
+    repo: string,
+    base: string,
+    head: string,
+    options?: CompareCommitsOptions,
+  ): Promise<CommitComparison> {
+    try {
+      const page = options?.page ?? 1;
+      const { data, headers } = await rawFetch<GitHubComparison>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/compare/${encodeRefPathSegment(base)}...${encodeRefPathSegment(head)}`,
+        { query: { page: String(page), per_page: String(options?.perPage ?? 30) } },
+      );
+      if (!data) throw new ForgesError("GitHub returned no comparison data", 502, "github");
+      const files =
+        page === 1 && data.files ? data.files.map((file) => this.mapPullRequestFile(file)) : null;
+      return {
+        items: data.commits.map((commit) => this.mapCommitSummary(commit)),
+        totalCount: data.total_commits,
+        ...paginationFromLink(headers),
+        status: comparisonStatus(data.status),
+        aheadBy: data.ahead_by,
+        behindBy: data.behind_by,
+        mergeBaseSha: data.merge_base_commit?.sha ?? null,
+        files,
+        filesComplete: files === null ? null : files.length < COMPARE_FILE_LIMIT ? true : null,
       };
     } catch (error) {
       throw normalizeError(error, "github");

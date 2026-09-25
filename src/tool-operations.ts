@@ -22,6 +22,7 @@ import type {
   CodeSearchOptions,
   Comment,
   Commit,
+  CommitComparison,
   CommitPatch,
   CommitPatchOptions,
   ContributionTemplate,
@@ -31,6 +32,7 @@ import type {
   CommitSearchItem,
   CommitSearchOptions,
   CommitSearchResult,
+  CompareCommitsOptions,
   CreateCommentInput,
   CreateIssueInput,
   CreatePullRequestInput,
@@ -493,6 +495,9 @@ export type ReadCommitPatchParams = RepositoryParams & CommitPatchOptions & { sh
 
 export type ListCommitsParams = RepositoryParams & ListCommitOptions;
 
+export type CompareCommitsParams = RepositoryParams &
+  CompareCommitsOptions & { base: string; head: string; files?: boolean };
+
 export interface ListCiRunsParams extends RepositoryParams {
   branch?: string;
   page?: number;
@@ -682,6 +687,13 @@ export type CommitListItem<T extends CommitSummary = CommitSummary> = T & {
   messageTruncated?: true;
 };
 
+/** files and filesComplete are left out unless the caller asked for files. */
+export interface CommitComparisonResult extends Omit<CommitComparison, "files" | "filesComplete"> {
+  items: CommitListItem[];
+  files?: CommitComparison["files"];
+  filesComplete?: CommitComparison["filesComplete"];
+}
+
 export interface CommitSearchListResult extends CommitSearchResult {
   items: CommitListItem<CommitSearchItem>[];
 }
@@ -849,6 +861,30 @@ export async function listCommits(
     params.platform,
     { ...commits, items: commits.items.map(summarizeCommit) },
     "Commit messages are cut to their subject line in list output, and messageTruncated marks each one that lost text; use forges_commits_get to read one in full.",
+  );
+}
+
+export async function compareCommits(
+  args: CompareCommitsParams,
+): Promise<ForgesToolResult<CommitComparisonResult>> {
+  const params = repositoryTarget(args);
+  const provider = await readProvider(params.platform);
+  const comparison = await provider.commits.compare(
+    params.owner,
+    params.repo,
+    params.base,
+    params.head,
+    { page: params.page, perPage: params.perPage },
+  );
+  const { files, filesComplete, ...rest } = comparison;
+  return result(
+    params.platform,
+    {
+      ...rest,
+      items: comparison.items.map(summarizeCommit),
+      ...(params.files ? { files, filesComplete } : {}),
+    },
+    "Commit messages are cut to their subject line in comparison output, and messageTruncated marks each one that lost text; use forges_commits_get to read one in full.",
   );
 }
 
