@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.3.6
+
+[compare changes](https://github.com/agntn/forges/compare/v0.3.5...v0.3.6)
+
+### 🚀 Enhancements
+
+- **local:** Page status rows like tracked files ([#191](https://github.com/agntn/forges/pull/191))
+- **cli:** A local mcp needs no rebuild ([#192](https://github.com/agntn/forges/pull/192))
+- **commits:** Compare two refs ([#193](https://github.com/agntn/forges/pull/193))
+
+### 🩹 Fixes
+
+- Errors carry what the platform said ([#185](https://github.com/agntn/forges/pull/185))
+- Include closed items in Gitea search ([#186](https://github.com/agntn/forges/pull/186))
+- Accept an owner that repeats the repo slug ([#190](https://github.com/agntn/forges/pull/190))
+
+### ❤️ Contributors
+
+- Aeitwoen ([@aeitwoen](https://github.com/aeitwoen))
+- Ori ([@oritwoen](https://github.com/oritwoen))
+
 ## v0.3.5
 
 [compare changes](https://github.com/agntn/forges/compare/v0.3.4...v0.3.5)
