@@ -694,9 +694,27 @@ describe("repository target", () => {
     });
   });
 
-  it("refuses an owner passed twice rather than picking one", async () => {
+  it("accepts an owner that repeats the slug's owner", async () => {
+    const read = await getRepository({ owner: "Agntn", repo: "agntn/keys" });
+
+    expect(read.details.result.fullName).toBe("agntn/keys");
+
+    const scoped = await searchCode({ query: "Provider", owner: "agntn", repo: "agntn/forges" });
+
+    expect(scoped.details.result).toMatchObject({
+      options: { owner: "agntn", repo: "forges" },
+    });
+  });
+
+  it("refuses an owner that disagrees with the slug rather than picking one", async () => {
     await expect(getRepository({ owner: "agntn", repo: "oritwoen/keys" })).rejects.toThrow(
       /Ambiguous repository/,
+    );
+    await expect(getRepository({ owner: "/", repo: "agntn/keys" })).rejects.toThrow(
+      /Ambiguous repository/,
+    );
+    await expect(getRepository({ owner: "agntn", repo: "agntn/keys/main" })).rejects.toThrow(
+      /exactly one slash/,
     );
   });
 
