@@ -95,8 +95,8 @@
     "unstorage": "1.17.5"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "0.84.2",
-    "@earendil-works/pi-tui": "0.84.2",
+    "@earendil-works/pi-coding-agent": "0.84.4",
+    "@earendil-works/pi-tui": "0.84.4",
     "@oh-my-pi/omptype": "17.3.7",
     "@oh-my-pi/pi-coding-agent": "17.3.7",
     "@types/node": "24.11.2",
