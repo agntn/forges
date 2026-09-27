@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { AGENT_TOOLS, WRITE_TOOLS } from "../../utils/tools";
+
 const { samples, paused, current, step } = useLandingForge();
 </script>
 
@@ -110,7 +112,7 @@ const { samples, paused, current, step } = useLandingForge();
     </section>
 
     <LandingFeature
-      title="49 tools, three hosts"
+      :title="`${AGENT_TOOLS} tools, three hosts`"
       to="/guide/agents"
       link="MCP, Pi and OMP"
       :checks="[
@@ -122,8 +124,8 @@ const { samples, paused, current, step } = useLandingForge();
     >
       <code class="forges-code">forges mcp</code> serves the tools over stdio, the Pi and OMP
       extensions render them in the terminal. All three call the same executors, so they answer
-      identically and a fix lands once. Eleven tools write, and they say so in their descriptions,
-      so a client can gate them before a model gets creative.
+      identically and a fix lands once. {{ WRITE_TOOLS }} tools write, and they say so in their
+      annotations, so a client can gate them before a model gets creative.
       <template #visual>
         <LandingToolCall :sample="current" @pause="paused = $event" />
       </template>

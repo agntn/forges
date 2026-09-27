@@ -6,6 +6,7 @@
  */
 import { version } from "../../../../package.json";
 import { PLATFORMS, PROVIDER_PLATFORMS } from "../../utils/platforms";
+import { AGENT_TOOLS, WRITE_TOOLS } from "../../utils/tools";
 
 defineProps<{ title?: string; description?: string }>();
 
@@ -22,7 +23,13 @@ const METRICS = [
     accent: false,
   },
   { label: "Resources", value: "10", unit: "", note: "same methods on each", accent: false },
-  { label: "Agent tools", value: "49", unit: "", note: "11 of them write", accent: true },
+  {
+    label: "Agent tools",
+    value: String(AGENT_TOOLS),
+    unit: "",
+    note: `${WRITE_TOOLS} of them write`,
+    accent: true,
+  },
 ];
 
 const LINE = "#262c35";

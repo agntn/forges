@@ -2,6 +2,7 @@
 import { version } from "../../../../package.json";
 import type { ForgeSample } from "../../utils/landing-fixtures";
 import { PLATFORMS, PROVIDER_PLATFORMS } from "../../utils/platforms";
+import { AGENT_TOOLS, WRITE_TOOLS } from "../../utils/tools";
 
 defineProps<{ sample: ForgeSample; samples: readonly ForgeSample[] }>();
 const emit = defineEmits<{ step: [delta: number]; pause: [paused: boolean] }>();
@@ -46,8 +47,8 @@ const { copied, copy } = useCopied();
         </div>
         <div>
           <dt>Agent tools</dt>
-          <dd class="hero-metric-accent">49</dd>
-          <dd class="hero-metric-sub">11 of them write</dd>
+          <dd class="hero-metric-accent">{{ AGENT_TOOLS }}</dd>
+          <dd class="hero-metric-sub">{{ WRITE_TOOLS }} of them write</dd>
         </div>
       </dl>
 
