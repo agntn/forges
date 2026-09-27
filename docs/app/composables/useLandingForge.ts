@@ -99,7 +99,8 @@ export function useLandingForge() {
   }
 
   function step(delta: number) {
-    tick.value = Math.max(0, tick.value + delta);
+    const count = samples.value.length;
+    tick.value = (((tick.value + delta) % count) + count) % count;
     void refresh(current.value);
   }
 
