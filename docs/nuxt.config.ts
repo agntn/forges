@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { forgesTheme } from "./shiki-theme";
 
 /** Bundled from the checkout's sources: a deploy needs neither dist/ nor the root node_modules. */
 const librarySource = resolve(import.meta.dirname, "../src");
@@ -122,8 +123,8 @@ export default defineNuxtConfig({
   css: ["~/assets/fonts.css"],
   fonts: {
     families: [
-      { name: "Space Grotesk", provider: "local", weights: [400, 500, 600] },
-      { name: "Space Mono", provider: "local", weights: [400, 700] },
+      { name: "Figtree", provider: "local", weights: [400, 500] },
+      { name: "Fira Code", provider: "local", weights: [400, 500] },
     ],
   },
   content: {
@@ -135,9 +136,9 @@ export default defineNuxtConfig({
       markdown: {
         highlight: {
           theme: {
-            default: "github-light",
-            light: "github-light",
-            dark: "poimandres",
+            default: forgesTheme,
+            light: forgesTheme,
+            dark: forgesTheme,
           },
         },
       },

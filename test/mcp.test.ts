@@ -205,10 +205,6 @@ describe("forges MCP server", () => {
         path: "../docs/content/1.guide/10.agents.md",
         claims: [/description: The same (\d+) tools over MCP/, /^## (\d+) tools, three surfaces$/m],
       },
-      {
-        path: "../docs/app/components/content/LandingHome.vue",
-        claims: [/value: "(\d+)", label: "agent tools"/, /title="(\d+) tools, three hosts"/],
-      },
     ];
     for (const { path, claims } of pages) {
       const source = await readFile(new URL(path, import.meta.url), "utf8");

@@ -7,18 +7,20 @@ Docus site for `@agntn/forges`. Markdown lives in `content/`. The explorer is a 
 ```
 docs/
 ├── nuxt.config.ts                 # extends: ['docus'], cloudflare_module preset (Workers), @agntn/forges aliased to ../src
-├── app/app.config.ts              # title, github, theme
-├── app/app.css                    # theme tokens (light + .dark), shared `forges-*` classes
-├── app/components/                # Docus overrides: AppHeaderLogo, AppHeaderCTA (nav), AppFooterLeft, DocsAsideLeftBody
-├── app/components/content/        # MDC components (`::landing-home`, `::platform-facts`) and the landing panels
+├── app/app.config.ts              # title, github, theme, Nuxt UI variants in the agntn instrument grammar
+├── app/app.css                    # theme tokens, the shared `console-*` grammar, hero zone, docs chrome, `forges-*` classes
+├── app/components/                # Docus overrides (header, tabs, sidebar, toc, page links, surround, callout) and ExplorerAnswer
+├── app/components/content/        # MDC components (`::landing-home`, `::platform-index`, `::platform-facts`), instruments, Prose overrides
 ├── app/components/OgImage/        # Docs.takumi and Landing.takumi override the Docus OG templates
 ├── app/assets/fonts.css           # @font-face for the TTFs served from public/fonts (site and OG images)
-├── app/composables/               # useLandingForge (one clock for every live panel), useSubNavigation
-├── app/utils/                     # platforms table, formatting, recorded landing samples
+├── app/composables/               # useLandingForge (one clock for every live panel), useSubNavigation, useCopied
+├── app/utils/                     # platforms table, explorer operations, formatting, tokenizers, recorded landing samples
 ├── app/pages/explorer.vue         # explorer, own route outside the docs layout
 ├── public/                        # fonts, favicon.svg and the icons and manifest cut from it
 ├── server/api/                    # repo, issues, pulls, commits, ci, threads, user, platforms over the library
 ├── server/utils/                  # forge.ts (one provider per platform), query.ts (caps, cache, rate limit, errors), slim.ts (wire shapes)
+├── shiki-theme.ts                 # code blocks read the same `--shiki-token-*` palette as the instruments
+├── DESIGN.md                      # what forges owns on top of the agntn design system
 ├── scripts/record-fixtures.mjs    # regenerates app/utils/landing-fixtures.ts through dist/
 ├── content/index.md               # landing
 ├── content/1.guide/               # getting started, auth, repositories, issues, pull requests, threads, commits, templates, code search, agents, custom, explorer
@@ -66,7 +68,7 @@ Resolution traps, both caused by the repo root being a pnpm workspace:
 ## OG images
 
 - `app/components/OgImage/Docs.takumi.vue` and `Landing.takumi.vue` override the Docus templates of the same name and are rendered by Takumi at build time. Takumi has no CSS variables, so the theme colours from `app.css` are repeated there as literals. Annoying, but that is what it is.
-- nuxt-og-image does not see the faces `@nuxt/fonts` generates on this Nuxt version, but it parses `@font-face` rules from the files in `css`. That is why `app/assets/fonts.css` declares the five TTFs in `public/fonts` and `fonts.families` uses the `local` provider: the site and the OG images share the same files.
+- nuxt-og-image does not see the faces `@nuxt/fonts` generates on this Nuxt version, but it parses `@font-face` rules from the files in `css`. That is why `app/assets/fonts.css` declares the four Figtree and Fira Code TTFs in `public/fonts` and `fonts.families` uses the `local` provider: the site and the OG images share the same files.
 - The landing OG file is named from the SEO description. Nitro refuses to write a prerender path containing `..`, so a description ending in a period is silently skipped and the landing ships with a dead `og:image`. Keep the description in `content/index.md` without a trailing period. Silently is the bad part.
 
 ## Constraints

@@ -19,15 +19,7 @@ const NAV_ICONS: Record<string, string> = {
   ...Object.fromEntries(PLATFORMS.map((platform) => [platform.to, platform.icon])),
 };
 
-export function getFirstPagePath(item: ContentNavigationItem): string {
-  let current = item;
-  while (current.children?.length) {
-    current = current.children[0]!;
-  }
-  return current.path;
-}
-
-function withIcons(items: ContentNavigationItem[]): ContentNavigationItem[] {
+function withIcons(items: readonly ContentNavigationItem[]): ContentNavigationItem[] {
   return items.map((item) => ({
     ...item,
     icon: NAV_ICONS[item.path] ?? item.icon,
@@ -37,51 +29,74 @@ function withIcons(items: ContentNavigationItem[]): ContentNavigationItem[] {
   }));
 }
 
-export function useSubNavigation(
-  providedNavigation?: Ref<ContentNavigationItem[] | null | undefined>,
-) {
+/**
+ * The first page under a section, which is where its tab in the header leads.
+ *
+ * @param {ContentNavigationItem} item - A section of the tree.
+ * @returns {string} The path of its first page.
+ */
+function firstPagePath(item: ContentNavigationItem): string {
+  let current = item;
+  while (current.children?.length) current = current.children[0]!;
+  return current.path;
+}
+
+/**
+ * Whether the route is inside a section: on one of its pages, or under its path.
+ *
+ * @param {ContentNavigationItem} section - A section of the tree.
+ * @param {string} path - The route path.
+ * @returns {boolean} Whether the section owns the page.
+ */
+function owns(section: ContentNavigationItem, path: string): boolean {
+  return (
+    path === section.path ||
+    path.startsWith(`${section.path}/`) ||
+    (section.children ?? []).some((page) => page.path === path)
+  );
+}
+
+/**
+ * The navigation with this site's icons. With the sections as header tabs the sidebar holds the
+ * current section only, title included; `sections` feeds the header's tabs and `fullNavigation` the
+ * mobile menu, which has no tabs and needs every section.
+ *
+ * @returns {object} `sidebarNavigation`, `fullNavigation` and `sections`.
+ */
+export function useSubNavigation() {
   const route = useRoute();
   const appConfig = useAppConfig();
-  const navigation = providedNavigation ?? inject<Ref<ContentNavigationItem[]>>("navigation");
+  const navigation = inject<Ref<ContentNavigationItem[]>>("navigation");
 
-  const isDocsPage = computed(() => route.meta.layout === "docs");
+  const subNavigationMode = computed(() =>
+    route.meta.layout === "docs"
+      ? (appConfig.navigation as { sub?: "header" | "aside" } | undefined)?.sub
+      : undefined,
+  );
 
-  const subNavigationMode = computed(() => {
-    if (!isDocsPage.value) return undefined;
-    return (appConfig.navigation as { sub?: "header" | "aside" } | undefined)?.sub;
-  });
+  const fullNavigation = computed(() => withIcons(navigation?.value ?? []));
 
   const currentSection = computed(() => {
-    if (!subNavigationMode.value || !navigation?.value) return undefined;
-    return navigation.value.find(
-      (item) => route.path === item.path || route.path.startsWith(`${item.path}/`),
-    );
+    if (!subNavigationMode.value) return undefined;
+    const path = route.path.replace(/\/$/, "") || "/";
+    return fullNavigation.value.find((section) => owns(section, path));
   });
+
+  const sidebarNavigation = computed(() =>
+    subNavigationMode.value === "header" && currentSection.value
+      ? [currentSection.value]
+      : fullNavigation.value,
+  );
 
   const sections = computed(() => {
-    if (!subNavigationMode.value || !navigation?.value) return [];
-    return navigation.value
-      .filter((item) => item.children?.length)
-      .map((item) => ({
-        label: item.title,
-        icon: (NAV_ICONS[item.path] ?? item.icon) as string | undefined,
-        to: getFirstPagePath(item),
-        active: route.path === item.path || route.path.startsWith(`${item.path}/`),
-      }));
+    const path = route.path.replace(/\/$/, "") || "/";
+    return fullNavigation.value.map((item) => ({
+      title: item.title,
+      icon: item.icon,
+      to: item.path === "/guide" ? firstPagePath(item) : item.path,
+      active: owns(item, path),
+    }));
   });
 
-  const sidebarNavigation = computed(() => {
-    const items =
-      subNavigationMode.value && currentSection.value
-        ? currentSection.value.children || []
-        : navigation?.value || [];
-    return withIcons(items);
-  });
-
-  return {
-    subNavigationMode,
-    sections,
-    currentSection,
-    sidebarNavigation,
-  };
+  return { sidebarNavigation, fullNavigation, sections };
 }
