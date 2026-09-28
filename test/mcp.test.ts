@@ -114,6 +114,7 @@ const toolNames = [
   "forges_pull_requests_comments_create",
   "forges_pull_requests_create",
   "forges_pull_requests_update",
+  "forges_pull_requests_merge",
   "forges_users_get",
   "forges_users_authenticated",
   "forges_auth_reload",
@@ -133,6 +134,7 @@ const writingTools = new Set([
   "forges_pull_requests_comments_create",
   "forges_pull_requests_create",
   "forges_pull_requests_update",
+  "forges_pull_requests_merge",
   "forges_releases_create",
   "forges_releases_update",
   "forges_auth_reload",
@@ -248,6 +250,7 @@ describe("forges MCP server", () => {
           "forges_releases_update",
           "forges_issues_update",
           "forges_pull_requests_update",
+          "forges_pull_requests_merge",
         ].includes(tool.name),
         openWorldHint: !tool.name.startsWith("forges_local_"),
       });

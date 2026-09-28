@@ -44,6 +44,7 @@ const mocks = vi.hoisted(() => {
     get: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    merge: vi.fn(),
     listComments: vi.fn(),
     createComment: vi.fn(),
   };
@@ -137,6 +138,7 @@ const toolNames = [
   "forges_pull_requests_comments_create",
   "forges_pull_requests_create",
   "forges_pull_requests_update",
+  "forges_pull_requests_merge",
   "forges_users_get",
   "forges_users_authenticated",
   "forges_auth_reload",
@@ -1113,6 +1115,63 @@ describe("Forges Pi extension", () => {
     expect(mocks.pullRequests.update).not.toHaveBeenCalled();
   });
 
+  it("shows the merge it asks about and merges after Pi approval", async () => {
+    const confirm = vi.fn().mockResolvedValue(true);
+    mocks.pullRequests.merge.mockResolvedValue({ number: 5, merged: true });
+    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_merge");
+
+    const result = await tool.execute(
+      "test",
+      { repo: "agntn/forges", number: 5, method: "squash", headSha: "abc123", title: "feat: x" },
+      undefined,
+      undefined,
+      approvalPiContext(confirm),
+    );
+
+    expect(confirm).toHaveBeenCalledWith(
+      "Merge pull request?",
+      [
+        "Repository  agntn/forges on GitHub",
+        "Number      #5",
+        "Method      squash",
+        "Head        abc123",
+        "",
+        "Commit title",
+        "feat: x",
+        "",
+        "Commit message",
+        "(platform default)",
+      ].join("\n"),
+      { signal: undefined },
+    );
+    expect(mocks.pullRequests.merge).toHaveBeenCalledWith("agntn", "forges", 5, {
+      method: "squash",
+      headSha: "abc123",
+      title: "feat: x",
+      message: undefined,
+    });
+    expect(result.details.result).toMatchObject({ merged: true });
+  });
+
+  it("fails closed when a merge has no approval UI or is declined", async () => {
+    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_merge");
+    const params = { repo: "agntn/forges", number: 5 };
+
+    await expect(
+      tool.execute("test", params, undefined, undefined, approvalPiContext(vi.fn(), false)),
+    ).rejects.toThrow("Pull request merge requires interactive approval");
+    await expect(
+      tool.execute(
+        "test",
+        params,
+        undefined,
+        undefined,
+        approvalPiContext(vi.fn().mockResolvedValue(false)),
+      ),
+    ).rejects.toThrow("Pull request merge was cancelled by the user");
+    expect(mocks.pullRequests.merge).not.toHaveBeenCalled();
+  });
+
   it("posts issue and pull-request comments to the discussion the tool names", async () => {
     mocks.issues.createComment.mockResolvedValue({ id: "31", body: "Fixed in #43." });
     mocks.pullRequests.createComment.mockResolvedValue({ id: "32", body: "Rebased." });
@@ -1610,6 +1669,7 @@ describe("Forges OMP extension", () => {
       forges_pull_requests_create: true,
       forges_pull_requests_comments_create: true,
       forges_pull_requests_update: true,
+      forges_pull_requests_merge: true,
       forges_releases_create: true,
       forges_releases_update: true,
       forges_auth_reload: true,

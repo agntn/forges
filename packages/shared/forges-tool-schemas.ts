@@ -501,6 +501,39 @@ export function forgesToolSchemas() {
     ...listChanges,
     account,
   });
+  const mergePullRequestParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    method: Type.Optional(
+      Type.Unsafe<"merge" | "squash" | "rebase">({
+        type: "string",
+        enum: ["merge", "squash", "rebase"],
+        description:
+          "merge makes a merge commit, squash one commit, rebase replays the commits without a merge commit. Omitted, GitHub and Gitea make a merge commit and GitLab follows the project's settings; GitLab rejects rebase.",
+      }),
+    ),
+    headSha: Type.Optional(
+      Type.String({
+        description:
+          "Merge only while this is still the head commit: pass the headSha that was reviewed and checked, so a later push fails the merge",
+        minLength: 1,
+      }),
+    ),
+    title: Type.Optional(
+      Type.String({
+        description: "Subject of the merge or squash commit; the platform's default when omitted",
+        minLength: 1,
+      }),
+    ),
+    message: Type.Optional(
+      Type.String({
+        description: "Body of the merge or squash commit; GitLab takes it only with a title",
+      }),
+    ),
+    account,
+  });
   const userParameters = closed({
     platform,
     username: Type.String({ description: "Platform username", minLength: 1 }),
@@ -629,6 +662,7 @@ export function forgesToolSchemas() {
     updateIssueParameters,
     createPullRequestParameters,
     updatePullRequestParameters,
+    mergePullRequestParameters,
     userParameters,
     authenticatedUserParameters,
     listThreadsParameters,

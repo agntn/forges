@@ -119,6 +119,24 @@ function updateApprovalMessage(params: Resolved<ForgesTools.UpdateIssueParams>):
   ].join("\n");
 }
 
+function mergeApprovalMessage(params: Resolved<ForgesTools.MergePullRequestParams>): string {
+  return [
+    `Repository  ${approvalField(params.owner)}/${approvalField(params.repo)} on ${platformLabels[params.platform]}`,
+    ...accountLine(params.account),
+    `Number      #${params.number}`,
+    `Method      ${params.method === undefined ? "Platform default" : approvalField(params.method)}`,
+    `Head        ${params.headSha === undefined ? "Any" : approvalField(params.headSha)}`,
+    "",
+    "Commit title",
+    params.title === undefined ? "(platform default)" : approvalField(params.title),
+    "",
+    "Commit message",
+    params.message === undefined
+      ? "(platform default)"
+      : sanitizeApprovalText(params.message) || "(none)",
+  ].join("\n");
+}
+
 /** These writes go public or overwrite public text, so Pi asks before each one. */
 async function confirmWrite(
   ctx: ExtensionContext,
@@ -833,6 +851,31 @@ export default function forgesExtension(pi: ExtensionAPI): void {
         "Pull request update",
       );
       return operations.updatePullRequest(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_merge",
+    label: "Merge Forges Pull Request",
+    description:
+      "Merge an open pull request into its target branch; this mutates the selected Git platform and cannot be undone",
+    promptSnippet: "Merge a pull request on GitHub, GitLab, or Gitea.",
+    promptGuidelines: [
+      "Use forges_pull_requests_merge only when the user explicitly asks to merge; check forges_pull_requests_checks first and pass the headSha they ran on.",
+    ],
+    parameters: schemas.mergePullRequestParameters,
+    ...statusRenderers("forges_pull_requests_merge", "Merge Forges Pull Request"),
+    async execute(_toolCallId, args, signal, _onUpdate, ctx) {
+      const operations = await loadToolOperations();
+      const params = operations.repositoryTarget(args);
+      await confirmWrite(
+        ctx,
+        signal,
+        "Merge pull request?",
+        mergeApprovalMessage(params),
+        "Pull request merge",
+      );
+      return operations.mergePullRequest(params);
     },
   });
 

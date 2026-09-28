@@ -1,6 +1,6 @@
 import { assertAssignees } from "./assignees.ts";
 import { ForgesError } from "./errors.ts";
-import type { UpdateIssueInput } from "./types.ts";
+import type { MergePullRequestInput, UpdateIssueInput } from "./types.ts";
 
 const MAX_LABELS = 100;
 
@@ -73,6 +73,21 @@ export function assertIssueUpdate(input: UpdateIssueInput, platform?: string): v
 
 export function assertPullRequestUpdate(input: UpdateIssueInput, platform?: string): void {
   assertUpdate(input, "Pull request", platform);
+}
+
+const MERGE_METHODS: ReadonlySet<unknown> = new Set(["merge", "squash", "rebase"]);
+
+/** Rejects a merge method, head or title the platform would misread, before the merge goes out. */
+export function assertMergeInput(input: MergePullRequestInput, platform?: string): void {
+  if (input.method !== undefined && !MERGE_METHODS.has(input.method)) {
+    throw new ForgesError('Merge method must be "merge", "squash" or "rebase"', 400, platform);
+  }
+  if (input.headSha !== undefined && input.headSha.trim() === "") {
+    throw new ForgesError("Merge headSha must not be empty", 400, platform);
+  }
+  if (input.title !== undefined && input.title.trim() === "") {
+    throw new ForgesError("Merge commit title must not be empty", 400, platform);
+  }
 }
 
 /**

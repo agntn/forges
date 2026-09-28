@@ -87,6 +87,8 @@ export type {
   CreateReleaseInput,
   UpdateIssueInput,
   UpdatePullRequestInput,
+  MergeMethod,
+  MergePullRequestInput,
   UpdateReleaseInput,
   ReplyThreadInput,
   ProviderConfig,

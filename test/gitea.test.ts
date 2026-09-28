@@ -2216,6 +2216,74 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("pullRequests.merge", () => {
+    const pull = "/repos/testowner/test-repo/pulls/5";
+
+    it("posts the method with Gitea's field names, then reads the pull request", async () => {
+      mockClient
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(giteaPullRequest({ merged: true, merge_commit_sha: "f00d" }));
+
+      const result = await provider.pullRequests.merge("testowner", "test-repo", 5, {
+        method: "rebase",
+        headSha: "abc123",
+        title: "Dark mode",
+        message: "Closes #42.",
+      });
+
+      expect(mockClient.mock.calls).toEqual([
+        [
+          `${pull}/merge`,
+          {
+            method: "POST",
+            body: {
+              Do: "rebase",
+              head_commit_id: "abc123",
+              MergeTitleField: "Dark mode",
+              MergeMessageField: "Closes #42.",
+            },
+          },
+        ],
+        [pull],
+      ]);
+      expect(result.merged).toBe(true);
+      expect(result.mergeCommitSha).toBe("f00d");
+    });
+
+    it("makes a merge commit when no method is given, since Gitea requires one", async () => {
+      mockClient.mockResolvedValueOnce(undefined).mockResolvedValueOnce(giteaPullRequest());
+
+      await provider.pullRequests.merge("testowner", "test-repo", 5);
+
+      expect(JSON.parse(JSON.stringify(mockClient.mock.calls[0]?.[1]))).toEqual({
+        method: "POST",
+        body: { Do: "merge" },
+      });
+    });
+
+    it("blames a 409 on the head only when the merge named one", async () => {
+      mockClient.mockRejectedValueOnce(makeFetchError(409));
+      await expect(provider.pullRequests.merge("testowner", "test-repo", 5)).rejects.toThrow(
+        /The branches conflict or the head moved/,
+      );
+
+      mockClient.mockRejectedValueOnce(makeFetchError(409));
+      await expect(
+        provider.pullRequests.merge("testowner", "test-repo", 5, { headSha: "abc123" }),
+      ).rejects.toThrow(/The head commit may no longer be headSha/);
+    });
+
+    it("explains an empty 405 instead of passing the bare status on", async () => {
+      mockClient.mockRejectedValueOnce(makeFetchError(405));
+
+      const refused = provider.pullRequests.merge("testowner", "test-repo", 5);
+      await expect(refused).rejects.toMatchObject({ status: 405, platform: "gitea" });
+      await expect(refused).rejects.toThrow(
+        /closed, a draft, in conflict, waiting on required checks or approvals/,
+      );
+    });
+  });
+
   describe("pullRequests.update", () => {
     const pull = "/repos/testowner/test-repo/pulls/5";
     const issue = "/repos/testowner/test-repo/issues/5";

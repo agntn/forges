@@ -120,6 +120,34 @@ export function normalizeError(error: unknown, platform?: string): ForgesError {
   );
 }
 
+/**
+ * A refused merge also says what to check before trying again. Gitea answers 405
+ * with an empty body, so the status alone would be all a caller learns, and it
+ * answers 409 for a conflict too, so only a merge that named a head blames it.
+ */
+export function normalizeMergeError(
+  error: unknown,
+  platform: string,
+  pinnedHead: boolean,
+): ForgesError {
+  const normalized = normalizeError(error, platform);
+  const hint =
+    normalized.status === 405
+      ? "The pull request cannot be merged as it stands: it may be closed, a draft, in conflict, waiting on required checks or approvals, or the merge method may be off for this repository. Read the pull request and its checks before trying again."
+      : normalized.status !== 409
+        ? undefined
+        : pinnedHead
+          ? "The head commit may no longer be headSha. Read the pull request again and review any new commits before merging."
+          : "The branches conflict or the head moved during the merge. Read the pull request again before trying again.";
+  if (hint === undefined) return normalized;
+  return new ForgesError(
+    `${normalized.message.replace(/[\s.]+$/u, "")}. ${hint}`,
+    normalized.status,
+    platform,
+    normalized.originalError,
+  );
+}
+
 /** Longest provider reason a message repeats; the rest of a longer one is cut. */
 const REASON_LIMIT = 200;
 

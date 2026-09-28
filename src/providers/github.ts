@@ -64,10 +64,11 @@ import type {
   ThreadComment,
   UpdateIssueInput,
   UpdatePullRequestInput,
+  MergePullRequestInput,
   UpdateReleaseInput,
 } from "../types.ts";
 import { FetchError } from "ofetch";
-import { ForgesError, NotFoundError, normalizeError } from "../errors.ts";
+import { ForgesError, NotFoundError, normalizeError, normalizeMergeError } from "../errors.ts";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
 import { parseLinkHeader } from "../pagination.ts";
 import {
@@ -2385,6 +2386,30 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       return this.mapPullRequest(data);
     } catch (error) {
       throw normalizeError(error, "github");
+    }
+  }
+
+  /** The merge answers with the new commit only, so the pull request is read again. */
+  protected override async mergePullRequest(
+    owner: string,
+    repo: string,
+    prNumber: number,
+    input: MergePullRequestInput,
+  ): Promise<PullRequest> {
+    const pullPath = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(prNumber)}`;
+    try {
+      await this.client(`${pullPath}/merge`, {
+        method: "PUT",
+        body: {
+          merge_method: input.method,
+          sha: input.headSha,
+          commit_title: input.title,
+          commit_message: input.message,
+        },
+      });
+      return this.mapPullRequest(await this.client<GitHubPullRequest>(pullPath));
+    } catch (error) {
+      throw normalizeMergeError(error, "github", input.headSha !== undefined);
     }
   }
 

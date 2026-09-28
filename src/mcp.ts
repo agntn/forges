@@ -364,6 +364,14 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       execute: (operations, args) => operations.updatePullRequest(args),
     }),
     defineTool({
+      name: "forges_pull_requests_merge",
+      title: "Merge Pull Request",
+      description:
+        "Merge an open pull request, a GitLab merge request, into its target branch as the account the local credentials belong to. A merge cannot be taken back, so merge only when the user asks, after the reviews and forges_pull_requests_checks, and pass the headSha those ran on: a push after them then fails the merge instead of landing unseen. Returns the pull request as it is after the merge, with its merge commit.",
+      inputSchema: schemas.mergePullRequestParameters,
+      execute: (operations, args) => operations.mergePullRequest(args),
+    }),
+    defineTool({
       name: "forges_users_get",
       title: "Get User",
       description:

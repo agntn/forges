@@ -162,6 +162,7 @@ describe("createProvider factory", () => {
     ["updateRelease", "Release updates are not supported by this provider"],
     ["updateIssue", "Issue updates are not supported by this provider"],
     ["updatePullRequest", "Pull request updates are not supported by this provider"],
+    ["mergePullRequest", "Pull request merges are not supported by this provider"],
     ["createIssueComment", "Issue comments are not supported by this provider"],
     ["createPullRequestComment", "Pull request comments are not supported by this provider"],
     ["searchIssues", "Issue search is not supported by this provider"],
