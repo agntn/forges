@@ -544,7 +544,8 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_repos_list",
     label: "Forges Repositories",
-    description: "List repositories owned by a user or organization on a supported Git platform",
+    description:
+      "List repositories owned by a user or organization on a supported Git platform; a row leaves out an owner that repeats the one asked for",
     parameters: listRepositoriesParameters,
     ...statusRenderers("forges_repos_list", "Forges Repositories"),
     approval: toolApproval("forges_repos_list"),

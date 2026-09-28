@@ -55,7 +55,7 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       name: "forges_repos_list",
       title: "List Repositories",
       description:
-        "List the repositories owned by one user or organization on GitHub, GitLab, Gitea, or Forgejo, normalized to one shape. Results are paged: read hasNextPage and nextPage instead of assuming the first page is everything.",
+        "List the repositories owned by one user or organization on GitHub, GitLab, Gitea, or Forgejo, normalized to one shape. A row leaves out an owner that repeats the one asked for. Results are paged: read hasNextPage and nextPage instead of assuming the first page is everything.",
       inputSchema: schemas.listRepositoriesParameters,
       execute: (operations, args) => operations.listRepositories(args),
     }),
