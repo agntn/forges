@@ -6,7 +6,7 @@ import type {
   VerifyLocalMergeOptions,
 } from "./local.ts";
 import { assertAssignees } from "./assignees.ts";
-import { assertIssueUpdate, assertPullRequestUpdate } from "./update-input.ts";
+import { assertIssueUpdate, assertMergeInput, assertPullRequestUpdate } from "./update-input.ts";
 import { waitForChecks, type WaitedCheckPage } from "./check-wait.ts";
 import { FetchError } from "ofetch";
 import { AuthenticationError, ForgesError, RateLimitError } from "./errors.ts";
@@ -49,6 +49,7 @@ import type {
   ListPullRequestReviewsOptions,
   ListReleasesOptions,
   ListThreadOptions,
+  MergePullRequestInput,
   PageResult,
   PullRequest,
   PullRequestCheck,
@@ -551,6 +552,10 @@ export type UpdateIssueParams = GetRepositoryItemParams & AccountParams & Update
 export type UpdatePullRequestParams = GetRepositoryItemParams &
   AccountParams &
   UpdatePullRequestInput;
+
+export type MergePullRequestParams = GetRepositoryItemParams &
+  AccountParams &
+  MergePullRequestInput;
 
 export interface ListCommentsParams extends RepositoryParams {
   number: number;
@@ -1387,6 +1392,29 @@ export async function updatePullRequest(
       input,
     );
     return result(params.platform, pullRequest, reassignmentNote(input, pullRequest.assignees));
+  });
+}
+
+export async function mergePullRequest(
+  args: MergePullRequestParams,
+): Promise<ForgesToolResult<PullRequest>> {
+  const params = repositoryTarget(args);
+  const input: MergePullRequestInput = {
+    method: params.method,
+    headSha: params.headSha,
+    title: params.title,
+    message: params.message,
+  };
+  assertMergeInput(input, params.platform);
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform, params.account);
+    const pullRequest = await provider.pullRequests.merge(
+      params.owner,
+      params.repo,
+      params.number,
+      input,
+    );
+    return result(params.platform, pullRequest);
   });
 }
 

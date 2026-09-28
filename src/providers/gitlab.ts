@@ -74,12 +74,13 @@ import type {
   ThreadComment,
   UpdateIssueInput,
   UpdatePullRequestInput,
+  MergePullRequestInput,
   UpdateReleaseInput,
 } from "../types.ts";
 import { FetchError } from "ofetch";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
 import { cachedFetch, invalidateCache } from "../cache.ts";
-import { ForgesError, normalizeError, NotFoundError } from "../errors.ts";
+import { ForgesError, normalizeError, normalizeMergeError, NotFoundError } from "../errors.ts";
 import {
   encodeApiResponsePathSegment,
   encodePathSegment,
@@ -2138,6 +2139,58 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       return this.mapPullRequest(mr);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
+    }
+  }
+
+  /**
+   * GitLab squashes by a flag and takes the commit message whole, title first.
+   * Whether it rebases or makes a merge commit is the project's merge method,
+   * so a request for `rebase` is refused before anything is sent.
+   */
+  protected override async mergePullRequest(
+    owner: string,
+    repo: string,
+    iid: number,
+    input: MergePullRequestInput,
+  ): Promise<PullRequest> {
+    if (input.method === "rebase") {
+      throw new ForgesError(
+        "GitLab merges by the project's merge method; rebase cannot be chosen per merge request",
+        501,
+        "gitlab",
+      );
+    }
+    if (input.message !== undefined && input.title === undefined) {
+      throw new ForgesError(
+        "GitLab takes the commit message whole; pass a title with the message",
+        400,
+        "gitlab",
+      );
+    }
+    const commitMessage =
+      input.title === undefined
+        ? undefined
+        : input.message
+          ? `${input.title}\n\n${input.message}`
+          : input.title;
+    const squash = input.method === undefined ? undefined : input.method === "squash";
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const mr = await this.client<GitLabMergeRequest>(
+        `/projects/${projectId}/merge_requests/${encodePathSegment(iid)}/merge`,
+        {
+          method: "PUT",
+          body: {
+            squash,
+            sha: input.headSha,
+            merge_commit_message: squash === true ? undefined : commitMessage,
+            squash_commit_message: squash === false ? undefined : commitMessage,
+          },
+        },
+      );
+      return this.mapPullRequest(mr);
+    } catch (error: unknown) {
+      throw normalizeMergeError(error, "gitlab", input.headSha !== undefined);
     }
   }
 

@@ -6,7 +6,7 @@ import { assertAssignees } from "./assignees.ts";
 import { ForgesError, NotFoundError } from "./errors.ts";
 import { assertCommitPatchOptions } from "./commit-patch.ts";
 import { assertCiId, assertCiJobLogOptions } from "./ci-job-log.ts";
-import { assertIssueUpdate, assertPullRequestUpdate } from "./update-input.ts";
+import { assertIssueUpdate, assertMergeInput, assertPullRequestUpdate } from "./update-input.ts";
 import { assertRepositoryContentsOptions, normalizeRepositoryPath } from "./repository-contents.ts";
 import type {
   CiJob,
@@ -48,6 +48,7 @@ import type {
   ListPullRequestReviewsOptions,
   ListReleasesOptions,
   ListThreadOptions,
+  MergePullRequestInput,
   Owner,
   PageResult,
   PullRequest,
@@ -344,6 +345,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         assertPullRequestUpdate(input);
         return this.updatePullRequest(owner, repo, number, input);
       },
+      merge: async (owner, repo, number, input = {}) => {
+        assertMergeInput(input);
+        return this.mergePullRequest(owner, repo, number, input);
+      },
       listComments: (owner, repo, number, options) =>
         this.listPullRequestComments(owner, repo, number, options),
       getComment: (owner, repo, number, commentId) =>
@@ -620,6 +625,16 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   ): Promise<PullRequest> {
     return Promise.reject(
       new ForgesError("Pull request updates are not supported by this provider", 501),
+    );
+  }
+  protected mergePullRequest(
+    _owner: string,
+    _repo: string,
+    _number: number,
+    _input: MergePullRequestInput,
+  ): Promise<PullRequest> {
+    return Promise.reject(
+      new ForgesError("Pull request merges are not supported by this provider", 501),
     );
   }
   protected abstract listIssueComments(

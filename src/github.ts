@@ -33,6 +33,8 @@ export type {
   CreatePullRequestInput,
   UpdateIssueInput,
   UpdatePullRequestInput,
+  MergeMethod,
+  MergePullRequestInput,
   ReplyThreadInput,
   ProviderConfig,
   RepositoryResource,

@@ -618,6 +618,32 @@ export interface UpdatePullRequestInput extends UpdateIssueInput {
   state?: IssueState;
 }
 
+/** How a merge lands the pull request's commits on the target branch. */
+export type MergeMethod = "merge" | "squash" | "rebase";
+
+/**
+ * Input for merging a pull request. Omitted fields leave the choice to the
+ * platform.
+ */
+export interface MergePullRequestInput {
+  /**
+   * A merge commit, one squashed commit, or the commits rebased without a merge
+   * commit. Omitted, GitHub and Gitea make a merge commit and GitLab follows the
+   * project's merge method and squash setting. GitLab rejects `rebase`: the
+   * project, not the request, decides whether it rebases.
+   */
+  method?: MergeMethod;
+  /**
+   * Merges only while this is still the head commit, so a push after the last
+   * review or check run fails the merge instead of landing unseen.
+   */
+  headSha?: string;
+  /** Subject of the merge or squash commit. */
+  title?: string;
+  /** Body of the merge or squash commit. GitLab takes it only with a title. */
+  message?: string;
+}
+
 /**
  * One comment in an issue or pull-request discussion
  */
@@ -893,6 +919,13 @@ export interface PullRequestResource {
     repo: string,
     number: number,
     input: UpdatePullRequestInput,
+  ): Promise<PullRequest>;
+  /** Merges an open pull request and returns it as it is after the merge. */
+  merge(
+    owner: string,
+    repo: string,
+    number: number,
+    input?: MergePullRequestInput,
   ): Promise<PullRequest>;
   listComments(
     owner: string,

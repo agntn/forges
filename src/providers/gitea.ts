@@ -9,7 +9,7 @@
 import { Buffer } from "node:buffer";
 import { createHttpClient, rawFetch, type HttpClient } from "../http.ts";
 import { parseLinkHeader, slicePage } from "../pagination.ts";
-import { ForgesError, normalizeError, NotFoundError } from "../errors.ts";
+import { ForgesError, normalizeError, normalizeMergeError, NotFoundError } from "../errors.ts";
 import {
   encodeApiResponsePathSegment,
   encodePathSegment,
@@ -70,6 +70,7 @@ import type {
   ThreadComment,
   UpdateIssueInput,
   UpdatePullRequestInput,
+  MergePullRequestInput,
   UpdateReleaseInput,
 } from "../types.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
@@ -1764,6 +1765,30 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       );
     } catch (error) {
       throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  /** Gitea answers a merge with an empty body, so the pull request is read again. */
+  protected override async mergePullRequest(
+    owner: string,
+    repo: string,
+    number: number,
+    input: MergePullRequestInput,
+  ): Promise<PullRequest> {
+    const pullPath = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}`;
+    try {
+      await this.client(`${pullPath}/merge`, {
+        method: "POST",
+        body: {
+          Do: input.method ?? "merge",
+          head_commit_id: input.headSha,
+          MergeTitleField: input.title,
+          MergeMessageField: input.message,
+        },
+      });
+      return this.mapPullRequest(await this.client<GiteaPullRequest>(pullPath));
+    } catch (error) {
+      throw normalizeMergeError(error, PLATFORM, input.headSha !== undefined);
     }
   }
 

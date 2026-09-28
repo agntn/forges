@@ -48,6 +48,7 @@ export const toolEffects = {
   forges_pull_requests_comments_create: "remoteCreate",
   forges_pull_requests_create: "remoteCreate",
   forges_pull_requests_update: "remoteUpdate",
+  forges_pull_requests_merge: "remoteUpdate",
   forges_users_get: "hostedRead",
   forges_users_authenticated: "hostedRead",
   forges_auth_reload: "credentialReload",

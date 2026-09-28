@@ -107,6 +107,7 @@ const expectedToolNames = [
   "forges_pull_requests_comments_create",
   "forges_pull_requests_create",
   "forges_pull_requests_update",
+  "forges_pull_requests_merge",
   "forges_users_get",
   "forges_users_authenticated",
   "forges_auth_reload",

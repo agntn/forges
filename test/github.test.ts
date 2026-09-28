@@ -3383,6 +3383,92 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("pullRequests.merge", () => {
+    it("merges with the given method, head and commit text, then reads the pull request", async () => {
+      const merged = {
+        ...ghPullRequest,
+        state: "closed",
+        merged: true,
+        merged_at: "2026-09-28T10:00:00Z",
+        merge_commit_sha: "f00d",
+      };
+      mocks.client
+        .mockResolvedValueOnce({
+          sha: "f00d",
+          merged: true,
+          message: "Pull Request successfully merged",
+        })
+        .mockResolvedValueOnce(merged);
+
+      const pr = await gh.pullRequests.merge("octocat", "hello-world", 99, {
+        method: "squash",
+        headSha: "abc123",
+        title: "feat: dark mode (#99)",
+        message: "Closes #42.",
+      });
+
+      expect(mocks.client.mock.calls).toEqual([
+        [
+          "/repos/octocat/hello-world/pulls/99/merge",
+          {
+            method: "PUT",
+            body: {
+              merge_method: "squash",
+              sha: "abc123",
+              commit_title: "feat: dark mode (#99)",
+              commit_message: "Closes #42.",
+            },
+          },
+        ],
+        ["/repos/octocat/hello-world/pulls/99"],
+      ]);
+      expect(pr.merged).toBe(true);
+      expect(pr.mergeCommitSha).toBe("f00d");
+    });
+
+    it("leaves every choice to GitHub when the input is empty", async () => {
+      mocks.client.mockResolvedValueOnce({}).mockResolvedValueOnce(ghPullRequest);
+
+      await gh.pullRequests.merge("octocat", "hello-world", 99);
+
+      expect(JSON.parse(JSON.stringify(mocks.client.mock.calls[0]?.[1]))).toEqual({
+        method: "PUT",
+        body: {},
+      });
+    });
+
+    it("says what to do when the head moved or the pull request cannot merge", async () => {
+      mocks.client.mockRejectedValueOnce(
+        makeFetchError(409, "Head branch was modified. Review and try the merge again."),
+      );
+      const moved = gh.pullRequests.merge("octocat", "hello-world", 99, { headSha: "abc123" });
+      await expect(moved).rejects.toMatchObject({ status: 409, platform: "github" });
+      await expect(moved).rejects.toThrow(
+        /try the merge again\. The head commit may no longer be headSha/,
+      );
+
+      mocks.client.mockRejectedValueOnce(makeFetchError(405, "Pull Request is not mergeable"));
+      await expect(gh.pullRequests.merge("octocat", "hello-world", 99)).rejects.toThrow(
+        /not mergeable\. The pull request cannot be merged as it stands/,
+      );
+    });
+
+    it("rejects an unknown method or a blank head before any request", async () => {
+      await expect(
+        gh.pullRequests.merge("octocat", "hello-world", 99, {
+          method: "fast-forward" as unknown as "merge",
+        }),
+      ).rejects.toMatchObject({ status: 400 });
+      await expect(
+        gh.pullRequests.merge("octocat", "hello-world", 99, { headSha: " " }),
+      ).rejects.toMatchObject({ status: 400 });
+      await expect(
+        gh.pullRequests.merge("octocat", "hello-world", 99, { title: "" }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+  });
+
   describe("issues.update", () => {
     const issuePath = "/repos/octocat/hello-world/issues/42";
 

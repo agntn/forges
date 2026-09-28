@@ -18,6 +18,7 @@ import {
   resetPinnedProviders,
   updateIssue,
   updatePullRequest,
+  mergePullRequest,
 } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
@@ -163,6 +164,11 @@ const mocks = vi.hoisted(() => {
             updatedBy: login,
           })),
           createComment: vi.fn(async () => ({ id: "32", body: "posted", author: { login } })),
+          merge: vi.fn(async (_owner: string, _repo: string, number: number) => ({
+            number,
+            merged: true,
+            mergedBy: { login },
+          })),
         },
         users: {
           authenticated: vi.fn(async () => ({ id: "1", login })),
@@ -336,6 +342,35 @@ describe("configured provider", () => {
     });
 
     expect(JSON.parse(updated.content[0].text).note).toBeUndefined();
+  });
+
+  it("merges as the named account", async () => {
+    const merged = await mergePullRequest({
+      repo: "agntn/forges",
+      number: 5,
+      method: "squash",
+      headSha: "abc123",
+      account: "oritwoen",
+    });
+
+    expect(merged.details.result).toMatchObject({
+      number: 5,
+      merged: true,
+      mergedBy: { login: "oritwoen" },
+    });
+  });
+
+  it("rejects a merge method the platforms do not share before resolving credentials", async () => {
+    await expect(
+      mergePullRequest({
+        repo: "agntn/forges",
+        number: 5,
+        method: "fast-forward-only" as unknown as "merge",
+      }),
+    ).rejects.toThrow('Merge method must be "merge", "squash" or "rebase"');
+
+    expect(mocks.resolveToken).not.toHaveBeenCalled();
+    expect(mocks.createProvider).not.toHaveBeenCalled();
   });
 
   it("rejects an update that changes nothing before resolving credentials", async () => {

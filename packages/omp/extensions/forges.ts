@@ -509,6 +509,37 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     ...listChanges,
     account,
   });
+  const mergePullRequestParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    method: Type.Optional(
+      Type.Union([Type.Literal("merge"), Type.Literal("squash"), Type.Literal("rebase")], {
+        description:
+          "merge makes a merge commit, squash one commit, rebase replays the commits without a merge commit. Omitted, GitHub and Gitea make a merge commit and GitLab follows the project's settings; GitLab rejects rebase.",
+      }),
+    ),
+    headSha: Type.Optional(
+      Type.String({
+        description:
+          "Merge only while this is still the head commit: pass the headSha that was reviewed and checked, so a later push fails the merge",
+        minLength: 1,
+      }),
+    ),
+    title: Type.Optional(
+      Type.String({
+        description: "Subject of the merge or squash commit; the platform's default when omitted",
+        minLength: 1,
+      }),
+    ),
+    message: Type.Optional(
+      Type.String({
+        description: "Body of the merge or squash commit; GitLab takes it only with a title",
+      }),
+    ),
+    account,
+  });
   const userParameters = closed({
     platform,
     username: Type.String({ description: "Platform username", minLength: 1 }),
@@ -1029,6 +1060,19 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: toolApproval("forges_pull_requests_update"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).updatePullRequest(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_pull_requests_merge",
+    label: "Merge Forges Pull Request",
+    description:
+      "Merge an open pull request into its target branch; this mutates the selected Git platform and cannot be undone",
+    parameters: mergePullRequestParameters,
+    ...statusRenderers("forges_pull_requests_merge", "Merge Forges Pull Request"),
+    approval: toolApproval("forges_pull_requests_merge"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).mergePullRequest(params);
     },
   });
 

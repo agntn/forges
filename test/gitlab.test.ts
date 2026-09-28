@@ -2512,6 +2512,83 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("pullRequests.merge", () => {
+    const merge = "/projects/278964/merge_requests/33/merge";
+
+    it("squashes by flag and sends the title and message as one commit message", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce({
+        ...glMergeRequest,
+        state: "merged",
+        merged_at: "2026-09-28T10:00:00Z",
+        merge_commit_sha: "f00d",
+      });
+
+      const pr = await gl.pullRequests.merge("gitlab-org", "gitlab-foss", 33, {
+        method: "squash",
+        headSha: "abc123",
+        title: "feat: dark mode",
+        message: "Closes #42.",
+      });
+
+      expect(JSON.parse(JSON.stringify(mocks.client.mock.calls[1]))).toEqual([
+        merge,
+        {
+          method: "PUT",
+          body: {
+            squash: true,
+            sha: "abc123",
+            squash_commit_message: "feat: dark mode\n\nCloses #42.",
+          },
+        },
+      ]);
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(pr.merged).toBe(true);
+      expect(pr.mergeCommitSha).toBe("f00d");
+    });
+
+    it("turns squash off for a merge commit and leaves it to the project when no method is given", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      await gl.pullRequests.merge("gitlab-org", "gitlab-foss", 33, {
+        method: "merge",
+        title: "Merge dark mode",
+      });
+      expect(JSON.parse(JSON.stringify(mocks.client.mock.calls[1]?.[1]))).toEqual({
+        method: "PUT",
+        body: { squash: false, merge_commit_message: "Merge dark mode" },
+      });
+
+      mocks.client.mockReset();
+      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      await gl.pullRequests.merge("gitlab-org", "gitlab-foss", 33, { title: "Dark mode" });
+      // The project ID is cached, so the merge is the only request.
+      expect(JSON.parse(JSON.stringify(mocks.client.mock.calls[0]?.[1]))).toEqual({
+        method: "PUT",
+        body: { merge_commit_message: "Dark mode", squash_commit_message: "Dark mode" },
+      });
+    });
+
+    it("refuses a rebase and a message without a title before any request", async () => {
+      await expect(
+        gl.pullRequests.merge("gitlab-org", "gitlab-foss", 33, { method: "rebase" }),
+      ).rejects.toMatchObject({ status: 501, platform: "gitlab" });
+      await expect(
+        gl.pullRequests.merge("gitlab-org", "gitlab-foss", 33, { message: "Closes #42." }),
+      ).rejects.toMatchObject({ status: 400, platform: "gitlab" });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("says what to check when GitLab refuses the merge", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockRejectedValueOnce(makeFetchError(405, "405 Method Not Allowed"));
+
+      await expect(
+        gl.pullRequests.merge("gitlab-org", "gitlab-foss", 33, { method: "squash" }),
+      ).rejects.toThrow(/Method Not Allowed\. The pull request cannot be merged as it stands/);
+    });
+  });
+
   describe("pullRequests.update", () => {
     const mr = "/projects/278964/merge_requests/33";
 
