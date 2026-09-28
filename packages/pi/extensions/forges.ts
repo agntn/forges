@@ -173,7 +173,8 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "forges_repos_list",
     label: "Forges Repositories",
-    description: "List repositories owned by a user or organization on a supported Git platform",
+    description:
+      "List repositories owned by a user or organization on a supported Git platform; a row leaves out an owner that repeats the one asked for",
     promptSnippet: "List repositories through GitHub, GitLab, or Gitea.",
     promptGuidelines: [
       "Use forges_repos_list for repository discovery instead of constructing provider API requests.",

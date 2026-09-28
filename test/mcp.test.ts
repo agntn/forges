@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { NotFoundError, RateLimitError } from "../src/errors.ts";
 import { createMcpServer } from "../src/mcp.ts";
-import { listCommits, resetPinnedProviders } from "../src/tool-operations.ts";
+import { listCommits, listRepositories, resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn(), readContents: vi.fn() };
@@ -653,6 +653,46 @@ describe("forges MCP server", () => {
     });
     expect(search.result.totalCount).toBe(1);
     expect(search.note).toContain("forges_commits_get");
+  });
+
+  it("leaves an owner that repeats the one asked for out of repository rows", async () => {
+    const row = (fullName: string, login: string) => ({
+      id: fullName,
+      name: fullName.split("/")[1],
+      fullName,
+      description: "",
+      private: false,
+      defaultBranch: "main",
+      url: `https://github.com/${fullName}`,
+      cloneUrl: `https://github.com/${fullName}.git`,
+      isFork: false,
+      parent: null,
+      viewerPermission: null,
+      owner: { login, avatarUrl: `https://avatars.example/${login}` },
+    });
+    const items = [
+      row("agntn/forges", "agntn"),
+      row("Agntn/keys", "Agntn"),
+      row("unjs/ofetch", "unjs"),
+    ];
+    mocks.repos.list.mockResolvedValue({ items, hasNextPage: false });
+    const client = await connectTestClient();
+
+    const answer = JSON.parse(
+      text(
+        (await client.callTool({ name: "forges_repos_list", arguments: { owner: "agntn" } }))
+          .content,
+      ),
+    );
+
+    expect(answer.result.items.map((item: { owner?: unknown }) => item.owner)).toEqual([
+      undefined,
+      undefined,
+      items[2]?.owner,
+    ]);
+    expect(answer.result.items[1].fullName).toBe("Agntn/keys");
+    const listed = await listRepositories({ owner: "agntn" });
+    expect(listed.details.result.items).toEqual(items);
   });
 
   it("leaves a committer that repeats the author out of commit rows", async () => {

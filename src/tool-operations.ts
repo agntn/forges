@@ -752,7 +752,25 @@ export async function listRepositories(
   const params = ownerTarget(args);
   const provider = await readProvider(params.platform);
   const repositories = await provider.repos.list(params.owner, listOptions(params));
-  return result(params.platform, repositories);
+  const owner = params.owner.toLowerCase();
+  return result(params.platform, repositories, undefined, {
+    ...repositories,
+    items: repositories.items.map((repository) => repositoryRowText(repository, owner)),
+  });
+}
+
+/**
+ * Nearly every row of an owner's page belongs to the owner the call named, so the model text
+ * leaves out an owner that repeats it; `fullName` still carries the login's case. A project
+ * another namespace shares with a GitLab group keeps its owner.
+ */
+function repositoryRowText(
+  repository: Repository,
+  owner: string,
+): Repository | Omit<Repository, "owner"> {
+  if (repository.owner.login.toLowerCase() !== owner) return repository;
+  const { owner: _owner, ...row } = repository;
+  return row;
 }
 
 export async function getRepository(
