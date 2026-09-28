@@ -373,6 +373,13 @@ async function assertPackedCommitSearch(piTools, ompTools, root = packageRoot) {
       assert.equal(expected.totalCount, 1200);
       assert.equal(expected.incomplete, true);
       assert.equal(expected.resultLimit, 1000);
+      /* The model text drops a committer that repeats the author; details keep it. */
+      const modelResult = JSON.parse(
+        JSON.stringify({
+          ...expected,
+          items: expected.items.map(({ committer: _committer, ...row }) => row),
+        }),
+      );
       const args = { platform: "github", query: "author:contributor", perPage: 1 };
       for (const tools of [piTools, ompTools]) {
         const answer = await requireTool(tools, "forges_commits_search").execute(
@@ -383,18 +390,12 @@ async function assertPackedCommitSearch(piTools, ompTools, root = packageRoot) {
           {},
         );
         assert.deepEqual(answer.details.result, expected);
-        assert.deepEqual(
-          JSON.parse(answer.content[0].text).result,
-          JSON.parse(JSON.stringify(expected)),
-        );
+        assert.deepEqual(JSON.parse(answer.content[0].text).result, modelResult);
       }
       await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
       const answer = await client.callTool({ name: "forges_commits_search", arguments: args });
       assert.notEqual(answer.isError, true);
-      assert.deepEqual(
-        JSON.parse(answer.content[0].text).result,
-        JSON.parse(JSON.stringify(expected)),
-      );
+      assert.deepEqual(JSON.parse(answer.content[0].text).result, modelResult);
       assert.equal(requests.length, 4);
       for (const request of requests) {
         const url = new URL(request, process.env.FORGES_GITHUB_BASE_URL);

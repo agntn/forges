@@ -596,13 +596,17 @@ export interface ForgesToolResult<T> {
   details: ForgesToolDetails<T>;
 }
 
+/** `modelValue` replaces `value` in the model text only; details keep the whole value. */
 function result<T>(
   platform: ForgesPlatform | "local",
   value: T,
   note?: string,
+  modelValue: unknown = value,
 ): ForgesToolResult<T> {
   const details = { platform, result: value };
-  const modelDetails = note ? { ...details, note } : details;
+  const modelDetails = note
+    ? { platform, result: modelValue, note }
+    : { platform, result: modelValue };
   return {
     content: [{ type: "text", text: JSON.stringify(modelDetails) }],
     details,
@@ -709,6 +713,26 @@ function summarizeCommit<T extends CommitSummary>(commit: T): CommitListItem<T> 
   if (subject === message) return { ...commit, message };
   return { ...commit, message: subject, messageTruncated: true };
 }
+
+/**
+ * A direct push has its author as committer at the same second, so the model text drops a
+ * committer that repeats the author field for field. A rebase, a squash merge or a web edit
+ * keeps it.
+ */
+function commitRowText<T extends CommitSummary>(commit: T): T | Omit<T, "committer"> {
+  const { author, committer } = commit;
+  if (
+    committer.name !== author.name ||
+    committer.email !== author.email ||
+    committer.date !== author.date
+  ) {
+    return commit;
+  }
+  const { committer: _committer, ...row } = commit;
+  return row;
+}
+
+const REPEATED_COMMITTER_NOTE = "A committer identical to the author is left out of the row.";
 
 function listOptions(params: {
   page?: number;
@@ -837,10 +861,12 @@ export async function searchCommits(
     page: params.page,
     perPage: params.perPage,
   });
+  const items = search.items.map(summarizeCommit);
   return result(
     params.platform,
-    { ...search, items: search.items.map(summarizeCommit) },
-    "Commit messages are cut to their subject line in search output, and messageTruncated marks each one that lost text; use forges_commits_get with the item's repository and sha to read one in full.",
+    { ...search, items },
+    `Commit messages are cut to their subject line in search output, and messageTruncated marks each one that lost text; use forges_commits_get with the item's repository and sha to read one in full. ${REPEATED_COMMITTER_NOTE}`,
+    { ...search, items: items.map(commitRowText) },
   );
 }
 
@@ -857,10 +883,12 @@ export async function listCommits(
     page: params.page,
     perPage: params.perPage,
   });
+  const items = commits.items.map(summarizeCommit);
   return result(
     params.platform,
-    { ...commits, items: commits.items.map(summarizeCommit) },
-    "Commit messages are cut to their subject line in list output, and messageTruncated marks each one that lost text; use forges_commits_get to read one in full.",
+    { ...commits, items },
+    `Commit messages are cut to their subject line in list output, and messageTruncated marks each one that lost text; use forges_commits_get to read one in full. ${REPEATED_COMMITTER_NOTE}`,
+    { ...commits, items: items.map(commitRowText) },
   );
 }
 
@@ -877,14 +905,13 @@ export async function compareCommits(
     { page: params.page, perPage: params.perPage },
   );
   const { files, filesComplete, ...rest } = comparison;
+  const items = comparison.items.map(summarizeCommit);
+  const range = { ...rest, items, ...(params.files ? { files, filesComplete } : {}) };
   return result(
     params.platform,
-    {
-      ...rest,
-      items: comparison.items.map(summarizeCommit),
-      ...(params.files ? { files, filesComplete } : {}),
-    },
-    "Commit messages are cut to their subject line in comparison output, and messageTruncated marks each one that lost text; use forges_commits_get to read one in full.",
+    range,
+    `Commit messages are cut to their subject line in comparison output, and messageTruncated marks each one that lost text; use forges_commits_get to read one in full. ${REPEATED_COMMITTER_NOTE}`,
+    { ...range, items: items.map(commitRowText) },
   );
 }
 
