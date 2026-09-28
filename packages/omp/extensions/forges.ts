@@ -659,7 +659,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     name: "forges_commits_search",
     label: "Search Forges Commits",
     description:
-      "Search commits across repositories with optional owner and repository scope. Rows carry repository identity and author and committer dates. GitHub takes its native qualifiers and returns totalCount and resultLimit (1000). GitLab matches message keywords or a SHA on the default branch, returns no totalCount and resultLimit null, and searches a group or the whole instance only with advanced search, so pass owner and repo on other hosts. Messages are cut to their subject line and messageTruncated marks the cut ones; read one whole with forges_commits_get. Results are paged; follow nextPage while hasNextPage is true. incomplete means the search is known to be partial; narrow the query when it is true. Gitea reports unsupported search.",
+      "Search commits across repositories with optional owner and repository scope. Rows carry repository identity and author and committer dates; a committer identical to the author is left out. GitHub takes its native qualifiers and returns totalCount and resultLimit (1000). GitLab matches message keywords or a SHA on the default branch, returns no totalCount and resultLimit null, and searches a group or the whole instance only with advanced search, so pass owner and repo on other hosts. Messages are cut to their subject line and messageTruncated marks the cut ones; read one whole with forges_commits_get. Results are paged; follow nextPage while hasNextPage is true. incomplete means the search is known to be partial; narrow the query when it is true. Gitea reports unsupported search.",
     parameters: commitSearchParameters,
     ...statusRenderers("forges_commits_search", "Search Forges Commits"),
     approval: toolApproval("forges_commits_search"),
@@ -672,7 +672,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     name: "forges_commits_list",
     label: "Forges Commits",
     description:
-      "List paged commits, optionally filtered by ref, path, or date range; messages are cut to their subject line; Gitea rejects path because its API ignores pagination limits; Forgejo paginates it",
+      "List paged commits, optionally filtered by ref, path, or date range; messages are cut to their subject line and a committer identical to the author is left out; Gitea rejects path because its API ignores pagination limits; Forgejo paginates it",
     parameters: listCommitsParameters,
     ...statusRenderers("forges_commits_list", "Forges Commits"),
     approval: toolApproval("forges_commits_list"),
@@ -685,7 +685,7 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     name: "forges_commits_compare",
     label: "Forges Compare",
     description:
-      "Compare two refs: commits in head but not base, oldest first, with aheadBy; pass files for the net changed files on the first page; messages are cut to their subject line; only GitHub reports status, behindBy and mergeBaseSha, and Gitea has no file list",
+      "Compare two refs: commits in head but not base, oldest first, with aheadBy; pass files for the net changed files on the first page; messages are cut to their subject line and a committer identical to the author is left out; only GitHub reports status, behindBy and mergeBaseSha, and Gitea has no file list",
     parameters: compareCommitsParameters,
     ...statusRenderers("forges_commits_compare", "Forges Compare"),
     approval: toolApproval("forges_commits_compare"),

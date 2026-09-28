@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { NotFoundError, RateLimitError } from "../src/errors.ts";
 import { createMcpServer } from "../src/mcp.ts";
-import { resetPinnedProviders } from "../src/tool-operations.ts";
+import { listCommits, resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn(), readContents: vi.fn() };
@@ -547,7 +547,7 @@ describe("forges MCP server", () => {
           sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
           message: "feat: list commit history",
           author: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
-          committer: { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" },
+          committer: { name: "GitHub", email: "noreply@github.com", date: "2026-08-29T10:00:00Z" },
           parents: ["parent"],
           url: "https://github.com/agntn/forges/commit/cb9d4e5",
         },
@@ -655,6 +655,64 @@ describe("forges MCP server", () => {
     expect(search.note).toContain("forges_commits_get");
   });
 
+  it("leaves a committer that repeats the author out of commit rows", async () => {
+    const author = { name: "Ori", email: "ori@example.com", date: "2026-08-29T10:00:00Z" };
+    const rebased = { ...author, date: "2026-08-30T08:00:00Z" };
+    const bot = { name: "GitHub", email: "noreply@github.com", date: author.date };
+    const row = (sha: string, committer: typeof author) => ({
+      sha,
+      message: `fix: ${sha}`,
+      author,
+      committer,
+      parents: ["parent"],
+      url: `https://github.com/agntn/forges/commit/${sha}`,
+    });
+    const items = [row("a1", { ...author }), row("b2", rebased), row("c3", bot)];
+    mocks.commits.list.mockResolvedValue({ items, hasNextPage: false });
+    mocks.commits.search.mockResolvedValue({
+      items: items.map((item) => ({ ...item, repository: "agntn/forges" })),
+      totalCount: 3,
+      incomplete: false,
+      resultLimit: 1000,
+      hasNextPage: false,
+    });
+    mocks.commits.compare.mockResolvedValue({
+      items,
+      totalCount: 3,
+      hasNextPage: false,
+      status: "ahead",
+      aheadBy: 3,
+      behindBy: 0,
+      mergeBaseSha: "base",
+      files: null,
+      filesComplete: null,
+    });
+    const client = await connectTestClient();
+    const call = async (name: string, args: Record<string, unknown>) =>
+      JSON.parse(text((await client.callTool({ name, arguments: args })).content));
+
+    const answers = [
+      await call("forges_commits_list", { repo: "agntn/forges" }),
+      await call("forges_commits_search", { query: "author:oritwoen" }),
+      await call("forges_commits_compare", { repo: "agntn/forges", base: "v0.3.6", head: "main" }),
+    ];
+
+    for (const answer of answers) {
+      expect(answer.result.items.map((item: { committer?: unknown }) => item.committer)).toEqual([
+        undefined,
+        rebased,
+        bot,
+      ]);
+      expect(answer.note).toContain("committer identical to the author");
+    }
+    const listed = await listCommits({ repo: "agntn/forges" });
+    expect(listed.details.result.items.map((item) => item.committer)).toEqual([
+      author,
+      rebased,
+      bot,
+    ]);
+  });
+
   it("compares two refs and leaves files out unless asked", async () => {
     const identity = { name: "Ori", email: "ori@example.com", date: "2026-09-23T10:53:17Z" };
     const comparison = {
@@ -706,10 +764,11 @@ describe("forges MCP server", () => {
       page: undefined,
       perPage: 1,
     });
+    const { committer: _committer, ...compared } = comparison.items[0]!;
     expect(counts.result).toEqual({
       items: [
         {
-          ...comparison.items[0],
+          ...compared,
           message: "feat: edit a pull request once it is open (#171)",
           messageTruncated: true,
         },

@@ -127,7 +127,7 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       name: "forges_commits_search",
       title: "Search Commits",
       description:
-        "Search commits across repositories with optional owner and repository scope. Rows carry repository identity and author and committer dates. GitHub takes its native qualifiers and returns totalCount and resultLimit (1000). GitLab matches message keywords or a SHA on the default branch, returns no totalCount and resultLimit null, and searches a group or the whole instance only with advanced search, so pass owner and repo on other hosts. Messages are cut to their subject line and messageTruncated marks the cut ones; read one whole with forges_commits_get. Results are paged; follow nextPage while hasNextPage is true. incomplete means the search is known to be partial; narrow the query when it is true. Gitea reports unsupported search.",
+        "Search commits across repositories with optional owner and repository scope. Rows carry repository identity and author and committer dates; a committer identical to the author is left out. GitHub takes its native qualifiers and returns totalCount and resultLimit (1000). GitLab matches message keywords or a SHA on the default branch, returns no totalCount and resultLimit null, and searches a group or the whole instance only with advanced search, so pass owner and repo on other hosts. Messages are cut to their subject line and messageTruncated marks the cut ones; read one whole with forges_commits_get. Results are paged; follow nextPage while hasNextPage is true. incomplete means the search is known to be partial; narrow the query when it is true. Gitea reports unsupported search.",
       inputSchema: schemas.commitSearchParameters,
       execute: (operations, args) => operations.searchCommits(args),
     }),
@@ -135,7 +135,7 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       name: "forges_commits_list",
       title: "List Commits",
       description:
-        "List paged commit summaries for one repository, optionally filtered by ref, path, and ISO-8601 since/until dates. Summaries omit changed-file rows and cut each message to its subject line, with messageTruncated on the cut ones; use forges_commits_get for one commit's files or full message. Gitea rejects path because that API ignores pagination limits for the filter; Forgejo paginates it.",
+        "List paged commit summaries for one repository, optionally filtered by ref, path, and ISO-8601 since/until dates. Summaries omit changed-file rows and cut each message to its subject line, with messageTruncated on the cut ones, and leave out a committer identical to the author; use forges_commits_get for one commit's files or full message. Gitea rejects path because that API ignores pagination limits for the filter; Forgejo paginates it.",
       inputSchema: schemas.listCommitsParameters,
       execute: (operations, args) => operations.listCommits(args),
     }),
@@ -143,7 +143,7 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       name: "forges_commits_compare",
       title: "Compare Commits",
       description:
-        "Compare two refs: the commits head has that base lacks, as git log base..head lists them, oldest first, with aheadBy and totalCount for the whole range. Messages are cut to their subject line, with messageTruncated on the cut ones. Pass files to get the net change from the merge base to head with per-file counts on the first page; later pages have files null. GitHub also reports status, behindBy and mergeBaseSha, and lists at most 300 files, so filesComplete is null at that cap. GitLab and Gitea return null for status, behindBy, mergeBaseSha and filesComplete; Gitea has no range file list, so files is null there. To ask what head lacks, swap base and head.",
+        "Compare two refs: the commits head has that base lacks, as git log base..head lists them, oldest first, with aheadBy and totalCount for the whole range. Messages are cut to their subject line, with messageTruncated on the cut ones, and a committer identical to the author is left out. Pass files to get the net change from the merge base to head with per-file counts on the first page; later pages have files null. GitHub also reports status, behindBy and mergeBaseSha, and lists at most 300 files, so filesComplete is null at that cap. GitLab and Gitea return null for status, behindBy, mergeBaseSha and filesComplete; Gitea has no range file list, so files is null there. To ask what head lacks, swap base and head.",
       inputSchema: schemas.compareCommitsParameters,
       execute: (operations, args) => operations.compareCommits(args),
     }),
