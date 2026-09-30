@@ -1537,8 +1537,53 @@ describe("forges MCP server", () => {
     });
 
     expect(response.isError).toBe(true);
-    expect(text(response.content)).toContain("Invalid arguments at /platform");
+    expect(text(response.content)).toBe(
+      "Invalid arguments at /platform: must be one of: github, gitlab, gitea",
+    );
     expect(mocks.createProvider).not.toHaveBeenCalled();
+  });
+
+  it("lists the values an enum argument accepts", async () => {
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_merge",
+      arguments: { owner: "agntn", repo: "forges", number: 1, method: "fast-forward" },
+    });
+
+    expect(response.isError).toBe(true);
+    expect(text(response.content)).toBe(
+      "Invalid arguments at /method: must be one of: merge, squash, rebase",
+    );
+    expect(mocks.createProvider).not.toHaveBeenCalled();
+  });
+
+  it("lists an enum's values when the argument has the wrong type", async () => {
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_issues_list",
+      arguments: { owner: "agntn", repo: "forges", state: 1 },
+    });
+
+    expect(response.isError).toBe(true);
+    expect(text(response.content)).toBe(
+      "Invalid arguments at /state: must be one of: open, closed, all",
+    );
+    expect(mocks.createProvider).not.toHaveBeenCalled();
+  });
+
+  it("keeps TypeBox's message for an argument without an enum", async () => {
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_issues_list",
+      arguments: { owner: "agntn", repo: "forges", page: "two" },
+    });
+
+    expect(response.isError).toBe(true);
+    expect(text(response.content)).toMatch(/^Invalid arguments at \/page: must be /u);
+    expect(text(response.content)).not.toContain("one of");
   });
 
   it("names an argument the schema does not know instead of dropping it", async () => {
