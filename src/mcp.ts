@@ -460,13 +460,22 @@ type ErrorsModule = typeof import("./errors.ts");
 /**
  * Formats the first TypeBox validation failure for an MCP client. A stray key is
  * named from the schema itself, since TypeBox 1.3.24 reports it as `schema is false`.
+ * An enum argument lists what it accepts, also when the value had the wrong type,
+ * because TypeBox's "must be equal to one of the allowed values" names none of them.
  */
 function validationError(Value: ValueModule["Value"], schema: TObject, value: object): string {
   const unknown = Object.keys(value).filter((key) => !Object.hasOwn(schema.properties, key));
   if (unknown.length > 0) return `Invalid arguments at /: unknown property ${unknown.join(", ")}`;
-  const first = Value.Errors(schema, value)[0];
+  const errors = Value.Errors(schema, value);
+  const first = errors[0];
   if (!first) return "Invalid arguments";
-  return `Invalid arguments at ${first.instancePath || "/"}: ${first.message}`;
+  const path = first.instancePath || "/";
+  for (const error of errors) {
+    if (error.keyword === "enum" && error.instancePath === first.instancePath) {
+      return `Invalid arguments at ${path}: must be one of: ${error.params.allowedValues.join(", ")}`;
+    }
+  }
+  return `Invalid arguments at ${path}: ${first.message}`;
 }
 
 /**
