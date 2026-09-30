@@ -188,7 +188,7 @@ vi.mock("../src/cache.ts", () => ({ cachedFetch: mocks.cachedFetch }));
 
 **Test hygiene** — `vi.resetAllMocks()` + env restore in `beforeEach`/`afterEach`. No test pollution.
 
-**Test config** - the `test` block in `vite.config.ts`: `environment: "node"`, `globals: true`. Vitest 5 clears mock history before each test. No coverage thresholds.
+**Test config** - the `test` block in `vite.config.ts`: `environment: "node"`, `globals: true`, and `@agntn/forges` aliased to `src/index.ts` as the docs worker does. Vitest 5 clears mock history before each test. No coverage thresholds. The top-level `tsconfig` pins the root one, so `test/docs-query.test.ts` can load a docs module without `docs/.nuxt`, which CI never generates.
 
 ## Execution Workflow
 
