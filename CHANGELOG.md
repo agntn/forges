@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.3.7
+
+[compare changes](https://github.com/agntn/forges/compare/v0.3.6...v0.3.7)
+
+### 🚀 Enhancements
+
+- **docs:** Branch map, roster and explorer ([#194](https://github.com/agntn/forges/pull/194))
+- Merge a pull request, pinned to its head ([#197](https://github.com/agntn/forges/pull/197))
+
+### 🔥 Performance
+
+- **commits:** Leave out a repeated committer ([#195](https://github.com/agntn/forges/pull/195))
+- **repos:** Skip the owner each row repeats ([#196](https://github.com/agntn/forges/pull/196))
+
+### 🩹 Fixes
+
+- **mcp:** Name the values an enum accepts ([#204](https://github.com/agntn/forges/pull/204))
+- **docs:** A query limit the caller can't reset ([#205](https://github.com/agntn/forges/pull/205))
+- **deps:** Make typebox an optional peer ([#208](https://github.com/agntn/forges/pull/208))
+
+### ❤️ Contributors
+
+- Ori ([@oritwoen](https://github.com/oritwoen))
+- Aeitwoen ([@aeitwoen](https://github.com/aeitwoen))
+
 ## v0.3.6
 
 [compare changes](https://github.com/agntn/forges/compare/v0.3.5...v0.3.6)
