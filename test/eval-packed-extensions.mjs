@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -262,6 +262,18 @@ async function assertHelpStaysLight(root) {
   assert(!urls.includes(serverEntry), "forges --help must not load the server entry");
   const typebox = urls.filter((url) => url.startsWith(packageRootUrl) && url.includes("typebox"));
   assert.deepEqual(typebox, [], "forges --help must not load the tool schemas");
+}
+
+/** typebox is only an optional peer, so a CLI install has no copy for dist to import. */
+async function assertTypeboxInlined(root) {
+  const distribution = join(root, "dist");
+  const files = await readdir(distribution, { recursive: true });
+  const importers = [];
+  for (const file of files.filter((name) => /\.(?:mjs|d\.mts)$/u.test(name))) {
+    const code = await readFile(join(distribution, file), "utf8");
+    if (/(?:from|import)\s*\(?\s*["']typebox(?:\/[^"']*)?["']/u.test(code)) importers.push(file);
+  }
+  assert.deepEqual(importers, [], "dist must carry its own typebox");
 }
 
 /**
@@ -559,6 +571,7 @@ try {
     cp(join(root, "packages/omp/extensions/forges.ts"), join(ompExtensionDirectory, "forges.ts")),
   ]);
 
+  await assertTypeboxInlined(packageRoot);
   const helpStaysLight = assertHelpStaysLight(packageRoot);
   const ompApi = { typebox: OmpTypeBox, pi: { Text: PackedText }, setLabel() {} };
   const [piTools, ompTools] = await Promise.all([
