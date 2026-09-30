@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { toolEffects } from "../packages/shared/tool-effects.ts";
 import * as OmpTypeBox from "@oh-my-pi/omptype/typebox";
 import type {
@@ -325,6 +327,31 @@ describe("Forges Pi extension", () => {
 
     expect(renderedText(call)).toBe("◌ ◈ Forges Issue agntn/forges#42 platform github");
     expect(renderedText(result)).toBe("✗ Repository not found (failed)");
+  });
+
+  it("leaves the packages Pi provides out of dependencies", () => {
+    const manifest: {
+      dependencies: Record<string, string>;
+      peerDependencies: Record<string, string>;
+    } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    /** Pi 0.99 supplies these and warns when one shows up in dependencies. */
+    const hostProvided = [
+      "@earendil-works/pi-agent-core",
+      "@earendil-works/pi-ai",
+      "@earendil-works/pi-coding-agent",
+      "@earendil-works/pi-tui",
+      "@mariozechner/pi-agent-core",
+      "@mariozechner/pi-ai",
+      "@mariozechner/pi-coding-agent",
+      "@mariozechner/pi-tui",
+      "@sinclair/typebox",
+      "typebox",
+    ];
+
+    expect(
+      Object.keys(manifest.dependencies).filter((name) => hostProvided.includes(name)),
+    ).toEqual([]);
+    expect(manifest.peerDependencies["typebox"]).toBe("*");
   });
 
   it("exposes only supported platforms and no credential or endpoint parameters", () => {

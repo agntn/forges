@@ -156,6 +156,7 @@ Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 - **No `execSync`** — use `execFileSync` with arg arrays (command injection prevention).
 - **No CJS** — ESM only everywhere.
 - **Local MCP serves `src/`.** Inside a checkout, the built `dist/cli.mjs` loads the `mcp` command from `src/`, like the Pi and OMP extensions, so a local server needs only a restart after a change. The npm package ships no `src/` and runs the bundle, and so does a copy under `node_modules` or a Node that does not strip types (before 22.18 without a flag). `FORGES_DIST=1` forces the bundle. A change to `src/cli.ts` itself still needs `pnpm build`; `test:packed` runs `mcp` in each of these layouts.
+- **typebox is an optional peer.** Pi 0.99 warns on every load of a package that lists it in `dependencies`, so it's a `"*"` peer and the exact pin sits in `devDependencies`. Pi hands the extension its own copy, and `vp pack` inlines one into `dist` for the CLI and the MCP server. `test/extensions.test.ts` fails on a host package in `dependencies`, `test:packed` on a `dist` file that imports `typebox`.
 - **Nothing runs at import.** `sideEffects: false` is a claim about every module: no calls, registrations, or `process.env` reads at module scope, and heavy dependencies (provider modules, `typebox/value`, the MCP SDK) load on the call path through literal `import()`. Literals, `new Set([...])` and `Symbol.for()` need no hint, rolldown drops them unused; a module-scope call to a project helper such as `lazy()` carries `/* @__PURE__ */`.
 
 ## Testing
