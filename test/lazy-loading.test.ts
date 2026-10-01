@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import { createJiti } from "jiti";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { ForgesError } from "../src/errors.ts";
@@ -90,5 +92,45 @@ describe("lazy", () => {
     });
 
     await expect(get()).rejects.toThrow("threw before returning a promise");
+  });
+});
+
+describe("under a host that loads source without a module cache", () => {
+  /* Pi loads extensions through jiti like this, so each test gets a fresh module graph. */
+  function load<T>(path: string): Promise<T> {
+    const jiti = createJiti(import.meta.url, { moduleCache: false, tryNative: false });
+    return jiti.import<T>(fileURLToPath(new URL(path, import.meta.url)));
+  }
+
+  it("creates every provider when cold calls overlap", async () => {
+    const forges = await load<typeof import("../src/index.ts")>("../src/index.ts");
+
+    const providers = await Promise.all([
+      forges.createProvider("github", { token: "t" }),
+      forges.createProvider("github", { token: "t" }),
+      forges.createProvider("gitlab", { token: "t" }),
+      forges.createProvider("gitlab", { token: "t" }),
+    ]);
+
+    expect(providers.map((provider) => provider.constructor.name)).toEqual([
+      "GitHubProvider",
+      "GitHubProvider",
+      "GitLabProvider",
+      "GitLabProvider",
+    ]);
+  });
+
+  it("serves overlapping local inspections", async () => {
+    const operations = await load<typeof import("../src/tool-operations.ts")>(
+      "../src/tool-operations.ts",
+    );
+    const cwd = fileURLToPath(new URL("..", import.meta.url));
+
+    const results = await Promise.all([
+      operations.inspectLocal({ cwd }),
+      operations.inspectLocal({ cwd }),
+    ]);
+
+    expect(results.map((entry) => entry.details.platform)).toEqual(["local", "local"]);
   });
 });

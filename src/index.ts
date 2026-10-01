@@ -8,6 +8,7 @@ import type { ProviderConfig } from "./types.ts";
 import { resolveToken } from "./auth.ts";
 import type { Platform } from "./auth.ts";
 import { AuthenticationError, ForgesError } from "./errors.ts";
+import { lazy } from "../packages/shared/lazy.ts";
 
 // --- Type exports ---
 export type {
@@ -155,12 +156,14 @@ type ProviderConstructor = new (config: ProviderConfig) => Provider;
  *
  * Each loader imports one provider module on demand, so a process that talks to
  * GitHub never parses the GitLab or Gitea implementation. The specifiers stay
- * literal for the bundler to split them into their own chunks.
+ * literal for the bundler to split them into their own chunks. Concurrent first
+ * calls share one import, since the uncached jiti Pi loads extensions with hands
+ * an overlapping one an empty namespace.
  */
 const providers: Record<Platform, () => Promise<ProviderConstructor>> = {
-  github: () => import("./providers/github.ts").then((m) => m.GitHubProvider),
-  gitlab: () => import("./providers/gitlab.ts").then((m) => m.GitLabProvider),
-  gitea: () => import("./providers/gitea.ts").then((m) => m.GiteaProvider),
+  github: /* @__PURE__ */ lazy(() => import("./providers/github.ts").then((m) => m.GitHubProvider)),
+  gitlab: /* @__PURE__ */ lazy(() => import("./providers/gitlab.ts").then((m) => m.GitLabProvider)),
+  gitea: /* @__PURE__ */ lazy(() => import("./providers/gitea.ts").then((m) => m.GiteaProvider)),
 };
 
 /**
