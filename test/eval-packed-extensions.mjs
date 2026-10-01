@@ -274,6 +274,14 @@ async function assertTypeboxInlined(root) {
     if (/(?:from|import)\s*\(?\s*["']typebox(?:\/[^"']*)?["']/u.test(code)) importers.push(file);
   }
   assert.deepEqual(importers, [], "dist must carry its own typebox");
+  const licenses = await readFile(join(distribution, "THIRD-PARTY-LICENSES.md"), "utf8").catch(
+    () => "",
+  );
+  assert.match(
+    licenses,
+    /^## typebox$[\s\S]*?Copyright \(c\) .* Haydn Paterson/mu,
+    "dist must carry the license of the typebox it inlines",
+  );
 }
 
 /**

@@ -171,7 +171,7 @@ pnpm test:run    # single run, as CI does
 pnpm typecheck   # tsc, then build, then the extension graph
 pnpm lint
 pnpm docs        # the site, it bundles src/
-pnpm run build   # vp pack
+pnpm run build   # obuild
 ```
 
 ## 💛 Thanks
