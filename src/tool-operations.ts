@@ -11,6 +11,7 @@ import { waitForChecks, type WaitedCheckPage } from "./check-wait.ts";
 import { FetchError } from "ofetch";
 import { AuthenticationError, ForgesError, RateLimitError } from "./errors.ts";
 import { redactEndpoint } from "./redact-endpoint.ts";
+import { lazy } from "../packages/shared/lazy.ts";
 import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
 import type { Provider } from "./provider.ts";
 import type {
@@ -1567,16 +1568,19 @@ export async function unresolveThread(args: ThreadStateParams): Promise<ForgesTo
   });
 }
 
+/** Concurrent calls share one import: uncached jiti hands an overlapping one an empty namespace. */
+const loadLocal = /* @__PURE__ */ lazy(() => import("./local.ts"));
+
 export async function verifyLocalMerge(
   params: VerifyLocalMergeOptions,
 ): Promise<ForgesToolResult<LocalMergeVerification>> {
-  const local = await import("./local.ts");
+  const local = await loadLocal();
   return result("local", await local.verifyLocalMerge(params));
 }
 
 export async function inspectLocal(
   params: InspectLocalOptions,
 ): Promise<ForgesToolResult<LocalInspection>> {
-  const local = await import("./local.ts");
+  const local = await loadLocal();
   return result("local", await local.inspectLocal(params));
 }
