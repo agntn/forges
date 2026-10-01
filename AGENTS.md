@@ -1,13 +1,13 @@
 # AGENTS.md — forges
 
-Unified TypeScript API for GitHub, GitLab, Gitea, and GitBucket. Normalizes auth headers, pagination, and field names behind a single abstract `Provider` base class. Built on unjs stack (ofetch, unstorage) with Vite+ for lint, format, tests and packing. ESM only.
+Unified TypeScript API for GitHub, GitLab, Gitea, and GitBucket. Normalizes auth headers, pagination, and field names behind a single abstract `Provider` base class. Built on unjs stack (ofetch, unstorage) with Vite+ for lint, format and tests, and obuild for the bundle. ESM only.
 
 ## Quick Commands
 
 ```bash
 pnpm i                          # install deps (pnpm 10.x, node >=22)
-pnpm dev                        # vp pack --watch
-pnpm run build                  # vp pack → dist/ (.mjs + .d.mts)
+pnpm dev                        # obuild --stub
+pnpm run build                  # obuild → dist/ (.mjs + .d.mts)
 pnpm typecheck                  # tsc --noEmit (strict mode)
 pnpm test                       # vp test in watch mode
 pnpm test:run                   # single run (CI)
@@ -82,7 +82,7 @@ test/
 | Change cache backend          | `src/cache.ts`                     | `configureStorage()` swaps unstorage driver                                                                              |
 | Fix pagination                | `src/pagination.ts`                | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab                                                           |
 | Fix error mapping             | `src/errors.ts`                    | `normalizeError()` maps FetchError → ForgesError subtypes                                                                |
-| Add sub-path export           | `vite.config.ts` + `package.json`  | Must update both: `pack.entry` + exports map                                                                             |
+| Add sub-path export           | `build.config.ts` + `package.json` | Must update both: bundle `input` + exports map                                                                           |
 | Add agent tool                | `src/tool-operations.ts`           | Executor first, then `src/mcp.ts` and both extensions                                                                    |
 | Change tool schema            | `packages/shared/`                 | `forgesToolSchemas()` builds them; MCP and Pi call it once, OMP rebuilds from `pi.typebox`                               |
 | Debug HTTP                    | `src/http.ts`                      | `rawFetch()` returns headers, `createHttpClient()` configures auth                                                       |
@@ -96,7 +96,7 @@ test/
 - Use explicit `.ts` extensions in relative source imports: `import { Foo } from './bar.ts'`
 - Use `import type` for type-only imports
 - Node builtins use `node:` prefix: `node:child_process`, `node:fs`
-- TypeScript uses NodeNext resolution with `allowImportingTsExtensions` and `noEmit`; `vp pack` owns JavaScript and declaration emission
+- TypeScript uses NodeNext resolution with `allowImportingTsExtensions` and `noEmit`; obuild owns JavaScript and declaration emission
 - The OMP extension must keep both dynamic imports literal: `existsSync(src)` chooses `import("../../../src/tool-operations.ts")` or `import("../../../dist/tool-operations.mjs")`. Never `import(url.href)`.
 
 ### TypeScript
@@ -156,7 +156,7 @@ Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 - **No `execSync`** — use `execFileSync` with arg arrays (command injection prevention).
 - **No CJS** — ESM only everywhere.
 - **Local MCP serves `src/`.** Inside a checkout, the built `dist/cli.mjs` loads the `mcp` command from `src/`, like the Pi and OMP extensions, so a local server needs only a restart after a change. The npm package ships no `src/` and runs the bundle, and so does a copy under `node_modules` or a Node that does not strip types (before 22.18 without a flag). `FORGES_DIST=1` forces the bundle. A change to `src/cli.ts` itself still needs `pnpm build`; `test:packed` runs `mcp` in each of these layouts.
-- **typebox is an optional peer.** Pi 0.99 warns on every load of a package that lists it in `dependencies`, so it's a `"*"` peer and the exact pin sits in `devDependencies`. Pi hands the extension its own copy, and `vp pack` inlines one into `dist` for the CLI and the MCP server. `test/extensions.test.ts` fails on a host package in `dependencies`, `test:packed` on a `dist` file that imports `typebox`.
+- **typebox is an optional peer.** Pi 0.99 warns on every load of a package that lists it in `dependencies`, so it's a `"*"` peer and the exact pin sits in `devDependencies`. Pi hands the extension its own copy, and obuild inlines one into `dist` for the CLI and the MCP server, through the `rolldownConfig` hook in `build.config.ts`, with its license in `dist/THIRD-PARTY-LICENSES.md`. `test/extensions.test.ts` fails on a host package in `dependencies`, `test:packed` on a `dist` file that imports `typebox` or on a `dist` without its license.
 - **Nothing runs at import.** `sideEffects: false` is a claim about every module: no calls, registrations, or `process.env` reads at module scope, and heavy dependencies (provider modules, `typebox/value`, the MCP SDK) load on the call path through literal `import()`. Literals, `new Set([...])` and `Symbol.for()` need no hint, rolldown drops them unused; a module-scope call to a project helper such as `lazy()` carries `/* @__PURE__ */`.
 
 ## Testing
