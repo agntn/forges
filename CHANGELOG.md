@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.4.0
+
+[compare changes](https://github.com/agntn/forges/compare/v0.3.7...v0.4.0)
+
+### 🩹 Fixes
+
+- Share one provider import across calls ([#210](https://github.com/agntn/forges/pull/210))
+- **docs:** Cut the dead MCP links from the menu ([#215](https://github.com/agntn/forges/pull/215))
+
+### 💅 Refactors
+
+- **http:** ⚠️  Drop ofetch for native fetch ([#214](https://github.com/agntn/forges/pull/214))
+- **http:** ⚠️  Hash tokens with @agntn/hashes ([#216](https://github.com/agntn/forges/pull/216))
+
+### 📦 Build
+
+- Drop vp pack and its tsdown workarounds ([#211](https://github.com/agntn/forges/pull/211))
+
+### 🏡 Chore
+
+- ⚠️  Drop Node.js 22 and 24 ([#213](https://github.com/agntn/forges/pull/213))
+
+#### ⚠️ Breaking Changes
+
+- **http:** ⚠️  Drop ofetch for native fetch ([#214](https://github.com/agntn/forges/pull/214))
+- **http:** ⚠️  Hash tokens with @agntn/hashes ([#216](https://github.com/agntn/forges/pull/216))
+- ⚠️  Drop Node.js 22 and 24 ([#213](https://github.com/agntn/forges/pull/213))
+
+### ❤️ Contributors
+
+- Aeitwoen ([@aeitwoen](https://github.com/aeitwoen))
+- Ori ([@oritwoen](https://github.com/oritwoen))
+
 ## v0.3.7
 
 [compare changes](https://github.com/agntn/forges/compare/v0.3.6...v0.3.7)
