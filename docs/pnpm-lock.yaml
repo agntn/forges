@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@agntn/hashes':
+        specifier: 0.6.2
+        version: 0.6.2(ai@7.0.91(zod@4.5.4))
       better-sqlite3:
         specifier: 12.11.1
         version: 12.11.1
@@ -35,6 +38,40 @@ importers:
         version: 4.128.0
 
 packages:
+
+  '@agntn/hashes@0.6.2':
+    resolution: {integrity: sha512-rxIHJwqGF/Q3J1qFcUGtfYUsPFCy7/CdANlAIirdrf6NQURTirclc32PPe5E10WcIiIsI5xKxxVVkbu+CTIfzg==}
+    engines: {node: '>=26'}
+    hasBin: true
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '>=0.87.1 <1'
+      '@oh-my-pi/pi-coding-agent': '>=18.4.2 <19'
+      ai: '>=7.0.0'
+    peerDependenciesMeta:
+      '@earendil-works/pi-coding-agent':
+        optional: true
+      '@oh-my-pi/pi-coding-agent':
+        optional: true
+      ai:
+        optional: true
+
+  '@agntn/tools@0.0.0':
+    resolution: {integrity: sha512-tGH2t1GDyxqaRrbJeqH3ce6OCD5pS30mneLAoCW0FhlkEWGJF1o/3J522hcIZvTHr3mz+64YQ3nCq4qRcUDxnQ==}
+    engines: {node: '>=24'}
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '>=0.84.2 <1'
+      '@modelcontextprotocol/server': '>=2.2.0 <3'
+      '@oh-my-pi/pi-coding-agent': '>=18.0.0 <19'
+      ai: '>=7.0.0 <8'
+    peerDependenciesMeta:
+      '@earendil-works/pi-coding-agent':
+        optional: true
+      '@modelcontextprotocol/server':
+        optional: true
+      '@oh-my-pi/pi-coding-agent':
+        optional: true
+      ai:
+        optional: true
 
   '@ai-sdk/gateway@4.0.73':
     resolution: {integrity: sha512-1Gp6QtVHfegKoMcf1pjk4fpgDg1cUdK5NnrEiUsYhLWa6owDMmF7kP+qL7ZgQNDYKTOijT+5cTeHrL281kUiiQ==}
@@ -1494,6 +1531,10 @@ packages:
     peerDependencies:
       rollup: ^1.20.0 || ^2.0.0 || ^3.0.0 || ^4.0.0
 
+  '@modelcontextprotocol/core@2.2.0':
+    resolution: {integrity: sha512-iLhmprRmWI8EcosOA3wVvww22z02NkgqhV4fBH6f/odQBsi7xnJc0HGmi21yWO+/iKw2yzqVE127Zhna5/+JXw==}
+    engines: {node: '>=20'}
+
   '@modelcontextprotocol/sdk@1.30.0':
     resolution: {integrity: sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA==}
     engines: {node: '>=18'}
@@ -1503,6 +1544,10 @@ packages:
     peerDependenciesMeta:
       '@cfworker/json-schema':
         optional: true
+
+  '@modelcontextprotocol/server@2.2.0':
+    resolution: {integrity: sha512-qFnltjus6Gk8Lx6J1w2RXmr3YPN22MNT6qD6zjAkaiWIlFIFxWClz0rXHNuJF/KSUyn5YGhkSvXkWDbQHVLFEQ==}
+    engines: {node: '>=20'}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     resolution: {integrity: sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ==}
@@ -7287,6 +7332,19 @@ packages:
 
 snapshots:
 
+  '@agntn/hashes@0.6.2(ai@7.0.91(zod@4.5.4))':
+    dependencies:
+      '@agntn/tools': 0.0.0(@modelcontextprotocol/server@2.2.0)(ai@7.0.91(zod@4.5.4))
+      '@modelcontextprotocol/server': 2.2.0
+      citty: 0.2.2
+    optionalDependencies:
+      ai: 7.0.91(zod@4.5.4)
+
+  '@agntn/tools@0.0.0(@modelcontextprotocol/server@2.2.0)(ai@7.0.91(zod@4.5.4))':
+    optionalDependencies:
+      '@modelcontextprotocol/server': 2.2.0
+      ai: 7.0.91(zod@4.5.4)
+
   '@ai-sdk/gateway@4.0.73(zod@4.5.4)':
     dependencies:
       '@ai-sdk/provider': 4.0.10
@@ -8415,6 +8473,10 @@ snapshots:
       json5: 2.2.3
       rollup: 4.63.1
 
+  '@modelcontextprotocol/core@2.2.0':
+    dependencies:
+      zod: 4.5.4
+
   '@modelcontextprotocol/sdk@1.30.0(zod@4.5.4)':
     dependencies:
       '@hono/node-server': 2.1.1(hono@4.13.5)
@@ -8436,6 +8498,11 @@ snapshots:
       zod-to-json-schema: 3.25.2(zod@4.5.4)
     transitivePeerDependencies:
       - supports-color
+
+  '@modelcontextprotocol/server@2.2.0':
+    dependencies:
+      '@modelcontextprotocol/core': 2.2.0
+      zod: 4.5.4
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
