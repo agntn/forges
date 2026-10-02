@@ -21,9 +21,9 @@ function isCommandModule(value: unknown): value is { default: typeof McpCommand 
  * Loads the MCP command. A built bin inside a checkout runs the live source, as the Pi and OMP
  * extensions do, so a local server needs a restart after a change instead of `pnpm build`. The npm
  * package ships no `src` and keeps the bundle. So does a copy under `node_modules`, where Node
- * refuses to strip types, and a Node that strips none, as 22.x before 22.18 does without
- * `--experimental-strip-types`. `FORGES_DIST=1` keeps it everywhere, for tests of the build. The
- * URL is built at runtime, because a literal import would pull the source into the bundle.
+ * refuses to strip types, and a Node started with `--no-experimental-strip-types`. `FORGES_DIST=1`
+ * keeps it everywhere, for tests of the build. The URL is built at runtime, because a literal import
+ * would pull the source into the bundle.
  *
  * @returns The citty command that starts the stdio server.
  */

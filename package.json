@@ -128,7 +128,7 @@
     }
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=26"
   },
   "packageManager": "pnpm@10.12.1",
   "omp": {

@@ -30,7 +30,7 @@ Docs, and an explorer that runs the same calls: [forges.agntn.dev](https://forge
 pnpm add @agntn/forges
 ```
 
-Node.js 22 or newer.
+Node.js 26 or newer.
 
 ## 🚀 First call
 
