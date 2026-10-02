@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 
@@ -56,6 +57,16 @@ describe("cache scope tagging", () => {
     expect(scopeOf(client)).not.toContain("glpat-super-secret");
     expect(scopeOf(client)).toContain("https://gitlab.com/api/v4");
   });
+
+  it.each(["", "glpat-ascii", "token-zażółć-🔑", "x\udfffy"])(
+    "keys the scope by the first 16 hex of the token's SHA-256 (%j)",
+    (token) => {
+      const client = createHttpClient({ baseURL: "https://gitlab.com/api/v4", token });
+      const digest = createHash("sha256").update(token).digest("hex").slice(0, 16);
+
+      expect(scopeOf(client)).toBe(`https://gitlab.com/api/v4#${digest}`);
+    },
+  );
 
   it("reuses one scope for the same host and token", () => {
     const first = createHttpClient({ baseURL: "https://gitlab.com/api/v4", token: "t" });
