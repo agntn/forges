@@ -328,7 +328,7 @@ async function assertCheckoutBin() {
     "mcp under FORGES_DIST=1 keeps the bundle",
   );
   assert(bundled.includes(pathToFileURL(join(root, "dist/mcp.mjs")).href));
-  /* Node before 22.18 does not strip types unless asked; the bin has to keep the bundle there. */
+  /* Node 26 strips types unless told not to, and then the bin has to keep the bundle. */
   const unstripped = await mcpLoads(bin, {}, ["--no-experimental-strip-types"]);
   assert.deepEqual(
     unstripped.filter((url) => url.startsWith(source)),
