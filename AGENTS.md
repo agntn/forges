@@ -1,6 +1,6 @@
 # AGENTS.md — forges
 
-Unified TypeScript API for GitHub, GitLab, Gitea, and GitBucket. Normalizes auth headers, pagination, and field names behind a single abstract `Provider` base class. Built on unjs stack (ofetch, unstorage) with Vite+ for lint, format and tests, and obuild for the bundle. ESM only.
+Unified TypeScript API for GitHub, GitLab, Gitea, and GitBucket. Normalizes auth headers, pagination, and field names behind a single abstract `Provider` base class. Requests go through native `fetch` and the cache through unstorage, with Vite+ for lint, format and tests, and obuild for the bundle. ESM only.
 
 ## Quick Commands
 
@@ -37,9 +37,9 @@ src/
 ├── provider.ts           # Runtime abstract Provider base + typed mapper contract
 ├── types.ts              # Resource interfaces and unified data models (type-only)
 ├── auth.ts               # 4-level token detection: explicit → env → CLI → config
-├── http.ts               # ofetch wrapper with auth headers, retry, rate limit
+├── http.ts               # Native fetch client with auth headers, retry, rate limit
 ├── cache.ts              # unstorage LRU cache — GET-only, lazy-initialized
-├── errors.ts             # ForgesError hierarchy + normalizeError()
+├── errors.ts             # FetchError, ForgesError hierarchy + normalizeError()
 ├── ci-run.ts             # Cross-platform CI/check status and conclusion normalization
 ├── ci-job-log.ts         # CI job mapping, log cleanup, bounded log stream with failing steps first
 ├── review.ts             # Review verdict normalization: GitHub and Gitea reviews, GitLab reviewer stances
@@ -185,7 +185,7 @@ vi.mock("../src/cache.ts", () => ({ cachedFetch: mocks.cachedFetch }));
 
 **Fixtures** — raw API response objects (snake_case) defined at file top. Match real API shape.
 
-**Error helper** — `makeFetchError(status)` creates mock FetchError with status code.
+**Error helper** — `makeFetchError(status)` creates a `FetchError` from `src/errors.ts` with status code. `test/http.test.ts` stubs the global `fetch` with native `Response` objects.
 
 **Test hygiene** — `vi.resetAllMocks()` + env restore in `beforeEach`/`afterEach`. No test pollution.
 

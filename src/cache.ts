@@ -5,7 +5,7 @@
 
 import { createStorage, type Storage } from "unstorage";
 import lruCacheDriver from "unstorage/drivers/lru-cache";
-import type { $Fetch } from "ofetch";
+import type { HttpClient } from "./http.ts";
 
 /**
  * Options for cache creation
@@ -32,9 +32,9 @@ export interface CachedFetchOptions {
  */
 export const CACHE_SCOPE: unique symbol = Symbol.for("forges.cacheScope");
 
-type ScopedClient = $Fetch & { [CACHE_SCOPE]?: string };
+type ScopedClient = HttpClient & { [CACHE_SCOPE]?: string };
 
-function clientCacheScope(client: $Fetch): string {
+function clientCacheScope(client: HttpClient): string {
   return (client as ScopedClient)[CACHE_SCOPE] ?? "";
 }
 
@@ -146,13 +146,13 @@ function compareQueryEntries(
 /**
  * Wrapper around HTTP client that caches GET requests. A storage that fails to
  * read or write costs the call its cache, never the platform's answer.
- * @param client ofetch instance
+ * @param client HTTP client
  * @param url Request URL
  * @param options Request options
  * @returns Cached or fresh response
  */
 export async function cachedFetch<T>(
-  client: $Fetch,
+  client: HttpClient,
   url: string,
   options?: CachedFetchOptions,
 ): Promise<T> {
@@ -223,7 +223,7 @@ export async function clearCache(): Promise<void> {
  * @param options Request options
  */
 export async function invalidateCache(
-  client: $Fetch,
+  client: HttpClient,
   url: string,
   options?: CachedFetchOptions,
 ): Promise<void> {

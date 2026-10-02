@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { FetchError } from "ofetch";
+import { FetchError } from "../src/errors.ts";
 
 import { AuthenticationError, NotFoundError, RateLimitError } from "../src/errors.ts";
 import {

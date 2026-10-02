@@ -1,5 +1,5 @@
 /**
- * ofetch formats every FetchError message as `[METHOD] "<absolute url>": …` and
+ * Every FetchError message reads `[METHOD] "<absolute url>": …` and
  * `normalizeError` keeps that text, so passing it straight to a model would hand
  * it the `FORGES_*_BASE_URL` the tool surface deliberately withholds, along with
  * any credentials an operator put in it. The request line goes; a URL left

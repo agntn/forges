@@ -8,8 +8,7 @@ import type {
 import { assertAssignees } from "./assignees.ts";
 import { assertIssueUpdate, assertMergeInput, assertPullRequestUpdate } from "./update-input.ts";
 import { waitForChecks, type WaitedCheckPage } from "./check-wait.ts";
-import { FetchError } from "ofetch";
-import { AuthenticationError, ForgesError, RateLimitError } from "./errors.ts";
+import { AuthenticationError, FetchError, ForgesError, RateLimitError } from "./errors.ts";
 import { redactEndpoint } from "./redact-endpoint.ts";
 import { lazy } from "../packages/shared/lazy.ts";
 import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";

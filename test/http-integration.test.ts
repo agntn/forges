@@ -5,8 +5,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { normalizeError } from "../src/errors.ts";
 import { createHttpClient } from "../src/http.ts";
 
-describe("createHttpClient with ofetch", () => {
-  it("adds authentication through the real onRequest context", async () => {
+describe("createHttpClient over native fetch", () => {
+  it("adds authentication to a real request", async () => {
     let authorization: string | undefined;
     const server = createServer((request, response) => {
       authorization = request.headers.authorization;
@@ -77,11 +77,6 @@ describe("createHttpClient with ofetch", () => {
       for (const method of methods.slice(1)) {
         expect(hits.get(method)).toBe(1);
       }
-
-      hits.clear();
-      const request = new Request(`http://127.0.0.1:${address.port}`, { method: "POST" });
-      await expect(client(request, { retryDelay: 0 })).rejects.toThrow();
-      expect(hits.get("POST")).toBe(1);
 
       hits.clear();
       await expect(client("/", { method: "POST", retry: 1, retryDelay: 0 })).rejects.toThrow();

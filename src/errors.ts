@@ -3,7 +3,22 @@
  * Provides consistent error handling across different Git providers
  */
 
-import { FetchError } from "ofetch";
+/** A refused request, or one with no response, whose transport failure is then the `cause`. */
+export class FetchError<T = unknown> extends Error {
+  request?: string;
+  options?: object;
+  response?: Response;
+  data?: T;
+  status?: number;
+  statusCode?: number;
+  statusText?: string;
+  statusMessage?: string;
+
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "FetchError";
+  }
+}
 
 /**
  * Base error class for forges operations
@@ -67,7 +82,7 @@ export class RateLimitError extends ForgesError {
 }
 
 /**
- * Normalize FetchError or other errors into ForgesError hierarchy
+ * Normalize a FetchError or another error into the ForgesError hierarchy
  * Maps HTTP status codes to appropriate error types
  */
 export function normalizeError(error: unknown, platform?: string): ForgesError {
@@ -76,7 +91,6 @@ export function normalizeError(error: unknown, platform?: string): ForgesError {
     return error;
   }
 
-  // FetchError from ofetch
   if (error instanceof FetchError) {
     const status = error.status;
     const message = withProviderReason(error.message || `HTTP ${status}`, error);
@@ -164,7 +178,7 @@ const IPV6 =
 const USERINFO = /(\b[a-z][\w+.-]*:\/\/)[^\s/@]*@/gi;
 const INVISIBLE = /[\p{Cc}\p{Cf}\u2028\u2029]/gu;
 
-/** ofetch's message stops at the status; the reason from the body goes after it. */
+/** The request message stops at the status, and the reason from the body goes after it. */
 function withProviderReason(message: string, error: FetchError): string {
   const reason = providerReason(error.data);
   if (reason === undefined) return message;

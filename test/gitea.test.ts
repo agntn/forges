@@ -46,7 +46,7 @@ vi.mock("../src/cache.ts", () => ({
 import { rawFetch } from "../src/http.ts";
 import { createHttpClient } from "../src/http.ts";
 import { cachedFetch } from "../src/cache.ts";
-import { FetchError } from "ofetch";
+import { FetchError } from "../src/errors.ts";
 
 const mockedRawFetch = vi.mocked(rawFetch);
 const mockedCreateHttpClient = vi.mocked(createHttpClient);
