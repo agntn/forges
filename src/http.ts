@@ -3,7 +3,7 @@
  * Provides configurable authentication, retry logic, and rate limit awareness
  */
 
-import { createHash } from "node:crypto";
+import { sha256 } from "@agntn/hashes/sha2";
 import { CACHE_SCOPE } from "./cache.ts";
 import { FetchError } from "./errors.ts";
 import { version } from "./version.ts";
@@ -160,7 +160,7 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
   // Cache storage is process-global, so tag this client with the identity its
   // responses belong to. The token is hashed: cache keys can reach an external
   // storage backend and must never carry the raw credential.
-  const credential = createHash("sha256").update(token).digest("hex").slice(0, 16);
+  const credential = Buffer.from(sha256(Buffer.from(token))).toString("hex", 0, 8);
   return Object.assign(client, {
     raw: raw as HttpClient["raw"],
     [CACHE_SCOPE]: `${baseURL}#${credential}`,
