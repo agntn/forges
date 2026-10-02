@@ -137,6 +137,9 @@ export {
   FetchError,
   type HttpClient,
   type RawFetchResult,
+  type RequestOptions,
+  type ResponseData,
+  type ResponseType,
 } from "./http.ts";
 
 export {

@@ -90,7 +90,6 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
     "citty": "0.2.2",
-    "ofetch": "1.5.1",
     "unstorage": "1.17.5"
   },
   "devDependencies": {

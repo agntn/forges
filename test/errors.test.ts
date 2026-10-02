@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { FetchError } from "ofetch";
+import { FetchError } from "../src/errors.ts";
 import {
   normalizeError,
   ForgesError,

@@ -67,8 +67,13 @@ import type {
   MergePullRequestInput,
   UpdateReleaseInput,
 } from "../types.ts";
-import { FetchError } from "ofetch";
-import { ForgesError, NotFoundError, normalizeError, normalizeMergeError } from "../errors.ts";
+import {
+  FetchError,
+  ForgesError,
+  NotFoundError,
+  normalizeError,
+  normalizeMergeError,
+} from "../errors.ts";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
 import { parseLinkHeader } from "../pagination.ts";
 import {

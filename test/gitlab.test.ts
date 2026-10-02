@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vite-plus/test";
-import { FetchError } from "ofetch";
+import { FetchError } from "../src/errors.ts";
 import { NotFoundError, AuthenticationError, RateLimitError, ForgesError } from "../src/errors.ts";
 
 // --- Hoisted mocks ---

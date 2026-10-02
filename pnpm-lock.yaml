@@ -26,9 +26,6 @@ importers:
       citty:
         specifier: 0.2.2
         version: 0.2.2
-      ofetch:
-        specifier: 1.5.1
-        version: 1.5.1
       unstorage:
         specifier: 1.17.5
         version: 1.17.5

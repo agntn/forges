@@ -77,10 +77,15 @@ import type {
   MergePullRequestInput,
   UpdateReleaseInput,
 } from "../types.ts";
-import { FetchError } from "ofetch";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
 import { cachedFetch, invalidateCache } from "../cache.ts";
-import { ForgesError, normalizeError, normalizeMergeError, NotFoundError } from "../errors.ts";
+import {
+  FetchError,
+  ForgesError,
+  normalizeError,
+  normalizeMergeError,
+  NotFoundError,
+} from "../errors.ts";
 import {
   encodeApiResponsePathSegment,
   encodePathSegment,
@@ -395,7 +400,7 @@ function encodeWebPath(path: string): string {
   return path.split("/").map(encodePathSegment).join("/");
 }
 
-/** ofetch's retry codes without 408: a search that timed out times out again. */
+/** The default retry codes without 408: a search that timed out times out again. */
 const SEARCH_RETRY_STATUS_CODES = [409, 425, 429, 500, 502, 503, 504];
 
 const DEFAULT_PROJECT_ID_CACHE_MAX = 500;
