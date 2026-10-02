@@ -273,7 +273,8 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     owner,
     repo,
     base: Type.String({
-      description: "Branch, tag, or commit SHA the range starts from, as in git log base..head",
+      description:
+        "Branch, tag, or commit SHA the range starts from, as in git log base..head; ~N and ^N work, so sha^ against head sha is that one commit",
       minLength: 1,
     }),
     head: Type.String({

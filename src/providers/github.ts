@@ -81,6 +81,7 @@ import {
   encodeLabelPathSegment,
   encodePathSegment,
   encodeRefPathSegment,
+  encodeRevisionPathSegment,
 } from "./base-url.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
@@ -1225,7 +1226,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   /** Resolve a ref to a commit SHA; GitBucket ignores the sha media type and sends the commit. */
   private async resolveCommitSha(route: string, ref: string): Promise<string> {
     const body = await this.client<string, "text">(
-      `${route}/commits/${encodeRefPathSegment(ref)}`,
+      `${route}/commits/${encodeRevisionPathSegment(ref)}`,
       {
         headers: { Accept: "application/vnd.github.sha" },
         responseType: "text",
@@ -1469,7 +1470,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       const page = options?.page ?? 1;
       const { data, headers } = await rawFetch<GitHubComparison>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/compare/${encodeRefPathSegment(base)}...${encodeRefPathSegment(head)}`,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/compare/${encodeRevisionPathSegment(base)}...${encodeRevisionPathSegment(head)}`,
         { query: { page: String(page), per_page: String(options?.perPage ?? 30) } },
       );
       if (!data) throw new ForgesError("GitHub returned no comparison data", 502, "github");
@@ -1507,7 +1508,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         const commitRef = resolvedSha ?? sha;
         const encodedCommitRef =
           resolvedSha === undefined
-            ? encodeRefPathSegment(commitRef)
+            ? encodeRevisionPathSegment(commitRef)
             : encodePathSegment(commitRef);
         const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodedCommitRef}`;
         const { data, headers } = await rawFetch<GitHubCommit>(this.client, route, {
