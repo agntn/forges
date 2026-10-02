@@ -1025,6 +1025,16 @@ describe("Gitea Provider", () => {
         filesComplete: null,
       });
     });
+
+    it("steps back from a ref with ~N and ^N", async () => {
+      mockClient.mockResolvedValueOnce({ total_commits: 1, commits: [commit("bcd62a1", "x")] });
+
+      await provider.commits.compare("gitea", "tea", "main~1", "bcd62a1^");
+
+      expect(mockClient).toHaveBeenCalledWith("/repos/gitea/tea/compare/main~1...bcd62a1%5E", {
+        query: { files: "false", verification: "false" },
+      });
+    });
   });
   describe("commits.get", () => {
     it("returns commit metadata with null counts when Gitea omits them", async () => {

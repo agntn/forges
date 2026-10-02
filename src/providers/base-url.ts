@@ -79,6 +79,25 @@ export function encodeRefPathSegment(value: string): string {
   return encodeURIComponent(value);
 }
 
+/** A ref name with optional `~N` and `^N` steps, such as `main~2`. Tags take a bare ref name. */
+export function encodeRevisionPathSegment(value: string): string {
+  let nameEnd = value.length;
+  while (nameEnd > 0) {
+    let stepStart = nameEnd;
+    while (stepStart > 0 && /\d/.test(value[stepStart - 1] ?? "")) stepStart -= 1;
+    const step = value[stepStart - 1];
+    if (step !== "~" && step !== "^") break;
+    nameEnd = stepStart - 1;
+  }
+
+  const name = value.slice(0, nameEnd);
+  if (name.length === 0 || INVALID_REF_NAME.test(name)) {
+    throw new TypeError("Invalid git revision path segment");
+  }
+
+  return encodeURIComponent(value);
+}
+
 export function normalizeApiBaseURL(
   baseURL: string | undefined,
   fallbackBaseURL: string,

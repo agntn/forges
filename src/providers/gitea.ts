@@ -14,6 +14,7 @@ import {
   encodeApiResponsePathSegment,
   encodePathSegment,
   encodeRefPathSegment,
+  encodeRevisionPathSegment,
   normalizeApiBaseURL,
 } from "./base-url.ts";
 import { Provider, type ProviderRawTypes } from "../provider.ts";
@@ -824,7 +825,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         ? options.ref
         : (
             await this.client<GiteaCommit>(
-              `${route}/git/commits/${encodeRefPathSegment(options?.ref ?? "HEAD")}`,
+              `${route}/git/commits/${encodeRevisionPathSegment(options?.ref ?? "HEAD")}`,
               { query: { stat: "false", files: "false", verification: "false" } },
             )
           ).sha;
@@ -1136,7 +1137,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<CommitComparison> {
     try {
       const comparison = await this.client<GiteaComparison>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/compare/${encodeRefPathSegment(base)}...${encodeRefPathSegment(head)}`,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/compare/${encodeRevisionPathSegment(base)}...${encodeRevisionPathSegment(head)}`,
         { query: { files: "false", verification: "false" } },
       );
       const commits = comparison.commits.map((raw) => this.mapCommitSummary(raw)).toReversed();
@@ -1163,7 +1164,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<CommitPatch> {
     try {
       const commit = await this.client<GiteaCommit>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodeRefPathSegment(sha)}`,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodeRevisionPathSegment(sha)}`,
       );
       if ((options?.offset ?? 0) > 0 && sha !== commit.sha) {
         throw new ForgesError(

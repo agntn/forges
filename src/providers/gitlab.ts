@@ -90,6 +90,7 @@ import {
   encodeApiResponsePathSegment,
   encodePathSegment,
   encodeRefPathSegment,
+  encodeRevisionPathSegment,
   normalizeApiBaseURL,
 } from "./base-url.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
@@ -924,7 +925,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       }
 
       const commit = await this.client<GitLabCommit>(
-        `/projects/${projectId}/repository/commits/${encodeRefPathSegment(ref)}`,
+        `/projects/${projectId}/repository/commits/${encodeRevisionPathSegment(ref)}`,
       );
       assertContinuationRef(options, commit.id);
       const entries: RepositoryEntry[] = [];
@@ -1297,7 +1298,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   ): Promise<CommitPatch> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const encodedSha = encodeRefPathSegment(sha);
+      const encodedSha = encodeRevisionPathSegment(sha);
       const commit = await this.client<GitLabCommit>(
         `/projects/${projectId}/repository/commits/${encodedSha}`,
       );

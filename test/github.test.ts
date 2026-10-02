@@ -1517,9 +1517,24 @@ describe("GitHubProvider", () => {
       expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
 
-    it("refuses a ref git would not accept before any request", async () => {
-      await expect(gh.commits.compare("agntn", "forges", "main~3", "main")).rejects.toThrow(
-        "Invalid git ref path segment",
+    it("steps back from a ref with ~N and ^N", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: { status: "ahead", ahead_by: 1, behind_by: 0, total_commits: 1, commits: [] },
+        headers: makeHeaders(),
+      });
+
+      await gh.commits.compare("agntn", "forges", "1dc231a~1", "main^");
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/agntn/forges/compare/1dc231a~1...main%5E",
+        { query: { page: "1", per_page: "30" } },
+      );
+    });
+
+    it("refuses a revision git would not accept before any request", async () => {
+      await expect(gh.commits.compare("agntn", "forges", "main~3b", "main")).rejects.toThrow(
+        "Invalid git revision path segment",
       );
       expect(mocks.rawFetch).not.toHaveBeenCalled();
     });

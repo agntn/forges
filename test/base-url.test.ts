@@ -4,6 +4,7 @@ import {
   encodeLabelPathSegment,
   encodePathSegment,
   encodeRefPathSegment,
+  encodeRevisionPathSegment,
 } from "../src/providers/base-url.ts";
 
 describe("encodeLabelPathSegment", () => {
@@ -86,6 +87,35 @@ describe("encodeRefPathSegment", () => {
     "\x7f",
   ])("rejects %j, which git check-ref-format refuses too", (value) => {
     expect(() => encodeRefPathSegment(value)).toThrow("Invalid git ref path segment");
+  });
+});
+
+describe("encodeRevisionPathSegment", () => {
+  it.each([
+    ["main", "main"],
+    ["release/1.2", "release%2F1.2"],
+    ["1dc231a~1", "1dc231a~1"],
+    ["1dc231a^", "1dc231a%5E"],
+    ["main~2", "main~2"],
+    ["HEAD^2~3^", "HEAD%5E2~3%5E"],
+    ["v1~", "v1~"],
+    ["v12", "v12"],
+  ])("encodes the revision %j as one segment", (value, expected) => {
+    expect(encodeRevisionPathSegment(value)).toBe(expected);
+  });
+
+  it.each(["", "~1", "^", "a~b", "a~1b", "a^{tree}", "a@{1}", "a:b", "v1.~1", "a..b~1", "a/~1"])(
+    "rejects %j, which is no ref name with parent steps",
+    (value) => {
+      expect(() => encodeRevisionPathSegment(value)).toThrow("Invalid git revision path segment");
+    },
+  );
+
+  it("refuses a long run of steps without a ref name in linear time", () => {
+    const value = `${"~".repeat(100_000)}x`;
+    const started = performance.now();
+    expect(() => encodeRevisionPathSegment(value)).toThrow("Invalid git revision path segment");
+    expect(performance.now() - started).toBeLessThan(1_000);
   });
 });
 
