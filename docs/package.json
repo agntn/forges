@@ -20,7 +20,7 @@
     "@iconify-json/lucide": "1.2.137",
     "@iconify-json/simple-icons": "1.2.98",
     "@iconify-json/vscode-icons": "1.2.83",
-    "wrangler": "4.128.0"
+    "wrangler": "4.145.0"
   },
   "packageManager": "pnpm@11.3.0"
 }
