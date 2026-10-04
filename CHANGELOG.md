@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.4.1
+
+[compare changes](https://github.com/agntn/forges/compare/v0.4.0...v0.4.1)
+
+### 🩹 Fixes
+
+- **commits:** Accept main~1 and sha^ as revisions ([#225](https://github.com/agntn/forges/pull/225))
+
+### ❤️ Contributors
+
+- Ori
+
 ## v0.4.0
 
 [compare changes](https://github.com/agntn/forges/compare/v0.3.7...v0.4.0)
