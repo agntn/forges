@@ -509,6 +509,23 @@ export default function forgesExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
+    name: "forges_issues_search_global",
+    label: "Search Issues Across Repositories",
+    description:
+      "Search issues across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. author, state and labels filter on every platform, and an issue must carry every label. Pull requests never appear. Returns repository identity, totalCount and incomplete. Follow nextPage while hasNextPage is true; narrow the query when incomplete is true.",
+    parameters: schemas.globalIssueSearchParameters,
+    ...statusRenderers("forges_issues_search_global", "Search Issues"),
+    promptSnippet:
+      "Find issues across an owner's repositories, filtered by label, state or author.",
+    promptGuidelines: [
+      "Use forges_issues_search_global for triage across an owner's repositories instead of looping forges_issues_search over each one; narrow the query when incomplete is true.",
+    ],
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).searchIssuesGlobal(params);
+    },
+  });
+
+  pi.registerTool({
     name: "forges_issues_search",
     label: "Search Forges Issues",
     description: "Search repository issues with the selected platform's query syntax",

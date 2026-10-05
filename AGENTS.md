@@ -232,5 +232,6 @@ vi.mock("../src/cache.ts", () => ({ cachedFetch: mocks.cachedFetch }));
 - **Merges pin the head.** `pullRequests.merge` passes `headSha` as each platform's guard (`sha`, `head_commit_id`), so a push after review is a 409, and `normalizeMergeError()` adds the next step to 405 and 409. GitLab picks merge commit or rebase per project, so `method: "rebase"` is a 501 there, and it takes the commit message whole, so `message` needs `title`.
 - **Issue edits follow the same input.** GitHub and Gitea serve pull requests on the issue route, so `issues.update` reads the number first and answers `NotFoundError` for a pull request before any write. `state_reason` stays out: GitLab and Gitea have no counterpart.
 - **Gitea uses `limit`** param, not `per_page`.
+- **Gitea labels lie on search.** Both Gitea and Forgejo drop an unknown label name and return the rows unfiltered, and `/repos/issues/search` matches any of several labels while the repository list wants all. `issues.searchGlobal` keeps only rows with every label and answers an empty page once a row proves the filter was dropped.
 - **Gitea templates are repository-scoped:** do not claim GitHub-style owner inheritance.
 - **unstorage memory driver has no TTL** — that's why lru-cache driver is used.

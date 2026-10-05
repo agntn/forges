@@ -45,9 +45,10 @@ import type {
   PullRequestReviewState,
   PullRequestFile,
   PullRequestSearchItem,
-  GlobalPullRequestSearchItem,
   GlobalPullRequestSearchOptions,
   GlobalPullRequestSearchResult,
+  GlobalIssueSearchOptions,
+  GlobalIssueSearchResult,
   User,
   Owner,
   PageResult,
@@ -212,6 +213,7 @@ interface GitLabIssue {
   created_at: string;
   updated_at: string;
   web_url: string;
+  references?: { full?: string | null } | null;
 }
 
 interface GitLabMergeRequest {
@@ -1960,11 +1962,39 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     }
   }
 
-  /** Without `scope=all`, GitLab's `/merge_requests` lists only the caller's own. */
   protected override async searchPullRequestsGlobal(
     searchQuery: string,
     options?: GlobalPullRequestSearchOptions,
   ): Promise<GlobalPullRequestSearchResult> {
+    return this.searchAcrossProjects<GitLabMergeRequest, PullRequestSearchItem>(
+      "merge_requests",
+      searchQuery,
+      options,
+      (raw) => this.mapPullRequestSearchItem(raw),
+    );
+  }
+
+  protected override async searchIssuesGlobal(
+    searchQuery: string,
+    options?: GlobalIssueSearchOptions,
+  ): Promise<GlobalIssueSearchResult> {
+    return this.searchAcrossProjects<GitLabIssue, Issue>("issues", searchQuery, options, (raw) =>
+      this.mapIssue(raw),
+    );
+  }
+
+  /** Without `scope=all`, GitLab's `/merge_requests` and `/issues` list only the caller's own. */
+  private async searchAcrossProjects<
+    TRaw extends { references?: { full?: string | null } | null },
+    T extends Issue,
+  >(
+    route: "merge_requests" | "issues",
+    searchQuery: string,
+    options: GlobalIssueSearchOptions | undefined,
+    map: (raw: TRaw) => T,
+  ): Promise<SearchPageResult<T & { repository: string }> & { resultLimit: null }> {
+    const noun = route === "issues" ? "Issue" : "Pull-request";
+    const plural = route === "issues" ? "issues" : "merge requests";
     try {
       const page = options?.page ?? 1;
       const perPage = options?.perPage ?? 30;
@@ -1976,46 +2006,50 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         perPage > 100
       ) {
         throw new ForgesError(
-          "Pull-request search requires a positive page and perPage from 1 to 100",
+          `${noun} search requires a positive page and perPage from 1 to 100`,
           400,
           "gitlab",
         );
       }
       const sort = options?.sort ?? "created";
       if (sort !== "created" && sort !== "updated") {
-        throw new ForgesError("GitLab can't order merge requests by comments", 501, "gitlab");
+        throw new ForgesError(`GitLab can't order ${plural} by comments`, 501, "gitlab");
       }
       const order = options?.order ?? "desc";
       if (order !== "asc" && order !== "desc") {
-        throw new ForgesError("Pull-request search order must be asc or desc", 400, "gitlab");
+        throw new ForgesError(`${noun} search order must be asc or desc`, 400, "gitlab");
       }
       const query: Record<string, string> = {
-        state: "all",
         order_by: `${sort}_at`,
         sort: order,
         page: String(page),
         per_page: String(perPage),
       };
+      const filters = route === "issues" ? options : undefined;
+      const state = route === "merge_requests" ? "all" : this.mapStateFilter(filters?.state);
+      if (state) query.state = state;
       if (searchQuery.trim() !== "") query.search = searchQuery.trim();
       if (options?.author !== undefined) query.author_username = options.author;
-      let path = "/merge_requests";
+      if (filters?.labels?.length) query.labels = filters.labels.join(",");
+      let path = `/${route}`;
       if (options?.owner !== undefined && options.repo !== undefined) {
-        path = `/projects/${encodeProjectPath(options.owner, options.repo)}/merge_requests`;
+        path = `/projects/${encodeProjectPath(options.owner, options.repo)}/${route}`;
       } else if (options?.owner !== undefined) {
-        path = `/groups/${encodeNamespacePath(options.owner)}/merge_requests`;
+        path = `/groups/${encodeNamespacePath(options.owner)}/${route}`;
       } else {
         query.scope = "all";
       }
-      const { data, headers } = await rawFetch<GitLabMergeRequest[]>(this.client, path, {
+      const { data, headers } = await rawFetch<TRaw[]>(this.client, path, {
         query,
         retryStatusCodes: SEARCH_RETRY_STATUS_CODES,
       });
       const rawItems = data ?? [];
-      const items: GlobalPullRequestSearchItem[] = [];
+      const reference = route === "issues" ? /#\d+$/u : /!\d+$/u;
+      const items: Array<T & { repository: string }> = [];
       for (const raw of rawItems) {
-        const repository = raw.references?.full?.replace(/!\d+$/u, "");
+        const repository = raw.references?.full?.replace(reference, "");
         if (!repository || repository === raw.references?.full) continue;
-        items.push({ ...this.mapPullRequestSearchItem(raw), repository });
+        items.push({ ...map(raw), repository });
       }
       return {
         ...this.parsePagination(items, headers),
@@ -2034,7 +2068,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       }
       if (normalized.status === 404 && options?.owner !== undefined && options.repo === undefined) {
         throw new NotFoundError(
-          `No GitLab group ${options.owner}. For one user's merge requests, pass author instead`,
+          `No GitLab group ${options.owner}. For one user's ${plural}, pass author instead`,
           "gitlab",
           normalized.originalError,
         );

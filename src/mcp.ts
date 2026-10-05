@@ -204,6 +204,14 @@ function defineTools(schemas: ForgesToolSchemas): ToolDefinition[] {
       execute: (operations, args) => operations.listIssues(args),
     }),
     defineTool({
+      name: "forges_issues_search_global",
+      title: "Search Issues Across Repositories",
+      description:
+        "Search issues across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. author, state and labels filter on every platform, and an issue must carry every label. Pull requests never appear. Returns repository identity, totalCount and incomplete. Follow nextPage while hasNextPage is true; narrow the query when incomplete is true.",
+      inputSchema: schemas.globalIssueSearchParameters,
+      execute: (operations, args) => operations.searchIssuesGlobal(args),
+    }),
+    defineTool({
       name: "forges_issues_search",
       title: "Search Issues",
       description:

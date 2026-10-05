@@ -120,6 +120,7 @@ const toolNames = [
   "forges_releases_create",
   "forges_releases_update",
   "forges_issues_list",
+  "forges_issues_search_global",
   "forges_issues_search",
   "forges_issues_get",
   "forges_issues_comments",

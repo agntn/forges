@@ -60,6 +60,8 @@ import type {
   PullRequestSearchItem,
   GlobalPullRequestSearchOptions,
   GlobalPullRequestSearchResult,
+  GlobalIssueSearchOptions,
+  GlobalIssueSearchResult,
   Release,
   ReleaseResource,
   ReplyThreadInput,
@@ -146,6 +148,47 @@ function paginateContributionTemplates(
 function assertReleaseTag(tag: string): void {
   if (tag.trim() === "") {
     throw new ForgesError("Release tag must not be empty", 400);
+  }
+}
+
+/** Checks shared by pull request and issue search across repositories, before any request. */
+function assertGlobalSearch(
+  noun: "Pull-request" | "Issue",
+  query: string,
+  options: GlobalIssueSearchOptions | undefined,
+): void {
+  if (options?.author !== undefined && !/^[^\s:'"]+$/u.test(options.author)) {
+    throw new ForgesError(`${noun} search author must be a single login`, 400);
+  }
+  const labelled = noun === "Issue" && (options?.labels?.length ?? 0) > 0;
+  if (query.trim() === "" && options?.author === undefined && !labelled) {
+    throw new ForgesError(
+      noun === "Issue"
+        ? "Issue search needs a query, an author or a label"
+        : `${noun} search needs a query or an author`,
+      400,
+    );
+  }
+  if (options?.repo !== undefined && options.owner === undefined) {
+    throw new ForgesError(`${noun} search repository scope requires an owner`, 400);
+  }
+}
+
+/** Gitea and GitLab split labels on commas and GitHub quotes each one. */
+function assertGlobalIssueFilters(options: GlobalIssueSearchOptions | undefined): void {
+  if (options?.state !== undefined && !["open", "closed", "all"].includes(options.state)) {
+    throw new ForgesError("Issue search state must be open, closed or all", 400);
+  }
+  if ((options?.labels?.length ?? 0) > 10) {
+    throw new ForgesError("Issue search takes at most 10 labels", 400);
+  }
+  for (const [index, label] of (options?.labels ?? []).entries()) {
+    if (label.trim() === "" || /[,"\p{Cc}]/u.test(label)) {
+      throw new ForgesError(
+        `Issue search label ${index + 1} must be a name without commas or double quotes`,
+        400,
+      );
+    }
   }
 }
 
@@ -270,6 +313,11 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       },
     };
     this.issues = {
+      searchGlobal: async (query, options) => {
+        assertGlobalSearch("Issue", query, options);
+        assertGlobalIssueFilters(options);
+        return this.searchIssuesGlobal(query, options);
+      },
       list: (owner, repo, options) => this.listIssues(owner, repo, options),
       search: async (owner, repo, query, options) => {
         if (query.trim() === "") {
@@ -297,15 +345,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.pullRequests = {
       searchGlobal: async (query, options) => {
-        if (options?.author !== undefined && !/^[^\s:'"]+$/u.test(options.author)) {
-          throw new ForgesError("Pull-request search author must be a single login", 400);
-        }
-        if (query.trim() === "" && options?.author === undefined) {
-          throw new ForgesError("Pull-request search needs a query or an author", 400);
-        }
-        if (options?.repo !== undefined && options.owner === undefined) {
-          throw new ForgesError("Pull-request search repository scope requires an owner", 400);
-        }
+        assertGlobalSearch("Pull-request", query, options);
         return this.searchPullRequestsGlobal(query, options);
       },
       list: (owner, repo, options) => this.listPullRequests(owner, repo, options),
@@ -451,6 +491,14 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   ): Promise<GlobalPullRequestSearchResult> {
     return Promise.reject(
       new ForgesError("Global pull-request search is not supported by this provider", 501),
+    );
+  }
+  protected searchIssuesGlobal(
+    _query: string,
+    _options?: GlobalIssueSearchOptions,
+  ): Promise<GlobalIssueSearchResult> {
+    return Promise.reject(
+      new ForgesError("Global issue search is not supported by this provider", 501),
     );
   }
   protected searchCommits(

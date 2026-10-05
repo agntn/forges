@@ -21,7 +21,13 @@ const mocks = vi.hoisted(() => {
     readPatch: vi.fn(),
   };
   const releases = { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn() };
-  const issues = { list: vi.fn(), search: vi.fn(), get: vi.fn(), create: vi.fn() };
+  const issues = {
+    list: vi.fn(),
+    search: vi.fn(),
+    searchGlobal: vi.fn(),
+    get: vi.fn(),
+    create: vi.fn(),
+  };
   const pullRequests = {
     list: vi.fn(),
     listFiles: vi.fn(),
@@ -94,6 +100,7 @@ const toolNames = [
   "forges_releases_create",
   "forges_releases_update",
   "forges_issues_list",
+  "forges_issues_search_global",
   "forges_issues_search",
   "forges_issues_get",
   "forges_issues_comments",
@@ -1221,6 +1228,61 @@ describe("forges MCP server", () => {
       note: "Issue bodies are omitted from search output; use forges_issues_get to read one body.",
       result: { items: [{ number: 46 }], incomplete: false },
     });
+  });
+
+  it("searches issues across an owner's repositories through the shared operation", async () => {
+    mocks.issues.searchGlobal.mockResolvedValue({
+      items: [
+        {
+          id: "228",
+          number: 228,
+          title: "Add issue search across repositories",
+          body: "large body",
+          state: "open",
+          labels: ["enhancement"],
+          author: { login: "aeitwoen" },
+          assignees: [],
+          createdAt: "2026-10-04T00:00:00Z",
+          updatedAt: "2026-10-04T00:00:00Z",
+          url: "https://github.com/agntn/forges/issues/228",
+          repository: "agntn/forges",
+        },
+      ],
+      totalCount: 1,
+      incomplete: false,
+      hasNextPage: false,
+      resultLimit: 1000,
+    });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_issues_search_global",
+      arguments: { owner: "agntn", state: "open", labels: ["enhancement"] },
+    });
+
+    expect(mocks.issues.searchGlobal).toHaveBeenCalledWith("", {
+      author: undefined,
+      owner: "agntn",
+      repo: undefined,
+      state: "open",
+      labels: ["enhancement"],
+      page: undefined,
+      perPage: undefined,
+      sort: undefined,
+      order: undefined,
+    });
+    const answer = text(response.content);
+    expect(answer).not.toContain("large body");
+    expect(JSON.parse(answer)).toMatchObject({
+      result: { items: [{ number: 228, repository: "agntn/forges" }], resultLimit: 1000 },
+    });
+
+    const invalid = await client.callTool({
+      name: "forges_issues_search_global",
+      arguments: { owner: "agntn", labels: Array.from({ length: 11 }, (_, i) => `label-${i}`) },
+    });
+    expect(invalid.isError).toBe(true);
+    expect(mocks.issues.searchGlobal).toHaveBeenCalledTimes(1);
   });
 
   it("searches pull requests through the shared operation", async () => {

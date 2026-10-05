@@ -222,6 +222,44 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
       }),
     ),
   });
+  const globalIssueSearchParameters = closed({
+    platform,
+    query: Type.Optional(
+      Type.String({
+        description:
+          "Native issue query: qualifiers such as no:assignee on GitHub, keywords on Gitea and GitLab. Optional with author or labels",
+        minLength: 1,
+      }),
+    ),
+    author: Type.Optional(
+      Type.String({
+        description: "Login of the issue author, on every platform",
+        minLength: 1,
+      }),
+    ),
+    owner,
+    repo: Type.Optional(repo),
+    state,
+    labels: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description:
+          "Label names an issue must all carry, on every platform; no commas or double quotes",
+        maxItems: 10,
+      }),
+    ),
+    page,
+    perPage,
+    sort: Type.Optional(
+      Type.Union([Type.Literal("created"), Type.Literal("updated"), Type.Literal("comments")], {
+        description: "Sort field; omit for best match",
+      }),
+    ),
+    order: Type.Optional(
+      Type.Union([Type.Literal("asc"), Type.Literal("desc")], {
+        description: "Sort direction; defaults to desc",
+      }),
+    ),
+  });
   const commitSearchParameters = closed({
     platform,
     query: Type.String({
@@ -810,6 +848,19 @@ export default function forgesOmpExtension(pi: ExtensionAPI): void {
     approval: toolApproval("forges_issues_list"),
     async execute(_toolCallId, params) {
       return (await loadToolOperations()).listIssues(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "forges_issues_search_global",
+    label: "Search Issues Across Repositories",
+    description:
+      "Search issues across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. author, state and labels filter on every platform, and an issue must carry every label. Pull requests never appear. Returns repository identity, totalCount and incomplete. Follow nextPage while hasNextPage is true; narrow the query when incomplete is true.",
+    parameters: globalIssueSearchParameters,
+    ...statusRenderers("forges_issues_search_global", "Search Issues"),
+    approval: toolApproval("forges_issues_search_global"),
+    async execute(_toolCallId, params) {
+      return (await loadToolOperations()).searchIssuesGlobal(params);
     },
   });
 
