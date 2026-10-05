@@ -43,9 +43,10 @@ import type {
   PullRequestReview,
   PullRequestFile,
   PullRequestSearchItem,
-  GlobalPullRequestSearchItem,
   GlobalPullRequestSearchOptions,
   GlobalPullRequestSearchResult,
+  GlobalIssueSearchOptions,
+  GlobalIssueSearchResult,
   User,
   Owner,
   PageResult,
@@ -1608,15 +1609,37 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     }
   }
 
-  /**
-   * Gitea matches keywords, answers newest first and caps nothing. Its search route has
-   * no repository filter, so a repository scope goes to that repository's issue list.
-   * Forgejo ignores `created_by` there, so rows by anyone else mean the filter was dropped.
-   */
   protected override async searchPullRequestsGlobal(
     searchQuery: string,
     options?: GlobalPullRequestSearchOptions,
   ): Promise<GlobalPullRequestSearchResult> {
+    return this.searchAcrossRepositories("pull-request", searchQuery, options, (raw) =>
+      raw.pull_request ? this.mapPullRequestSearchItem(raw) : undefined,
+    );
+  }
+
+  protected override async searchIssuesGlobal(
+    searchQuery: string,
+    options?: GlobalIssueSearchOptions,
+  ): Promise<GlobalIssueSearchResult> {
+    return this.searchAcrossRepositories("issue", searchQuery, options, (raw) =>
+      raw.pull_request ? undefined : this.mapIssue(raw),
+    );
+  }
+
+  /**
+   * Gitea matches keywords, answers newest first and caps nothing. Its search route has
+   * no repository filter, so a repository scope goes to that repository's issue list.
+   * Forgejo ignores `created_by` there, so rows by anyone else mean the filter was dropped.
+   * Both also drop an unknown label name, and the search route matches any of several labels.
+   */
+  private async searchAcrossRepositories<T extends Issue>(
+    kind: "pull-request" | "issue",
+    searchQuery: string,
+    options: GlobalIssueSearchOptions | undefined,
+    map: (raw: GiteaIssue) => T | undefined,
+  ): Promise<SearchPageResult<T & { repository: string }> & { resultLimit: null }> {
+    const noun = kind === "issue" ? "Issue" : "Pull-request";
     try {
       const page = options?.page ?? 1;
       const perPage = options?.perPage ?? 30;
@@ -1628,23 +1651,22 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         perPage > 100
       ) {
         throw new ForgesError(
-          "Pull-request search requires a positive page and perPage from 1 to 100",
+          `${noun} search requires a positive page and perPage from 1 to 100`,
           400,
           PLATFORM,
         );
       }
       if ((options?.sort ?? "created") !== "created" || (options?.order ?? "desc") !== "desc") {
-        throw new ForgesError(
-          "Gitea pull-request search only returns the newest first",
-          501,
-          PLATFORM,
-        );
+        throw new ForgesError(`Gitea ${kind} search only returns the newest first`, 501, PLATFORM);
       }
+      const filters = kind === "issue" ? options : undefined;
+      const labels = filters?.labels ?? [];
       const query: Record<string, string> = {
         ...(searchQuery.trim() === "" ? {} : { q: searchQuery }),
         ...(options?.author === undefined ? {} : { created_by: options.author }),
-        type: "pulls",
-        state: "all",
+        ...(labels.length === 0 ? {} : { labels: labels.join(",") }),
+        type: kind === "issue" ? "issues" : "pulls",
+        state: filters?.state ?? "all",
         page: String(page),
         limit: String(perPage),
       };
@@ -1654,6 +1676,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       } else if (options?.owner !== undefined) {
         query.owner = options.owner;
       }
+      const scopedToRepository = path !== "/repos/issues/search";
       const { data, headers } = await rawFetch<GiteaIssue[]>(this.client, path, { query });
       const rawItems = data ?? [];
       const author = options?.author?.toLowerCase();
@@ -1662,21 +1685,39 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         rawItems.some((raw) => raw.user?.login?.toLowerCase() !== author)
       ) {
         throw new ForgesError(
-          "This Gitea host ignores the author filter on pull-request search",
+          `This Gitea host ignores the author filter on ${kind} search`,
           501,
           PLATFORM,
         );
       }
-      const items: GlobalPullRequestSearchItem[] = [];
+      const wanted = labels.map((label) => label.toLowerCase());
+      const missing = (raw: GiteaIssue) => {
+        const carried = new Set((raw.labels ?? []).map((label) => label.name.toLowerCase()));
+        return wanted.filter((label) => !carried.has(label)).length;
+      };
+      const unfiltered = (raw: GiteaIssue) =>
+        scopedToRepository ? missing(raw) > 0 : missing(raw) === wanted.length;
+      if (wanted.length > 0 && rawItems.some(unfiltered)) {
+        return {
+          items: [],
+          totalCount: 0,
+          hasNextPage: false,
+          incomplete: false,
+          resultLimit: null,
+        };
+      }
+      const items: Array<T & { repository: string }> = [];
       for (const raw of rawItems) {
         const repository = raw.repository?.full_name;
-        if (!raw.pull_request || !repository) continue;
-        items.push({ ...this.mapPullRequestSearchItem(raw), repository });
+        const mapped = map(raw);
+        if (!mapped || !repository || missing(raw) > 0) continue;
+        items.push({ ...mapped, repository });
       }
       const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
+      const exactTotal = Number.isFinite(total) && (scopedToRepository || wanted.length < 2);
       return {
         ...buildPageResult(items, headers, (item) => item),
-        totalCount: Number.isFinite(total) ? total : undefined,
+        totalCount: exactTotal ? total : undefined,
         incomplete: items.length !== rawItems.length,
         resultLimit: null,
       };

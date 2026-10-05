@@ -211,6 +211,48 @@ export function forgesToolSchemas() {
       }),
     ),
   });
+  const globalIssueSearchParameters = closed({
+    platform,
+    query: Type.Optional(
+      Type.String({
+        description:
+          "Native issue query: qualifiers such as no:assignee on GitHub, keywords on Gitea and GitLab. Optional with author or labels",
+        minLength: 1,
+      }),
+    ),
+    author: Type.Optional(
+      Type.String({
+        description: "Login of the issue author, on every platform",
+        minLength: 1,
+      }),
+    ),
+    owner,
+    repo: Type.Optional(repo),
+    state,
+    labels: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description:
+          "Label names an issue must all carry, on every platform; no commas or double quotes",
+        maxItems: 10,
+      }),
+    ),
+    page,
+    perPage,
+    sort: Type.Optional(
+      Type.Unsafe<"created" | "updated" | "comments">({
+        type: "string",
+        enum: ["created", "updated", "comments"],
+        description: "Sort field; omit for best match",
+      }),
+    ),
+    order: Type.Optional(
+      Type.Unsafe<"asc" | "desc">({
+        type: "string",
+        enum: ["asc", "desc"],
+        description: "Sort direction; defaults to desc",
+      }),
+    ),
+  });
   const commitSearchParameters = closed({
     platform,
     query: Type.String({
@@ -641,6 +683,7 @@ export function forgesToolSchemas() {
     compareCommitsParameters,
     commitSearchParameters,
     globalPullRequestSearchParameters,
+    globalIssueSearchParameters,
     listCiRunsParameters,
     listCiJobsParameters,
     ciJobLogParameters,

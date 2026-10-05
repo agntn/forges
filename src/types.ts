@@ -214,6 +214,24 @@ export interface Issue {
   url: string;
 }
 
+/** A search hit keeps the repository needed to open the issue. */
+export interface GlobalIssueSearchItem extends Issue {
+  repository: string;
+}
+
+/** Native query scope, filters, ordering and pagination for issue search across repositories. */
+export interface GlobalIssueSearchOptions extends GlobalPullRequestSearchOptions {
+  state?: IssueState | "all";
+  /** Label names an issue must all carry. */
+  labels?: string[];
+}
+
+/** Search can match more issues than the provider exposes. */
+export interface GlobalIssueSearchResult extends SearchPageResult<GlobalIssueSearchItem> {
+  /** Hits the provider lets callers page through; null when it sets no cap. */
+  resultLimit: number | null;
+}
+
 /** Pull-request fields available directly from every provider's search response. */
 export interface PullRequestSearchItem extends Issue {
   merged: boolean;
@@ -843,6 +861,7 @@ export interface ReleaseResource {
  * Resource accessor for issues
  */
 export interface IssueResource {
+  searchGlobal(query: string, options?: GlobalIssueSearchOptions): Promise<GlobalIssueSearchResult>;
   list(owner: string, repo: string, options?: ListOptions): Promise<PageResult<Issue>>;
   search(
     owner: string,

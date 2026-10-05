@@ -58,6 +58,8 @@ import type {
   PullRequestSearchItem,
   GlobalPullRequestSearchOptions,
   GlobalPullRequestSearchItem,
+  GlobalIssueSearchOptions,
+  GlobalIssueSearchItem,
   Release,
   ReplyThreadInput,
   Repository,
@@ -474,6 +476,10 @@ export interface GetContributionTemplateParams extends RepositoryParams {
 
 export interface SearchPullRequestsGlobalParams
   extends PlatformParams, GlobalPullRequestSearchOptions {
+  query?: string;
+}
+
+export interface SearchIssuesGlobalParams extends PlatformParams, GlobalIssueSearchOptions {
   query?: string;
 }
 
@@ -1042,6 +1048,33 @@ export async function listIssues(
     params.platform,
     summarizeIssuePage(issues),
     "Issue bodies are omitted from list output; use forges_issues_get to read one body.",
+  );
+}
+
+export async function searchIssuesGlobal(
+  args: SearchIssuesGlobalParams,
+): Promise<
+  ForgesToolResult<
+    SearchPageResult<Omit<GlobalIssueSearchItem, "body">> & { resultLimit: number | null }
+  >
+> {
+  const params = searchTarget(args);
+  const provider = await readProvider(params.platform);
+  const search = await provider.issues.searchGlobal(params.query ?? "", {
+    author: params.author,
+    owner: params.owner,
+    repo: params.repo,
+    state: params.state,
+    labels: params.labels,
+    page: params.page,
+    perPage: params.perPage,
+    sort: params.sort,
+    order: params.order,
+  });
+  return result(
+    params.platform,
+    { ...summarizeIssuePage(search), resultLimit: search.resultLimit },
+    "Issue bodies are omitted; use forges_issues_get with the hit's repository and number.",
   );
 }
 

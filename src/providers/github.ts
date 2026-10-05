@@ -37,7 +37,8 @@ import type {
   PullRequestSearchItem,
   GlobalPullRequestSearchOptions,
   GlobalPullRequestSearchResult,
-  GlobalPullRequestSearchItem,
+  GlobalIssueSearchOptions,
+  GlobalIssueSearchResult,
   User,
   Owner,
   PageResult,
@@ -2099,6 +2100,28 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     searchQuery: string,
     options?: GlobalPullRequestSearchOptions,
   ): Promise<GlobalPullRequestSearchResult> {
+    return this.searchAcrossRepositories("pull-request", searchQuery, options, (raw) =>
+      this.mapPullRequestSearchItem(raw),
+    );
+  }
+
+  protected override async searchIssuesGlobal(
+    searchQuery: string,
+    options?: GlobalIssueSearchOptions,
+  ): Promise<GlobalIssueSearchResult> {
+    return this.searchAcrossRepositories("issue", searchQuery, options, (raw) =>
+      this.mapIssue(raw),
+    );
+  }
+
+  /** One route serves both kinds, so a qualifier picks one and every row is checked again. */
+  private async searchAcrossRepositories<T extends Issue>(
+    kind: "pull-request" | "issue",
+    searchQuery: string,
+    options: GlobalIssueSearchOptions | undefined,
+    map: (raw: GitHubIssue) => T,
+  ): Promise<SearchPageResult<T & { repository: string }> & { resultLimit: number }> {
+    const noun = kind === "issue" ? "Issue" : "Pull-request";
     try {
       const page = options?.page ?? 1;
       const perPage = options?.perPage ?? 30;
@@ -2110,27 +2133,29 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         perPage > 100
       ) {
         throw new ForgesError(
-          "Pull-request search requires a positive page and perPage from 1 to 100",
+          `${noun} search requires a positive page and perPage from 1 to 100`,
           400,
         );
       }
       const offset = (page - 1) * perPage;
       if (offset >= GITHUB_SEARCH_RESULT_LIMIT) {
-        throw new ForgesError(
-          "GitHub pull-request search only exposes the first 1000 results",
-          400,
-        );
+        throw new ForgesError(`GitHub ${kind} search only exposes the first 1000 results`, 400);
       }
       if (
         options?.sort !== undefined &&
         !["created", "updated", "comments"].includes(options.sort)
       ) {
-        throw new ForgesError("Pull-request search sort must be created, updated or comments", 400);
+        throw new ForgesError(`${noun} search sort must be created, updated or comments`, 400);
       }
       if (options?.order !== undefined && !["asc", "desc"].includes(options.order)) {
-        throw new ForgesError("Pull-request search order must be asc or desc", 400);
+        throw new ForgesError(`${noun} search order must be asc or desc`, 400);
       }
-      let query = `${searchQuery} is:pr`.trim();
+      const filters = kind === "issue" ? options : undefined;
+      let query = `${searchQuery} ${kind === "issue" ? "is:issue" : "is:pr"}`.trim();
+      if (filters?.state !== undefined && filters.state !== "all") {
+        query += ` is:${filters.state}`;
+      }
+      for (const label of filters?.labels ?? []) query += ` label:"${label}"`;
       if (options?.author !== undefined) {
         query += ` author:${githubSearchQualifierSegment(options.author)}`;
       }
@@ -2155,9 +2180,10 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         },
       );
       const rawItems = data?.items ?? [];
-      const items: GlobalPullRequestSearchItem[] = [];
+      const items: Array<T & { repository: string }> = [];
       for (const raw of rawItems.slice(0, GITHUB_SEARCH_RESULT_LIMIT - offset)) {
-        if (raw.pull_request === undefined || !raw.repository_url) continue;
+        if ((raw.pull_request !== undefined) !== (kind === "pull-request")) continue;
+        if (!raw.repository_url) continue;
         let repository: string;
         try {
           const match = new URL(raw.repository_url).pathname.match(/\/repos\/([^/]+)\/([^/]+)$/u);
@@ -2177,7 +2203,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
           normalized !== `${options.owner}/${options.repo}`.toLowerCase()
         )
           continue;
-        items.push({ ...this.mapPullRequestSearchItem(raw), repository });
+        items.push({ ...map(raw), repository });
       }
       const result = buildPageResult(items, headers, (item) => item);
       if (page * perPage >= GITHUB_SEARCH_RESULT_LIMIT) {
@@ -2196,7 +2222,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     } catch (error) {
       if (error instanceof FetchError && (error.status === 404 || error.status === 405)) {
         throw new ForgesError(
-          "Global pull-request search is not supported by this GitHub-compatible host",
+          `Global ${kind} search is not supported by this GitHub-compatible host`,
           501,
           "github",
           error,

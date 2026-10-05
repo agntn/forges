@@ -87,6 +87,7 @@ const expectedToolNames = [
   "forges_releases_create",
   "forges_releases_update",
   "forges_issues_list",
+  "forges_issues_search_global",
   "forges_issues_search",
   "forges_issues_get",
   "forges_issues_comments",
@@ -544,6 +545,88 @@ async function assertPackedPrSearch(piTools, ompTools) {
   }
 }
 
+async function assertPackedIssueSearch(piTools, ompTools) {
+  const raw = {
+    id: 228,
+    number: 228,
+    title: "Add issue search across repositories",
+    body: "Full body",
+    state: "open",
+    labels: [{ name: "bug" }],
+    user: { login: "aeitwoen" },
+    created_at: "2026-10-04T00:00:00Z",
+    updated_at: "2026-10-04T00:00:00Z",
+    html_url: "https://github.com/agntn/forges/issues/228",
+  };
+  const requests = [];
+  const http = createServer((request, response) => {
+    requests.push(request.url);
+    response.setHeader("Content-Type", "application/json");
+    response.end(
+      JSON.stringify({
+        items: [
+          { ...raw, repository_url: "https://api.github.com/repos/agntn/forges" },
+          { ...raw, repository_url: "https://api.github.com/repos/agntn/keys" },
+          { ...raw, pull_request: {}, repository_url: "https://api.github.com/repos/agntn/web" },
+        ],
+        total_count: 3,
+        incomplete_results: false,
+      }),
+    );
+  });
+  await new Promise((resolve) => http.listen(0, "127.0.0.1", resolve));
+  const operations = await import(
+    pathToFileURL(join(packageRoot, "dist/tool-operations.mjs")).href
+  );
+  const client = new Client({ name: "issue-search-cli", version: "1.0.0" });
+  try {
+    const address = http.address();
+    assert(address && typeof address !== "string");
+    const baseURL = `http://127.0.0.1:${address.port}`;
+    process.env.FORGES_GITHUB_BASE_URL = baseURL;
+    operations.resetPinnedProviders();
+    const args = { owner: "agntn", state: "open", labels: ["bug"] };
+    const repositories = ["agntn/forges", "agntn/keys"];
+    for (const tools of [piTools, ompTools]) {
+      const tool = requireTool(tools, "forges_issues_search_global");
+      const answer = await tool.execute("search", args, undefined, undefined, {});
+      assert.deepEqual(
+        answer.details.result.items.map((item) => item.repository),
+        repositories,
+      );
+      assert.equal(answer.details.result.incomplete, true);
+      assert(!answer.content[0].text.includes("Full body"));
+    }
+    await client.connect(
+      new StdioClientTransport({
+        command: process.execPath,
+        args: [join(packageRoot, "dist/cli.mjs"), "mcp"],
+        env: { ...process.env, GH_TOKEN: "", FORGES_GITHUB_BASE_URL: baseURL },
+        stderr: "pipe",
+      }),
+    );
+    const answer = await client.callTool({ name: "forges_issues_search_global", arguments: args });
+    assert.notEqual(answer.isError, true);
+    assert.deepEqual(
+      JSON.parse(answer.content[0].text).result.items.map((item) => item.repository),
+      repositories,
+    );
+    assert.equal(requests.length, 3);
+    for (const request of requests) {
+      assert.equal(
+        new URL(request, baseURL).searchParams.get("q"),
+        'is:issue is:open label:"bug" user:agntn',
+      );
+    }
+  } finally {
+    await client.close();
+    operations.resetPinnedProviders();
+    await new Promise((resolve, reject) =>
+      http.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+}
+
 process.env.FORGES_GITHUB_BASE_URL = "not-a-url";
 process.env.GH_TOKEN = "";
 delete process.env.GITHUB_TOKEN;
@@ -640,6 +723,7 @@ try {
   await assertCheckoutBin();
   await assertPackedCommitSearch(piTools, ompTools);
   await assertPackedPrSearch(piTools, ompTools);
+  await assertPackedIssueSearch(piTools, ompTools);
   await assert.rejects(assertPackedCommitSearch(piTools, ompTools, join(packageRoot, "missing")), {
     code: "ERR_MODULE_NOT_FOUND",
   });

@@ -28,6 +28,7 @@ export const toolEffects = {
   forges_releases_create: "remoteCreate",
   forges_releases_update: "remoteUpdate",
   forges_issues_list: "hostedRead",
+  forges_issues_search_global: "hostedRead",
   forges_issues_search: "hostedRead",
   forges_issues_get: "hostedRead",
   forges_issues_comments: "hostedRead",
