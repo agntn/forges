@@ -10,7 +10,7 @@
     "deploy": "pnpm build && wrangler deploy"
   },
   "dependencies": {
-    "@agntn/hashes": "0.6.2",
+    "@agntn/hashes": "0.6.3",
     "better-sqlite3": "12.11.1",
     "docus": "5.13.0",
     "nuxt": "4.5.2",
