@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@agntn/hashes':
-        specifier: 0.6.2
-        version: 0.6.2(ai@7.0.91(zod@4.5.4))
+        specifier: 0.6.3
+        version: 0.6.3(ai@7.0.91(zod@4.5.4))
       better-sqlite3:
         specifier: 12.11.1
         version: 12.11.1
@@ -39,8 +39,8 @@ importers:
 
 packages:
 
-  '@agntn/hashes@0.6.2':
-    resolution: {integrity: sha512-rxIHJwqGF/Q3J1qFcUGtfYUsPFCy7/CdANlAIirdrf6NQURTirclc32PPe5E10WcIiIsI5xKxxVVkbu+CTIfzg==}
+  '@agntn/hashes@0.6.3':
+    resolution: {integrity: sha512-/0GejNXPCrSQGge/BoQ5iu2h+hUn9XXEDx/hhrSWKV1RYAuImWtx4WDDnn3LCLIAFzFTPK40RkNhbROExjZxkw==}
     engines: {node: '>=26'}
     hasBin: true
     peerDependencies:
@@ -7332,7 +7332,7 @@ packages:
 
 snapshots:
 
-  '@agntn/hashes@0.6.2(ai@7.0.91(zod@4.5.4))':
+  '@agntn/hashes@0.6.3(ai@7.0.91(zod@4.5.4))':
     dependencies:
       '@agntn/tools': 0.0.0(@modelcontextprotocol/server@2.2.0)(ai@7.0.91(zod@4.5.4))
       '@modelcontextprotocol/server': 2.2.0
