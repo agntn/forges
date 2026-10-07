@@ -1,4 +1,4 @@
-/** One row per platform for the landing grid, the sidebar, the explorer and `::platform-facts`. Auth columns mirror `src/auth.ts`. */
+/** One row per platform for the landing grid, the sidebar, the explorer and `::platform-facts`. Auth columns mirror `@agntn/credentials`. */
 export interface PlatformInfo {
   /** The value passed to `createProvider()` and reported as `platform`. */
   readonly key: "github" | "gitlab" | "gitea";

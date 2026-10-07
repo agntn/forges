@@ -36,7 +36,7 @@ src/
 ├── index.ts              # createProvider() factory — async, imports one provider module on demand
 ├── provider.ts           # Runtime abstract Provider base + typed mapper contract
 ├── types.ts              # Resource interfaces and unified data models (type-only)
-├── auth.ts               # 4-level token detection: explicit → env → CLI → config
+├── auth.ts               # resolveToken() over @agntn/credentials: explicit → env → CLI → config
 ├── http.ts               # Native fetch client with auth headers, retry, rate limit
 ├── cache.ts              # unstorage LRU cache — GET-only, lazy-initialized
 ├── errors.ts             # FetchError, ForgesError hierarchy + normalizeError()
@@ -78,7 +78,7 @@ test/
 | Add new provider              | `src/providers/`                   | Copy github.ts as template. Extend the abstract `Provider` base, add its loader to the `providers` map in `src/index.ts` |
 | Add new resource              | `src/types.ts` → provider files    | Define interface in types.ts, implement in each provider                                                                 |
 | Change contribution templates | `src/provider.ts` + provider files | Keep lists metadata-only; `get` must resolve an exact listed key                                                         |
-| Change auth logic             | `src/auth.ts`                      | `resolveToken()` chain: order matters                                                                                    |
+| Change auth logic             | `@agntn/credentials`               | The chain lives there; `src/auth.ts` only maps a platform to its `resolve()`                                             |
 | Change cache backend          | `src/cache.ts`                     | `configureStorage()` swaps unstorage driver                                                                              |
 | Fix pagination                | `src/pagination.ts`                | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab                                                           |
 | Fix error mapping             | `src/errors.ts`                    | `normalizeError()` maps FetchError → ForgesError subtypes                                                                |

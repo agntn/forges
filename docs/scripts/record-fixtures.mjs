@@ -1,9 +1,9 @@
 /**
  * Records the landing samples through the built library (dist/index.mjs). Run from docs/: `node scripts/record-fixtures.mjs`.
- * GitHub uses the local gh token (threads need GraphQL); GitLab and Codeberg are anonymous.
+ * GitHub threads need a token, found as createProvider finds one. GitLab and Codeberg go anonymous.
  */
 import { writeFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { resolve } from "@agntn/credentials/github";
 import { createProvider } from "../../dist/index.mjs";
 
 const OUT = process.argv[2];
@@ -18,7 +18,8 @@ const cut = (value, max) => {
 };
 const firstLine = (value) => value.split(/\r?\n/u, 1)[0]?.trim() ?? "";
 
-const ghToken = execFileSync("gh", ["auth", "token"], { encoding: "utf8" }).trim();
+const ghToken = resolve()?.token;
+if (!ghToken) throw new Error("No GitHub token: set GH_TOKEN or run gh auth login");
 
 const TARGETS = [
   { platform: "github", owner: "nitrojs", repo: "nitro", token: ghToken },
