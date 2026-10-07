@@ -204,7 +204,7 @@ function runsMutation(body: object): boolean {
   return (picked.length > 0 ? picked : operations).some(({ kind }) => kind === "mutation");
 }
 
-/** Operations at brace depth zero, or `undefined` when the braces don't balance and nothing is sure. */
+/** Operations at brace depth zero, or `undefined` when unbalanced braces leave it unsure. */
 function definedOperations(document: string): { kind: string; name?: string }[] | undefined {
   const operations: { kind: string; name?: string }[] = [];
   let depth = 0;
