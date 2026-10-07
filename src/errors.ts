@@ -191,7 +191,10 @@ function isWrite(error: FetchError): boolean {
   return typeof body !== "object" || body === null || runsMutation(body);
 }
 
-/** Whether the operation `operationName` picks is a mutation, or any is when it picks none. */
+/**
+ * Whether the operation `operationName` picks is a mutation, or any is when it picks none.
+ * Unsure means write: a spare read costs less than a duplicate.
+ */
 function runsMutation(body: object): boolean {
   const query: unknown = Reflect.get(body, "query");
   const name: unknown = Reflect.get(body, "operationName");
