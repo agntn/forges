@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PLATFORMS, platformInfo } from "../../utils/platforms";
+import { EXPLORER_PLATFORMS, PLATFORMS, platformInfo } from "../../utils/platforms";
 
 const props = defineProps<{ platform: string }>();
 
@@ -10,7 +10,12 @@ const position = computed(() => PLATFORMS.findIndex((row) => row.slug === props.
 const provider = computed(() => {
   const key = info.value?.key ?? "github";
   return {
-    name: { github: "GitHubProvider", gitlab: "GitLabProvider", gitea: "GiteaProvider" }[key],
+    name: {
+      github: "GitHubProvider",
+      gitlab: "GitLabProvider",
+      gitea: "GiteaProvider",
+      artifacts: "ArtifactsProvider",
+    }[key],
     path: `@agntn/forges/${key}`,
     borrowed: info.value !== undefined && info.value.slug !== info.value.key,
   };
@@ -23,7 +28,9 @@ const create = computed(() =>
 );
 
 const explorer = computed(() =>
-  info.value && !provider.value.borrowed
+  info.value &&
+  !provider.value.borrowed &&
+  EXPLORER_PLATFORMS.some((row) => row.key === info.value?.key)
     ? `/explorer?op=platforms&platform=${info.value.key}`
     : null,
 );

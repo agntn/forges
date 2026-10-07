@@ -1,6 +1,6 @@
 /**
- * Pagination helpers for GitHub, Gitea, and GitLab APIs
- * Supports Link header parsing and async pagination
+ * Pagination helpers for GitHub, Gitea, GitLab and Cloudflare Artifacts APIs
+ * Supports Link header parsing, async pagination and cursor walks
  */
 
 import { normalizeError } from "./errors.ts";
@@ -205,6 +205,41 @@ export function slicePage<T>(items: readonly T[], page = 1, perPage = 30): PageR
   return {
     items: items.slice(start, start + perPage),
     totalCount: items.length,
+    hasNextPage,
+    nextPage: hasNextPage ? page + 1 : undefined,
+  };
+}
+
+/** One request of a list paged by cursor, with the cursor that continues it. */
+export interface CursorChunk<T> {
+  items: T[];
+  cursor?: string;
+}
+
+/**
+ * One page of a list paged only by cursor. A cursor can't jump, so the walk reads every row before
+ * the page and one past it, since a cursor may still lead to an empty page.
+ */
+export async function cursorPage<T>(
+  fetchChunk: (limit: number, cursor: string | undefined) => Promise<CursorChunk<T>>,
+  page = 1,
+  perPage = 30,
+  maxChunk = 100,
+): Promise<PageResult<T>> {
+  const start = (page - 1) * perPage;
+  const wanted = start + perPage + 1;
+  const items: T[] = [];
+  let cursor: string | undefined;
+  do {
+    const chunk = await fetchChunk(Math.min(maxChunk, wanted - items.length), cursor);
+    if (chunk.items.length === 0) break;
+    items.push(...chunk.items);
+    cursor = chunk.cursor;
+  } while (cursor !== undefined && items.length < wanted);
+
+  const hasNextPage = items.length > start + perPage;
+  return {
+    items: items.slice(start, start + perPage),
     hasNextPage,
     nextPage: hasNextPage ? page + 1 : undefined,
   };

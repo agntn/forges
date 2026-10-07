@@ -11,6 +11,9 @@
 import { resolve as resolveGitea } from "@agntn/credentials/gitea";
 import { resolve as resolveGitHub } from "@agntn/credentials/github";
 import { resolve as resolveGitLab } from "@agntn/credentials/gitlab";
+import { CredentialsError } from "@agntn/credentials";
+import type { CloudflareCredential, CloudflareOptions } from "@agntn/credentials/cloudflare";
+import { AuthenticationError } from "./errors.ts";
 
 export type Platform = "github" | "gitlab" | "gitea";
 
@@ -34,4 +37,21 @@ export function resolveToken(
   options?: { token?: string; baseURL?: string; account?: string },
 ): AuthResult | null {
   return resolvers[platform](options);
+}
+
+/** The Cloudflare token and account for `artifacts`, with the module loaded on the first call. */
+export async function resolveCloudflareCredential(
+  options: CloudflareOptions,
+): Promise<CloudflareCredential> {
+  const { resolve } = await import("@agntn/credentials/cloudflare");
+  try {
+    return await resolve(options);
+  } catch (error) {
+    if (!(error instanceof CredentialsError)) throw error;
+    throw new AuthenticationError(
+      `No Cloudflare credentials for artifacts: ${error.message}`,
+      "artifacts",
+      error,
+    );
+  }
 }

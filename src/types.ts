@@ -762,6 +762,8 @@ export interface ReplyThreadInput {
 export interface ProviderConfig {
   baseURL?: string;
   token?: string;
+  /** Cloudflare account that owns the Artifacts namespaces. Only `artifacts` reads it. */
+  accountId?: string;
   cache?: {
     enabled?: boolean;
     ttl?: number;

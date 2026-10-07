@@ -23,6 +23,7 @@ Docs, and an explorer that runs the same calls: [forges.agntn.dev](https://forge
 - 🤖 **51 tools, four surfaces.** MCP, Pi, OMP and the CLI share one definition of each. Twelve tools write to the host.
 - 🚫 **Missing is 501.** Code search on Gitea is not an empty page. You get a `ForgesError` with status 501.
 - 🧭 **GitBucket is GitHub plus `baseURL`.** Forgejo and Codeberg are Gitea plus `baseURL`. Same class, different host.
+- ☁️ **Cloudflare Artifacts too.** Git without the forge. Repos, files and the log through the same calls, with the namespace as `owner`. Ask it for issues and you get a 501, because there's nobody there to file one.
 
 ## 📦 Install
 
@@ -131,12 +132,13 @@ Replace the sample `mergeCommit` with the forge's actual merge or squash SHA for
 
 ## 🗺️ Providers
 
-| Platform                                                             | Provider             | Auth header            | Threads                       | Code search                        |
-| -------------------------------------------------------------------- | -------------------- | ---------------------- | ----------------------------- | ---------------------------------- |
-| [GitHub](https://forges.agntn.dev/platforms/github)                  | `github`             | `Authorization: token` | GraphQL, real flags           | global, owner, repository          |
-| [GitLab](https://forges.agntn.dev/platforms/gitlab)                  | `gitlab`             | `Private-Token`        | REST discussions              | token required, Premium for global |
-| [Gitea, Forgejo, Codeberg](https://forges.agntn.dev/platforms/gitea) | `gitea` + `baseURL`  | `Authorization: token` | one thread per review comment | none                               |
-| [GitBucket](https://forges.agntn.dev/platforms/gitbucket)            | `github` + `baseURL` | `Authorization: token` | none                          | none                               |
+| Platform                                                             | Provider             | Auth header             | Threads                       | Code search                        |
+| -------------------------------------------------------------------- | -------------------- | ----------------------- | ----------------------------- | ---------------------------------- |
+| [GitHub](https://forges.agntn.dev/platforms/github)                  | `github`             | `Authorization: token`  | GraphQL, real flags           | global, owner, repository          |
+| [GitLab](https://forges.agntn.dev/platforms/gitlab)                  | `gitlab`             | `Private-Token`         | REST discussions              | token required, Premium for global |
+| [Gitea, Forgejo, Codeberg](https://forges.agntn.dev/platforms/gitea) | `gitea` + `baseURL`  | `Authorization: token`  | one thread per review comment | none                               |
+| [GitBucket](https://forges.agntn.dev/platforms/gitbucket)            | `github` + `baseURL` | `Authorization: token`  | none                          | none                               |
+| [Cloudflare Artifacts](https://forges.agntn.dev/platforms/artifacts) | `artifacts`          | `Authorization: Bearer` | none                          | none                               |
 
 Code search on Gitea is a 501, not an empty page. Host pages: [Platforms](https://forges.agntn.dev/platforms).
 

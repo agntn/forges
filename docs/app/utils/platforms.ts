@@ -1,7 +1,7 @@
 /** One row per platform for the landing grid, the sidebar, the explorer and `::platform-facts`. Auth columns mirror `@agntn/credentials`. */
 export interface PlatformInfo {
   /** The value passed to `createProvider()` and reported as `platform`. */
-  readonly key: "github" | "gitlab" | "gitea";
+  readonly key: "github" | "gitlab" | "gitea" | "artifacts";
   /** Page slug. GitBucket rides on the GitHub provider, Forgejo on Gitea. */
   readonly slug: string;
   readonly label: string;
@@ -10,7 +10,7 @@ export interface PlatformInfo {
   readonly blurb: string;
   /** Default API base URL of the provider class. */
   readonly host: string;
-  /** Environment variables `resolveToken()` reads, in order. */
+  /** Environment variables the credential chain reads, in order. */
   readonly envVars: readonly string[];
   /** CLI whose stored login is picked up when no env var is set. */
   readonly cli: string;
@@ -97,10 +97,33 @@ export const PLATFORMS: readonly PlatformInfo[] = [
     templates: "repository scope only",
     to: "/platforms/gitbucket",
   },
+  {
+    key: "artifacts",
+    slug: "artifacts",
+    label: "Artifacts",
+    icon: "i-simple-icons-cloudflare",
+    blurb:
+      "Git storage behind the Cloudflare API. Repos, files and history read like on any forge, and the forge part is a 501.",
+    host: "api.cloudflare.com/client/v4",
+    envVars: ["CLOUDFLARE_API_TOKEN", "AGNTN_CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_ACCOUNT_ID"],
+    cli: "cf auth login session",
+    configFile: null,
+    authHeader: "Authorization: Bearer",
+    anonymousReads: "none, every read needs a token",
+    threads: "none, no pull requests to hang them on",
+    codeSearch: "unsupported, explicit error",
+    templates: "none",
+    to: "/platforms/artifacts",
+  },
 ];
 
-/** The three provider classes, one row each; GitBucket rides on the GitHub row. */
+/** One row per provider class; GitBucket rides on the GitHub row. */
 export const PROVIDER_PLATFORMS = PLATFORMS.filter((platform) => platform.slug === platform.key);
+
+/** What the docs worker reads for you. Artifacts needs your Cloudflare account, so it's out. */
+export const EXPLORER_PLATFORMS = PROVIDER_PLATFORMS.filter(
+  (platform) => platform.key !== "artifacts",
+);
 
 const BY_SLUG = new Map(PLATFORMS.map((platform) => [platform.slug, platform]));
 

@@ -1,6 +1,6 @@
 # AGENTS.md — forges
 
-Unified TypeScript API for GitHub, GitLab, Gitea, and GitBucket. Normalizes auth headers, pagination, and field names behind a single abstract `Provider` base class. Requests go through native `fetch` and the cache through unstorage, with Vite+ for lint, format and tests, and obuild for the bundle. ESM only.
+Unified TypeScript API for GitHub, GitLab, Gitea, GitBucket, and Cloudflare Artifacts. Normalizes auth headers, pagination, and field names behind a single abstract `Provider` base class. Requests go through native `fetch` and the cache through unstorage, with Vite+ for lint, format and tests, and obuild for the bundle. ESM only.
 
 ## Quick Commands
 
@@ -36,7 +36,7 @@ src/
 ├── index.ts              # createProvider() factory — async, imports one provider module on demand
 ├── provider.ts           # Runtime abstract Provider base + typed mapper contract
 ├── types.ts              # Resource interfaces and unified data models (type-only)
-├── auth.ts               # resolveToken() over @agntn/credentials: explicit → env → CLI → config
+├── auth.ts               # resolveToken() over @agntn/credentials: explicit → env → CLI → config, resolveCloudflareCredential() for artifacts
 ├── http.ts               # Native fetch client with auth headers, retry, rate limit
 ├── cache.ts              # unstorage LRU cache — GET-only, lazy-initialized
 ├── errors.ts             # FetchError, ForgesError hierarchy + normalizeError()
@@ -46,7 +46,7 @@ src/
 ├── changed-file.ts       # Changed-file status normalization + GitLab diff line counts
 ├── commit-patch.ts       # Bounded commit patch stream rendering and continuation
 ├── update-input.ts       # Issue and pull request update and merge checks + whole-list assignee merge for GitLab and Gitea
-├── pagination.ts         # Link header + x-next-page async generator, local page slicing
+├── pagination.ts         # Link header + x-next-page async generator, local page slicing, cursorPage()
 ├── version.ts            # Package version — the one source for it in src/
 ├── tool-operations.ts    # Executors behind every agent surface (MCP, Pi, OMP, CLI) + toolFailure()
 ├── tool-schemas.ts       # ForgesPlatform + the TypeBox parameters, built with `Type` from @agntn/tools
@@ -57,11 +57,13 @@ src/
 ├── github.ts             # Sub-path re-export for @agntn/forges/github
 ├── gitlab.ts             # Sub-path re-export for @agntn/forges/gitlab
 ├── gitea.ts              # Sub-path re-export for @agntn/forges/gitea
+├── artifacts.ts          # Sub-path re-export for @agntn/forges/artifacts
 └── providers/
     ├── base-url.ts       # Base URL normalization + safe API path encoding
     ├── github.ts         # Class. Also handles GitBucket via baseURL
     ├── gitlab.ts         # Class. Project ID resolution + caching, Private-Token auth
-    └── gitea.ts          # Class. limit param, null-safe fields
+    ├── gitea.ts          # Class. limit param, null-safe fields
+    └── artifacts.ts      # Class. Cloudflare Artifacts: Git reads only, the forge side answers 501
 packages/
 ├── shared/
 │   ├── tool-effects.ts          # Each tool's effect: MCP hints, OMP approval, the (write) mark
@@ -83,7 +85,7 @@ test/
 | Change contribution templates | `src/provider.ts` + provider files | Keep lists metadata-only; `get` must resolve an exact listed key                                                         |
 | Change auth logic             | `@agntn/credentials`               | The chain lives there; `src/auth.ts` only maps a platform to its `resolve()`                                             |
 | Change cache backend          | `src/cache.ts`                     | `configureStorage()` swaps unstorage driver                                                                              |
-| Fix pagination                | `src/pagination.ts`                | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab                                                           |
+| Fix pagination                | `src/pagination.ts`                | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab, `cursorPage()` for Artifacts                             |
 | Fix error mapping             | `src/errors.ts`                    | `normalizeError()` maps FetchError → ForgesError subtypes                                                                |
 | Add sub-path export           | `build.config.ts` + `package.json` | Must update both: bundle `input` + exports map                                                                           |
 | Add agent tool                | `src/tool-operations.ts`           | Executor first, then its `defineTool` in `src/tools.ts` and its effect in `packages/shared/tool-effects.ts`              |
@@ -138,11 +140,12 @@ The abstract `Provider` constructor binds resource objects to protected platform
 
 ### Auth headers
 
-| Platform | Header          | Format    |
-| -------- | --------------- | --------- |
-| GitHub   | `Authorization` | `token X` |
-| GitLab   | `Private-Token` | `X`       |
-| Gitea    | `Authorization` | `token X` |
+| Platform  | Header          | Format     |
+| --------- | --------------- | ---------- |
+| GitHub    | `Authorization` | `token X`  |
+| GitLab    | `Private-Token` | `X`        |
+| Gitea     | `Authorization` | `token X`  |
+| Artifacts | `Authorization` | `Bearer X` |
 
 Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 
@@ -239,4 +242,5 @@ vi.mock("../src/cache.ts", () => ({ cachedFetch: mocks.cachedFetch }));
 - **Gitea uses `limit`** param, not `per_page`.
 - **Gitea labels lie on search.** Both Gitea and Forgejo drop an unknown label name and return the rows unfiltered, and `/repos/issues/search` matches any of several labels while the repository list wants all. `issues.searchGlobal` keeps only rows with every label and answers an empty page once a row proves the filter was dropped.
 - **Gitea templates are repository-scoped:** do not claim GitHub-style owner inheritance.
+- **Cloudflare Artifacts is Git without a forge.** `owner` is the namespace and `ProviderConfig.accountId` the account. Repos, contents and commits read, everything else is a 501. The credential comes from `resolveCloudflareCredential()` on every request, not once, because a cf session token expires. A 401 on one gets one refresh and one retry. `{ token: "" }` means look it up, never anonymous, so the tool layer keeps one pinned provider for reads and writes and never adds the tokenless hint. Repositories page by cursor through `cursorPage()`, the log by offset. The log answers `ref=HEAD` and an unknown ref with an empty list, so `HEAD` is left out and an empty first page with a ref is `NotFoundError`.
 - **unstorage memory driver has no TTL** — that's why lru-cache driver is used.

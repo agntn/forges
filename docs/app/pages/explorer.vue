@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { version } from "../../../package.json";
 import { OPERATIONS } from "../utils/explorer";
-import { PROVIDER_PLATFORMS } from "../utils/platforms";
+import { EXPLORER_PLATFORMS } from "../utils/platforms";
 
 definePageMeta({ layout: "default" });
 
@@ -62,7 +62,7 @@ defineOgImage(
           </div>
           <div>
             <dt>Platforms</dt>
-            <dd>{{ PROVIDER_PLATFORMS.length }}</dd>
+            <dd>{{ EXPLORER_PLATFORMS.length }}</dd>
             <dd class="hero-metric-sub">Gitea on gitea.com or Codeberg</dd>
           </div>
           <div>

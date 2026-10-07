@@ -107,8 +107,22 @@ export function buildRepositoryFile(
   base64: string,
   options: RepositoryContentsOptions = {},
 ): RepositoryFileContents {
+  return buildRepositoryFileFromBytes(
+    path,
+    sha,
+    Buffer.from(base64.replaceAll("\n", ""), "base64"),
+    options,
+  );
+}
+
+/** Cut one bounded slice of a file a platform served as raw bytes. */
+export function buildRepositoryFileFromBytes(
+  path: string,
+  sha: string,
+  bytes: Uint8Array,
+  options: RepositoryContentsOptions = {},
+): RepositoryFileContents {
   assertRepositoryContentsOptions(options);
-  const bytes = Buffer.from(base64.replaceAll("\n", ""), "base64");
   assertFileSize(path, bytes.length);
   const offset = options.offset ?? 0;
   const text = decodeText(bytes);

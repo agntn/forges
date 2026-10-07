@@ -1,5 +1,14 @@
 <script setup lang="ts">
 import { AGENT_TOOLS, WRITE_TOOLS } from "../../utils/tools";
+import { spellOut } from "../../utils/format";
+import { PLATFORMS, PROVIDER_PLATFORMS } from "../../utils/platforms";
+
+/** Counted from the platform table, so the next provider can't leave the heading behind. */
+const providersHeading =
+  `${spellOut(PROVIDER_PLATFORMS.length)} providers, ${spellOut(PLATFORMS.length)} platforms`.replace(
+    /^./u,
+    (letter) => letter.toUpperCase(),
+  );
 
 const { samples, paused, current, step } = useLandingForge();
 </script>
@@ -91,7 +100,7 @@ const { samples, paused, current, step } = useLandingForge();
       <div class="mx-auto w-full max-w-[var(--ui-container)] px-8 py-20 sm:px-12 lg:px-16">
         <div class="max-w-2xl">
           <h2 class="text-2xl font-medium tracking-tight text-highlighted sm:text-[1.75rem]">
-            Three providers, four platforms
+            {{ providersHeading }}
           </h2>
           <p class="mt-4 text-sm leading-6 text-muted">
             GitHub wants <code class="forges-code">Authorization: token</code>, GitLab wants
@@ -100,7 +109,8 @@ const { samples, paused, current, step } = useLandingForge();
             <code class="forges-code">per_page</code>. Each provider keeps that to itself and maps
             its raw responses onto the shared types. GitBucket speaks the GitHub API, so it's the
             GitHub provider with a <code class="forges-code">baseURL</code>. Forgejo and Codeberg
-            are Gitea the same way. And your own forge is one class away.
+            are Gitea the same way. Cloudflare Artifacts gets a class of its own: plain Git storage
+            with a Bearer token and no forge on top. And your own forge is one class away.
           </p>
           <p class="landing-entry">
             <span class="console-tag">Import</span>
