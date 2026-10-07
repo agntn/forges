@@ -183,13 +183,13 @@ const WRITE_METHODS = new Set(["PATCH", "POST", "PUT", "DELETE"]);
 /** Connection failures that stop a request before any byte of it reaches the forge. */
 const NEVER_SENT = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT"]);
 
-/** GraphQL reads go out as POST too, so only a mutation document counts as a write. */
+/** GraphQL reads go out as POST too, so only a document defining a mutation counts as a write. */
 function isWrite(error: FetchError): boolean {
   const { method = "GET", body } = (error.options ?? {}) as { method?: string; body?: unknown };
   if (!WRITE_METHODS.has(method.toUpperCase())) return false;
   if (!error.request?.endsWith("/graphql")) return true;
   const query = typeof body === "object" && body !== null ? Reflect.get(body, "query") : undefined;
-  return typeof query !== "string" || /^\s*mutation\b/u.test(query);
+  return typeof query !== "string" || /(?:^|\})\s*mutation\b/u.test(query.replace(/#.*/gu, ""));
 }
 
 /** A 5xx, or a write whose answer got lost or cut after it left, says nothing about what the forge did. */
@@ -211,7 +211,7 @@ function unsettledWrite(error: FetchError): boolean {
 function withHint<E extends ForgesError>(error: E, hint: string): E {
   const hinted = Object.assign(Object.create(Object.getPrototypeOf(error) as object) as E, error);
   hinted.message = `${error.message.replace(/[\s.]+$/u, "")}. ${hint}`;
-  hinted.stack = error.stack;
+  hinted.stack = error.stack?.replace(error.message, () => hinted.message);
   return hinted;
 }
 

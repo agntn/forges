@@ -660,6 +660,26 @@ describe("writes whose outcome is unknown", () => {
     expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
   });
 
+  it("finds a mutation after a comment or a fragment", async () => {
+    for (const query of [
+      "# resolve it\nmutation { resolveReviewThread(input: {}) { thread { id } } }",
+      "fragment T on PullRequestReviewThread { id }\nmutation { resolveReviewThread(input: {}) { thread { ...T } } }",
+    ]) {
+      const error = await failure("/graphql", { method: "POST", body: { query } }, () =>
+        serverError(502),
+      );
+      expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
+    }
+  });
+
+  it("puts the note on the first line of the stack too", async () => {
+    const error = await failure("/repos/o/r/issues", { method: "POST", body: {} }, () =>
+      serverError(),
+    );
+
+    expect(normalizeError(error, "github").stack?.split("\n")[0]).toContain(WRITE_NOTE);
+  });
+
   it("adds the note once when an error is normalized again", async () => {
     const error = await failure("/repos/o/r/releases", { method: "POST", body: {} }, () =>
       serverError(),
