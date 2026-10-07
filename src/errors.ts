@@ -206,7 +206,7 @@ const IGNORED = /"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"|#.*/gu;
 
 const OPERATION = /(?:^|\})\s*(query|mutation|subscription)\b\s*([_A-Za-z]\w*)?/gu;
 
-/** A 5xx, or a write whose answer got lost or cut after it left, says nothing about what the forge did. */
+/** A 5xx, or a write whose answer was lost or cut, says nothing about what the forge did. */
 function unsettledWrite(error: FetchError): boolean {
   if (!isWrite(error)) return false;
   if (error.status !== undefined) {
