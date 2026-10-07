@@ -217,8 +217,8 @@ export interface CursorChunk<T> {
 }
 
 /**
- * One page of a list paged only by cursor. A cursor can't jump, so the walk reads every row before
- * the page and one past it, since a cursor may still lead to an empty page.
+ * One page of a list paged only by cursor, which ends at a missing or empty cursor. A cursor can't
+ * jump, so the walk reads every row before the page and one past it.
  */
 export async function cursorPage<T>(
   fetchChunk: (limit: number, cursor: string | undefined) => Promise<CursorChunk<T>>,
@@ -235,7 +235,7 @@ export async function cursorPage<T>(
     if (chunk.items.length === 0) break;
     items.push(...chunk.items);
     cursor = chunk.cursor;
-  } while (cursor !== undefined && items.length < wanted);
+  } while (cursor !== undefined && cursor !== "" && items.length < wanted);
 
   const hasNextPage = items.length > start + perPage;
   return {

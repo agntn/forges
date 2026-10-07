@@ -293,6 +293,22 @@ describe("repos", () => {
     expect(page.hasNextPage).toBe(false);
   });
 
+  it("stops at an empty cursor instead of starting over from the first page", async () => {
+    const fetch = serve(
+      at(`${ACCOUNT_URL}/namespaces/tools/repos`, () =>
+        envelope([repository({ name: "a" })], {
+          result_info: { cursor: "", per_page: 3, count: 1 },
+        }),
+      ),
+    );
+
+    const page = await provider().repos.list("tools", { perPage: 2 });
+
+    expect(page.items.map((repo) => repo.name)).toEqual(["a"]);
+    expect(page.hasNextPage).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("asks for at most 200 repositories a request", async () => {
     const fetch = serve(at(`${ACCOUNT_URL}/namespaces/tools/repos`, () => envelope([])));
 
