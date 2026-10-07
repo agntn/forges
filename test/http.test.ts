@@ -268,6 +268,27 @@ describe("createHttpClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it("retries a read whose body breaks off and keeps the status on the error", async () => {
+    const cut = (): Response =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.error(new TypeError("terminated"));
+          },
+        }),
+        { headers: { "content-type": "application/json" } },
+      );
+    fetchMock.mockImplementation(async () => cut());
+    const client = createHttpClient({ baseURL: "https://api.github.com", token: "t" });
+
+    await expect(client("/user", { retryDelay: 0 })).rejects.toMatchObject({
+      name: "FetchError",
+      status: 200,
+      cause: expect.objectContaining({ message: "terminated" }),
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("does not retry an aborted request", async () => {
     fetchMock.mockRejectedValue(new DOMException("aborted", "AbortError"));
     const client = createHttpClient({ baseURL: "https://api.github.com", token: "t" });

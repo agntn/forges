@@ -579,6 +579,23 @@ describe("writes whose outcome is unknown", () => {
     expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
   });
 
+  it("says the same when the answer's body breaks off", async () => {
+    const cut = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"number":'));
+        controller.error(new TypeError("terminated"));
+      },
+    });
+    const error = await failure(
+      "/repos/o/r/issues",
+      { method: "POST", body: {} },
+      () => new Response(cut, { status: 201, headers: { "content-type": "application/json" } }),
+    );
+
+    expect(error).toBeInstanceOf(FetchError);
+    expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
+  });
+
   it("stays quiet when the connection never opened", async () => {
     for (const code of ["ECONNREFUSED", "ENOTFOUND", "UND_ERR_CONNECT_TIMEOUT"]) {
       const error = await failure("/repos/o/r/issues", { method: "POST", body: {} }, () =>

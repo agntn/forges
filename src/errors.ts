@@ -184,10 +184,10 @@ function isWrite(error: FetchError): boolean {
   return typeof query !== "string" || /^\s*mutation\b/u.test(query);
 }
 
-/** A 5xx, or a write that lost its answer after it left, says nothing about what the forge did. */
+/** A 5xx, or a write whose answer got lost or cut after it left, says nothing about what the forge did. */
 function unsettledWrite(error: FetchError): boolean {
   if (!isWrite(error)) return false;
-  if (error.status !== undefined) return error.status >= 500;
+  if (error.status !== undefined && error.cause === undefined) return error.status >= 500;
   let cause: unknown = error.cause;
   for (let depth = 0; depth < 4 && cause instanceof Error; depth++) {
     const code: unknown = Reflect.get(cause, "code");
