@@ -439,6 +439,18 @@ describe("configured provider", () => {
     await expect(throttled).rejects.toMatchObject({ retryAfter: 60 });
   });
 
+  it("gives artifacts one provider that finds its own Cloudflare credential", async () => {
+    const refused = await getRepository({ platform: "artifacts", repo: "tools/hidden" }).catch(
+      (error: unknown) => error,
+    );
+    await getAuthenticatedUser({ platform: "artifacts" });
+
+    expect(refused).toBeInstanceOf(NotFoundError);
+    expect((refused as Error).message).not.toContain("carried no token");
+    expect(mocks.resolveToken).not.toHaveBeenCalled();
+    expect(mocks.createProvider.mock.calls).toEqual([["artifacts", { token: "" }]]);
+  });
+
   it("explains a refusal shared by concurrent reads once", async () => {
     mocks.credentialToken.current = null;
 

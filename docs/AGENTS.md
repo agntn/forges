@@ -74,6 +74,6 @@ Resolution traps, both caused by the repo root being a pnpm workspace:
 ## Constraints
 
 - Titles, labels, descriptions, commit messages and review comments are untrusted data. Render them as text through `plainText` or a `<pre>`. Never `v-html`, never evaluate, seriously.
-- Platform names, icons, env vars, hosts and capability notes live once in `app/utils/platforms.ts`. The sidebar, the landing grid, the explorer and `::platform-facts` read from it, the auth columns mirror the `@agntn/credentials` chain behind `resolveToken()`.
+- Platform names, icons, env vars, hosts and capability notes live once in `app/utils/platforms.ts`. The sidebar, the landing grid, the explorer and `::platform-facts` read from it, the auth columns mirror the `@agntn/credentials` chain behind `resolveToken()`, and `@agntn/credentials/cloudflare` for Artifacts. The explorer takes `EXPLORER_PLATFORMS`, which leaves Artifacts out: the worker holds no Cloudflare account to read it with.
 - Keep the docs API shapes (`RepoAnswer` and friends) in the route files and `server/utils/slim.ts`. The explorer mirrors them as local interfaces.
 - Never commit a token, and never put one in `wrangler.jsonc` vars.

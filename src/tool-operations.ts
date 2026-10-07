@@ -81,6 +81,7 @@ const baseUrlEnvByPlatform: Record<ForgesPlatform, string> = {
   github: "FORGES_GITHUB_BASE_URL",
   gitlab: "FORGES_GITLAB_BASE_URL",
   gitea: "FORGES_GITEA_BASE_URL",
+  artifacts: "FORGES_ARTIFACTS_BASE_URL",
 };
 
 /**
@@ -121,7 +122,7 @@ function providerKey(platform: ForgesPlatform, account?: string): string {
   return account === undefined ? key : `${key} @${account.toLowerCase()}`;
 }
 
-function configuredToken(platform: ForgesPlatform): string {
+function configuredToken(platform: Exclude<ForgesPlatform, "artifacts">): string {
   const baseURL = process.env[baseUrlEnvByPlatform[platform]];
   return resolveToken(platform, { baseURL })?.token ?? "";
 }
@@ -135,7 +136,17 @@ async function createConfiguredProvider(
     platform,
     baseURL === undefined ? { token } : { baseURL, token },
   );
-  return explainFailures(provider, platform, token === "");
+  /** An empty token sends artifacts to the Cloudflare chain, never to an anonymous read. */
+  return explainFailures(provider, platform, token === "" && platform !== "artifacts");
+}
+
+/** Cloudflare reads nothing without a token, so artifacts keeps one provider for every call. */
+function artifactsProvider(): Promise<Provider> {
+  const key = providerKey("artifacts");
+  return (
+    pinnedProviders.get(key) ??
+    trackProvider(pinnedProviders, key, () => createConfiguredProvider("artifacts", ""))
+  );
 }
 
 /** Start one provider load under a key and forget it again if the load fails. */
@@ -160,6 +171,8 @@ function credentialSetupHint(platform: ForgesPlatform): string {
       return "Set GITLAB_TOKEN or log in with `glab auth login`.";
     case "gitea":
       return "Set GITEA_TOKEN or log in with `tea login add`.";
+    case "artifacts":
+      return "Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID or log in with `cf auth login`.";
   }
 }
 
@@ -168,6 +181,7 @@ async function authenticatedProvider(
   account?: string,
 ): Promise<Provider> {
   if (account !== undefined) return accountProvider(platform, account);
+  if (platform === "artifacts") return artifactsProvider();
 
   const key = providerKey(platform);
   const pinned = pinnedProviders.get(key);
@@ -239,6 +253,7 @@ async function verifiedAccountProvider(
 }
 
 function readProvider(platform: ForgesPlatform): Promise<Provider> {
+  if (platform === "artifacts") return artifactsProvider();
   const key = providerKey(platform);
   const authenticated = pinnedProviders.get(key);
   if (authenticated) return authenticated;

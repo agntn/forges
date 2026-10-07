@@ -1,7 +1,7 @@
 import { Type, type TObject, type TProperties } from "@agntn/tools";
 
 /** The platforms every tool surface accepts, re-exported from `src/tool-operations.ts`. */
-export type ForgesPlatform = "github" | "gitlab" | "gitea";
+export type ForgesPlatform = "github" | "gitlab" | "gitea" | "artifacts";
 
 /**
  * Build the parameter schemas for the forges tool surface.
@@ -16,8 +16,9 @@ export function forgesToolSchemas() {
   const platform = Type.Optional(
     Type.Unsafe<ForgesPlatform>({
       type: "string",
-      enum: ["github", "gitlab", "gitea"],
-      description: "Git hosting platform; defaults to github",
+      enum: ["github", "gitlab", "gitea", "artifacts"],
+      description:
+        "Git hosting platform, or artifacts for Cloudflare Artifacts with a namespace as owner; defaults to github",
       default: "github",
     }),
   );

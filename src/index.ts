@@ -5,7 +5,7 @@
 
 import type { Provider } from "./provider.ts";
 import type { ProviderConfig } from "./types.ts";
-import { resolveToken } from "./auth.ts";
+import { resolveCloudflareCredential, resolveToken } from "./auth.ts";
 import type { Platform } from "./auth.ts";
 import { AuthenticationError, ForgesError } from "./errors.ts";
 import { lazy } from "../packages/shared/lazy.ts";
@@ -157,6 +157,9 @@ export {
 
 type ProviderConstructor = new (config: ProviderConfig) => Provider;
 
+/** Every platform createProvider builds: the three forges and Cloudflare Artifacts. */
+export type ProviderPlatform = Platform | "artifacts";
+
 /**
  * Built-in providers, keyed by platform.
  *
@@ -166,10 +169,13 @@ type ProviderConstructor = new (config: ProviderConfig) => Provider;
  * calls share one import, since the uncached jiti Pi loads extensions with hands
  * an overlapping one an empty namespace.
  */
-const providers: Record<Platform, () => Promise<ProviderConstructor>> = {
+const providers: Record<ProviderPlatform, () => Promise<ProviderConstructor>> = {
   github: /* @__PURE__ */ lazy(() => import("./providers/github.ts").then((m) => m.GitHubProvider)),
   gitlab: /* @__PURE__ */ lazy(() => import("./providers/gitlab.ts").then((m) => m.GitLabProvider)),
   gitea: /* @__PURE__ */ lazy(() => import("./providers/gitea.ts").then((m) => m.GiteaProvider)),
+  artifacts: /* @__PURE__ */ lazy(() =>
+    import("./providers/artifacts.ts").then((m) => m.ArtifactsProvider),
+  ),
 };
 
 /**
@@ -179,19 +185,31 @@ const providers: Record<Platform, () => Promise<ProviderConstructor>> = {
  *   2. CLI tools (gh, glab)
  *   3. CLI config files (~/.config/gh/hosts.yml, etc.)
  *
+ * `artifacts` takes a Cloudflare token and account instead: from the config,
+ * then `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, then the cf CLI session.
+ *
  * The provider module loads only after a token is resolved, so a missing
  * credential fails before any platform code is parsed.
  */
 export async function createProvider(
-  platform: Platform,
+  platform: ProviderPlatform,
   config?: ProviderConfig,
 ): Promise<Provider> {
   if (!Object.hasOwn(providers, platform)) {
     throw new ForgesError(
-      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea`,
+      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea, artifacts`,
       undefined,
       platform,
     );
+  }
+
+  if (platform === "artifacts") {
+    const { accountId } = await resolveCloudflareCredential({
+      token: config?.token,
+      accountId: config?.accountId,
+    });
+    const ArtifactsProvider = await providers.artifacts();
+    return new ArtifactsProvider({ ...config, accountId });
   }
 
   const resolved = resolveToken(platform, {

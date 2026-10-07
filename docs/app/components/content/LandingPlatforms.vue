@@ -90,7 +90,7 @@ const cells = computed(() => [
 <style scoped>
 .platform-cells {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
   margin: 0;
   padding: 16px 20px 18px;
@@ -181,11 +181,6 @@ const cells = computed(() => [
 .platform-link:focus-visible {
   outline: 1px solid var(--ui-primary);
   outline-offset: 3px;
-}
-@media (width < 56rem) {
-  .platform-cells {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 }
 @media (width < 640px) {
   .platform-cells {

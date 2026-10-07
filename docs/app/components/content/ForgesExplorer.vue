@@ -13,7 +13,7 @@ import type {
 } from "../../utils/explorer";
 import { OPERATIONS } from "../../utils/explorer";
 import { splitSlug } from "../../utils/format";
-import { PROVIDER_PLATFORMS, platformIcon } from "../../utils/platforms";
+import { EXPLORER_PLATFORMS, platformIcon } from "../../utils/platforms";
 import { jsonTokens, tokens } from "../../utils/tokens";
 
 const EXAMPLES = [
@@ -25,7 +25,7 @@ const EXAMPLES = [
 /** Hosts the worker will talk to for Gitea. Anything else needs FORGES_GITEA_BASE_URL on the worker. */
 const GITEA_HOSTS = ["gitea.com", "codeberg.org"] as const;
 
-const PLATFORM_ITEMS = PROVIDER_PLATFORMS.map((row) => ({
+const PLATFORM_ITEMS = EXPLORER_PLATFORMS.map((row) => ({
   label: row.label,
   value: row.key,
   icon: row.icon,
@@ -277,7 +277,7 @@ function apply(params: Readonly<Record<string, unknown>>) {
       : "repo";
   if (
     typeof params.platform === "string" &&
-    PROVIDER_PLATFORMS.some((row) => row.key === params.platform)
+    EXPLORER_PLATFORMS.some((row) => row.key === params.platform)
   ) {
     platform.value = params.platform;
   }

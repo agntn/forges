@@ -46,6 +46,24 @@ export function pluralize(count: number, singular: string, plural = `${singular}
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+const NUMBER_WORDS = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+];
+
+/** A small count as a word for prose, digits from ten up. */
+export function spellOut(count: number): string {
+  return NUMBER_WORDS[count] ?? String(count);
+}
+
 /** `owner/repo` split into its two parts, or null when the input is not that shape. */
 export function splitSlug(value: string): { owner: string; repo: string } | null {
   const match = /^\s*([\w.-]+)\/([\w.-]+)\s*$/u.exec(value);

@@ -283,7 +283,7 @@ describe("forges MCP server", () => {
       type: "object",
       required: ["owner"],
       properties: {
-        platform: { enum: ["github", "gitlab", "gitea"], default: "github" },
+        platform: { enum: ["github", "gitlab", "gitea", "artifacts"], default: "github" },
       },
     });
     expect(
@@ -1612,7 +1612,7 @@ describe("forges MCP server", () => {
 
     expect(response.isError).toBe(true);
     expect(text(response.content)).toBe(
-      "Invalid arguments at /platform: must be one of github, gitlab, gitea",
+      "Invalid arguments at /platform: must be one of github, gitlab, gitea, artifacts",
     );
     expect(mocks.createProvider).not.toHaveBeenCalled();
   });
