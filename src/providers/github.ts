@@ -74,6 +74,7 @@ import {
   NotFoundError,
   normalizeError,
   normalizeMergeError,
+  normalizeMergedReadError,
 } from "../errors.ts";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
 import { parseLinkHeader } from "../pagination.ts";
@@ -2439,9 +2440,13 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
           commit_message: input.message,
         },
       });
-      return this.mapPullRequest(await this.client<GitHubPullRequest>(pullPath));
     } catch (error) {
       throw normalizeMergeError(error, "github", input.headSha !== undefined);
+    }
+    try {
+      return this.mapPullRequest(await this.client<GitHubPullRequest>(pullPath));
+    } catch (error) {
+      throw normalizeMergedReadError(error, "github");
     }
   }
 

@@ -596,6 +596,23 @@ describe("writes whose outcome is unknown", () => {
     expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
   });
 
+  it("keeps a refusal whose body breaks off a refusal", async () => {
+    const cut = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new TypeError("terminated"));
+      },
+    });
+    const error = await failure(
+      "/repos/o/r/issues",
+      { method: "POST", body: {} },
+      () => new Response(cut, { status: 401, headers: { "content-type": "application/json" } }),
+    );
+
+    const result = normalizeError(error, "github");
+    expect(result).toBeInstanceOf(AuthenticationError);
+    expect(result.message).not.toContain(WRITE_NOTE);
+  });
+
   it("stays quiet when the connection never opened", async () => {
     for (const code of ["ECONNREFUSED", "ENOTFOUND", "UND_ERR_CONNECT_TIMEOUT"]) {
       const error = await failure("/repos/o/r/issues", { method: "POST", body: {} }, () =>

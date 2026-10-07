@@ -164,6 +164,14 @@ export function normalizeMergeError(
   return hint === undefined ? normalized : withHint(normalized, hint);
 }
 
+/** The merge went through, so a failed read of its result must not invite a second one. */
+export function normalizeMergedReadError(error: unknown, platform: string): ForgesError {
+  return withHint(classifyError(error, platform), MERGED_READ);
+}
+
+const MERGED_READ =
+  "The merge went through, but reading the pull request back failed. Read it again instead of merging a second time.";
+
 const UNSETTLED_WRITE =
   "The write may have landed before this failure, so check for its result before sending it again.";
 
@@ -187,7 +195,9 @@ function isWrite(error: FetchError): boolean {
 /** A 5xx, or a write whose answer got lost or cut after it left, says nothing about what the forge did. */
 function unsettledWrite(error: FetchError): boolean {
   if (!isWrite(error)) return false;
-  if (error.status !== undefined && error.cause === undefined) return error.status >= 500;
+  if (error.status !== undefined) {
+    return error.status >= 500 || (error.cause !== undefined && error.status < 400);
+  }
   let cause: unknown = error.cause;
   for (let depth = 0; depth < 4 && cause instanceof Error; depth++) {
     const code: unknown = Reflect.get(cause, "code");

@@ -3452,6 +3452,16 @@ describe("GitHubProvider", () => {
       });
     });
 
+    it("says the merge went through when only the read after it fails", async () => {
+      mocks.client.mockResolvedValueOnce({}).mockRejectedValueOnce(makeFetchError(502));
+
+      const read = gh.pullRequests.merge("octocat", "hello-world", 99);
+      await expect(read).rejects.toMatchObject({ status: 502, platform: "github" });
+      await expect(read).rejects.toThrow(
+        /502\. The merge went through, but reading the pull request back failed/,
+      );
+    });
+
     it("says what to do when the head moved or the pull request cannot merge", async () => {
       mocks.client.mockRejectedValueOnce(
         makeFetchError(409, "Head branch was modified. Review and try the merge again."),

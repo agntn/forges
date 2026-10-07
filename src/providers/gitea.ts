@@ -9,7 +9,13 @@
 import { Buffer } from "node:buffer";
 import { createHttpClient, rawFetch, type HttpClient } from "../http.ts";
 import { parseLinkHeader, slicePage } from "../pagination.ts";
-import { ForgesError, normalizeError, normalizeMergeError, NotFoundError } from "../errors.ts";
+import {
+  ForgesError,
+  normalizeError,
+  normalizeMergeError,
+  normalizeMergedReadError,
+  NotFoundError,
+} from "../errors.ts";
 import {
   encodeApiResponsePathSegment,
   encodePathSegment,
@@ -1828,9 +1834,13 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
           MergeMessageField: input.message,
         },
       });
-      return this.mapPullRequest(await this.client<GiteaPullRequest>(pullPath));
     } catch (error) {
       throw normalizeMergeError(error, PLATFORM, input.headSha !== undefined);
+    }
+    try {
+      return this.mapPullRequest(await this.client<GiteaPullRequest>(pullPath));
+    } catch (error) {
+      throw normalizeMergedReadError(error, PLATFORM);
     }
   }
 
