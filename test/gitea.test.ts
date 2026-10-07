@@ -2283,6 +2283,16 @@ describe("Gitea Provider", () => {
       ).rejects.toThrow(/The head commit may no longer be headSha/);
     });
 
+    it("says the merge went through when only the read after it fails", async () => {
+      mockClient.mockResolvedValueOnce(undefined).mockRejectedValueOnce(makeFetchError(502));
+
+      const read = provider.pullRequests.merge("testowner", "test-repo", 5);
+      await expect(read).rejects.toMatchObject({ status: 502, platform: "gitea" });
+      await expect(read).rejects.toThrow(
+        /502\. The merge went through, but reading the pull request back failed/,
+      );
+    });
+
     it("explains an empty 405 instead of passing the bare status on", async () => {
       mockClient.mockRejectedValueOnce(makeFetchError(405));
 

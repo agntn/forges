@@ -86,6 +86,12 @@ export class RateLimitError extends ForgesError {
  * Maps HTTP status codes to appropriate error types
  */
 export function normalizeError(error: unknown, platform?: string): ForgesError {
+  const normalized = classifyError(error, platform);
+  if (!(error instanceof FetchError) || !unsettledWrite(error)) return normalized;
+  return withHint(normalized, UNSETTLED_WRITE);
+}
+
+function classifyError(error: unknown, platform?: string): ForgesError {
   // Already a ForgesError
   if (error instanceof ForgesError) {
     return error;
@@ -144,22 +150,102 @@ export function normalizeMergeError(
   platform: string,
   pinnedHead: boolean,
 ): ForgesError {
-  const normalized = normalizeError(error, platform);
+  const normalized = classifyError(error, platform);
   const hint =
-    normalized.status === 405
-      ? "The pull request cannot be merged as it stands: it may be closed, a draft, in conflict, waiting on required checks or approvals, or the merge method may be off for this repository. Read the pull request and its checks before trying again."
-      : normalized.status !== 409
-        ? undefined
-        : pinnedHead
-          ? "The head commit may no longer be headSha. Read the pull request again and review any new commits before merging."
-          : "The branches conflict or the head moved during the merge. Read the pull request again before trying again.";
-  if (hint === undefined) return normalized;
-  return new ForgesError(
-    `${normalized.message.replace(/[\s.]+$/u, "")}. ${hint}`,
-    normalized.status,
-    platform,
-    normalized.originalError,
+    normalized.originalError instanceof FetchError && unsettledWrite(normalized.originalError)
+      ? UNSETTLED_MERGE
+      : normalized.status === 405
+        ? "The pull request cannot be merged as it stands: it may be closed, a draft, in conflict, waiting on required checks or approvals, or the merge method may be off for this repository. Read the pull request and its checks before trying again."
+        : normalized.status !== 409
+          ? undefined
+          : pinnedHead
+            ? "The head commit may no longer be headSha. Read the pull request again and review any new commits before merging."
+            : "The branches conflict or the head moved during the merge. Read the pull request again before trying again.";
+  return hint === undefined ? normalized : withHint(normalized, hint);
+}
+
+/** The merge went through, so a failed read of its result must not invite a second one. */
+export function normalizeMergedReadError(error: unknown, platform: string): ForgesError {
+  return withHint(classifyError(error, platform), MERGED_READ);
+}
+
+const MERGED_READ =
+  "The merge went through, but reading the pull request back failed. Read it again instead of merging a second time.";
+
+const UNSETTLED_WRITE =
+  "The write may have landed before this failure, so check for its result before sending it again.";
+
+const UNSETTLED_MERGE =
+  "The merge may have landed before this failure, so read the pull request's merged and mergeCommitSha before trying again.";
+
+const WRITE_METHODS = new Set(["PATCH", "POST", "PUT", "DELETE"]);
+
+/** Connection failures that stop a request before any byte of it reaches the forge. */
+const NEVER_SENT = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT"]);
+
+/** GraphQL reads go out as POST too, so only a document defining a mutation counts as a write. */
+function isWrite(error: FetchError): boolean {
+  const { method = "GET", body } = (error.options ?? {}) as { method?: string; body?: unknown };
+  if (!WRITE_METHODS.has(method.toUpperCase())) return false;
+  if (!/\/graphql(?:[?#]|$)/u.test(error.request ?? "")) return true;
+  return typeof body !== "object" || body === null || runsMutation(body);
+}
+
+/**
+ * Whether the operation `operationName` picks is a mutation, or any is when it picks none.
+ * Unsure means write: a spare read costs less than a duplicate.
+ */
+function runsMutation(body: object): boolean {
+  const query: unknown = Reflect.get(body, "query");
+  const name: unknown = Reflect.get(body, "operationName");
+  if (typeof query !== "string") return true;
+  const operations = definedOperations(query.replace(IGNORED, " "));
+  if (operations === undefined) return true;
+  const picked = operations.filter(
+    (operation) => typeof name === "string" && operation.name === name,
   );
+  return (picked.length > 0 ? picked : operations).some(({ kind }) => kind === "mutation");
+}
+
+/** Operations at brace depth zero, or `undefined` when unbalanced braces leave it unsure. */
+function definedOperations(document: string): { kind: string; name?: string }[] | undefined {
+  const operations: { kind: string; name?: string }[] = [];
+  let depth = 0;
+  for (const [token, kind, name] of document.matchAll(TOKEN)) {
+    if (token === "{") depth++;
+    else if (token === "}" && --depth < 0) return undefined;
+    else if (depth === 0 && kind !== undefined) operations.push({ kind, name });
+  }
+  return depth === 0 ? operations : undefined;
+}
+
+/** Strings and comments in one pass, so a `#` in a string or a quote in a comment stays put. */
+const IGNORED = /"""(?:\\"""|[\s\S])*?"""|"(?:\\.|[^"\\\n])*"|#.*/gu;
+
+/** Braces, plus each operation keyword and the name after GraphQL's ignored separators. */
+const TOKEN = /[{}]|(?<![$@\w])(query|mutation|subscription)(?!\w)[\s,\uFEFF]*([_A-Za-z]\w*)?/gu;
+
+/** A 5xx, or a write whose answer was lost or cut, says nothing about what the forge did. */
+function unsettledWrite(error: FetchError): boolean {
+  if (!isWrite(error)) return false;
+  if (error.status !== undefined) {
+    return error.status >= 500 || (error.cause !== undefined && error.status < 400);
+  }
+  let cause: unknown = error.cause;
+  for (let depth = 0; depth < 4 && cause instanceof Error; depth++) {
+    const code: unknown = Reflect.get(cause, "code");
+    if (typeof code === "string" && NEVER_SENT.has(code)) return false;
+    cause = cause.cause;
+  }
+  return true;
+}
+
+/** A copy with the hint appended, keeping the subclass and fields such as `retryAfter`. */
+function withHint<E extends ForgesError>(error: E, hint: string): E {
+  const hinted = Object.assign(Object.create(Object.getPrototypeOf(error) as object) as E, error);
+  hinted.message = `${error.message.replace(/[\s.]+$/u, "")}. ${hint}`;
+  hinted.stack = error.stack?.replace(error.message, () => hinted.message);
+  return hinted;
 }
 
 /** Longest provider reason a message repeats; the rest of a longer one is cut. */

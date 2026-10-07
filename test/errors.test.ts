@@ -1,7 +1,9 @@
-import { describe, it, expect } from "vite-plus/test";
+import { afterEach, describe, it, expect, vi } from "vite-plus/test";
 import { FetchError } from "../src/errors.ts";
+import { createHttpClient, type RequestOptions } from "../src/http.ts";
 import {
   normalizeError,
+  normalizeMergeError,
   ForgesError,
   AuthenticationError,
   PermissionError,
@@ -523,5 +525,234 @@ describe("normalizeError provider reasons", () => {
     );
 
     expect(result).toBeInstanceOf(RateLimitError);
+  });
+});
+
+describe("writes whose outcome is unknown", () => {
+  const WRITE_NOTE = "The write may have landed before this failure";
+  const client = createHttpClient({ baseURL: "https://api.github.com", token: "" });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** The FetchError the real client throws once fetch answers or rejects as given. */
+  async function failure(
+    url: string,
+    options: RequestOptions,
+    answer: () => Response | Promise<never>,
+  ): Promise<unknown> {
+    vi.stubGlobal("fetch", vi.fn(answer));
+    return client(url, { retry: false, ...options }).then(
+      () => expect.unreachable("the request should fail"),
+      (error: unknown) => error,
+    );
+  }
+
+  function serverError(status = 500): Response {
+    return new Response(null, { status });
+  }
+
+  function dropped(code: string): Promise<never> {
+    return Promise.reject(
+      new TypeError("fetch failed", { cause: Object.assign(new Error(code), { code }) }),
+    );
+  }
+
+  it("says a create that hit a 5xx may still have landed", async () => {
+    const error = await failure("/repos/o/r/issues", { method: "POST", body: { title: "t" } }, () =>
+      serverError(502),
+    );
+
+    const result = normalizeError(error, "github");
+    expect(result.status).toBe(502);
+    expect(result.message).toMatch(
+      /502\. The write may have landed before this failure, so check for its result before sending it again\.$/,
+    );
+  });
+
+  it("says the same of a write that lost its answer after it left", async () => {
+    const error = await failure("/repos/o/r/issues/1", { method: "PATCH", body: {} }, () =>
+      dropped("ETIMEDOUT"),
+    );
+
+    expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
+  });
+
+  it("says the same when the answer's body breaks off", async () => {
+    const cut = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"number":'));
+        controller.error(new TypeError("terminated"));
+      },
+    });
+    const error = await failure(
+      "/repos/o/r/issues",
+      { method: "POST", body: {} },
+      () => new Response(cut, { status: 201, headers: { "content-type": "application/json" } }),
+    );
+
+    expect(error).toBeInstanceOf(FetchError);
+    expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
+  });
+
+  it("keeps a refusal whose body breaks off a refusal", async () => {
+    const cut = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new TypeError("terminated"));
+      },
+    });
+    const error = await failure(
+      "/repos/o/r/issues",
+      { method: "POST", body: {} },
+      () => new Response(cut, { status: 401, headers: { "content-type": "application/json" } }),
+    );
+
+    const result = normalizeError(error, "github");
+    expect(result).toBeInstanceOf(AuthenticationError);
+    expect(result.message).not.toContain(WRITE_NOTE);
+  });
+
+  it("stays quiet when the connection never opened", async () => {
+    for (const code of ["ECONNREFUSED", "ENOTFOUND", "UND_ERR_CONNECT_TIMEOUT"]) {
+      const error = await failure("/repos/o/r/issues", { method: "POST", body: {} }, () =>
+        dropped(code),
+      );
+      expect(normalizeError(error, "github").message).not.toContain(WRITE_NOTE);
+    }
+
+    const refused = Object.assign(new AggregateError([], ""), { code: "ECONNREFUSED" });
+    const error = await failure("/repos/o/r/issues", { method: "POST", body: {} }, () =>
+      Promise.reject(new TypeError("fetch failed", { cause: refused })),
+    );
+    expect(normalizeError(error, "github").message).not.toContain(WRITE_NOTE);
+  });
+
+  it("leaves reads, refusals and GraphQL queries alone", async () => {
+    const cases: [string, RequestOptions, number][] = [
+      ["/repos/o/r", {}, 500],
+      ["/repos/o/r/issues", { method: "POST", body: { title: "" } }, 422],
+      [
+        "/graphql",
+        { method: "POST", body: { query: "\n  query($id: ID!) { node(id: $id) { id } }" } },
+        502,
+      ],
+    ];
+    for (const [url, options, status] of cases) {
+      const error = await failure(url, options, () => serverError(status));
+      expect(normalizeError(error, "github").message).not.toContain(WRITE_NOTE);
+    }
+  });
+
+  it("counts a GraphQL mutation as a write", async () => {
+    const error = await failure(
+      "/graphql",
+      {
+        method: "POST",
+        body: {
+          query:
+            "\n  mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id } } }",
+        },
+      },
+      () => serverError(502),
+    );
+
+    expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
+  });
+
+  it("finds a mutation past comments, fragments and strings holding a #", async () => {
+    for (const query of [
+      "# resolve it\nmutation { resolveReviewThread(input: {}) { thread { id } } }",
+      "fragment T on PullRequestReviewThread { id }\nmutation { resolveReviewThread(input: {}) { thread { ...T } } }",
+      'query Read { search(query: "#tag } mutation", type: ISSUE) { issueCount } } mutation Write { addStar(input: {}) { clientMutationId } }',
+      '# a "quoted" note\nmutation { addStar(input: {}) { clientMutationId } }',
+    ]) {
+      const error = await failure("/graphql", { method: "POST", body: { query } }, () =>
+        serverError(502),
+      );
+      expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
+    }
+  });
+
+  it("judges a document by the operation operationName runs", async () => {
+    const query =
+      "query Read { viewer { login } }\nmutation Write { addStar(input: {}) { clientMutationId } }";
+    const outcome = async (operationName: string): Promise<string> => {
+      const error = await failure(
+        "/graphql",
+        { method: "POST", body: { query, operationName } },
+        () => serverError(502),
+      );
+      return normalizeError(error, "github").message;
+    };
+
+    expect(await outcome("Read")).not.toContain(WRITE_NOTE);
+    expect(await outcome("Write")).toContain(WRITE_NOTE);
+  });
+
+  it("reads past commas, nested fields named mutation and a query string on the URL", async () => {
+    const run = async (url: string, query: string, operationName?: string): Promise<string> => {
+      const error = await failure(url, { method: "POST", body: { query, operationName } }, () =>
+        serverError(502),
+      );
+      return normalizeError(error, "github").message;
+    };
+
+    expect(await run("/graphql", "query Read { a },mutation,Write { b }", "Write")).toContain(
+      WRITE_NOTE,
+    );
+    expect(await run("/graphql", "query Read { a { b } mutation }")).not.toContain(WRITE_NOTE);
+    expect(
+      await run("/graphql", "query($mutation: ID) { node(id: $mutation) { id } }"),
+    ).not.toContain(WRITE_NOTE);
+    expect(await run("/graphql?trace=1", "query { viewer { login } }")).not.toContain(WRITE_NOTE);
+    expect(
+      await run("/graphql", 'query Read { a(b: """ \\""" { """) }\nmutation Write { c }', "Write"),
+    ).toContain(WRITE_NOTE);
+    expect(
+      await run("/graphql", 'query Read { a(b: "{") }} mutation Write { c }', "Read"),
+    ).toContain(WRITE_NOTE);
+  });
+
+  it("puts the note on the first line of the stack too", async () => {
+    const error = await failure("/repos/o/r/issues", { method: "POST", body: {} }, () =>
+      serverError(),
+    );
+
+    expect(normalizeError(error, "github").stack?.split("\n")[0]).toContain(WRITE_NOTE);
+  });
+
+  it("adds the note once when an error is normalized again", async () => {
+    const error = await failure("/repos/o/r/releases", { method: "POST", body: {} }, () =>
+      serverError(),
+    );
+
+    const once = normalizeError(error, "github");
+    expect(normalizeError(once, "github")).toBe(once);
+  });
+
+  it("points a merge that hit a 5xx at merged and mergeCommitSha", async () => {
+    const error = await failure("/repos/o/r/pulls/1/merge", { method: "PUT", body: {} }, () =>
+      serverError(),
+    );
+
+    const result = normalizeMergeError(error, "github", true);
+    expect(result.status).toBe(500);
+    expect(result.message).toMatch(
+      /500\. The merge may have landed before this failure, so read the pull request's merged and mergeCommitSha before trying again\.$/,
+    );
+    expect(result.message).not.toContain(WRITE_NOTE);
+  });
+
+  it("keeps the merge note off a read that failed before the merge went out", async () => {
+    const error = await failure("/projects/o%2Fr", {}, () => serverError(503));
+
+    expect(normalizeMergeError(error, "gitlab", false).message).not.toContain("may have landed");
+  });
+
+  it("says nothing of the sort for an error the provider raised itself", () => {
+    const refused = new ForgesError("GitLab merges by merge commit or rebase", 501, "gitlab");
+
+    expect(normalizeMergeError(refused, "gitlab", false)).toBe(refused);
   });
 });

@@ -47,7 +47,7 @@ export interface RequestOptions<R extends ResponseType = ResponseType> {
   retry?: number | false;
   /** Milliseconds between attempts. */
   retryDelay?: number;
-  /** Statuses worth another attempt. A failure with no response counts as 500. */
+  /** Statuses worth another attempt. No response, or a body cut short, counts as 500. */
   retryStatusCodes?: readonly number[];
   signal?: AbortSignal;
 }
@@ -128,19 +128,20 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
     };
 
     for (let attempt = 0; ; attempt++) {
-      let response: Response;
+      let response: Response | undefined;
+      let data: unknown;
       try {
         response = await fetch(target, init);
+        data = await readBody(response, method, options.responseType);
       } catch (error) {
         const aborted = error instanceof Error && error.name === "AbortError";
         if (!aborted && attempt < retries && retryStatusCodes.includes(500)) {
           await delay(retryDelay);
           continue;
         }
-        throw requestError(method, target, options, undefined, undefined, error);
+        throw requestError(method, target, options, response, undefined, error);
       }
 
-      const data = await readBody(response, method, options.responseType);
       if (response.status < 400 || response.status >= 600) {
         return { data, headers: response.headers, status: response.status };
       }

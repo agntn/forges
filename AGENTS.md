@@ -152,6 +152,7 @@ Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 - **List vs Get:** list operations use `rawFetch` for pagination headers. Stable item reads use `cachedFetch`; repository, issue, pull request, release, discussion comment, and user item reads use the client directly.
 - **No raw error throws** — always `throw normalizeError(error, platform)`.
 - **No cache for mutations** — `cachedFetch` rejects non-GET automatically.
+- **A write without an answer may have landed.** `normalizeError()` tells a write that hit a 5xx, or lost its response after it left, to check before sending it again. It reads the method off the FetchError, counts a GraphQL POST only for a `mutation`, and skips a connection that never opened (`ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`, `UND_ERR_CONNECT_TIMEOUT`).
 - **No hardcoded URLs** — all providers accept `baseURL` config.
 - **No `execSync`** — use `execFileSync` with arg arrays (command injection prevention).
 - **No CJS** — ESM only everywhere.
@@ -229,7 +230,7 @@ vi.mock("../src/cache.ts", () => ({ cachedFetch: mocks.cachedFetch }));
 - **Releases are keyed by tag** because GitLab releases have no id; GitHub and Gitea update by the id a tag read returns. GitLab has no draft or prerelease flag, so `true` for either is a 501 there, never a silent publish.
 - **GitLab template provenance can be hidden:** use the effective template API and leave inherited source fields unknown rather than guessing a group or instance source.
 - **Pull request edits change lists, never replace them:** `addAssignees`/`removeAssignees` and `addLabels`/`removeLabels`. GitLab and Gitea take assignees only as the whole list, so they read the pull request first; `draft` stays out: none of the three REST edit routes takes it.
-- **Merges pin the head.** `pullRequests.merge` passes `headSha` as each platform's guard (`sha`, `head_commit_id`), so a push after review is a 409, and `normalizeMergeError()` adds the next step to 405 and 409. GitLab picks merge commit or rebase per project, so `method: "rebase"` is a 501 there, and it takes the commit message whole, so `message` needs `title`.
+- **Merges pin the head.** `pullRequests.merge` passes `headSha` as each platform's guard (`sha`, `head_commit_id`), so a push after review is a 409, and `normalizeMergeError()` adds the next step to 405, 409 and a 5xx, which may have merged anyway. GitHub and Gitea read the pull request after the merge in a `try` of its own, so a failed read says the merge went through. GitLab picks merge commit or rebase per project, so `method: "rebase"` is a 501 there, and it takes the commit message whole, so `message` needs `title`.
 - **Issue edits follow the same input.** GitHub and Gitea serve pull requests on the issue route, so `issues.update` reads the number first and answers `NotFoundError` for a pull request before any write. `state_reason` stays out: GitLab and Gitea have no counterpart.
 - **Gitea uses `limit`** param, not `per_page`.
 - **Gitea labels lie on search.** Both Gitea and Forgejo drop an unknown label name and return the rows unfiltered, and `/repos/issues/search` matches any of several labels while the repository list wants all. `issues.searchGlobal` keeps only rows with every label and answers an empty page once a row proves the filter was dropped.
