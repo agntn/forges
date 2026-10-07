@@ -207,13 +207,12 @@ function unsettledWrite(error: FetchError): boolean {
   return true;
 }
 
-function withHint(error: ForgesError, hint: string): ForgesError {
-  return new ForgesError(
-    `${error.message.replace(/[\s.]+$/u, "")}. ${hint}`,
-    error.status,
-    error.platform,
-    error.originalError,
-  );
+/** A copy with the hint appended, keeping the subclass and fields such as `retryAfter`. */
+function withHint<E extends ForgesError>(error: E, hint: string): E {
+  const hinted = Object.assign(Object.create(Object.getPrototypeOf(error) as object) as E, error);
+  hinted.message = `${error.message.replace(/[\s.]+$/u, "")}. ${hint}`;
+  hinted.stack = error.stack;
+  return hinted;
 }
 
 /** Longest provider reason a message repeats; the rest of a longer one is cut. */
