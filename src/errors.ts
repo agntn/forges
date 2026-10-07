@@ -187,7 +187,7 @@ const NEVER_SENT = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_C
 function isWrite(error: FetchError): boolean {
   const { method = "GET", body } = (error.options ?? {}) as { method?: string; body?: unknown };
   if (!WRITE_METHODS.has(method.toUpperCase())) return false;
-  if (!error.request?.endsWith("/graphql")) return true;
+  if (!/\/graphql(?:[?#]|$)/u.test(error.request ?? "")) return true;
   return typeof body !== "object" || body === null || runsMutation(body);
 }
 
@@ -196,15 +196,30 @@ function runsMutation(body: object): boolean {
   const query: unknown = Reflect.get(body, "query");
   const name: unknown = Reflect.get(body, "operationName");
   if (typeof query !== "string") return true;
-  const operations = [...query.replace(IGNORED, "").matchAll(OPERATION)];
-  const picked = operations.filter((match) => typeof name === "string" && match[2] === name);
-  return (picked.length > 0 ? picked : operations).some((match) => match[1] === "mutation");
+  const operations = definedOperations(query.replace(IGNORED, " "));
+  const picked = operations.filter(
+    (operation) => typeof name === "string" && operation.name === name,
+  );
+  return (picked.length > 0 ? picked : operations).some(({ kind }) => kind === "mutation");
+}
+
+/** Operations at brace depth zero, so a field that happens to be called `mutation` stays out. */
+function definedOperations(document: string): { kind: string; name?: string }[] {
+  const operations: { kind: string; name?: string }[] = [];
+  let depth = 0;
+  for (const [token, kind, name] of document.matchAll(TOKEN)) {
+    if (token === "{") depth++;
+    else if (token === "}") depth = Math.max(0, depth - 1);
+    else if (depth === 0 && kind !== undefined) operations.push({ kind, name });
+  }
+  return operations;
 }
 
 /** Strings and comments in one pass, so a `#` in a string or a quote in a comment stays put. */
 const IGNORED = /"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"|#.*/gu;
 
-const OPERATION = /(?:^|\})\s*(query|mutation|subscription)\b\s*([_A-Za-z]\w*)?/gu;
+/** Braces, plus each operation keyword and the name after GraphQL's ignored separators. */
+const TOKEN = /[{}]|(?<![$@\w])(query|mutation|subscription)(?!\w)[\s,\uFEFF]*([_A-Za-z]\w*)?/gu;
 
 /** A 5xx, or a write whose answer was lost or cut, says nothing about what the forge did. */
 function unsettledWrite(error: FetchError): boolean {

@@ -690,6 +690,24 @@ describe("writes whose outcome is unknown", () => {
     expect(await outcome("Write")).toContain(WRITE_NOTE);
   });
 
+  it("reads past commas, nested fields named mutation and a query string on the URL", async () => {
+    const run = async (url: string, query: string, operationName?: string): Promise<string> => {
+      const error = await failure(url, { method: "POST", body: { query, operationName } }, () =>
+        serverError(502),
+      );
+      return normalizeError(error, "github").message;
+    };
+
+    expect(await run("/graphql", "query Read { a },mutation,Write { b }", "Write")).toContain(
+      WRITE_NOTE,
+    );
+    expect(await run("/graphql", "query Read { a { b } mutation }")).not.toContain(WRITE_NOTE);
+    expect(
+      await run("/graphql", "query($mutation: ID) { node(id: $mutation) { id } }"),
+    ).not.toContain(WRITE_NOTE);
+    expect(await run("/graphql?trace=1", "query { viewer { login } }")).not.toContain(WRITE_NOTE);
+  });
+
   it("puts the note on the first line of the stack too", async () => {
     const error = await failure("/repos/o/r/issues", { method: "POST", body: {} }, () =>
       serverError(),
