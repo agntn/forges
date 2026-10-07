@@ -201,7 +201,7 @@ function runsMutation(body: object): boolean {
   return (picked.length > 0 ? picked : operations).some((match) => match[1] === "mutation");
 }
 
-/** Strings and comments, in one pass so a `#` inside a string or a quote inside a comment stays put. */
+/** Strings and comments in one pass, so a `#` in a string or a quote in a comment stays put. */
 const IGNORED = /"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"|#.*/gu;
 
 const OPERATION = /(?:^|\})\s*(query|mutation|subscription)\b\s*([_A-Za-z]\w*)?/gu;
