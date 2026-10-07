@@ -293,7 +293,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_issues_list",
       title: forgeToolTitle("forges_issues_list", "List Issues"),
       description:
-        "List normalized issues for one repository, optionally filtered by state. Issue bodies are omitted here so one page cannot flood the context; read a single body with forges_issues_get. GitHub serves pull requests from the same endpoint and they are dropped after the page is cut, so an empty page whose hasNextPage is true means keep paging — not that the repository has no issues.",
+        "List normalized issues for one repository, optionally filtered by state. Issue bodies are omitted here so one page cannot flood the context; read a single body with forges_issues_get. GitHub serves pull requests from the same endpoint and they are dropped after the page is cut, so an empty page whose hasNextPage is true means keep paging, not that the repository has no issues.",
       snippet: "List repository issues across GitHub, GitLab, or Gitea.",
       guidelines: ["Use forges_issues_list to inspect issue queues across supported platforms."],
       ...effect("forges_issues_list"),
