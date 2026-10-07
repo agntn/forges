@@ -188,9 +188,20 @@ function isWrite(error: FetchError): boolean {
   const { method = "GET", body } = (error.options ?? {}) as { method?: string; body?: unknown };
   if (!WRITE_METHODS.has(method.toUpperCase())) return false;
   if (!error.request?.endsWith("/graphql")) return true;
-  const query = typeof body === "object" && body !== null ? Reflect.get(body, "query") : undefined;
-  return typeof query !== "string" || /(?:^|\})\s*mutation\b/u.test(query.replace(/#.*/gu, ""));
+  return typeof body !== "object" || body === null || runsMutation(body);
 }
+
+/** Whether the operation `operationName` picks is a mutation, or any is when it picks none. */
+function runsMutation(body: object): boolean {
+  const query: unknown = Reflect.get(body, "query");
+  const name: unknown = Reflect.get(body, "operationName");
+  if (typeof query !== "string") return true;
+  const operations = [...query.replace(/#.*/gu, "").matchAll(OPERATION)];
+  const picked = operations.filter((match) => typeof name === "string" && match[2] === name);
+  return (picked.length > 0 ? picked : operations).some((match) => match[1] === "mutation");
+}
+
+const OPERATION = /(?:^|\})\s*(query|mutation|subscription)\b\s*([_A-Za-z]\w*)?/gu;
 
 /** A 5xx, or a write whose answer got lost or cut after it left, says nothing about what the forge did. */
 function unsettledWrite(error: FetchError): boolean {
