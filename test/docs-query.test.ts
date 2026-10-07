@@ -187,6 +187,47 @@ describe("docs rate limit", () => {
   });
 });
 
+interface Bindings {
+  readonly vars: Readonly<Record<string, string>>;
+  readonly d1_databases: readonly Readonly<{ binding: string; database_id: string }>[];
+  readonly kv_namespaces: readonly Readonly<{ binding: string; id: string }>[];
+  readonly ratelimits: readonly Readonly<{ name: string }>[];
+}
+
+/** The file has trailing commas but no comments, so plain JSON reads it once they go. */
+function wranglerConfig(): Bindings & Readonly<{ previews: Bindings }> {
+  const text = readFileSync(new URL("../docs/wrangler.jsonc", import.meta.url), "utf8");
+  return JSON.parse(text.replaceAll(/,(\s*[\]}])/gu, "$1"));
+}
+
+describe("docs previews", () => {
+  it("repeats every top-level binding, since a preview inherits none", () => {
+    const { previews, ...production } = wranglerConfig();
+    const names = (bindings: Bindings) => [
+      ...Object.keys(bindings.vars),
+      ...bindings.d1_databases.map((database) => database.binding),
+      ...bindings.kv_namespaces.map((namespace) => namespace.binding),
+      ...bindings.ratelimits.map((limit) => limit.name),
+    ];
+
+    expect(names(previews)).toEqual(names(production));
+    expect(previews.ratelimits).toEqual(production.ratelimits);
+  });
+
+  it("keeps a preview off the database and cache forges.agntn.dev serves", () => {
+    const { previews, ...production } = wranglerConfig();
+
+    for (const database of previews.d1_databases) {
+      expect(production.d1_databases.map((entry) => entry.database_id)).not.toContain(
+        database.database_id,
+      );
+    }
+    for (const namespace of previews.kv_namespaces) {
+      expect(production.kv_namespaces.map((entry) => entry.id)).not.toContain(namespace.id);
+    }
+  });
+});
+
 describe("docs answer cache", () => {
   it("writes an answer with its ttl so KV drops it", async () => {
     const event = fakeEvent(
