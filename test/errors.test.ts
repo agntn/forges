@@ -660,10 +660,12 @@ describe("writes whose outcome is unknown", () => {
     expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
   });
 
-  it("finds a mutation after a comment or a fragment", async () => {
+  it("finds a mutation past comments, fragments and strings holding a #", async () => {
     for (const query of [
       "# resolve it\nmutation { resolveReviewThread(input: {}) { thread { id } } }",
       "fragment T on PullRequestReviewThread { id }\nmutation { resolveReviewThread(input: {}) { thread { ...T } } }",
+      'query Read { search(query: "#tag } mutation", type: ISSUE) { issueCount } } mutation Write { addStar(input: {}) { clientMutationId } }',
+      '# a "quoted" note\nmutation { addStar(input: {}) { clientMutationId } }',
     ]) {
       const error = await failure("/graphql", { method: "POST", body: { query } }, () =>
         serverError(502),

@@ -196,10 +196,13 @@ function runsMutation(body: object): boolean {
   const query: unknown = Reflect.get(body, "query");
   const name: unknown = Reflect.get(body, "operationName");
   if (typeof query !== "string") return true;
-  const operations = [...query.replace(/#.*/gu, "").matchAll(OPERATION)];
+  const operations = [...query.replace(IGNORED, "").matchAll(OPERATION)];
   const picked = operations.filter((match) => typeof name === "string" && match[2] === name);
   return (picked.length > 0 ? picked : operations).some((match) => match[1] === "mutation");
 }
+
+/** Strings and comments, in one pass so a `#` inside a string or a quote inside a comment stays put. */
+const IGNORED = /"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"|#.*/gu;
 
 const OPERATION = /(?:^|\})\s*(query|mutation|subscription)\b\s*([_A-Za-z]\w*)?/gu;
 
