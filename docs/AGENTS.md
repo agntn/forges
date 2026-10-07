@@ -35,14 +35,14 @@ pnpm dev              # http://localhost:3000
 pnpm build            # Cloudflare Workers output in .output/, content routes prerendered
 pnpm deploy           # build, then wrangler deploy to forges.agntn.dev
 pnpm generate         # static output only, the /api routes need the worker
-node scripts/record-fixtures.mjs   # record the landing samples again (needs gh logged in for GitHub threads)
+node scripts/record-fixtures.mjs   # record the landing samples again (GitHub threads need GH_TOKEN or a gh login)
 ```
 
 Deployment: Workers Builds with root directory `docs`. It installs `docs/` and nothing else, which is enough because the library is bundled from `../src` (see below). Nitro preset `cloudflare_module`. Nuxt Content needs a D1 binding named `DB` and the response cache a KV binding named `CACHE`. `wrangler.jsonc` carries both plus the `NUXT_SITE_URL` var, and Nitro merges it into the generated `.output/server/wrangler.json`. Create them once with `wrangler d1 create agntn-forges` and `wrangler kv namespace create CACHE` and put the ids in `wrangler.jsonc`. Until then the ids are all zeros on purpose, and `pnpm deploy` with zeros would bind nothing, so do not run it before they are replaced.
 
 Platform tokens are Worker secrets, never vars: `wrangler secret put GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`. With `nodejs_compat` the runtime exposes them on `process.env`, which is where `server/utils/forge.ts` reads them. A platform without a secret shows up as `authenticated: false` in `/api/platforms` and its reads go out anonymously: GitLab public projects except discussions and search, Gitea public repositories. GitHub anonymous is sixty requests an hour per address and Cloudflare egress addresses are shared, so from the worker it answers 429 almost always. Set `GITHUB_TOKEN` (a fine grained token with public read access is enough) or every GitHub tab in the explorer is a 429. An optional `FORGES_<PLATFORM>_BASE_URL` var points a platform at a self hosted instance.
 
-`@agntn/forges` is an alias in `nuxt.config.ts` for `../src/index.ts`. Nitro bundles the checkout's sources into the worker, so `dist/` and the root `node_modules` are never touched. The subgraph under `src/index.ts` imports `unstorage` from npm, which is why `docs/package.json` lists it: a bare import in `../src` resolves upwards from the importer and reaches `docs/node_modules` only as Nitro's fallback, once the root has none. A new npm import that `src/index.ts` can reach needs an entry there or the deploy breaks. The CLI, MCP and tool entries stay out of the alias.
+`@agntn/forges` is an alias in `nuxt.config.ts` for `../src/index.ts`. Nitro bundles the checkout's sources into the worker, so `dist/` and the root `node_modules` are never touched. The subgraph under `src/index.ts` imports `unstorage` and `@agntn/credentials` from npm, which is why `docs/package.json` lists both: a bare import in `../src` resolves upwards from the importer and reaches `docs/node_modules` only as Nitro's fallback, once the root has none. A new npm import that `src/index.ts` can reach needs an entry there or the deploy breaks. The CLI, MCP and tool entries stay out of the alias.
 
 Resolution traps, both caused by the repo root being a pnpm workspace:
 
@@ -74,6 +74,6 @@ Resolution traps, both caused by the repo root being a pnpm workspace:
 ## Constraints
 
 - Titles, labels, descriptions, commit messages and review comments are untrusted data. Render them as text through `plainText` or a `<pre>`. Never `v-html`, never evaluate, seriously.
-- Platform names, icons, env vars, hosts and capability notes live once in `app/utils/platforms.ts`. The sidebar, the landing grid, the explorer and `::platform-facts` read from it, the auth columns mirror `src/auth.ts` on the library.
+- Platform names, icons, env vars, hosts and capability notes live once in `app/utils/platforms.ts`. The sidebar, the landing grid, the explorer and `::platform-facts` read from it, the auth columns mirror the `@agntn/credentials` chain behind `resolveToken()`.
 - Keep the docs API shapes (`RepoAnswer` and friends) in the route files and `server/utils/slim.ts`. The explorer mirrors them as local interfaces.
 - Never commit a token, and never put one in `wrangler.jsonc` vars.
