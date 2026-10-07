@@ -20,7 +20,7 @@ Docs, and an explorer that runs the same calls: [forges.agntn.dev](https://forge
 - 📦 **Loads one platform.** `createProvider("github")` is async. It imports GitHub and leaves GitLab on disk.
 - 🆔 **IDs are strings.** Even when the API sent a number. A count the forge withholds is missing, not `0`.
 - 🫥 **Empty string is guest.** `{ token: "" }` is anonymous on purpose. Leave `token` out and you get `AuthenticationError`, not a quiet guest session.
-- 🤖 **51 tools, three surfaces.** MCP, Pi and OMP share the executors. Twelve tools write to the host.
+- 🤖 **51 tools, four surfaces.** MCP, Pi, OMP and the CLI share one definition of each. Twelve tools write to the host.
 - 🚫 **Missing is 501.** Code search on Gitea is not an empty page. You get a `ForgesError` with status 501.
 - 🧭 **GitBucket is GitHub plus `baseURL`.** Forgejo and Codeberg are Gitea plus `baseURL`. Same class, different host.
 
@@ -68,11 +68,15 @@ GitHub's first hello. Default branch is still `master`.
 
 ### Commands
 
-| Command | What it does            | Example      |
-| ------- | ----------------------- | ------------ |
-| `mcp`   | The MCP server on stdio | `forges mcp` |
+Every agent tool is a command too. Drop the `forges_` prefix, swap underscores for dashes, and `forges_repos_get` becomes `forges repos-get`:
 
-There is no `forges repos`. MCP is the whole binary. `pnpm exec forges mcp` after install, or `pnpm add -g @agntn/forges` once.
+```bash
+forges repos-get --repo octocat/Hello-World
+forges issues-search-global --owner agntn --state open --labels '["bug"]'
+forges mcp
+```
+
+Options are the tool's own arguments. A list or an object goes in as JSON, `--json` prints the details instead of the text. The text is exactly what a model reads, so your shell script and your agent finally get the same answer. `forges --help` lists all 51, `forges <command> --help` shows one. `pnpm add -g @agntn/forges` puts it on your `PATH`, `pnpm exec forges` works inside a project.
 
 ## 🧠 Library
 

@@ -82,7 +82,7 @@ export function forgeToolSymbol(name: string): string {
   return "◆";
 }
 
-/** Human-facing title shared with MCP tool menus. */
+/** The title every surface shows: MCP menus and the Pi and OMP status lines. */
 export function forgeToolTitle(name: string, label: string): string {
   return `${forgeToolSymbol(name)} ${label}`;
 }
@@ -147,7 +147,7 @@ function callIcon(options: RenderOptions | undefined): { glyph: string; color: s
     : { glyph: "·", color: "muted" };
 }
 
-/** Render one compact, terminal-safe tool call row. */
+/** Render one compact, terminal-safe tool call row under the tool's own title. */
 export function renderToolCall(
   name: string,
   label: string,
@@ -157,7 +157,7 @@ export function renderToolCall(
 ): string {
   const record = isRecord(args) ? args : {};
   const icon = callIcon(options);
-  const title = forgeToolTitle(name, sanitizeTerminalText(label));
+  const title = sanitizeTerminalText(label);
   const parts = [
     paint(theme, icon.color, icon.glyph),
     paint(theme, "toolTitle", theme.bold ? theme.bold(title) : title),

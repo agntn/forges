@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 
 import { toolEffects } from "../packages/shared/tool-effects.ts";
-import * as OmpTypeBox from "@oh-my-pi/omptype/typebox";
 import type {
   ExtensionAPI as OmpExtensionAPI,
   ExtensionContext as OmpExtensionContext,
@@ -154,22 +153,26 @@ const toolNames = [
   "forges_local_merge_verify",
 ];
 
-function registerPiTools(): Map<string, PiToolDefinition> {
+async function registerPiTools(): Promise<Map<string, PiToolDefinition>> {
   const tools = new Map<string, PiToolDefinition>();
   const api = {
     registerTool(tool: PiToolDefinition) {
       tools.set(tool.name, tool);
     },
   };
-  forgesPiExtension(api as unknown as PiExtensionAPI);
+  await forgesPiExtension(api as unknown as PiExtensionAPI);
   return tools;
 }
 
-function registerOmpTools(): { label: string | undefined; tools: Map<string, OmpToolDefinition> } {
+async function registerOmpTools(): Promise<{
+  label: string | undefined;
+  tools: Map<string, OmpToolDefinition>;
+}> {
   let label: string | undefined;
   const tools = new Map<string, OmpToolDefinition>();
   const api = {
-    typebox: OmpTypeBox,
+    /* The adapter hands OMP the wire schema through `Type.Unsafe`; the host keeps it as it came. */
+    typebox: { Type: { Unsafe: (schema: unknown) => schema } },
     pi: {
       Text: class {
         readonly text: string;
@@ -186,7 +189,7 @@ function registerOmpTools(): { label: string | undefined; tools: Map<string, Omp
       tools.set(tool.name, tool);
     },
   };
-  forgesOmpExtension(api as unknown as OmpExtensionAPI);
+  await forgesOmpExtension(api as unknown as OmpExtensionAPI);
   return { label, tools };
 }
 
@@ -203,9 +206,7 @@ function requireOmpTool(tools: Map<string, OmpToolDefinition>, name: string): Om
 }
 
 function ompAccepts(tool: OmpToolDefinition, value: unknown): boolean {
-  // OMP's host schema and the extension type package are structurally identical at this test seam.
-  const schema = tool.parameters as unknown as OmpTypeBox.TSchema;
-  return schema.safeParse(value).success;
+  return Value.Check(tool.parameters, value);
 }
 
 function renderedText(component: unknown): string {
@@ -297,8 +298,8 @@ afterEach(() => {
 });
 
 describe("Forges Pi extension", () => {
-  it("registers the complete tool set with self-identifying guidelines and renderers", () => {
-    const tools = registerPiTools();
+  it("registers the complete tool set with self-identifying guidelines and renderers", async () => {
+    const tools = await registerPiTools();
 
     expect([...tools.keys()]).toEqual(toolNames);
     expect([...tools.keys()].sort()).toEqual(Object.keys(toolEffects).sort());
@@ -310,8 +311,8 @@ describe("Forges Pi extension", () => {
     }
   });
 
-  it("renders Pi failures from the render context", () => {
-    const tool = requirePiTool(registerPiTools(), "forges_issues_get");
+  it("renders Pi failures from the render context", async () => {
+    const tool = requirePiTool(await registerPiTools(), "forges_issues_get");
     if (!tool.renderCall || !tool.renderResult) throw new Error("Missing Pi renderers");
     const theme = {};
     const call = Reflect.apply(tool.renderCall, tool, [
@@ -326,11 +327,11 @@ describe("Forges Pi extension", () => {
       { isError: true },
     ]);
 
-    expect(renderedText(call)).toBe("◌ ◈ Forges Issue agntn/forges#42 platform github");
+    expect(renderedText(call)).toBe("◌ ◈ Get Issue agntn/forges#42 platform github");
     expect(renderedText(result)).toBe("✗ Repository not found (failed)");
   });
 
-  it("leaves the packages Pi provides out of dependencies", () => {
+  it("leaves the packages Pi provides out of dependencies", async () => {
     const manifest: {
       dependencies: Record<string, string>;
       peerDependencies: Record<string, string>;
@@ -352,11 +353,12 @@ describe("Forges Pi extension", () => {
     expect(
       Object.keys(manifest.dependencies).filter((name) => hostProvided.includes(name)),
     ).toEqual([]);
-    expect(manifest.peerDependencies["typebox"]).toBe("*");
+    /* @agntn/tools carries its own TypeBox, so the extensions import none. */
+    expect(Object.keys(manifest.peerDependencies)).not.toContain("typebox");
   });
 
-  it("exposes only supported platforms and no credential or endpoint parameters", () => {
-    const tool = requirePiTool(registerPiTools(), "forges_repos_list");
+  it("exposes only supported platforms and no credential or endpoint parameters", async () => {
+    const tool = requirePiTool(await registerPiTools(), "forges_repos_list");
 
     expect(Value.Check(tool.parameters, { platform: "github", owner: "agntn" })).toBe(true);
     expect(Value.Check(tool.parameters, { platform: "bitbucket", owner: "agntn" })).toBe(false);
@@ -364,7 +366,7 @@ describe("Forges Pi extension", () => {
   });
 
   it("executes repository listing through the shared provider operation", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_repos_list");
+    const tool = requirePiTool(await registerPiTools(), "forges_repos_list");
     const result = await tool.execute(
       "test",
       { platform: "github", owner: "agntn", page: 2, perPage: 25 },
@@ -386,7 +388,7 @@ describe("Forges Pi extension", () => {
   });
 
   it("executes contribution-template discovery through the shared provider operation", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_contribution_templates_list");
+    const tool = requirePiTool(await registerPiTools(), "forges_contribution_templates_list");
     const result = await tool.execute(
       "test",
       {
@@ -412,7 +414,7 @@ describe("Forges Pi extension", () => {
   });
 
   it("executes code search through the shared provider operation", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_code_search");
+    const tool = requirePiTool(await registerPiTools(), "forges_code_search");
     const result = await tool.execute(
       "test",
       {
@@ -441,7 +443,7 @@ describe("Forges Pi extension", () => {
   });
 
   it("executes CI-run listing through the shared provider operation", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_ci_runs_list");
+    const tool = requirePiTool(await registerPiTools(), "forges_ci_runs_list");
     const result = await tool.execute(
       "test",
       {
@@ -466,7 +468,7 @@ describe("Forges Pi extension", () => {
   });
 
   it("executes commit listing through the shared provider operation", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_commits_list");
+    const tool = requirePiTool(await registerPiTools(), "forges_commits_list");
     const result = await tool.execute(
       "test",
       {
@@ -497,7 +499,7 @@ describe("Forges Pi extension", () => {
   });
 
   it("executes commit reads through the shared provider operation", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_commits_get");
+    const tool = requirePiTool(await registerPiTools(), "forges_commits_get");
     const result = await tool.execute(
       "test",
       {
@@ -531,7 +533,7 @@ describe("Forges Pi extension", () => {
       nextOffset: null,
       truncated: false,
     });
-    const tool = requirePiTool(registerPiTools(), "forges_repos_contents");
+    const tool = requirePiTool(await registerPiTools(), "forges_repos_contents");
     const result = await tool.execute(
       "test",
       {
@@ -558,7 +560,7 @@ describe("Forges Pi extension", () => {
   it("reads CI jobs and job logs through the shared provider operations", async () => {
     mocks.ciRuns.listJobs.mockResolvedValue({ items: [], hasNextPage: false });
     mocks.ciRuns.readJobLog.mockResolvedValue({ jobId: "105912189006", started: true });
-    const tools = registerPiTools();
+    const tools = await registerPiTools();
     const target = { platform: "github", owner: "agntn", repo: "forges" } as const;
 
     await requirePiTool(tools, "forges_ci_jobs_list").execute(
@@ -588,7 +590,7 @@ describe("Forges Pi extension", () => {
   });
 
   it("executes commit patch reads through the shared provider operation", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_commits_patch");
+    const tool = requirePiTool(await registerPiTools(), "forges_commits_patch");
     const result = await tool.execute(
       "test",
       {
@@ -614,7 +616,7 @@ describe("Forges Pi extension", () => {
   });
 
   it("executes issue search through the shared provider operation", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_issues_search");
+    const tool = requirePiTool(await registerPiTools(), "forges_issues_search");
     const result = await tool.execute(
       "test",
       {
@@ -644,7 +646,7 @@ describe("Forges Pi extension", () => {
   });
 
   it("executes pull-request search through the shared provider operation", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_search");
+    const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_search");
     const result = await tool.execute(
       "test",
       {
@@ -674,7 +676,7 @@ describe("Forges Pi extension", () => {
   });
 
   it("executes pull-request file listing through the shared provider operation", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_files");
+    const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_files");
     const result = await tool.execute(
       "test",
       {
@@ -698,7 +700,7 @@ describe("Forges Pi extension", () => {
   });
 
   it("executes pull-request check listing through the shared provider operation", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_checks");
+    const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_checks");
     const result = await tool.execute(
       "test",
       {
@@ -723,8 +725,11 @@ describe("Forges Pi extension", () => {
 
   it("keeps both review continuation routes in Pi and OMP output", async () => {
     const args = { platform: "github", owner: "agntn", repo: "forges", number: 5 };
-    const piTool = requirePiTool(registerPiTools(), "forges_pull_requests_reviews");
-    const ompTool = requireOmpTool(registerOmpTools().tools, "forges_pull_requests_reviews");
+    const piTool = requirePiTool(await registerPiTools(), "forges_pull_requests_reviews");
+    const ompTool = requireOmpTool(
+      (await registerOmpTools()).tools,
+      "forges_pull_requests_reviews",
+    );
     const results = [
       await piTool.execute("test", args, undefined, undefined, unusedPiContext),
       await ompTool.execute("test", args, undefined, undefined, unusedOmpContext),
@@ -749,8 +754,11 @@ describe("Forges Pi extension", () => {
     };
     mocks.pullRequests.getReview.mockResolvedValue(review);
     const args = { platform: "github", owner: "agntn", repo: "forges", number: 5, reviewId: "123" };
-    const piTool = requirePiTool(registerPiTools(), "forges_pull_requests_reviews_get");
-    const ompTool = requireOmpTool(registerOmpTools().tools, "forges_pull_requests_reviews_get");
+    const piTool = requirePiTool(await registerPiTools(), "forges_pull_requests_reviews_get");
+    const ompTool = requireOmpTool(
+      (await registerOmpTools()).tools,
+      "forges_pull_requests_reviews_get",
+    );
     const results = [
       await piTool.execute("test", args, undefined, undefined, unusedPiContext),
       await ompTool.execute("test", args, undefined, undefined, unusedOmpContext),
@@ -773,8 +781,8 @@ describe("Forges Pi extension", () => {
       number: 5,
       closingIssues: true,
     };
-    const piTool = requirePiTool(registerPiTools(), "forges_pull_requests_get");
-    const ompTool = requireOmpTool(registerOmpTools().tools, "forges_pull_requests_get");
+    const piTool = requirePiTool(await registerPiTools(), "forges_pull_requests_get");
+    const ompTool = requireOmpTool((await registerOmpTools()).tools, "forges_pull_requests_get");
 
     for (const result of [
       await piTool.execute("test", args, undefined, undefined, unusedPiContext),
@@ -791,8 +799,8 @@ describe("Forges Pi extension", () => {
   it("keeps the endpoint out of Pi and OMP failures and names the retry window", async () => {
     vi.stubEnv("FORGES_GITEA_BASE_URL", "https://ci:s3cret@git.internal.example:8443");
     const args = { platform: "gitea", owner: "agntn", repo: "forges" };
-    const piTool = requirePiTool(registerPiTools(), "forges_repos_get");
-    const ompTool = requireOmpTool(registerOmpTools().tools, "forges_repos_get");
+    const piTool = requirePiTool(await registerPiTools(), "forges_repos_get");
+    const ompTool = requireOmpTool((await registerOmpTools()).tools, "forges_repos_get");
     const runs = [
       () => piTool.execute("test", args, undefined, undefined, unusedPiContext),
       () => ompTool.execute("test", args, undefined, undefined, unusedOmpContext),
@@ -830,7 +838,7 @@ describe("Forges Pi extension", () => {
   });
 
   it("executes pull-request review listing through the shared provider operation", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_reviews");
+    const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_reviews");
     const result = await tool.execute(
       "test",
       {
@@ -868,7 +876,7 @@ describe("Forges Pi extension", () => {
     mocks.releases.list.mockResolvedValue({ items: [release], hasNextPage: false });
     mocks.releases.get.mockResolvedValue(release);
     mocks.releases.update.mockResolvedValue({ ...release, body: "edited" });
-    const tools = registerPiTools();
+    const tools = await registerPiTools();
 
     const listed = await requirePiTool(tools, "forges_releases_list").execute(
       "test",
@@ -909,11 +917,11 @@ describe("Forges Pi extension", () => {
   });
 
   it.each([
-    ["forges_releases_create", "creation", { ref: "main", name: "v0.4.0", body: "notes" }],
-    ["forges_releases_update", "update", { body: "edited" }],
-  ] as const)("fails closed when %s has no approval UI", async (name, verb, extra) => {
+    ["forges_releases_create", { ref: "main", name: "v0.4.0", body: "notes" }],
+    ["forges_releases_update", { body: "edited" }],
+  ] as const)("fails closed when %s has no approval UI", async (name, extra) => {
     const confirm = vi.fn();
-    const tool = requirePiTool(registerPiTools(), name);
+    const tool = requirePiTool(await registerPiTools(), name);
 
     await expect(
       tool.execute(
@@ -923,7 +931,7 @@ describe("Forges Pi extension", () => {
         undefined,
         approvalPiContext(confirm, false),
       ),
-    ).rejects.toThrow(`Release ${verb} requires interactive approval`);
+    ).rejects.toThrow(`${name} needs interactive approval`);
 
     expect(confirm).not.toHaveBeenCalled();
     expect(mocks.releases.create).not.toHaveBeenCalled();
@@ -932,7 +940,7 @@ describe("Forges Pi extension", () => {
 
   it("shows the release before creating it and stops when Pi approval is declined", async () => {
     const confirm = vi.fn().mockResolvedValue(false);
-    const tool = requirePiTool(registerPiTools(), "forges_releases_create");
+    const tool = requirePiTool(await registerPiTools(), "forges_releases_create");
 
     await expect(
       tool.execute(
@@ -975,7 +983,7 @@ describe("Forges Pi extension", () => {
   it("updates a release after Pi approval, naming what stays unchanged", async () => {
     const confirm = vi.fn().mockResolvedValue(true);
     mocks.releases.update.mockResolvedValue({ tag: "v0.4.0", body: "edited", draft: false });
-    const tool = requirePiTool(registerPiTools(), "forges_releases_update");
+    const tool = requirePiTool(await registerPiTools(), "forges_releases_update");
 
     const result = await tool.execute(
       "test",
@@ -1021,7 +1029,7 @@ describe("Forges Pi extension", () => {
     const confirm = vi.fn().mockResolvedValue(true);
     mocks.pullRequests.update.mockResolvedValue({ number: 5, assignees: [{ login: "reviewer" }] });
     mocks.users.authenticated.mockResolvedValue({ id: "2", login: "oritwoen" });
-    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_update");
+    const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_update");
 
     await tool.execute(
       "test",
@@ -1071,7 +1079,7 @@ describe("Forges Pi extension", () => {
   it("shows an issue update in the approval dialog before it goes out", async () => {
     const confirm = vi.fn().mockResolvedValue(true);
     mocks.issues.update.mockResolvedValue({ number: 174, assignees: [] });
-    const tool = requirePiTool(registerPiTools(), "forges_issues_update");
+    const tool = requirePiTool(await registerPiTools(), "forges_issues_update");
 
     await tool.execute(
       "test",
@@ -1110,7 +1118,7 @@ describe("Forges Pi extension", () => {
   });
 
   it("fails closed when an issue update is declined", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_issues_update");
+    const tool = requirePiTool(await registerPiTools(), "forges_issues_update");
 
     await expect(
       tool.execute(
@@ -1120,17 +1128,17 @@ describe("Forges Pi extension", () => {
         undefined,
         approvalPiContext(vi.fn().mockResolvedValue(false)),
       ),
-    ).rejects.toThrow("Issue update was cancelled by the user");
+    ).rejects.toThrow("forges_issues_update was cancelled by the user");
     expect(mocks.issues.update).not.toHaveBeenCalled();
   });
 
   it("fails closed when a pull-request update has no approval UI or is declined", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_update");
+    const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_update");
     const params = { repo: "agntn/forges", number: 5, body: "edited" };
 
     await expect(
       tool.execute("test", params, undefined, undefined, approvalPiContext(vi.fn(), false)),
-    ).rejects.toThrow("Pull request update requires interactive approval");
+    ).rejects.toThrow("forges_pull_requests_update needs interactive approval");
     await expect(
       tool.execute(
         "test",
@@ -1139,14 +1147,14 @@ describe("Forges Pi extension", () => {
         undefined,
         approvalPiContext(vi.fn().mockResolvedValue(false)),
       ),
-    ).rejects.toThrow("Pull request update was cancelled by the user");
+    ).rejects.toThrow("forges_pull_requests_update was cancelled by the user");
     expect(mocks.pullRequests.update).not.toHaveBeenCalled();
   });
 
   it("shows the merge it asks about and merges after Pi approval", async () => {
     const confirm = vi.fn().mockResolvedValue(true);
     mocks.pullRequests.merge.mockResolvedValue({ number: 5, merged: true });
-    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_merge");
+    const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_merge");
 
     const result = await tool.execute(
       "test",
@@ -1182,12 +1190,12 @@ describe("Forges Pi extension", () => {
   });
 
   it("fails closed when a merge has no approval UI or is declined", async () => {
-    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_merge");
+    const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_merge");
     const params = { repo: "agntn/forges", number: 5 };
 
     await expect(
       tool.execute("test", params, undefined, undefined, approvalPiContext(vi.fn(), false)),
-    ).rejects.toThrow("Pull request merge requires interactive approval");
+    ).rejects.toThrow("forges_pull_requests_merge needs interactive approval");
     await expect(
       tool.execute(
         "test",
@@ -1196,14 +1204,14 @@ describe("Forges Pi extension", () => {
         undefined,
         approvalPiContext(vi.fn().mockResolvedValue(false)),
       ),
-    ).rejects.toThrow("Pull request merge was cancelled by the user");
+    ).rejects.toThrow("forges_pull_requests_merge was cancelled by the user");
     expect(mocks.pullRequests.merge).not.toHaveBeenCalled();
   });
 
   it("posts issue and pull-request comments to the discussion the tool names", async () => {
     mocks.issues.createComment.mockResolvedValue({ id: "31", body: "Fixed in #43." });
     mocks.pullRequests.createComment.mockResolvedValue({ id: "32", body: "Rebased." });
-    const tools = registerPiTools();
+    const tools = await registerPiTools();
 
     const issue = await requirePiTool(tools, "forges_issues_comments_create").execute(
       "test",
@@ -1231,7 +1239,7 @@ describe("Forges Pi extension", () => {
 
   it("fails closed when pull-request creation has no approval UI", async () => {
     const confirm = vi.fn();
-    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
+    const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_create");
 
     await expect(
       tool.execute(
@@ -1249,7 +1257,7 @@ describe("Forges Pi extension", () => {
         undefined,
         approvalPiContext(confirm, false),
       ),
-    ).rejects.toThrow("requires interactive approval");
+    ).rejects.toThrow("forges_pull_requests_create needs interactive approval");
 
     expect(confirm).not.toHaveBeenCalled();
     expect(mocks.pullRequests.create).not.toHaveBeenCalled();
@@ -1257,7 +1265,7 @@ describe("Forges Pi extension", () => {
 
   it("does not create a pull request when Pi approval is declined", async () => {
     const confirm = vi.fn().mockResolvedValue(false);
-    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
+    const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_create");
 
     await expect(
       tool.execute(
@@ -1290,7 +1298,7 @@ describe("Forges Pi extension", () => {
 
   it("creates a pull request after Pi approval", async () => {
     const confirm = vi.fn().mockResolvedValue(true);
-    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
+    const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_create");
     const params = {
       platform: "github" as const,
       owner: "agntn",
@@ -1340,7 +1348,7 @@ describe("Forges Pi extension", () => {
 
   it("names the account a pull request goes out as in the approval", async () => {
     const confirm = vi.fn().mockResolvedValue(false);
-    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
+    const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_create");
 
     await expect(
       tool.execute(
@@ -1368,7 +1376,7 @@ describe("Forges Pi extension", () => {
 
   it("names the resolved repository in the approval when the slug carried it", async () => {
     const confirm = vi.fn().mockResolvedValue(false);
-    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
+    const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_create");
 
     await expect(
       tool.execute(
@@ -1396,7 +1404,7 @@ describe("Forges Pi extension", () => {
 
   it("sanitizes pull-request approval fields before rendering them", async () => {
     const confirm = vi.fn().mockResolvedValue(false);
-    const tool = requirePiTool(registerPiTools(), "forges_pull_requests_create");
+    const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_create");
 
     await expect(
       tool.execute(
@@ -1429,7 +1437,7 @@ describe("Forges Pi extension", () => {
   it("reloads authentication through the shared operation", async () => {
     const user = { id: "1", login: "aeitwoen" };
     mocks.users.authenticated.mockResolvedValue(user);
-    const tools = registerPiTools();
+    const tools = await registerPiTools();
 
     await requirePiTool(tools, "forges_users_authenticated").execute(
       "test",
@@ -1458,7 +1466,7 @@ describe("Forges Pi extension", () => {
     "uses trusted local base URL configuration for %s without exposing it to the model",
     async (platform, envName, baseURL) => {
       vi.stubEnv(envName, baseURL);
-      const tool = requirePiTool(registerPiTools(), "forges_repos_list");
+      const tool = requirePiTool(await registerPiTools(), "forges_repos_list");
 
       await tool.execute(
         "test",
@@ -1502,7 +1510,7 @@ describe("Forges Pi extension", () => {
       hasNextPage: false,
     });
 
-    const tools = registerPiTools();
+    const tools = await registerPiTools();
     const calls = [
       requirePiTool(tools, "forges_issues_list"),
       requirePiTool(tools, "forges_pull_requests_list"),
@@ -1547,7 +1555,7 @@ describe("Forges Pi extension", () => {
       hasNextPage: false,
     });
 
-    const result = await requirePiTool(registerPiTools(), "forges_threads_list").execute(
+    const result = await requirePiTool(await registerPiTools(), "forges_threads_list").execute(
       "test",
       { platform: "github", owner: "agntn", repo: "forges", number: 31 },
       undefined,
@@ -1584,7 +1592,7 @@ describe("Forges Pi extension", () => {
     mocks.issues.listComments.mockResolvedValue(page);
     mocks.pullRequests.listComments.mockResolvedValue(page);
 
-    const tools = registerPiTools();
+    const tools = await registerPiTools();
     for (const name of ["forges_issues_comments", "forges_pull_requests_comments"]) {
       const result = await requirePiTool(tools, name).execute(
         "test",
@@ -1604,8 +1612,8 @@ describe("Forges Pi extension", () => {
 });
 
 describe("Forges OMP extension", () => {
-  it("registers the complete tool set under the Forges label with renderers", () => {
-    const { label, tools } = registerOmpTools();
+  it("registers the complete tool set under the Forges label with renderers", async () => {
+    const { label, tools } = await registerOmpTools();
 
     expect(label).toBe("Forges");
     expect([...tools.keys()]).toEqual(toolNames);
@@ -1616,8 +1624,8 @@ describe("Forges OMP extension", () => {
     }
   });
 
-  it("renders OMP failures from the result object", () => {
-    const tool = requireOmpTool(registerOmpTools().tools, "forges_threads_reply");
+  it("renders OMP failures from the result object", async () => {
+    const tool = requireOmpTool((await registerOmpTools()).tools, "forges_threads_reply");
     if (!tool.renderCall || !tool.renderResult) throw new Error("Missing OMP renderers");
     const theme = {};
     const call = Reflect.apply(tool.renderCall, tool, [
@@ -1643,22 +1651,21 @@ describe("Forges OMP extension", () => {
     ]);
 
     expect(renderedText(call)).toBe(
-      "⠹ ◌ Reply Forges Thread PRRT_1 (write) agntn/forges#42 · platform github",
+      "⠹ ◌ Reply to Review Thread PRRT_1 (write) agntn/forges#42 · platform github",
     );
     expect(renderedText(result)).toBe("✗ Thread not found (failed)");
   });
 
-  it("keeps Pi and OMP parameter schemas aligned recursively", () => {
-    const piTools = registerPiTools();
-    const ompTools = registerOmpTools().tools;
+  it("keeps Pi and OMP parameter schemas aligned recursively", async () => {
+    const piTools = await registerPiTools();
+    const ompTools = (await registerOmpTools()).tools;
 
     for (const name of toolNames) {
       const piTool = requirePiTool(piTools, name);
       const ompTool = requireOmpTool(ompTools, name);
-      // OMP's host facade is the runtime owner of this schema and can emit canonical JSON Schema.
-      const ompSchema = ompTool.parameters as unknown as OmpTypeBox.TSchema;
+      const ompSchema: unknown = JSON.parse(JSON.stringify(ompTool.parameters));
       const piSchema: unknown = JSON.parse(JSON.stringify(piTool.parameters));
-      expect(ompSchema.toJsonSchema(), `${name} schema`).toEqual(piSchema);
+      expect(ompSchema, `${name} schema`).toEqual(piSchema);
     }
 
     const invalidNestedAssignee = {
@@ -1688,8 +1695,8 @@ describe("Forges OMP extension", () => {
     expect(ompAccepts(ompList, unknownArgument)).toBe(false);
   });
 
-  it("marks read operations read-only and mutations as writes", () => {
-    const { tools } = registerOmpTools();
+  it("marks read operations read-only and mutations as writes", async () => {
+    const { tools } = await registerOmpTools();
     const mutationTools: Record<string, true> = {
       forges_issues_create: true,
       forges_issues_update: true,
@@ -1711,20 +1718,14 @@ describe("Forges OMP extension", () => {
     }
   });
 
-  it("uses the injected OMP schema facade without credential or endpoint parameters", () => {
-    const tool = requireOmpTool(registerOmpTools().tools, "forges_repos_list");
+  it("uses the injected OMP schema facade without credential or endpoint parameters", async () => {
+    const tool = requireOmpTool((await registerOmpTools()).tools, "forges_repos_list");
 
     expect(ompAccepts(tool, { platform: "gitea", owner: "agntn" })).toBe(true);
     expect(ompAccepts(tool, { platform: "bitbucket", owner: "agntn" })).toBe(false);
-    // OMP injects its runtime schema facade, whose object shape is exposed through checked IR.
-    const schema = tool.parameters as unknown as OmpTypeBox.TSchema;
-    if (schema.ir.k !== "object") throw new Error("Expected an OMP object schema");
-    expect(schema.ir.props.map((property) => property.key)).toEqual([
-      "platform",
-      "owner",
-      "page",
-      "perPage",
-    ]);
+    /* The adapter hands OMP the wire schema, which the host validates as it is. */
+    const schema = tool.parameters as unknown as { properties: Record<string, unknown> };
+    expect(Object.keys(schema.properties)).toEqual(["platform", "owner", "page", "perPage"]);
   });
 
   it("reads repository contents through the shared provider operation", async () => {
@@ -1739,7 +1740,7 @@ describe("Forges OMP extension", () => {
       nextOffset: null,
       truncated: false,
     });
-    const tool = requireOmpTool(registerOmpTools().tools, "forges_repos_contents");
+    const tool = requireOmpTool((await registerOmpTools()).tools, "forges_repos_contents");
     const result = await tool.execute(
       "test",
       {
@@ -1766,7 +1767,7 @@ describe("Forges OMP extension", () => {
   it("reads CI jobs and job logs through the shared provider operations", async () => {
     mocks.ciRuns.listJobs.mockResolvedValue({ items: [], hasNextPage: false });
     mocks.ciRuns.readJobLog.mockResolvedValue({ jobId: "105912189006", started: true });
-    const tools = registerOmpTools().tools;
+    const tools = (await registerOmpTools()).tools;
     const target = { platform: "github", owner: "agntn", repo: "forges" } as const;
 
     await requireOmpTool(tools, "forges_ci_jobs_list").execute(
@@ -1796,7 +1797,7 @@ describe("Forges OMP extension", () => {
   });
 
   it("executes commit patch reads through the shared provider operation", async () => {
-    const tool = requireOmpTool(registerOmpTools().tools, "forges_commits_patch");
+    const tool = requireOmpTool((await registerOmpTools()).tools, "forges_commits_patch");
     const result = await tool.execute(
       "test",
       {
@@ -1834,7 +1835,7 @@ describe("Forges OMP extension", () => {
       url: "https://gitea.com/gitea/tea/releases/tag/v0.17.0",
     };
     mocks.releases.create.mockResolvedValue(release);
-    const tool = requireOmpTool(registerOmpTools().tools, "forges_releases_create");
+    const tool = requireOmpTool((await registerOmpTools()).tools, "forges_releases_create");
     const result = await tool.execute(
       "test",
       {
@@ -1865,7 +1866,7 @@ describe("Forges OMP extension", () => {
   });
 
   it("executes issue creation through the shared provider operation", async () => {
-    const tool = requireOmpTool(registerOmpTools().tools, "forges_issues_create");
+    const tool = requireOmpTool((await registerOmpTools()).tools, "forges_issues_create");
     const result = await tool.execute(
       "test",
       {

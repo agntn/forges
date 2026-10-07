@@ -3,18 +3,17 @@
 import { existsSync } from "node:fs";
 import { sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineCommand, runMain, type SubCommandsDef } from "citty";
-import type McpCommand from "./commands/mcp.ts";
+import type * as McpCommand from "./commands/mcp.ts";
 import { version } from "./version.ts";
 
 /**
  * Narrows the module a runtime URL import returned, which TypeScript types as `any`.
  *
  * @param value - The imported module namespace.
- * @returns Whether it exports a default command.
+ * @returns Whether it exports `serveMcp`.
  */
-function isCommandModule(value: unknown): value is { default: typeof McpCommand } {
-  return typeof value === "object" && value !== null && "default" in value;
+function isMcpModule(value: unknown): value is typeof McpCommand {
+  return typeof value === "object" && value !== null && "serveMcp" in value;
 }
 
 /**
@@ -25,7 +24,7 @@ function isCommandModule(value: unknown): value is { default: typeof McpCommand 
  * keeps it everywhere, for tests of the build. The URL is built at runtime, because a literal import
  * would pull the source into the bundle.
  *
- * @returns The citty command that starts the stdio server.
+ * @returns The module that starts the stdio server.
  */
 async function loadMcpCommand(): Promise<typeof McpCommand> {
   // The same file from `src/cli.ts` and `dist/cli.mjs`; the npm package ships no `src`.
@@ -37,28 +36,34 @@ async function loadMcpCommand(): Promise<typeof McpCommand> {
     process.env.FORGES_DIST !== "1" &&
     !sourcePath.includes(`${sep}node_modules${sep}`) &&
     existsSync(sourcePath);
-  if (!fromSource) return (await import("./commands/mcp.ts")).default;
+  if (!fromSource) return import("./commands/mcp.ts");
   const module: unknown = await import(sourceMcpCommand.href);
-  if (!isCommandModule(module)) {
-    throw new TypeError(`${sourcePath} has no default command`);
+  if (!isMcpModule(module)) {
+    throw new TypeError(`${sourcePath} has no serveMcp`);
   }
-  return module.default;
+  return module;
 }
 
-// citty looks a subcommand up on the object itself, so a plain literal answers
-// `toString`, `constructor` and friends from Object.prototype: the name resolves,
-// nothing runs, and the process exits 0 as if the server had started.
-const subCommands: SubCommandsDef = Object.assign(Object.create(null) as SubCommandsDef, {
-  mcp: loadMcpCommand,
-});
+/** A bare `forges mcp` serves our server, with the title and website the generated one lacks. */
+const argv = process.argv.slice(2);
 
-const main = defineCommand({
-  meta: {
-    name: "forges",
-    version,
-    description: "One API for GitHub, GitLab, Gitea, and GitBucket",
-  },
-  subCommands,
-});
-
-await runMain(main);
+if (argv.length === 1 && argv[0] === "mcp") {
+  await (await loadMcpCommand()).serveMcp();
+} else {
+  const [{ runCli }, { forgesTools }, { ForgesError }] = await Promise.all([
+    import("@agntn/tools/cli"),
+    import("./tools.ts"),
+    import("./errors.ts"),
+  ]);
+  await runCli(
+    {
+      name: "forges",
+      version,
+      description: "One API for GitHub, GitLab, Gitea, and GitBucket",
+      tools: forgesTools(),
+      mcp: true,
+      expected: (error) => error instanceof ForgesError,
+    },
+    argv,
+  );
+}

@@ -11,7 +11,7 @@ import { waitForChecks, type WaitedCheckPage } from "./check-wait.ts";
 import { AuthenticationError, FetchError, ForgesError, RateLimitError } from "./errors.ts";
 import { redactEndpoint } from "./redact-endpoint.ts";
 import { lazy } from "../packages/shared/lazy.ts";
-import type { ForgesPlatform } from "../packages/shared/forges-tool-schemas.ts";
+import type { ForgesPlatform } from "./tool-schemas.ts";
 import type { Provider } from "./provider.ts";
 import type {
   CiJob,
@@ -258,6 +258,17 @@ function readProvider(platform: ForgesPlatform): Promise<Provider> {
 const ANONYMOUS_REFUSALS = new Set([401, 403, 404, 429]);
 /** Failures already explained, since callers sharing one in-flight load get the same error. */
 const explainedFailures = new WeakSet<ForgesError>();
+
+/** A failure as the model reads it: no endpoint, and the status when the message is empty. */
+export function toolFailure(error: unknown): Error {
+  if (error instanceof ForgesError && explainedFailures.has(error)) return error;
+  const failure = error instanceof Error ? error : new Error(String(error));
+  const status = failure instanceof ForgesError ? failure.status : undefined;
+  failure.message =
+    redactEndpoint(failure.message) ||
+    (status === undefined ? "no reason reported" : `HTTP ${status}`);
+  return failure;
+}
 
 /** Join a sentence to a message that may or may not end with a period. */
 function appendSentence(message: string, sentence: string): string {

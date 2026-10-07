@@ -7,10 +7,8 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 import { loaded, recordSourcesUnder } from "./record-loads.mjs";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import * as OmpTypeBox from "@oh-my-pi/omptype/typebox";
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
 const root = process.cwd();
 const temporaryRoot = await mkdtemp(join(root, ".forges-packed-test-"));
@@ -125,7 +123,7 @@ async function registerPackedExtension(extensionPath, api) {
   const moduleUrl = `${pathToFileURL(extensionPath).href}?packed=${Date.now()}`;
   const extension = await import(moduleUrl);
   const tools = new Map();
-  extension.default({
+  await extension.default({
     ...api,
     registerTool(tool) {
       tools.set(tool.name, tool);
@@ -156,7 +154,7 @@ function assertRenderedCall(tool, api) {
   const component = api.typebox
     ? tool.renderCall(repositoryArgs, { isPartial: true, spinnerFrame: 0 }, theme)
     : tool.renderCall(repositoryArgs, theme, { executionStarted: true, isPartial: true });
-  assert.match(component.render(120).join("\n"), /Forges Repository agntn\/forges/u);
+  assert.match(component.render(120).join("\n"), /Get Repository agntn\/forges/u);
 }
 
 async function assertDistributionFallback(tool) {
@@ -169,8 +167,8 @@ async function assertDistributionFallback(tool) {
 }
 
 /**
- * The MCP bundle is published too, and it is the only entry that carries the SDK
- * and typebox, so a chunk split or a missing dependency would surface here first.
+ * The MCP bundle is published too, and it is the only entry that carries the SDK,
+ * so a chunk split or a missing dependency would surface here first.
  */
 async function assertPackedMcpServer(root) {
   const moduleUrl = `${pathToFileURL(join(root, "dist/mcp.mjs")).href}?packed=${Date.now()}`;
@@ -198,15 +196,15 @@ async function assertPackedMcpServer(root) {
     assert.match(
       rejected.content.map((part) => part.text).join(""),
       /^Invalid arguments at \/platform/u,
-      "the rejection must come from the bundled validator",
+      "the rejection must come from the core validator",
     );
-    assertLoaded(executors, "the first call loads the executors");
-    assertNotLoaded(anyProvider, "a call rejected by its schema must not load a provider");
+    assertNotLoaded(executors, "a call rejected by its schema must not load the executors");
     const verified = await client.callTool({
       name: "forges_local_merge_verify",
       arguments: localMergeArgs,
     });
     assert.notEqual(verified.isError, true);
+    assertLoaded(executors, "the first valid call loads the executors");
     assert.equal(JSON.parse(verified.content[0].text).result.pathsMatch, false);
     assert.equal(JSON.parse(verified.content[0].text).result.mergeReachable, false);
     const inspected = await client.callTool({
@@ -241,32 +239,47 @@ async function assertPackedMcpServer(root) {
 
 const execFileAsync = promisify(execFile);
 
-/**
- * citty resolves every subcommand to print usage, so a static SDK import inside
- * the `mcp` command would load the whole server on `forges --help`. The child
- * runs under the same load hook and reports every module on exit.
- */
-async function assertHelpStaysLight(root) {
+/** `--help` lists every command without the executors or the SDK, then one command runs. */
+async function assertCliStaysLight(root) {
   const hook = new URL("./record-loads.mjs", import.meta.url).href;
   const { stdout, stderr } = await execFileAsync(
     process.execPath,
     ["--import", hook, join(root, "dist/cli.mjs"), "--help"],
     { cwd: root, encoding: "utf8", env: { ...process.env, FORGES_REPORT_LOADS: "1" } },
   );
-  assert.match(stdout, /forges mcp/u, "usage names the mcp command");
+  assert.match(stdout, /^ {2}mcp\b/mu, "usage names the mcp command");
+  assert.match(stdout, /^ {2}local-merge-verify\b/mu, "usage names a generated tool command");
   const recorded = stderr.match(/@loaded (\[.*\])/u);
   assert(recorded, "the load hook reported nothing");
   const urls = JSON.parse(recorded[1]);
   const sdk = urls.filter((url) => url.includes("@modelcontextprotocol"));
   assert.deepEqual(sdk, [], "forges --help must not load the MCP SDK");
-  const serverEntry = pathToFileURL(join(root, "dist/mcp.mjs")).href;
-  assert(!urls.includes(serverEntry), "forges --help must not load the server entry");
-  const typebox = urls.filter((url) => url.startsWith(packageRootUrl) && url.includes("typebox"));
-  assert.deepEqual(typebox, [], "forges --help must not load the tool schemas");
+  for (const entry of ["dist/mcp.mjs", "dist/tool-operations.mjs"]) {
+    const url = pathToFileURL(join(root, entry)).href;
+    assert(!urls.includes(url), `forges --help must not load ${entry}`);
+  }
+
+  const { stdout: answer } = await execFileAsync(
+    process.execPath,
+    [
+      join(root, "dist/cli.mjs"),
+      "local-inspect",
+      "--cwd",
+      localMergeArgs.cwd,
+      "--paths",
+      '["file.txt"]',
+      "--history-limit",
+      "1",
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+  const inspection = JSON.parse(answer);
+  assert.equal(inspection.platform, "local");
+  assert.deepEqual(inspection.result.trackedFiles, ["file.txt"]);
 }
 
-/** typebox is only an optional peer, so a CLI install has no copy for dist to import. */
-async function assertTypeboxInlined(root) {
+/** @agntn/tools carries its own TypeBox, so dist imports none and inlines none. */
+async function assertNoTypebox(root) {
   const distribution = join(root, "dist");
   const files = await readdir(distribution, { recursive: true });
   const importers = [];
@@ -274,15 +287,7 @@ async function assertTypeboxInlined(root) {
     const code = await readFile(join(distribution, file), "utf8");
     if (/(?:from|import)\s*\(?\s*["']typebox(?:\/[^"']*)?["']/u.test(code)) importers.push(file);
   }
-  assert.deepEqual(importers, [], "dist must carry its own typebox");
-  const licenses = await readFile(join(distribution, "THIRD-PARTY-LICENSES.md"), "utf8").catch(
-    () => "",
-  );
-  assert.match(
-    licenses,
-    /^## typebox$[\s\S]*?Copyright \(c\) .* Haydn Paterson/mu,
-    "dist must carry the license of the typebox it inlines",
-  );
+  assert.deepEqual(importers, [], "dist must take TypeBox from @agntn/tools");
 }
 
 /**
@@ -653,8 +658,7 @@ try {
     mkdir(piExtensionDirectory, { recursive: true }),
     mkdir(ompExtensionDirectory, { recursive: true }),
     cp(join(root, "dist"), join(packageRoot, "dist"), { recursive: true }),
-    // The published layout carries no src/, so the shared schemas the Pi extension
-    // imports have to come from the packaged packages/shared directory.
+    /* The published layout has no src/, so tui.ts and lazy.ts come from packages/shared. */
     cp(join(root, "packages/shared"), join(packageRoot, "packages/shared"), { recursive: true }),
   ]);
   await Promise.all([
@@ -662,9 +666,14 @@ try {
     cp(join(root, "packages/omp/extensions/forges.ts"), join(ompExtensionDirectory, "forges.ts")),
   ]);
 
-  await assertTypeboxInlined(packageRoot);
-  const helpStaysLight = assertHelpStaysLight(packageRoot);
-  const ompApi = { typebox: OmpTypeBox, pi: { Text: PackedText }, setLabel() {} };
+  await assertNoTypebox(packageRoot);
+  const cliStaysLight = assertCliStaysLight(packageRoot);
+  /* The adapter hands OMP the wire schema through `Type.Unsafe`; the host keeps it as it came. */
+  const ompApi = {
+    typebox: { Type: { Unsafe: (schema) => schema } },
+    pi: { Text: PackedText },
+    setLabel() {},
+  };
   const [piTools, ompTools] = await Promise.all([
     registerPackedExtension(join(piExtensionDirectory, "forges.ts"), {}),
     registerPackedExtension(join(ompExtensionDirectory, "forges.ts"), ompApi),
@@ -719,7 +728,7 @@ try {
   assertNotLoaded(anyProvider, "local extension calls must not load a provider");
   await assertDistributionFallback(piTool);
   await assertDistributionFallback(ompTool);
-  await helpStaysLight;
+  await cliStaysLight;
   await assertCheckoutBin();
   await assertPackedCommitSearch(piTools, ompTools);
   await assertPackedPrSearch(piTools, ompTools);
@@ -736,5 +745,5 @@ try {
 }
 
 console.log(
-  `Packed Pi and OMP extensions loaded dist/tool-operations.mjs on first call; packed dist/mcp.mjs served ${expectedToolNames.length} tools before loading them; forges --help stayed off the MCP SDK; the checkout's dist/cli.mjs served mcp from src/`,
+  `Packed Pi and OMP extensions loaded dist/tool-operations.mjs on first call; packed dist/mcp.mjs served ${expectedToolNames.length} tools before loading them; forges --help stayed off the MCP SDK and a generated command answered; the checkout's dist/cli.mjs served mcp from src/`,
 );
