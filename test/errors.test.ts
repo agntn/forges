@@ -1,7 +1,9 @@
-import { describe, it, expect } from "vite-plus/test";
+import { afterEach, describe, it, expect, vi } from "vite-plus/test";
 import { FetchError } from "../src/errors.ts";
+import { createHttpClient, type RequestOptions } from "../src/http.ts";
 import {
   normalizeError,
+  normalizeMergeError,
   ForgesError,
   AuthenticationError,
   PermissionError,
@@ -523,5 +525,138 @@ describe("normalizeError provider reasons", () => {
     );
 
     expect(result).toBeInstanceOf(RateLimitError);
+  });
+});
+
+describe("writes whose outcome is unknown", () => {
+  const WRITE_NOTE = "The write may have landed before this failure";
+  const client = createHttpClient({ baseURL: "https://api.github.com", token: "" });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** The FetchError the real client throws once fetch answers or rejects as given. */
+  async function failure(
+    url: string,
+    options: RequestOptions,
+    answer: () => Response | Promise<never>,
+  ): Promise<unknown> {
+    vi.stubGlobal("fetch", vi.fn(answer));
+    return client(url, { retry: false, ...options }).then(
+      () => expect.unreachable("the request should fail"),
+      (error: unknown) => error,
+    );
+  }
+
+  function serverError(status = 500): Response {
+    return new Response(null, { status });
+  }
+
+  function dropped(code: string): Promise<never> {
+    return Promise.reject(
+      new TypeError("fetch failed", { cause: Object.assign(new Error(code), { code }) }),
+    );
+  }
+
+  it("says a create that hit a 5xx may still have landed", async () => {
+    const error = await failure("/repos/o/r/issues", { method: "POST", body: { title: "t" } }, () =>
+      serverError(502),
+    );
+
+    const result = normalizeError(error, "github");
+    expect(result.status).toBe(502);
+    expect(result.message).toMatch(
+      /502\. The write may have landed before this failure, so check for its result before sending it again\.$/,
+    );
+  });
+
+  it("says the same of a write that lost its answer after it left", async () => {
+    const error = await failure("/repos/o/r/issues/1", { method: "PATCH", body: {} }, () =>
+      dropped("ETIMEDOUT"),
+    );
+
+    expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
+  });
+
+  it("stays quiet when the connection never opened", async () => {
+    for (const code of ["ECONNREFUSED", "ENOTFOUND", "UND_ERR_CONNECT_TIMEOUT"]) {
+      const error = await failure("/repos/o/r/issues", { method: "POST", body: {} }, () =>
+        dropped(code),
+      );
+      expect(normalizeError(error, "github").message).not.toContain(WRITE_NOTE);
+    }
+
+    const refused = Object.assign(new AggregateError([], ""), { code: "ECONNREFUSED" });
+    const error = await failure("/repos/o/r/issues", { method: "POST", body: {} }, () =>
+      Promise.reject(new TypeError("fetch failed", { cause: refused })),
+    );
+    expect(normalizeError(error, "github").message).not.toContain(WRITE_NOTE);
+  });
+
+  it("leaves reads, refusals and GraphQL queries alone", async () => {
+    const cases: [string, RequestOptions, number][] = [
+      ["/repos/o/r", {}, 500],
+      ["/repos/o/r/issues", { method: "POST", body: { title: "" } }, 422],
+      [
+        "/graphql",
+        { method: "POST", body: { query: "\n  query($id: ID!) { node(id: $id) { id } }" } },
+        502,
+      ],
+    ];
+    for (const [url, options, status] of cases) {
+      const error = await failure(url, options, () => serverError(status));
+      expect(normalizeError(error, "github").message).not.toContain(WRITE_NOTE);
+    }
+  });
+
+  it("counts a GraphQL mutation as a write", async () => {
+    const error = await failure(
+      "/graphql",
+      {
+        method: "POST",
+        body: {
+          query:
+            "\n  mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id } } }",
+        },
+      },
+      () => serverError(502),
+    );
+
+    expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
+  });
+
+  it("adds the note once when an error is normalized again", async () => {
+    const error = await failure("/repos/o/r/releases", { method: "POST", body: {} }, () =>
+      serverError(),
+    );
+
+    const once = normalizeError(error, "github");
+    expect(normalizeError(once, "github")).toBe(once);
+  });
+
+  it("points a merge that hit a 5xx at merged and mergeCommitSha", async () => {
+    const error = await failure("/repos/o/r/pulls/1/merge", { method: "PUT", body: {} }, () =>
+      serverError(),
+    );
+
+    const result = normalizeMergeError(error, "github", true);
+    expect(result.status).toBe(500);
+    expect(result.message).toMatch(
+      /500\. The merge may have landed before this failure, so read the pull request's merged and mergeCommitSha before trying again\.$/,
+    );
+    expect(result.message).not.toContain(WRITE_NOTE);
+  });
+
+  it("keeps the merge note off a read that failed before the merge went out", async () => {
+    const error = await failure("/projects/o%2Fr", {}, () => serverError(503));
+
+    expect(normalizeMergeError(error, "gitlab", false).message).not.toContain("may have landed");
+  });
+
+  it("says nothing of the sort for an error the provider raised itself", () => {
+    const refused = new ForgesError("GitLab merges by merge commit or rebase", 501, "gitlab");
+
+    expect(normalizeMergeError(refused, "gitlab", false)).toBe(refused);
   });
 });

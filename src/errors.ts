@@ -86,6 +86,12 @@ export class RateLimitError extends ForgesError {
  * Maps HTTP status codes to appropriate error types
  */
 export function normalizeError(error: unknown, platform?: string): ForgesError {
+  const normalized = classifyError(error, platform);
+  if (!(error instanceof FetchError) || !unsettledWrite(error)) return normalized;
+  return withHint(normalized, UNSETTLED_WRITE);
+}
+
+function classifyError(error: unknown, platform?: string): ForgesError {
   // Already a ForgesError
   if (error instanceof ForgesError) {
     return error;
@@ -144,21 +150,59 @@ export function normalizeMergeError(
   platform: string,
   pinnedHead: boolean,
 ): ForgesError {
-  const normalized = normalizeError(error, platform);
+  const normalized = classifyError(error, platform);
   const hint =
-    normalized.status === 405
-      ? "The pull request cannot be merged as it stands: it may be closed, a draft, in conflict, waiting on required checks or approvals, or the merge method may be off for this repository. Read the pull request and its checks before trying again."
-      : normalized.status !== 409
-        ? undefined
-        : pinnedHead
-          ? "The head commit may no longer be headSha. Read the pull request again and review any new commits before merging."
-          : "The branches conflict or the head moved during the merge. Read the pull request again before trying again.";
-  if (hint === undefined) return normalized;
+    normalized.originalError instanceof FetchError && unsettledWrite(normalized.originalError)
+      ? UNSETTLED_MERGE
+      : normalized.status === 405
+        ? "The pull request cannot be merged as it stands: it may be closed, a draft, in conflict, waiting on required checks or approvals, or the merge method may be off for this repository. Read the pull request and its checks before trying again."
+        : normalized.status !== 409
+          ? undefined
+          : pinnedHead
+            ? "The head commit may no longer be headSha. Read the pull request again and review any new commits before merging."
+            : "The branches conflict or the head moved during the merge. Read the pull request again before trying again.";
+  return hint === undefined ? normalized : withHint(normalized, hint);
+}
+
+const UNSETTLED_WRITE =
+  "The write may have landed before this failure, so check for its result before sending it again.";
+
+const UNSETTLED_MERGE =
+  "The merge may have landed before this failure, so read the pull request's merged and mergeCommitSha before trying again.";
+
+const WRITE_METHODS = new Set(["PATCH", "POST", "PUT", "DELETE"]);
+
+/** Connection failures that stop a request before any byte of it reaches the forge. */
+const NEVER_SENT = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT"]);
+
+/** GraphQL reads go out as POST too, so only a mutation document counts as a write. */
+function isWrite(error: FetchError): boolean {
+  const { method = "GET", body } = (error.options ?? {}) as { method?: string; body?: unknown };
+  if (!WRITE_METHODS.has(method.toUpperCase())) return false;
+  if (!error.request?.endsWith("/graphql")) return true;
+  const query = typeof body === "object" && body !== null ? Reflect.get(body, "query") : undefined;
+  return typeof query !== "string" || /^\s*mutation\b/u.test(query);
+}
+
+/** A 5xx, or a write that lost its answer after it left, says nothing about what the forge did. */
+function unsettledWrite(error: FetchError): boolean {
+  if (!isWrite(error)) return false;
+  if (error.status !== undefined) return error.status >= 500;
+  let cause: unknown = error.cause;
+  for (let depth = 0; depth < 4 && cause instanceof Error; depth++) {
+    const code: unknown = Reflect.get(cause, "code");
+    if (typeof code === "string" && NEVER_SENT.has(code)) return false;
+    cause = cause.cause;
+  }
+  return true;
+}
+
+function withHint(error: ForgesError, hint: string): ForgesError {
   return new ForgesError(
-    `${normalized.message.replace(/[\s.]+$/u, "")}. ${hint}`,
-    normalized.status,
-    platform,
-    normalized.originalError,
+    `${error.message.replace(/[\s.]+$/u, "")}. ${hint}`,
+    error.status,
+    error.platform,
+    error.originalError,
   );
 }
 
