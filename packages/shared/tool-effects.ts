@@ -75,19 +75,8 @@ function isToolName(name: string): name is ForgesToolName {
   return Object.hasOwn(toolEffects, name);
 }
 
-/** OMP approval categories and TUI labels share this projection, not enforcement. */
+/** The (read) and (write) marks of the status lines. */
 export function toolApproval(name: string): "read" | "write" {
   const effect = getToolEffect(name);
   return effect === "hostedRead" || effect === "localRead" ? "read" : "write";
-}
-
-/** Reload also verifies the account remotely; only local Git reads stay offline. */
-export function toolAnnotations(name: ForgesToolName) {
-  const effect = getToolEffect(name);
-  return {
-    readOnlyHint: effect === "hostedRead" || effect === "localRead",
-    destructiveHint: effect === "remoteUpdate",
-    idempotentHint: effect !== "remoteCreate" && effect !== "credentialReload",
-    openWorldHint: effect !== "localRead",
-  };
 }

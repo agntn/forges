@@ -22,14 +22,14 @@ describe("Forges tool TUI", () => {
   it("renders the repository target, call state, and write boundary", () => {
     const read = renderToolCall(
       "forges_issues_get",
-      "Forges Issue",
+      "◈ Forges Issue",
       { platform: "github", owner: "agntn", repo: "forges", number: 42 },
       { executionStarted: true, isPartial: true },
       plain,
     );
     const write = renderToolCall(
       "forges_pull_requests_create",
-      "Create Forges Pull Request",
+      "↗ Create Forges Pull Request",
       {
         platform: "github",
         owner: "agntn",
@@ -51,7 +51,7 @@ describe("Forges tool TUI", () => {
   it("renders a repository the caller wrote as one owner/name slug", () => {
     const read = renderToolCall(
       "forges_issues_get",
-      "Forges Issue",
+      "◈ Forges Issue",
       { repo: "agntn/forges", number: 42 },
       { executionStarted: true, isPartial: true },
       plain,
@@ -190,7 +190,7 @@ describe("Forges tool TUI", () => {
     expect(
       renderToolCall(
         "forges_repos_get",
-        "Forges Repository",
+        "◆ Forges Repository",
         { owner: `${escape}]0;evil${bell}agntn`, repo: "forges" },
         {},
         plain,

@@ -1,21 +1,12 @@
-import { Type, type TObject, type TProperties } from "typebox";
+import { Type, type TObject, type TProperties } from "@agntn/tools";
 
-/**
- * The platforms every tool surface accepts, re-exported from `src/tool-operations.ts`.
- *
- * The union is declared here rather than imported from `src/`, because this file
- * ships to npm and `src/` does not: a type import pointing back into the source
- * tree would dangle in the published package.
- */
+/** The platforms every tool surface accepts, re-exported from `src/tool-operations.ts`. */
 export type ForgesPlatform = "github" | "gitlab" | "gitea";
 
 /**
  * Build the parameter schemas for the forges tool surface.
  *
- * Pi and the MCP server share these schemas and call this once, when they
- * register their tools, so importing the module evaluates nothing. The OMP
- * extension builds its own copies from `ExtensionAPI.typebox`, because OMP
- * validates tool parameters with its host TypeBox build rather than this one.
+ * `src/tools.ts` calls this once. `Type` comes from `@agntn/tools`: OMP rewrites a bare `typebox`.
  *
  * No schema carries a token or a base URL: credentials come from the local
  * detection chain and endpoints from the `FORGES_*_BASE_URL` variables, so a

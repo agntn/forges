@@ -1,8 +1,5 @@
 import { defineBuildConfig } from "obuild/config";
 
-/** typebox stays inline, since every MCP spawn parses it slower from node_modules. */
-const isTypebox = (id: string): boolean => /^typebox(?:\/|$)/u.test(id);
-
 export default defineBuildConfig({
   entries: [
     {
@@ -19,18 +16,8 @@ export default defineBuildConfig({
         "./src/provider.ts",
         "./src/types.ts",
         "./src/tool-operations.ts",
+        "./src/tools.ts",
       ],
     },
   ],
-  hooks: {
-    /** obuild marks the typebox peer external by name and by subpath, and both have to go. */
-    rolldownConfig(config) {
-      if (!Array.isArray(config.external)) return;
-      config.external = config.external.filter((entry) =>
-        typeof entry === "string"
-          ? !isTypebox(entry)
-          : !(entry instanceof RegExp && entry.test("typebox/value")),
-      );
-    },
-  },
 });

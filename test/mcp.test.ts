@@ -1,7 +1,6 @@
 import { toolEffects } from "../packages/shared/tool-effects.ts";
 import { readFile } from "node:fs/promises";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { NotFoundError, RateLimitError } from "../src/errors.ts";
@@ -202,17 +201,17 @@ describe("forges MCP server", () => {
         path: "../README.md",
         claims: [
           /Four forges, ten resources, (\d+) agent tools\./,
-          /\*\*(\d+) tools, three surfaces\.\*\*/,
+          /\*\*(\d+) tools, four surfaces\.\*\*/,
           /MCP, Pi and OMP all hit the same (\d+) tools\./,
         ],
       },
       {
         path: "../docs/content/1.guide/01.index.md",
-        claims: [/\[Agents\]\(\/guide\/agents\): (\d+) tools over MCP, Pi and OMP\./],
+        claims: [/\[Agents\]\(\/guide\/agents\): (\d+) tools over MCP, Pi, OMP and the CLI\./],
       },
       {
         path: "../docs/content/1.guide/10.agents.md",
-        claims: [/description: The same (\d+) tools over MCP/, /^## (\d+) tools, three surfaces$/m],
+        claims: [/description: The same (\d+) tools over MCP/, /^## (\d+) tools, four surfaces$/m],
       },
     ];
     for (const { path, claims } of pages) {
@@ -1554,6 +1553,21 @@ describe("forges MCP server", () => {
     expect(answer).toBe("forges_repos_get failed: Resource not found: 404 Not Found");
   });
 
+  it("strips an endpoint from a failure no provider explained", async () => {
+    mocks.repos.get.mockRejectedValue(
+      new TypeError("fetch failed: https://git.internal.example/x"),
+    );
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_repos_get",
+      arguments: { platform: "github", owner: "agntn", repo: "forges" },
+    });
+
+    expect(response.isError).toBe(true);
+    expect(text(response.content)).toBe("forges_repos_get failed: fetch failed: <endpoint>");
+  });
+
   it("names the retry window that the platform message cannot carry", async () => {
     mocks.issues.list.mockRejectedValue(
       new RateLimitError(
@@ -1574,7 +1588,7 @@ describe("forges MCP server", () => {
     );
   });
 
-  it("escapes controls and directional formatting in error text", async () => {
+  it("strips escapes, controls and directional formatting from error text", async () => {
     mocks.issues.list.mockRejectedValue(
       new Error("upstream\u001b]0;forged\u0007\nsecond\u0085\u2028\u202eflip"),
     );
@@ -1585,9 +1599,7 @@ describe("forges MCP server", () => {
       arguments: { platform: "github", owner: "agntn", repo: "forges" },
     });
 
-    expect(text(response.content)).toBe(
-      "forges_issues_list failed: upstream\\u001b]0;forged\\u0007\\u000asecond\\u0085\\u2028\\u202eflip",
-    );
+    expect(text(response.content)).toBe("forges_issues_list failed: upstream second flip");
   });
 
   it("rejects arguments that miss the schema before reaching a provider", async () => {
@@ -1600,7 +1612,7 @@ describe("forges MCP server", () => {
 
     expect(response.isError).toBe(true);
     expect(text(response.content)).toBe(
-      "Invalid arguments at /platform: must be one of: github, gitlab, gitea",
+      "Invalid arguments at /platform: must be one of github, gitlab, gitea",
     );
     expect(mocks.createProvider).not.toHaveBeenCalled();
   });
@@ -1615,7 +1627,7 @@ describe("forges MCP server", () => {
 
     expect(response.isError).toBe(true);
     expect(text(response.content)).toBe(
-      "Invalid arguments at /method: must be one of: merge, squash, rebase",
+      "Invalid arguments at /method: must be one of merge, squash, rebase",
     );
     expect(mocks.createProvider).not.toHaveBeenCalled();
   });
@@ -1630,7 +1642,7 @@ describe("forges MCP server", () => {
 
     expect(response.isError).toBe(true);
     expect(text(response.content)).toBe(
-      "Invalid arguments at /state: must be one of: open, closed, all",
+      "Invalid arguments at /state: must be string\nInvalid arguments at /state: must be one of open, closed, all",
     );
     expect(mocks.createProvider).not.toHaveBeenCalled();
   });
@@ -1657,7 +1669,9 @@ describe("forges MCP server", () => {
     });
 
     expect(response.isError).toBe(true);
-    expect(text(response.content)).toBe("Invalid arguments at /: unknown property per_page");
+    expect(text(response.content)).toBe(
+      'Invalid arguments: unknown property "per_page"; takes platform, owner, repo, page, perPage, state',
+    );
     expect(mocks.createProvider).not.toHaveBeenCalled();
   });
 
@@ -1673,8 +1687,11 @@ describe("forges MCP server", () => {
     });
 
     expect(response.isError).toBe(true);
-    expect(text(response.content)).toBe(
-      `Invalid arguments at /: unknown property ${Object.keys(stray).join(", ")}`,
+    expect(text(response.content).split("\n")).toEqual(
+      Object.keys(stray).map(
+        (key) =>
+          `Invalid arguments: unknown property "${key}"; takes platform, owner, repo, page, perPage, state`,
+      ),
     );
     expect(mocks.createProvider).not.toHaveBeenCalled();
   });
@@ -1685,15 +1702,15 @@ describe("forges MCP server", () => {
     const response = await client.callTool({ name: "toString", arguments: {} });
 
     expect(response.isError).toBe(true);
-    expect(text(response.content)).toBe("Unknown forges tool: toString");
+    expect(text(response.content)).toBe('Unknown forges tool: "toString"');
   });
 
-  it("escapes controls in unknown tool names", async () => {
+  it("quotes an unknown tool name, so a newline in it can't forge a line", async () => {
     const client = await connectTestClient();
 
     const response = await client.callTool({ name: "missing\nforged", arguments: {} });
 
     expect(response.isError).toBe(true);
-    expect(text(response.content)).toBe("Unknown forges tool: missing\\u000aforged");
+    expect(text(response.content)).toBe('Unknown forges tool: "missing\\nforged"');
   });
 });

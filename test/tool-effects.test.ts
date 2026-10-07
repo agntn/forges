@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import {
-  getToolEffect,
-  toolAnnotations,
-  toolApproval,
-  toolEffects,
-} from "../packages/shared/tool-effects.ts";
+import { getToolEffect, toolApproval, toolEffects } from "../packages/shared/tool-effects.ts";
 import { renderToolCall, renderToolResult } from "../packages/shared/tui.ts";
 
 const writes = [
@@ -35,12 +30,6 @@ describe("tool effects", () => {
     expect(getToolEffect("forges_pull_requests_merge")).toBe("remoteUpdate");
     expect(getToolEffect("forges_threads_resolve")).toBe("remoteState");
     expect(getToolEffect("forges_auth_reload")).toBe("credentialReload");
-    expect(toolAnnotations("forges_auth_reload")).toEqual({
-      readOnlyHint: false,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    });
   });
 
   it.each(["forges_future_tool", "toString", "__proto__"])(

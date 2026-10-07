@@ -48,10 +48,12 @@ src/
 ├── update-input.ts       # Issue and pull request update and merge checks + whole-list assignee merge for GitLab and Gitea
 ├── pagination.ts         # Link header + x-next-page async generator, local page slicing
 ├── version.ts            # Package version — the one source for it in src/
-├── tool-operations.ts    # Executors behind every agent surface (MCP, Pi, OMP)
-├── mcp.ts                # createMcpServer() over the low-level MCP Server; tool table on first tools/list, executors on first tools/call
-├── cli.ts                # citty entry for the `forges` bin; serves `mcp` from src/ in a checkout
-├── commands/mcp.ts       # `forges mcp` — stdio transport
+├── tool-operations.ts    # Executors behind every agent surface (MCP, Pi, OMP, CLI) + toolFailure()
+├── tool-schemas.ts       # ForgesPlatform + the TypeBox parameters, built with `Type` from @agntn/tools
+├── tools.ts              # forgesTools(): one defineTool per tool, executors loaded on the first call
+├── mcp.ts                # createMcpServer() from @agntn/tools/mcp, with the forges title and website
+├── cli.ts                # runCli() from @agntn/tools/cli; a bare `mcp` serves src/ in a checkout
+├── commands/mcp.ts       # serveMcp(): `forges mcp` over stdio
 ├── github.ts             # Sub-path re-export for @agntn/forges/github
 ├── gitlab.ts             # Sub-path re-export for @agntn/forges/gitlab
 ├── gitea.ts              # Sub-path re-export for @agntn/forges/gitea
@@ -62,10 +64,11 @@ src/
     └── gitea.ts          # Class. limit param, null-safe fields
 packages/
 ├── shared/
-│   ├── forges-tool-schemas.ts   # ForgesPlatform + TypeBox parameters shared by src/mcp.ts and Pi
+│   ├── tool-effects.ts          # Each tool's effect: MCP hints, OMP approval, the (write) mark
+│   ├── tui.ts                   # Status lines and result previews for Pi and OMP
 │   └── lazy.ts                  # lazy(load): one shared in-flight load, retried after a rejection
-├── pi/extensions/forges.ts      # Pi extension — imports the shared schemas
-└── omp/extensions/forges.ts     # OMP extension — rebuilds them with the host TypeBox
+├── pi/extensions/forges.ts      # registerPiTools() + the six approval dialogs
+└── omp/extensions/forges.ts     # registerOmpTools() under the Forges label
 test/
 ├── *.test.ts             # Unit suites plus integration and agent-surface coverage
 └── eval-packed-extensions.mjs   # Loads both extensions from a published-shaped layout
@@ -83,8 +86,8 @@ test/
 | Fix pagination                | `src/pagination.ts`                | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab                                                           |
 | Fix error mapping             | `src/errors.ts`                    | `normalizeError()` maps FetchError → ForgesError subtypes                                                                |
 | Add sub-path export           | `build.config.ts` + `package.json` | Must update both: bundle `input` + exports map                                                                           |
-| Add agent tool                | `src/tool-operations.ts`           | Executor first, then `src/mcp.ts` and both extensions                                                                    |
-| Change tool schema            | `packages/shared/`                 | `forgesToolSchemas()` builds them; MCP and Pi call it once, OMP rebuilds from `pi.typebox`                               |
+| Add agent tool                | `src/tool-operations.ts`           | Executor first, then its `defineTool` in `src/tools.ts` and its effect in `packages/shared/tool-effects.ts`              |
+| Change tool schema            | `src/tool-schemas.ts`              | `forgesToolSchemas()` builds them once for every surface; `Type` comes from `@agntn/tools`, never `typebox`              |
 | Debug HTTP                    | `src/http.ts`                      | `rawFetch()` returns headers, `createHttpClient()` configures auth                                                       |
 | Add tests                     | `test/`                            | Name must match `test/<module>.test.ts`                                                                                  |
 
@@ -97,7 +100,7 @@ test/
 - Use `import type` for type-only imports
 - Node builtins use `node:` prefix: `node:child_process`, `node:fs`
 - TypeScript uses NodeNext resolution with `allowImportingTsExtensions` and `noEmit`; obuild owns JavaScript and declaration emission
-- The OMP extension must keep both dynamic imports literal: `existsSync(src)` chooses `import("../../../src/tool-operations.ts")` or `import("../../../dist/tool-operations.mjs")`. Never `import(url.href)`.
+- The OMP extension must keep both dynamic imports literal: `existsSync(src)` chooses `import("../../../src/tools.ts")` or `import("../../../dist/tools.mjs")`. Never `import(url.href)`.
 
 ### TypeScript
 
@@ -156,9 +159,10 @@ Configured via `tokenHeader`/`tokenPrefix` in `createHttpClient()`.
 - **No hardcoded URLs** — all providers accept `baseURL` config.
 - **No `execSync`** — use `execFileSync` with arg arrays (command injection prevention).
 - **No CJS** — ESM only everywhere.
-- **Local MCP serves `src/`.** Inside a checkout, the built `dist/cli.mjs` loads the `mcp` command from `src/`, like the Pi and OMP extensions, so a local server needs only a restart after a change. The npm package ships no `src/` and runs the bundle, and so does a copy under `node_modules` or a Node started with `--no-experimental-strip-types`. `FORGES_DIST=1` forces the bundle. A change to `src/cli.ts` itself still needs `pnpm build`; `test:packed` runs `mcp` in each of these layouts.
-- **typebox is an optional peer.** Pi 0.99 warns on every load of a package that lists it in `dependencies`, so it's a `"*"` peer and the exact pin sits in `devDependencies`. Pi hands the extension its own copy, and obuild inlines one into `dist` for the CLI and the MCP server, through the `rolldownConfig` hook in `build.config.ts`, with its license in `dist/THIRD-PARTY-LICENSES.md`. `test/extensions.test.ts` fails on a host package in `dependencies`, `test:packed` on a `dist` file that imports `typebox` or on a `dist` without its license.
-- **Nothing runs at import.** `sideEffects: false` is a claim about every module: no calls, registrations, or `process.env` reads at module scope, and heavy dependencies (provider modules, `typebox/value`, the MCP SDK) load on the call path through literal `import()`. Literals, `new Set([...])` and `Symbol.for()` need no hint, rolldown drops them unused; a module-scope call to a project helper such as `lazy()` carries `/* @__PURE__ */`.
+- **Local MCP serves `src/`.** Inside a checkout, the built `dist/cli.mjs` loads the `mcp` command from `src/`, bypassing the `mcp` that `runCli` generates because that one can't carry the title and website, like the Pi and OMP extensions, so a local server needs only a restart after a change. The npm package ships no `src/` and runs the bundle, and so does a copy under `node_modules` or a Node started with `--no-experimental-strip-types`. `FORGES_DIST=1` forces the bundle. A change to `src/cli.ts` itself still needs `pnpm build`; `test:packed` runs `mcp` in each of these layouts.
+- **One definition per tool.** `src/tools.ts` declares each tool once with `defineTool` from `@agntn/tools`, and the MCP server, both extensions and the CLI register that list through the adapters, so a schema, a description or a validation line can't drift between surfaces. Schemas take `Type` from `@agntn/tools`, never from `typebox`: OMP rewrites that bare import to its own facade and validation quietly disappears. TypeBox comes bundled inside `@agntn/tools`, so it is no dependency or peer here, only a devDependency for `Value.Check` in tests. `test/extensions.test.ts` fails on a host package in `dependencies` or a `typebox` peer, `test:packed` on a `dist` file that imports `typebox`.
+- **Pi asks before six writes.** `confirm` in `packages/pi/extensions/forges.ts` builds the dialog for release create and update, issue update, and pull request create, update and merge from the target `repositoryTarget()` resolved, so the dialog names the repository the write goes to. The adapter validates first and refuses without a UI. OMP needs no dialog: `approval: "write"` puts the host's own approval in front of every write.
+- **Nothing runs at import.** `sideEffects: false` is a claim about every module: no calls, registrations, or `process.env` reads at module scope, and heavy dependencies (provider modules, the executors, the MCP SDK) load on the call path through literal `import()`. `forgesTools()` builds the definitions on its first call, not at import. Literals, `new Set([...])` and `Symbol.for()` need no hint, rolldown drops them unused; a module-scope call to a project helper such as `lazy()` carries `/* @__PURE__ */`.
 
 ## Testing
 
