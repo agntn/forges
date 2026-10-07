@@ -197,26 +197,27 @@ function runsMutation(body: object): boolean {
   const name: unknown = Reflect.get(body, "operationName");
   if (typeof query !== "string") return true;
   const operations = definedOperations(query.replace(IGNORED, " "));
+  if (operations === undefined) return true;
   const picked = operations.filter(
     (operation) => typeof name === "string" && operation.name === name,
   );
   return (picked.length > 0 ? picked : operations).some(({ kind }) => kind === "mutation");
 }
 
-/** Operations at brace depth zero, so a field that happens to be called `mutation` stays out. */
-function definedOperations(document: string): { kind: string; name?: string }[] {
+/** Operations at brace depth zero, or `undefined` when the braces don't balance and nothing is sure. */
+function definedOperations(document: string): { kind: string; name?: string }[] | undefined {
   const operations: { kind: string; name?: string }[] = [];
   let depth = 0;
   for (const [token, kind, name] of document.matchAll(TOKEN)) {
     if (token === "{") depth++;
-    else if (token === "}") depth = Math.max(0, depth - 1);
+    else if (token === "}" && --depth < 0) return undefined;
     else if (depth === 0 && kind !== undefined) operations.push({ kind, name });
   }
-  return operations;
+  return depth === 0 ? operations : undefined;
 }
 
 /** Strings and comments in one pass, so a `#` in a string or a quote in a comment stays put. */
-const IGNORED = /"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"|#.*/gu;
+const IGNORED = /"""(?:\\"""|[\s\S])*?"""|"(?:\\.|[^"\\\n])*"|#.*/gu;
 
 /** Braces, plus each operation keyword and the name after GraphQL's ignored separators. */
 const TOKEN = /[{}]|(?<![$@\w])(query|mutation|subscription)(?!\w)[\s,\uFEFF]*([_A-Za-z]\w*)?/gu;

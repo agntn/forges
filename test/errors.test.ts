@@ -706,6 +706,12 @@ describe("writes whose outcome is unknown", () => {
       await run("/graphql", "query($mutation: ID) { node(id: $mutation) { id } }"),
     ).not.toContain(WRITE_NOTE);
     expect(await run("/graphql?trace=1", "query { viewer { login } }")).not.toContain(WRITE_NOTE);
+    expect(
+      await run("/graphql", 'query Read { a(b: """ \\""" { """) }\nmutation Write { c }', "Write"),
+    ).toContain(WRITE_NOTE);
+    expect(
+      await run("/graphql", 'query Read { a(b: "{") }} mutation Write { c }', "Read"),
+    ).toContain(WRITE_NOTE);
   });
 
   it("puts the note on the first line of the stack too", async () => {
