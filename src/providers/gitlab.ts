@@ -341,8 +341,19 @@ interface GitLabMergeRequestApprovals {
 /** GitLab releases carry no id; the tag is the whole identity. */
 interface GitLabTag {
   name: string;
-  /** Already peeled, `target` holds the tag object of an annotated tag. */
-  commit: { id: string } | null;
+  /** The tag object of an annotated tag, the commit itself for a lightweight one. */
+  target: string;
+  /** Null without a tagger, which is how a tag on a tree arrives. */
+  created_at: string | null;
+  /** Already peeled, but the default branch head for a tag on a tree. */
+  commit: { id: string; committed_date: string } | null;
+}
+
+/** A tag never predates its commit, so a missing or earlier date marks the answer as suspect. */
+function tagPredatesCommit(raw: GitLabTag): boolean {
+  const tagged = Date.parse(raw.created_at ?? "");
+  const committed = Date.parse(raw.commit?.committed_date ?? "");
+  return !(tagged >= committed);
 }
 
 interface GitLabRelease {
@@ -933,12 +944,25 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
           },
         },
       );
-      return this.parsePagination(
-        (data ?? []).map((raw) => ({ name: raw.name, sha: raw.commit?.id ?? null })),
-        headers,
-      );
+      const tags = await Promise.all((data ?? []).map((raw) => this.mapTag(projectId, raw)));
+      return this.parsePagination(tags, headers);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
+    }
+  }
+
+  /** Reads the target of a tag GitLab can't date after its commit. A 404 means a tree. */
+  private async mapTag(projectId: number, raw: GitLabTag): Promise<Tag> {
+    const sha = raw.commit?.id ?? null;
+    if (sha === null || raw.target === sha || !tagPredatesCommit(raw))
+      return { name: raw.name, sha };
+    try {
+      const commit = await this.client<{ id: string }>(
+        `/projects/${projectId}/repository/commits/${encodePathSegment(raw.target)}`,
+      );
+      return { name: raw.name, sha: commit.id };
+    } catch (error: unknown) {
+      return { name: raw.name, sha: normalizeError(error, "gitlab").status === 404 ? null : sha };
     }
   }
 

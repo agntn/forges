@@ -835,6 +835,7 @@ describe("GitLabProvider", () => {
           "048eec04a2cca8410ac7b56b5a9d17c9b8057e6b",
         ],
         title: "Merge branch 'renovate/github.com-tidwall-pretty-1.x' into 'main'",
+        committed_date: "2026-10-06T11:37:36.000+02:00",
         web_url:
           "https://gitlab.com/gitlab-org/cli/-/commit/4d447cc6c19858928884626d802c8f7b7c5f799e",
       },
@@ -863,6 +864,55 @@ describe("GitLabProvider", () => {
         hasNextPage: true,
         nextPage: 2,
       });
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+    });
+
+    it("gives a tag on a tree a null sha instead of the default branch head", async () => {
+      mockProjectResolve(28181);
+      const head = {
+        ...glTag.commit,
+        id: "a90ee4305c4a5df72c11b31dacfdc76e00fcf78a",
+        title: "Linux 7.3-rc6",
+        committed_date: "2026-10-04T13:45:25.000-07:00",
+      };
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          {
+            name: "v2.6.11-tree",
+            message: "",
+            target: "5dc01c595e6c6ec9ccda4f6f69c131c0dd945f8c",
+            commit: head,
+            release: null,
+            protected: false,
+            created_at: null,
+          },
+        ],
+        headers: glHeaders(),
+      });
+      mocks.client.mockRejectedValueOnce(makeFetchError(404, "404 Commit Not Found"));
+
+      const result = await gl.repos.listTags("linux-kernel", "stable");
+
+      expect(mocks.client).toHaveBeenCalledWith(
+        "/projects/28181/repository/commits/5dc01c595e6c6ec9ccda4f6f69c131c0dd945f8c",
+      );
+      expect(result.items).toEqual([{ name: "v2.6.11-tree", sha: null }]);
+    });
+
+    it("keeps an undated annotated tag on the commit its target peels to", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [{ ...glTag, created_at: null }],
+        headers: glHeaders(),
+      });
+      mocks.client.mockResolvedValueOnce({ id: glTag.commit.id });
+
+      const result = await gl.repos.listTags("gitlab-org", "cli");
+
+      expect(mocks.client).toHaveBeenCalledWith(
+        "/projects/278964/repository/commits/e3abc8e79c419e580779d26c1f72ab463095ac70",
+      );
+      expect(result.items).toEqual([{ name: "v1.121.0", sha: glTag.commit.id }]);
     });
   });
 
