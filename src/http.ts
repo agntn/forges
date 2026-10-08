@@ -135,7 +135,11 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
       let data: unknown;
       try {
         response = await fetch(target, init);
-        data = await readBody(response, method, options.responseType);
+        data = await readBody(
+          response,
+          method,
+          response.status < 400 ? options.responseType : undefined,
+        );
       } catch (error) {
         const aborted = error instanceof Error && error.name === "AbortError";
         if (!aborted && attempt < retries && retryStatusCodes.includes(500)) {
@@ -235,6 +239,7 @@ function isJSONBody(body: unknown): boolean {
   );
 }
 
+/** A failure is read by its content type: a forge says why in JSON, whatever the call asked for. */
 async function readBody(
   response: Response,
   method: string,

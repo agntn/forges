@@ -134,17 +134,6 @@ function entryType(type: ArtifactsTreeEntry["type"]): RepositoryEntry["type"] {
   return "file";
 }
 
-/** A refused file read arrives as bytes, but its envelope still names the reason. */
-function withEnvelopeReason(error: unknown): unknown {
-  if (!(error instanceof FetchError) || !(error.data instanceof ArrayBuffer)) return error;
-  try {
-    error.data = JSON.parse(new TextDecoder().decode(error.data)) as unknown;
-  } catch {
-    error.data = undefined;
-  }
-  return error;
-}
-
 export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
   private readonly apiBaseURL: string;
   private readonly token: string | undefined;
@@ -513,7 +502,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
       return new Uint8Array(bytes);
     } catch (error) {
       if (error instanceof FetchError && error.status === 404) return null;
-      throw withEnvelopeReason(error);
+      throw error;
     }
   }
 
