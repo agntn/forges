@@ -46,7 +46,7 @@ src/
 ├── changed-file.ts       # Changed-file status normalization + GitLab diff line counts
 ├── commit-patch.ts       # Bounded commit patch stream rendering and continuation
 ├── update-input.ts       # Issue and pull request update and merge checks + whole-list assignee merge for GitLab and Gitea
-├── pagination.ts         # Link header + x-next-page async generator, local page slicing, cursorPage()
+├── pagination.ts         # Link header pages (paginationFromLink, buildPageResult), x-next-page async generator, local page slicing, cursorPage()
 ├── version.ts            # Package version — the one source for it in src/
 ├── tool-operations.ts    # Executors behind every agent surface (MCP, Pi, OMP, CLI) + toolFailure()
 ├── tool-schemas.ts       # ForgesPlatform + the TypeBox parameters, built with `Type` from @agntn/tools
@@ -85,7 +85,7 @@ test/
 | Change contribution templates | `src/provider.ts` + provider files | Keep lists metadata-only; `get` must resolve an exact listed key                                                         |
 | Change auth logic             | `@agntn/credentials`               | The chain lives there; `src/auth.ts` only maps a platform to its `resolve()`                                             |
 | Change cache backend          | `src/cache.ts`                     | `configureStorage()` swaps unstorage driver                                                                              |
-| Fix pagination                | `src/pagination.ts`                | `parseLinkHeader()` for GitHub/Gitea, `x-next-page` for GitLab, `cursorPage()` for Artifacts                             |
+| Fix pagination                | `src/pagination.ts`                | `paginationFromLink()` for GitHub/Gitea, `x-next-page` for GitLab, `cursorPage()` for Artifacts                          |
 | Fix error mapping             | `src/errors.ts`                    | `normalizeError()` maps FetchError → ForgesError subtypes                                                                |
 | Add sub-path export           | `build.config.ts` + `package.json` | Must update both: bundle `input` + exports map                                                                           |
 | Add agent tool                | `src/tool-operations.ts`           | Executor first, then its `defineTool` in `src/tools.ts` and its effect in `packages/shared/tool-effects.ts`              |

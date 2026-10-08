@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vite-plus/test";
-import { parseLinkHeader, paginate, fetchAllPages } from "../src/pagination.ts";
+import {
+  buildPageResult,
+  fetchAllPages,
+  paginate,
+  paginationFromLink,
+  parseLinkHeader,
+} from "../src/pagination.ts";
 
 describe("parseLinkHeader", () => {
   it("returns empty object for null or undefined", () => {
@@ -26,6 +32,36 @@ describe("parseLinkHeader", () => {
       next: "https://api.github.com/repos?page=2",
       last: "https://api.github.com/repos?page=5",
       first: "https://api.github.com/repos?page=1",
+    });
+  });
+});
+
+describe("paginationFromLink", () => {
+  const link = (next: string) => new Headers({ Link: `<${next}>; rel="next"` });
+
+  it("reads the page a relative next link points to", () => {
+    expect(paginationFromLink(link("/repos?page=4"))).toEqual({ hasNextPage: true, nextPage: 4 });
+  });
+
+  it("keeps a next page whose number it cannot read", () => {
+    for (const next of ["/repos?page=abc", "/repos?page=0", "/repos?cursor=x", "http://[bad"]) {
+      expect(paginationFromLink(link(next))).toEqual({ hasNextPage: true, nextPage: undefined });
+    }
+  });
+
+  it("answers no next page without a next link", () => {
+    expect(paginationFromLink(new Headers())).toEqual({ hasNextPage: false, nextPage: undefined });
+  });
+});
+
+describe("buildPageResult", () => {
+  it("maps the rows and reads the next page from the same headers", () => {
+    const headers = new Headers({ Link: '<https://api.github.com/repos?page=2>; rel="next"' });
+
+    expect(buildPageResult([1, 2], headers, (value) => value * 10)).toEqual({
+      items: [10, 20],
+      hasNextPage: true,
+      nextPage: 2,
     });
   });
 });

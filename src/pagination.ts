@@ -93,6 +93,35 @@ export function parseLinkHeader(header: string | null | undefined): Record<strin
 }
 
 /**
+ * Read the next page from a Link header; a relative, odd or broken link still counts as one.
+ */
+export function paginationFromLink(headers: Headers): {
+  hasNextPage: boolean;
+  nextPage: number | undefined;
+} {
+  const next = parseLinkHeader(headers.get("Link")).next;
+  if (!next) return { hasNextPage: false, nextPage: undefined };
+  const page = URL.parse(next, "https://forges.invalid")?.searchParams.get("page") ?? null;
+  if (page === null) return { hasNextPage: true, nextPage: undefined };
+  const parsed = parseInt(page, 10);
+  return {
+    hasNextPage: true,
+    nextPage: Number.isInteger(parsed) && parsed > 0 ? parsed : undefined,
+  };
+}
+
+/**
+ * Map one Link-paginated page of raw rows, as GitHub and Gitea both serve them.
+ */
+export function buildPageResult<TRaw, TMapped>(
+  items: TRaw[],
+  headers: Headers,
+  mapper: (raw: TRaw) => TMapped,
+): PageResult<TMapped> {
+  return { items: items.map(mapper), ...paginationFromLink(headers) };
+}
+
+/**
  * Async generator for paginating through results
  * Supports GitHub Link headers and GitLab x-next-page header
  */
