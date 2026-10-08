@@ -244,6 +244,25 @@ describe("createHttpClient", () => {
     expect(normalizeError(failure, "github").status).toBe(404);
   });
 
+  it.each(["text", "stream", "arrayBuffer"] as const)(
+    "parses a JSON error body when the request asked for %s",
+    async (responseType) => {
+      fetchMock.mockResolvedValueOnce(
+        json({ message: "No commit found for the ref nope" }, { status: 422 }),
+      );
+      const client = createHttpClient({ baseURL: "https://api.github.com", token: "t" });
+
+      const error = (await client("/repos/o/r/commits/nope", { responseType }).catch(
+        (caught: unknown) => caught,
+      )) as FetchError;
+
+      expect(error.data).toEqual({ message: "No commit found for the ref nope" });
+      expect(normalizeError(error, "github").message).toContain(
+        "422: No commit found for the ref nope",
+      );
+    },
+  );
+
   it("reports a request that got no response, with the cause", async () => {
     const cause = new TypeError("fetch failed");
     fetchMock.mockRejectedValue(cause);
