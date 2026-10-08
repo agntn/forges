@@ -38,4 +38,29 @@
       "invocation_logs": true,
     },
   },
+  "previews": {
+    "vars": {
+      "NUXT_SITE_URL": "https://forges.agntn.dev",
+    },
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "agntn-forges-preview",
+        "database_id": "eebe8e60-e201-4592-b6bc-e980a8218124",
+      },
+    ],
+    "kv_namespaces": [
+      {
+        "binding": "CACHE",
+        "id": "da1d20e532af4689b39e2c0b28de56a8",
+      },
+    ],
+    "ratelimits": [
+      {
+        "name": "PLATFORM_LIMIT",
+        "namespace_id": "3304",
+        "simple": { "limit": 30, "period": 60 },
+      },
+    ],
+  },
 }
