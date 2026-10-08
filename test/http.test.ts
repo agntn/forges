@@ -393,10 +393,11 @@ describe("createHttpClient", () => {
         ),
       );
       const client = createHttpClient({ baseURL: "https://api.github.com", token: "t" });
-      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
       await expect(client("/user", { retryDelay: 0 })).rejects.toMatchObject({ status: 429 });
       expect(fetchMock).toHaveBeenCalledTimes(1);
+      warn.mockRestore();
     },
   );
 
