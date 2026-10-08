@@ -294,6 +294,31 @@ describe("forges MCP server", () => {
     }
   });
 
+  it("offers artifacts only to the tools Cloudflare Artifacts can answer", async () => {
+    const client = await connectTestClient();
+
+    const response = await client.listTools();
+    const offered = response.tools.filter((tool) =>
+      JSON.stringify(tool.inputSchema.properties?.platform ?? null).includes("artifacts"),
+    );
+
+    expect(offered.map((tool) => tool.name)).toEqual([
+      "forges_repos_list",
+      "forges_repos_get",
+      "forges_repos_contents",
+      "forges_commits_list",
+      "forges_commits_get",
+    ]);
+
+    const refused = await client.callTool({
+      name: "forges_issues_list",
+      arguments: { platform: "artifacts", repo: "tools/hidden" },
+    });
+    expect(refused.isError).toBe(true);
+    expect(text(refused.content)).toContain("platform");
+    expect(mocks.createProvider).not.toHaveBeenCalled();
+  });
+
   it("accepts a repository written as one owner/name slug, on the default platform", async () => {
     mocks.repos.get.mockResolvedValue(repository);
     const client = await connectTestClient();

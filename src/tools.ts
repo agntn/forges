@@ -56,8 +56,8 @@ function defineTools(): ToolDefinition[] {
       name: "forges_repos_list",
       title: forgeToolTitle("forges_repos_list", "List Repositories"),
       description:
-        "List the repositories owned by one user or organization on GitHub, GitLab, Gitea, or Forgejo, normalized to one shape. A row leaves out an owner that repeats the one asked for. Results are paged: read hasNextPage and nextPage instead of assuming the first page is everything.",
-      snippet: "List repositories through GitHub, GitLab, or Gitea.",
+        "List the repositories owned by one user or organization on GitHub, GitLab, Gitea, or Forgejo, or in a Cloudflare Artifacts namespace, normalized to one shape. A row leaves out an owner that repeats the one asked for. Results are paged: read hasNextPage and nextPage instead of assuming the first page is everything.",
+      snippet: "List repositories through GitHub, GitLab, Gitea, or Cloudflare Artifacts.",
       guidelines: [
         "Use forges_repos_list for repository discovery instead of constructing provider API requests.",
       ],
@@ -70,7 +70,8 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_repos_get", "Get Repository"),
       description:
         "Get one repository by owner and name, normalized across platforms: description, visibility, default branch, fork parent, viewer permission, web and clone URL, and owner. A null viewerPermission means the platform omitted access metadata.",
-      snippet: "Get normalized repository metadata from GitHub, GitLab, or Gitea.",
+      snippet:
+        "Get normalized repository metadata from GitHub, GitLab, Gitea, or Cloudflare Artifacts.",
       guidelines: ["Use forges_repos_get when exact normalized repository metadata is required."],
       ...effect("forges_repos_get"),
       input: schemas.repositoryParameters,
@@ -187,7 +188,8 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_commits_list", "List Commits"),
       description:
         "List paged commit summaries for one repository, optionally filtered by ref, path, and ISO-8601 since/until dates. Summaries omit changed-file rows and cut each message to its subject line, with messageTruncated on the cut ones, and leave out a committer identical to the author; use forges_commits_get for one commit's files or full message. Gitea rejects path because that API ignores pagination limits for the filter; Forgejo paginates it. Cloudflare Artifacts filters by ref alone and rejects path, since and until.",
-      snippet: "Read repository commit history from GitHub, GitLab, or Gitea.",
+      snippet:
+        "Read repository commit history from GitHub, GitLab, Gitea, or Cloudflare Artifacts.",
       guidelines: [
         "Use forges_commits_list for repository history; use forges_commits_get only when one commit's changed files or full message are needed.",
         "forges_commits_list rejects path on Gitea because that API ignores pagination limits for the filter; Forgejo paginates it.",
@@ -215,8 +217,9 @@ function defineTools(): ToolDefinition[] {
       name: "forges_commits_get",
       title: forgeToolTitle("forges_commits_get", "Get Commit"),
       description:
-        "Get one commit by SHA with normalized author, committer, parent revisions, message, URL, and changed-file rows. Patches are omitted; per-file counts are null when the provider does not report them, and filesComplete is null when provider or safety limits make completeness unknowable.",
-      snippet: "Read one commit and the files it changed from GitHub, GitLab, or Gitea.",
+        "Get one commit by SHA with normalized author, committer, parent revisions, message, URL, and changed-file rows. Patches are omitted; per-file counts are null when the provider does not report them, and filesComplete is null when provider or safety limits make completeness unknowable. Cloudflare Artifacts reports no changed files, so files is empty there and filesComplete null.",
+      snippet:
+        "Read one commit from GitHub, GitLab, Gitea, or Cloudflare Artifacts, with its changed files where the host lists them.",
       guidelines: [
         "Use forges_commits_get when a known commit SHA needs exact metadata or changed paths.",
       ],

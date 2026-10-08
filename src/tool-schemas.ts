@@ -14,6 +14,15 @@ export type ForgesPlatform = "github" | "gitlab" | "gitea" | "artifacts";
  */
 export function forgesToolSchemas() {
   const platform = Type.Optional(
+    Type.Unsafe<Exclude<ForgesPlatform, "artifacts">>({
+      type: "string",
+      enum: ["github", "gitlab", "gitea"],
+      description: "Git hosting platform; defaults to github",
+      default: "github",
+    }),
+  );
+  /** Artifacts keeps Git and nothing else, so only the five reads it answers offer it. */
+  const gitPlatform = Type.Optional(
     Type.Unsafe<ForgesPlatform>({
       type: "string",
       enum: ["github", "gitlab", "gitea", "artifacts"],
@@ -112,10 +121,15 @@ export function forgesToolSchemas() {
     return Type.Object(properties, { additionalProperties: false });
   }
 
-  const listRepositoriesParameters = closed({ platform, owner: accountOwner, page, perPage });
-  const repositoryParameters = closed({ platform, owner, repo });
+  const listRepositoriesParameters = closed({
+    platform: gitPlatform,
+    owner: accountOwner,
+    page,
+    perPage,
+  });
+  const repositoryParameters = closed({ platform: gitPlatform, owner, repo });
   const repositoryContentsParameters = closed({
-    platform,
+    platform: gitPlatform,
     owner,
     repo,
     path: Type.String({
@@ -256,7 +270,7 @@ export function forgesToolSchemas() {
     page,
     perPage,
   });
-  const commitParameters = closed({ platform, owner, repo, sha });
+  const commitParameters = closed({ platform: gitPlatform, owner, repo, sha });
   const commitPatchParameters = closed({
     platform,
     owner,
@@ -281,7 +295,7 @@ export function forgesToolSchemas() {
     ),
   });
   const listCommitsParameters = closed({
-    platform,
+    platform: gitPlatform,
     owner,
     repo,
     ref,
