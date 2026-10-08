@@ -356,23 +356,26 @@ describe("createHttpClient", () => {
     expect(normalizeError(error, "gitlab")).toMatchObject({ status: 429, retryAfter: 60 });
   });
 
-  it("gives up at once on a spent rate limit that resets later", async () => {
-    const reset = Math.ceil(Date.now() / 1000) + 3600;
-    fetchMock.mockImplementation(async () =>
-      json(
-        {},
-        {
-          status: 429,
-          headers: { "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": String(reset) },
-        },
-      ),
-    );
-    const client = createHttpClient({ baseURL: "https://api.github.com", token: "t" });
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+  it.each(["X-RateLimit", "RateLimit"])(
+    "gives up at once on a spent %s that resets later",
+    async (prefix) => {
+      const reset = Math.ceil(Date.now() / 1000) + 3600;
+      fetchMock.mockImplementation(async () =>
+        json(
+          {},
+          {
+            status: 429,
+            headers: { [`${prefix}-Remaining`]: "0", [`${prefix}-Reset`]: String(reset) },
+          },
+        ),
+      );
+      const client = createHttpClient({ baseURL: "https://api.github.com", token: "t" });
+      vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    await expect(client("/user", { retryDelay: 0 })).rejects.toMatchObject({ status: 429 });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
+      await expect(client("/user", { retryDelay: 0 })).rejects.toMatchObject({ status: 429 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("does not retry a write unless the request asks", async () => {
     fetchMock.mockImplementation(async () => json({}, { status: 503 }));

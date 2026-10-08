@@ -5,7 +5,7 @@
 
 import { sha256 } from "@agntn/hashes/sha2";
 import { CACHE_SCOPE } from "./cache.ts";
-import { FetchError, parseRetryAfter } from "./errors.ts";
+import { FetchError, retryAfterSeconds } from "./errors.ts";
 import { version } from "./version.ts";
 
 /**
@@ -151,9 +151,9 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
 
       warnOnLowRateLimit(response.headers);
       if (attempt < retries && retryStatusCodes.includes(response.status)) {
-        const wait = serverWait(response.headers);
-        if (wait === undefined || wait <= MAX_SERVER_WAIT_MS) {
-          await delay(Math.max(retryDelay, wait ?? 0));
+        const wait = retryAfterSeconds(response.headers);
+        if (wait === undefined || wait * 1000 <= MAX_SERVER_WAIT_MS) {
+          await delay(Math.max(retryDelay, (wait ?? 0) * 1000));
           continue;
         }
       }
@@ -278,15 +278,6 @@ function warnOnLowRateLimit(headers: Headers): void {
   if (remainingCount < 10) {
     console.warn(`[forges] Rate limit warning: ${remainingCount} requests remaining`);
   }
-}
-
-/** Milliseconds the server asked for: `Retry-After`, or the reset of a spent rate limit. */
-function serverWait(headers: Headers): number | undefined {
-  const retryAfter = parseRetryAfter(headers.get("Retry-After"));
-  if (retryAfter !== undefined) return retryAfter * 1000;
-  if (headers.get("X-RateLimit-Remaining") !== "0") return undefined;
-  const reset = Number(headers.get("X-RateLimit-Reset") ?? Number.NaN);
-  return Number.isFinite(reset) ? Math.max(0, reset * 1000 - Date.now()) : undefined;
 }
 
 /** The `[METHOD] "<url>": <status>` message is the shape endpoint redaction expects. */

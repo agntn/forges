@@ -110,7 +110,7 @@ function classifyError(error: unknown, platform?: string): ForgesError {
           error.response?.headers?.has("Retry-After") ||
           /rate limit/i.test(message)
         ) {
-          const retryAfter = parseRetryAfter(error.response?.headers?.get("Retry-After"));
+          const retryAfter = retryAfterSeconds(error.response?.headers);
           return new RateLimitError(`Rate limit exceeded: ${message}`, retryAfter, platform, error);
         }
         return new PermissionError(`Permission denied: ${message}`, platform, error);
@@ -118,7 +118,7 @@ function classifyError(error: unknown, platform?: string): ForgesError {
       case 404:
         return new NotFoundError(`Resource not found: ${message}`, platform, error);
       case 429: {
-        const retryAfter = parseRetryAfter(error.response?.headers?.get("Retry-After"));
+        const retryAfter = retryAfterSeconds(error.response?.headers);
         return new RateLimitError(`Rate limit exceeded: ${message}`, retryAfter, platform, error);
       }
       default:
@@ -350,12 +350,28 @@ function joinReasons(items: (string | undefined)[]): string | undefined {
   return items.filter((item) => item !== undefined && item !== "").join("; ") || undefined;
 }
 
+/** Seconds the server asked to wait: `Retry-After`, or the reset of a spent rate limit. */
+export function retryAfterSeconds(headers: Headers | undefined): number | undefined {
+  return (
+    parseRetryAfter(headers?.get("Retry-After")) ??
+    spentLimitReset(headers, "X-RateLimit") ??
+    spentLimitReset(headers, "RateLimit")
+  );
+}
+
+/** `X-RateLimit-*` on GitHub, `RateLimit-*` on GitLab, both with the reset in epoch seconds. */
+function spentLimitReset(headers: Headers | undefined, prefix: string): number | undefined {
+  if (headers?.get(`${prefix}-Remaining`) !== "0") return undefined;
+  const reset = Number(headers.get(`${prefix}-Reset`) ?? Number.NaN);
+  return Number.isFinite(reset) ? Math.max(0, Math.ceil(reset - Date.now() / 1000)) : undefined;
+}
+
 /**
  * Parse the Retry-After header value into delay seconds.
  * Handles both delay-seconds and HTTP-date formats (RFC 7231 §7.1.3).
  * Returns undefined for missing, empty, or unparseable values.
  */
-export function parseRetryAfter(value: string | null | undefined): number | undefined {
+function parseRetryAfter(value: string | null | undefined): number | undefined {
   if (!value) {
     return undefined;
   }

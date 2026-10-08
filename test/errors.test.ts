@@ -107,6 +107,21 @@ describe("normalizeError", () => {
     expect(result.retryAfter).toBe(60);
   });
 
+  it.each([
+    ["github", "X-RateLimit"],
+    ["gitlab", "RateLimit"],
+  ])("takes retryAfter on %s from the reset of a spent limit", (platform, prefix) => {
+    const reset = Math.floor(Date.now() / 1000) + 3600;
+    const err = createFetchError("Too Many Requests", 429, {
+      [`${prefix}-Remaining`]: "0",
+      [`${prefix}-Reset`]: String(reset),
+    });
+    const result = normalizeError(err, platform) as RateLimitError;
+
+    expect(result.retryAfter).toBeGreaterThan(3590);
+    expect(result.retryAfter).toBeLessThanOrEqual(3600);
+  });
+
   it("maps 429 FetchError without Retry-After header", () => {
     const err = createFetchError("Too Many Requests", 429);
     const result = normalizeError(err, "gitlab");
