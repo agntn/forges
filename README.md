@@ -162,7 +162,7 @@ MCP, Pi and OMP all hit the same 52 tools. Twelve write to the host, so ask `for
 
 ## 🚫 What this does not do
 
-Hosted files, trees, branches, plain tags, release assets, webhooks, org admin. The review loop is the scope: what was proposed, what was said, whether it passed, what shipped.
+Hosted files, trees, branches, release assets, webhooks, org admin. The review loop is the scope: what was proposed, what was said, whether it passed, what shipped.
 
 ## 🧩 Adding a provider
 
