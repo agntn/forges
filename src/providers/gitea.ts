@@ -346,7 +346,7 @@ interface GiteaReviewThread {
   comments: GiteaPullReviewComment[];
 }
 
-/** Gitea clamps `limit` and may skip Link, so a short page short of the count isn't the end. */
+/** Gitea clamps `limit` and may skip Link, so a short page below the count isn't the end. */
 function countedNextPage(page: number, perPage: number, served: number, total: number): boolean {
   if (served === 0 || !Number.isFinite(total)) return false;
   if (served >= perPage) return page * perPage < total;
