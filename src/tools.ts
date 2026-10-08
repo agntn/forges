@@ -94,10 +94,10 @@ function defineTools(): ToolDefinition[] {
       name: "forges_repos_tags",
       title: forgeToolTitle("forges_repos_tags", "List Repository Tags"),
       description:
-        "List the Git tags of one repository, each with the commit it points at. An annotated tag is peeled to its commit, not its tag object, and sha is null when the forge names no commit. GitHub and GitLab sort them by version and Gitea by date, newest first either way. A tag needs no release, so this also finds the ones forges_releases_list never shows. Results are paged: read hasNextPage and nextPage instead of assuming the first page is everything.",
+        "List the Git tags of one repository, each with the commit it points at. An annotated tag is peeled to its commit, not its tag object, and sha is null when the forge names no commit. GitLab is asked for version order, newest first. GitHub and Gitea promise no order, so compare names instead of trusting the first row. A tag needs no release, so this also finds the ones forges_releases_list never shows. Results are paged: read hasNextPage and nextPage instead of assuming the first page is everything.",
       snippet: "List repository tags from GitHub, GitLab, or Gitea.",
       guidelines: [
-        "Use forges_repos_tags instead of gh api tags or git ls-remote --tags. The first row is the highest version on GitHub and GitLab, the latest tag on Gitea.",
+        "Use forges_repos_tags instead of gh api tags or git ls-remote --tags. Pick the newest tag by comparing names, not by row position.",
       ],
       ...effect("forges_repos_tags"),
       input: schemas.listTagsParameters,

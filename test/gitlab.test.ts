@@ -899,6 +899,41 @@ describe("GitLabProvider", () => {
       expect(result.items).toEqual([{ name: "v2.6.11-tree", sha: null }]);
     });
 
+    it("trusts the commit when GitLab sends no tag date at all", async () => {
+      mockProjectResolve(278964);
+      const { created_at: _created, ...undated } = glTag;
+      mocks.rawFetch.mockResolvedValueOnce({ data: [undated], headers: glHeaders() });
+
+      const result = await gl.repos.listTags("gitlab-org", "cli");
+
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+      expect(result.items).toEqual([{ name: "v1.121.0", sha: glTag.commit.id }]);
+    });
+
+    it("reads suspect targets five at a time", async () => {
+      mockProjectResolve(278964);
+      const rows = Array.from({ length: 12 }, (_, index) => ({
+        ...glTag,
+        name: `v1.${index}.0`,
+        created_at: null,
+      }));
+      mocks.rawFetch.mockResolvedValueOnce({ data: rows, headers: glHeaders() });
+      let inFlight = 0;
+      let peak = 0;
+      mocks.client.mockImplementation(async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await Promise.resolve();
+        inFlight -= 1;
+        return { id: glTag.commit.id };
+      });
+
+      const result = await gl.repos.listTags("gitlab-org", "cli");
+
+      expect(result.items).toHaveLength(12);
+      expect(peak).toBe(5);
+    });
+
     it("fails the page when the target read fails for a reason other than a tree", async () => {
       mockProjectResolve(278964);
       mocks.rawFetch.mockResolvedValueOnce({

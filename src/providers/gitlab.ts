@@ -115,6 +115,7 @@ const MAX_SEARCH_PROJECT_REQUESTS = 5;
 /** Matches GitLab's basic search counts beyond the pages already read. */
 const SEARCH_COUNT_LIMIT = 100;
 const MAX_PIPELINE_NAME_REQUESTS = 5;
+const MAX_TAG_TARGET_REQUESTS = 5;
 const MAX_CONTRIBUTION_TEMPLATE_PAGES = 100;
 
 // GitLab API response types (internal)
@@ -343,14 +344,15 @@ interface GitLabTag {
   name: string;
   /** The tag object of an annotated tag, the commit itself for a lightweight one. */
   target: string;
-  /** Null without a tagger, which is how a tag on a tree arrives. */
-  created_at: string | null;
+  /** Null without a tagger, which is how a tag on a tree arrives. Missing before GitLab 16.11. */
+  created_at?: string | null;
   /** Already peeled, but the default branch head for a tag on a tree. */
   commit: { id: string; committed_date: string } | null;
 }
 
 /** A tag never predates its commit, so a missing or earlier date marks the answer as suspect. */
 function tagPredatesCommit(raw: GitLabTag): boolean {
+  if (raw.created_at === undefined) return false;
   const tagged = Date.parse(raw.created_at ?? "");
   const committed = Date.parse(raw.commit?.committed_date ?? "");
   return !(tagged >= committed);
@@ -944,7 +946,12 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
           },
         },
       );
-      const tags = await Promise.all((data ?? []).map((raw) => this.mapTag(projectId, raw)));
+      const rows = data ?? [];
+      const tags: Tag[] = [];
+      for (let offset = 0; offset < rows.length; offset += MAX_TAG_TARGET_REQUESTS) {
+        const batch = rows.slice(offset, offset + MAX_TAG_TARGET_REQUESTS);
+        tags.push(...(await Promise.all(batch.map((raw) => this.mapTag(projectId, raw)))));
+      }
       return this.parsePagination(tags, headers);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
