@@ -362,7 +362,13 @@ describe("Forges Pi extension", () => {
 
     expect(Value.Check(tool.parameters, { platform: "github", owner: "agntn" })).toBe(true);
     expect(Value.Check(tool.parameters, { platform: "bitbucket", owner: "agntn" })).toBe(false);
+    expect(Value.Check(tool.parameters, { platform: "artifacts", owner: "tools" })).toBe(true);
     expect(JSON.stringify(tool.parameters)).not.toMatch(/token|baseURL/u);
+
+    const issues = requirePiTool(await registerPiTools(), "forges_issues_list");
+    expect(Value.Check(issues.parameters, { platform: "artifacts", repo: "tools/hidden" })).toBe(
+      false,
+    );
   });
 
   it("executes repository listing through the shared provider operation", async () => {
