@@ -344,6 +344,29 @@ describe("createHttpClient", () => {
     }
   });
 
+  it("stops waiting out Retry-After once the request is aborted", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockImplementation(async (_url, init) => {
+        if (init?.signal?.aborted) throw new DOMException("aborted", "AbortError");
+        return json({}, { status: 429, headers: { "Retry-After": "5" } });
+      });
+      const client = createHttpClient({ baseURL: "https://api.github.com", token: "t" });
+      const controller = new AbortController();
+
+      const answer = client("/user", { retryDelay: 0, signal: controller.signal }).catch(
+        (caught: unknown) => caught,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      controller.abort();
+
+      expect(await answer).toMatchObject({ cause: { name: "AbortError" } });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("gives up at once when Retry-After asks for more than a retry is worth", async () => {
     fetchMock.mockImplementation(async () =>
       json({}, { status: 429, headers: { "Retry-After": "60" } }),

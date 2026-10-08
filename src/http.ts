@@ -139,7 +139,7 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
       } catch (error) {
         const aborted = error instanceof Error && error.name === "AbortError";
         if (!aborted && attempt < retries && retryStatusCodes.includes(500)) {
-          await delay(retryDelay);
+          await delay(retryDelay, options.signal);
           continue;
         }
         throw requestError(method, target, options, response, undefined, error);
@@ -153,7 +153,7 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
       if (attempt < retries && retryStatusCodes.includes(response.status)) {
         const wait = retryAfterSeconds(response.headers);
         if (wait === undefined || wait * 1000 <= MAX_SERVER_WAIT_MS) {
-          await delay(Math.max(retryDelay, (wait ?? 0) * 1000));
+          await delay(Math.max(retryDelay, (wait ?? 0) * 1000), options.signal);
           continue;
         }
       }
@@ -306,8 +306,18 @@ function requestError(
   return error;
 }
 
-function delay(ms: number): Promise<void> {
-  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
+/** Ends early on abort, so the next attempt fails on the signal instead of sleeping through it. */
+function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  if (ms <= 0 || signal?.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done, { once: true });
+  });
 }
 
 export { FetchError };
