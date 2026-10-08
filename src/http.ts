@@ -5,7 +5,7 @@
 
 import { sha256 } from "@agntn/hashes/sha2";
 import { CACHE_SCOPE } from "./cache.ts";
-import { FetchError } from "./errors.ts";
+import { FetchError, retryAfterSeconds } from "./errors.ts";
 import { version } from "./version.ts";
 
 /**
@@ -45,7 +45,7 @@ export interface RequestOptions<R extends ResponseType = ResponseType> {
   responseType?: R;
   /** Attempts after the first: 2 for a read, 0 for a write so it is never replayed. */
   retry?: number | false;
-  /** Milliseconds between attempts. */
+  /** Milliseconds between attempts, unless the server asks for a longer wait. */
   retryDelay?: number;
   /** Statuses worth another attempt. No response, or a body cut short, counts as 500. */
   retryStatusCodes?: readonly number[];
@@ -76,6 +76,9 @@ export interface HttpClient {
 const PAYLOAD_METHODS = new Set(["PATCH", "POST", "PUT", "DELETE"]);
 
 const RETRY_STATUS_CODES: readonly number[] = [408, 409, 425, 429, 500, 502, 503, 504];
+
+/** Past this, waiting inside one call costs more than telling the caller when to come back. */
+const MAX_SERVER_WAIT_MS = 10_000;
 
 const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
 
@@ -136,7 +139,7 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
       } catch (error) {
         const aborted = error instanceof Error && error.name === "AbortError";
         if (!aborted && attempt < retries && retryStatusCodes.includes(500)) {
-          await delay(retryDelay);
+          await delay(retryDelay, options.signal);
           continue;
         }
         throw requestError(method, target, options, response, undefined, error);
@@ -148,8 +151,11 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
 
       warnOnLowRateLimit(response.headers);
       if (attempt < retries && retryStatusCodes.includes(response.status)) {
-        await delay(retryDelay);
-        continue;
+        const wait = retryAfterSeconds(response.headers);
+        if (wait === undefined || wait * 1000 <= MAX_SERVER_WAIT_MS) {
+          await delay(Math.max(retryDelay, (wait ?? 0) * 1000), options.signal);
+          continue;
+        }
       }
       throw requestError(method, target, options, response, data);
     }
@@ -300,8 +306,18 @@ function requestError(
   return error;
 }
 
-function delay(ms: number): Promise<void> {
-  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
+/** Ends early on abort, so the next attempt fails on the signal instead of sleeping through it. */
+function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  if (ms <= 0 || signal?.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done, { once: true });
+  });
 }
 
 export { FetchError };
