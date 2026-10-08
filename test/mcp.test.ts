@@ -8,7 +8,7 @@ import { createMcpServer } from "../src/mcp.ts";
 import { listCommits, listRepositories, resetPinnedProviders } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
-  const repos = { list: vi.fn(), get: vi.fn(), readContents: vi.fn() };
+  const repos = { list: vi.fn(), get: vi.fn(), readContents: vi.fn(), listTags: vi.fn() };
   const contributionTemplates = { list: vi.fn(), get: vi.fn() };
   const code = { search: vi.fn() };
   const ciRuns = { list: vi.fn(), listJobs: vi.fn(), readJobLog: vi.fn() };
@@ -83,6 +83,7 @@ const toolNames = [
   "forges_repos_list",
   "forges_repos_get",
   "forges_repos_contents",
+  "forges_repos_tags",
   "forges_contribution_templates_list",
   "forges_contribution_templates_get",
   "forges_code_search",
@@ -1355,6 +1356,27 @@ describe("forges MCP server", () => {
       note: "Pull-request bodies and revision details are omitted from search output; use forges_pull_requests_get to read one in full.",
       result: { items: [{ number: 82, merged: true }], incomplete: false },
     });
+  });
+
+  it("lists tags from an owner/name slug, page and all", async () => {
+    const page = {
+      items: [{ name: "v0.5.0", sha: "394bceb8d2c93f0afaf21a08e47505347e95ab5e" }],
+      hasNextPage: true,
+      nextPage: 2,
+    };
+    mocks.repos.listTags.mockResolvedValue(page);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_repos_tags",
+      arguments: { repo: "agntn/forges", perPage: 1 },
+    });
+
+    expect(mocks.repos.listTags).toHaveBeenCalledWith("agntn", "forges", {
+      page: undefined,
+      perPage: 1,
+    });
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: page });
   });
 
   it("lists releases without their notes and says where to read one", async () => {

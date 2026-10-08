@@ -72,8 +72,10 @@ import type {
   CreatePullRequestInput,
   CreateReleaseInput,
   ListReleasesOptions,
+  ListTagsOptions,
   Release,
   ReplyThreadInput,
+  Tag,
   Thread,
   ThreadComment,
   UpdateIssueInput,
@@ -285,6 +287,12 @@ interface GiteaComment {
   pull_request_url?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface GiteaTag {
+  name: string;
+  /** Already peeled, `id` holds the tag object of an annotated tag. */
+  commit: { sha: string } | null;
 }
 
 interface GiteaRelease {
@@ -790,6 +798,36 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
           `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
         ),
       );
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  protected override async listTags(
+    owner: string,
+    repo: string,
+    options?: ListTagsOptions,
+  ): Promise<PageResult<Tag>> {
+    try {
+      const page = options?.page ?? 1;
+      const perPage = options?.perPage ?? 30;
+      const { data, headers } = await rawFetch<GiteaTag[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/tags`,
+        { query: { page: String(page), limit: String(perPage) } },
+      );
+      const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
+      const result = buildPageResult(data ?? [], headers, (raw) => ({
+        name: raw.name,
+        sha: raw.commit?.sha || null,
+      }));
+      const hasNextPage = result.hasNextPage || (Number.isFinite(total) && page * perPage < total);
+      return {
+        ...result,
+        totalCount: Number.isFinite(total) ? total : undefined,
+        hasNextPage,
+        nextPage: hasNextPage ? (result.nextPage ?? page + 1) : undefined,
+      };
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }

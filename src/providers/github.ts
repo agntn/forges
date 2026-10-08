@@ -59,8 +59,10 @@ import type {
   CreateReleaseInput,
   IssueState,
   ListReleasesOptions,
+  ListTagsOptions,
   Release,
   ReplyThreadInput,
+  Tag,
   Thread,
   ThreadComment,
   UpdateIssueInput,
@@ -344,6 +346,12 @@ interface GitHubComment {
   issue_url?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface GitHubTag {
+  name: string;
+  /** An empty sha for a tag on a tree or blob. */
+  commit: { sha: string };
 }
 
 interface GitHubRelease {
@@ -1148,6 +1156,30 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
       );
       return this.mapRepository(data);
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async listTags(
+    owner: string,
+    repo: string,
+    options?: ListTagsOptions,
+  ): Promise<PageResult<Tag>> {
+    try {
+      const query: Record<string, string> = {};
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+
+      const { data, headers } = await rawFetch<GitHubTag[]>(
+        this.client,
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/tags`,
+        { query },
+      );
+      return buildPageResult(data ?? [], headers, (raw) => ({
+        name: raw.name,
+        sha: raw.commit.sha || null,
+      }));
     } catch (error) {
       throw normalizeError(error, "github");
     }

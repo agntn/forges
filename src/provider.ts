@@ -47,6 +47,7 @@ import type {
   ListPullRequestFilesOptions,
   ListPullRequestReviewsOptions,
   ListReleasesOptions,
+  ListTagsOptions,
   ListThreadOptions,
   MergePullRequestInput,
   Owner,
@@ -70,6 +71,7 @@ import type {
   RepositoryContentsOptions,
   RepositoryResource,
   SearchPageResult,
+  Tag,
   Thread,
   ThreadComment,
   ThreadResource,
@@ -225,6 +227,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         assertRepositoryContentsOptions(options);
         return this.readRepositoryContents(owner, repo, normalizeRepositoryPath(path), options);
       },
+      listTags: (owner, repo, options) => this.listTags(owner, repo, options),
     };
     this.contributionTemplates = {
       list: async (owner, repo, kind, options) => {
@@ -444,6 +447,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     return Promise.reject(
       new ForgesError("Repository contents reads are not supported by this provider", 501),
     );
+  }
+  protected listTags(
+    _owner: string,
+    _repo: string,
+    _options?: ListTagsOptions,
+  ): Promise<PageResult<Tag>> {
+    return Promise.reject(new ForgesError("Tag listing is not supported by this provider", 501));
   }
   protected readContributionTemplate(
     _owner: string,

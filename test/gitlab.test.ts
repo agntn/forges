@@ -821,6 +821,51 @@ describe("GitLabProvider", () => {
 
   // --- CI runs ---
 
+  describe("repos.listTags", () => {
+    const glTag = {
+      name: "v1.121.0",
+      message: "Release v1.121.0",
+      target: "e3abc8e79c419e580779d26c1f72ab463095ac70",
+      commit: {
+        id: "4d447cc6c19858928884626d802c8f7b7c5f799e",
+        short_id: "4d447cc6",
+        created_at: "2026-10-06T11:37:36.000+02:00",
+        parent_ids: [
+          "44e9f48f1565e27bc1500310e8c6c28b8f39dc59",
+          "048eec04a2cca8410ac7b56b5a9d17c9b8057e6b",
+        ],
+        title: "Merge branch 'renovate/github.com-tidwall-pretty-1.x' into 'main'",
+        web_url:
+          "https://gitlab.com/gitlab-org/cli/-/commit/4d447cc6c19858928884626d802c8f7b7c5f799e",
+      },
+      release: null,
+      protected: true,
+      created_at: "2026-10-06T12:08:58.000Z",
+    };
+
+    it("lists tags in version order with the peeled commit, not the tag object", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glTag],
+        headers: glHeaders({ nextPage: "2", total: "157" }),
+      });
+
+      const result = await gl.repos.listTags("gitlab-org", "cli", { perPage: 1 });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/repository/tags",
+        { query: { order_by: "version", sort: "desc", page: 1, per_page: 1 } },
+      );
+      expect(result).toEqual({
+        items: [{ name: "v1.121.0", sha: "4d447cc6c19858928884626d802c8f7b7c5f799e" }],
+        totalCount: 157,
+        hasNextPage: true,
+        nextPage: 2,
+      });
+    });
+  });
+
   describe("repos.readContents", () => {
     const sha = "f5016eda261bb7142627d05d1d85a20d6dd56ddc";
     const glFile = (content: string | Uint8Array) => ({

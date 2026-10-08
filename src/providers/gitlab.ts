@@ -69,8 +69,10 @@ import type {
   CreateReleaseInput,
   IssueState,
   ListReleasesOptions,
+  ListTagsOptions,
   Release,
   ReplyThreadInput,
+  Tag,
   Thread,
   ThreadComment,
   UpdateIssueInput,
@@ -337,6 +339,12 @@ interface GitLabMergeRequestApprovals {
 }
 
 /** GitLab releases carry no id; the tag is the whole identity. */
+interface GitLabTag {
+  name: string;
+  /** Already peeled, `target` holds the tag object of an annotated tag. */
+  commit: { id: string } | null;
+}
+
 interface GitLabRelease {
   tag_name: string;
   name: string | null;
@@ -905,6 +913,35 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   }
 
   /** Git keeps no empty directories, so an empty tree below the root is a missing path. */
+  /** Version order, newest first, the order GitHub lists tags in. */
+  protected override async listTags(
+    owner: string,
+    repo: string,
+    options?: ListTagsOptions,
+  ): Promise<PageResult<Tag>> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const { data, headers } = await rawFetch<GitLabTag[]>(
+        this.client,
+        `/projects/${projectId}/repository/tags`,
+        {
+          query: {
+            order_by: "version",
+            sort: "desc",
+            page: options?.page ?? 1,
+            per_page: options?.perPage ?? 30,
+          },
+        },
+      );
+      return this.parsePagination(
+        (data ?? []).map((raw) => ({ name: raw.name, sha: raw.commit?.id ?? null })),
+        headers,
+      );
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
   protected override async readRepositoryContents(
     owner: string,
     repo: string,
