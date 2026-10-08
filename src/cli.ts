@@ -59,7 +59,7 @@ if (argv.length === 1 && argv[0] === "mcp") {
     {
       name: "forges",
       version,
-      description: "One API for GitHub, GitLab, Gitea, and GitBucket",
+      description: "One API for GitHub, GitLab, Gitea, GitBucket, and Cloudflare Artifacts",
       tools: forgesTools(),
       mcp: true,
       expected: (error) => error instanceof ForgesError,
