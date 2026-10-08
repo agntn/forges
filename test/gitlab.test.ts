@@ -899,6 +899,17 @@ describe("GitLabProvider", () => {
       expect(result.items).toEqual([{ name: "v2.6.11-tree", sha: null }]);
     });
 
+    it("fails the page when the target read fails for a reason other than a tree", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [{ ...glTag, created_at: null }],
+        headers: glHeaders(),
+      });
+      mocks.client.mockRejectedValueOnce(makeFetchError(503));
+
+      await expect(gl.repos.listTags("gitlab-org", "cli")).rejects.toMatchObject({ status: 503 });
+    });
+
     it("keeps an undated annotated tag on the commit its target peels to", async () => {
       mockProjectResolve(278964);
       mocks.rawFetch.mockResolvedValueOnce({

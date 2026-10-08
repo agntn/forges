@@ -962,7 +962,9 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       );
       return { name: raw.name, sha: commit.id };
     } catch (error: unknown) {
-      return { name: raw.name, sha: normalizeError(error, "gitlab").status === 404 ? null : sha };
+      const normalized = normalizeError(error, "gitlab");
+      if (normalized.status === 404) return { name: raw.name, sha: null };
+      throw normalized;
     }
   }
 
