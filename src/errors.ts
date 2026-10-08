@@ -355,7 +355,7 @@ function joinReasons(items: (string | undefined)[]): string | undefined {
  * Handles both delay-seconds and HTTP-date formats (RFC 7231 §7.1.3).
  * Returns undefined for missing, empty, or unparseable values.
  */
-function parseRetryAfter(value: string | null | undefined): number | undefined {
+export function parseRetryAfter(value: string | null | undefined): number | undefined {
   if (!value) {
     return undefined;
   }

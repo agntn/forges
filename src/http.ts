@@ -5,7 +5,7 @@
 
 import { sha256 } from "@agntn/hashes/sha2";
 import { CACHE_SCOPE } from "./cache.ts";
-import { FetchError } from "./errors.ts";
+import { FetchError, parseRetryAfter } from "./errors.ts";
 import { version } from "./version.ts";
 
 /**
@@ -45,7 +45,7 @@ export interface RequestOptions<R extends ResponseType = ResponseType> {
   responseType?: R;
   /** Attempts after the first: 2 for a read, 0 for a write so it is never replayed. */
   retry?: number | false;
-  /** Milliseconds between attempts. */
+  /** Milliseconds between attempts, unless the server asks for a longer wait. */
   retryDelay?: number;
   /** Statuses worth another attempt. No response, or a body cut short, counts as 500. */
   retryStatusCodes?: readonly number[];
@@ -76,6 +76,9 @@ export interface HttpClient {
 const PAYLOAD_METHODS = new Set(["PATCH", "POST", "PUT", "DELETE"]);
 
 const RETRY_STATUS_CODES: readonly number[] = [408, 409, 425, 429, 500, 502, 503, 504];
+
+/** Past this, waiting inside one call costs more than telling the caller when to come back. */
+const MAX_SERVER_WAIT_MS = 10_000;
 
 const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
 
@@ -148,8 +151,11 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
 
       warnOnLowRateLimit(response.headers);
       if (attempt < retries && retryStatusCodes.includes(response.status)) {
-        await delay(retryDelay);
-        continue;
+        const wait = serverWait(response.headers);
+        if (wait === undefined || wait <= MAX_SERVER_WAIT_MS) {
+          await delay(Math.max(retryDelay, wait ?? 0));
+          continue;
+        }
       }
       throw requestError(method, target, options, response, data);
     }
@@ -272,6 +278,15 @@ function warnOnLowRateLimit(headers: Headers): void {
   if (remainingCount < 10) {
     console.warn(`[forges] Rate limit warning: ${remainingCount} requests remaining`);
   }
+}
+
+/** Milliseconds the server asked for: `Retry-After`, or the reset of a spent rate limit. */
+function serverWait(headers: Headers): number | undefined {
+  const retryAfter = parseRetryAfter(headers.get("Retry-After"));
+  if (retryAfter !== undefined) return retryAfter * 1000;
+  if (headers.get("X-RateLimit-Remaining") !== "0") return undefined;
+  const reset = Number(headers.get("X-RateLimit-Reset") ?? Number.NaN);
+  return Number.isFinite(reset) ? Math.max(0, reset * 1000 - Date.now()) : undefined;
 }
 
 /** The `[METHOD] "<url>": <status>` message is the shape endpoint redaction expects. */

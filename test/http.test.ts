@@ -324,6 +324,56 @@ describe("createHttpClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("waits out a short Retry-After before the retry", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock
+        .mockResolvedValueOnce(json({}, { status: 429, headers: { "Retry-After": "2" } }))
+        .mockResolvedValueOnce(json({ login: "octocat" }));
+      const client = createHttpClient({ baseURL: "https://api.github.com", token: "t" });
+
+      const answer = client("/user", { retryDelay: 0 });
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(await answer).toEqual({ login: "octocat" });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives up at once when Retry-After asks for more than a retry is worth", async () => {
+    fetchMock.mockImplementation(async () =>
+      json({}, { status: 429, headers: { "Retry-After": "60" } }),
+    );
+    const client = createHttpClient({ baseURL: "https://gitlab.com/api/v4", token: "t" });
+
+    const error = await client("/projects", { retryDelay: 0 }).catch((caught: unknown) => caught);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(normalizeError(error, "gitlab")).toMatchObject({ status: 429, retryAfter: 60 });
+  });
+
+  it("gives up at once on a spent rate limit that resets later", async () => {
+    const reset = Math.ceil(Date.now() / 1000) + 3600;
+    fetchMock.mockImplementation(async () =>
+      json(
+        {},
+        {
+          status: 429,
+          headers: { "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": String(reset) },
+        },
+      ),
+    );
+    const client = createHttpClient({ baseURL: "https://api.github.com", token: "t" });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(client("/user", { retryDelay: 0 })).rejects.toMatchObject({ status: 429 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("does not retry a write unless the request asks", async () => {
     fetchMock.mockImplementation(async () => json({}, { status: 503 }));
     const client = createHttpClient({ baseURL: "https://api.github.com", token: "t" });
