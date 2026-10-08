@@ -1,5 +1,45 @@
 # Changelog
 
+## v0.5.0
+
+[compare changes](https://github.com/agntn/forges/compare/v0.4.1...v0.5.0)
+
+### 🚀 Enhancements
+
+- Search issues in every repository at once ([#230](https://github.com/agntn/forges/pull/230))
+- Add Cloudflare Artifacts provider ([#243](https://github.com/agntn/forges/pull/243))
+
+### 🩹 Fixes
+
+- **docs:** Count a whole IPv6 /64 as one visitor ([#233](https://github.com/agntn/forges/pull/233))
+- Say a write may have landed after a 5xx ([#238](https://github.com/agntn/forges/pull/238))
+- Resolve tokens through `@agntn/credentials` ([#240](https://github.com/agntn/forges/pull/240))
+- **deps:** Make room for Pi 1.x ([#241](https://github.com/agntn/forges/pull/241))
+- **docs:** Build on Node.js 26 ([#245](https://github.com/agntn/forges/pull/245))
+- **docs:** Keep previews off production data ([#247](https://github.com/agntn/forges/pull/247))
+- Tell agents about Cloudflare Artifacts ([#248](https://github.com/agntn/forges/pull/248))
+- Offer `artifacts` only where it answers ([#249](https://github.com/agntn/forges/pull/249))
+- **http:** Honor `Retry-After` before a retry ([#250](https://github.com/agntn/forges/pull/250))
+- **http:** Keep the reason a failed read gives ([#251](https://github.com/agntn/forges/pull/251))
+- **gitea:** Read pages the way GitHub does ([#252](https://github.com/agntn/forges/pull/252))
+
+### 💅 Refactors
+
+- ⚠️  Move the tools to `@agntn/tools` ([#242](https://github.com/agntn/forges/pull/242))
+
+### 🏡 Chore
+
+- Add `CODEOWNERS` ([#236](https://github.com/agntn/forges/pull/236))
+
+#### ⚠️ Breaking Changes
+
+- ⚠️  Move the tools to `@agntn/tools` ([#242](https://github.com/agntn/forges/pull/242))
+
+### ❤️ Contributors
+
+- Aeitwoen ([@aeitwoen](https://github.com/aeitwoen))
+- Ori ([@oritwoen](https://github.com/oritwoen))
+
 ## v0.4.1
 
 [compare changes](https://github.com/agntn/forges/compare/v0.4.0...v0.4.1)
