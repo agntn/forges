@@ -8,7 +8,7 @@
 
 import { Buffer } from "node:buffer";
 import { createHttpClient, rawFetch, type HttpClient } from "../http.ts";
-import { parseLinkHeader, slicePage } from "../pagination.ts";
+import { buildPageResult, parseLinkHeader, slicePage } from "../pagination.ts";
 import {
   ForgesError,
   normalizeError,
@@ -361,31 +361,6 @@ function eventPayloadBranch(eventPayload: string | null | undefined): string {
   } catch {
     return "";
   }
-}
-
-// -- Pagination helper --
-
-function buildPageResult<TRaw, T>(
-  data: TRaw[],
-  headers: Headers,
-  mapper: (raw: TRaw) => T,
-): PageResult<T> {
-  const items = data.map(mapper);
-  const links = parseLinkHeader(headers.get("Link"));
-  const hasNextPage = !!links.next;
-
-  let nextPage: number | undefined;
-  if (links.next) {
-    try {
-      const url = new URL(links.next);
-      const page = url.searchParams.get("page");
-      if (page) nextPage = parseInt(page, 10);
-    } catch {
-      // malformed URL, ignore
-    }
-  }
-
-  return { items, hasNextPage, nextPage };
 }
 
 /**

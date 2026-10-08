@@ -77,7 +77,7 @@ import {
   normalizeMergedReadError,
 } from "../errors.ts";
 import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
-import { parseLinkHeader } from "../pagination.ts";
+import { buildPageResult, paginationFromLink } from "../pagination.ts";
 import {
   encodeApiResponsePathSegment,
   encodeLabelPathSegment,
@@ -596,23 +596,6 @@ function comparisonStatus(status: string): CommitComparisonStatus | null {
     : null;
 }
 
-// --- Pagination helper ---
-
-function paginationFromLink(headers: Headers): {
-  hasNextPage: boolean;
-  nextPage: number | undefined;
-} {
-  const next = parseLinkHeader(headers.get("Link")).next;
-  if (!next) return { hasNextPage: false, nextPage: undefined };
-  const page = new URL(next, "https://forges.invalid").searchParams.get("page");
-  if (page === null) return { hasNextPage: true, nextPage: undefined };
-  const parsed = parseInt(page, 10);
-  return {
-    hasNextPage: true,
-    nextPage: Number.isInteger(parsed) && parsed > 0 ? parsed : undefined,
-  };
-}
-
 function githubSearchQualifierSegment(value: string): string {
   try {
     encodePathSegment(value);
@@ -624,19 +607,6 @@ function githubSearchQualifierSegment(value: string): string {
     if (!(error instanceof TypeError)) throw error;
     throw new ForgesError(error.message, 400, "github", error);
   }
-}
-
-function buildPageResult<TRaw, TMapped>(
-  items: TRaw[],
-  headers: Headers,
-  mapper: (raw: TRaw) => TMapped,
-): PageResult<TMapped> {
-  const { hasNextPage, nextPage } = paginationFromLink(headers);
-  return {
-    items: items.map(mapper),
-    hasNextPage,
-    nextPage,
-  };
 }
 
 // --- Provider ---

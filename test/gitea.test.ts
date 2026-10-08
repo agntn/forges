@@ -364,6 +364,23 @@ describe("Gitea Provider", () => {
       expect(result.nextPage).toBe(2);
     });
 
+    it("reads the next page from a relative Link and drops one it cannot read", async () => {
+      for (const [next, nextPage] of [
+        ["/api/v1/users/testowner/repos?page=2", 2],
+        ["https://gitea.com/api/v1/users/testowner/repos?page=abc", undefined],
+      ] as const) {
+        mockedRawFetch.mockResolvedValueOnce({
+          data: [giteaRepo()],
+          headers: makeHeaders({ Link: `<${next}>; rel="next"` }),
+          status: 200,
+        });
+
+        const result = await provider.repos.list("testowner");
+
+        expect(result).toMatchObject({ hasNextPage: true, nextPage });
+      }
+    });
+
     it("handles empty results", async () => {
       mockedRawFetch.mockResolvedValueOnce({
         data: [],
