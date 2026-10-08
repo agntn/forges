@@ -644,6 +644,43 @@ describe("Gitea Provider", () => {
       });
     });
 
+    it("keeps paging when the server clamps limit and sends no Link", async () => {
+      const page = (count: number) => Array.from({ length: count }, () => giteaTag);
+      const total = makeHeaders({ "x-total-count": "123" });
+      mockedRawFetch
+        .mockResolvedValueOnce({ data: page(50), headers: total, status: 200 })
+        .mockResolvedValueOnce({ data: page(50), headers: total, status: 200 })
+        .mockResolvedValueOnce({ data: page(23), headers: total, status: 200 })
+        .mockResolvedValueOnce({ data: [], headers: total, status: 200 });
+
+      const pages = [];
+      for (let next: number | undefined = 1; next !== undefined;) {
+        const result = await provider.repos.listTags("gitea", "act_runner", {
+          page: next,
+          perPage: 100,
+        });
+        pages.push(result.items.length);
+        next = result.nextPage;
+      }
+
+      expect(pages).toEqual([50, 50, 23, 0]);
+    });
+
+    it("stops on a short page that closes the count", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [giteaTag, giteaTag],
+        headers: makeHeaders({ "x-total-count": "32" }),
+        status: 200,
+      });
+
+      const result = await provider.repos.listTags("Codeberg", "pages-server", {
+        page: 2,
+        perPage: 30,
+      });
+
+      expect(result).toMatchObject({ hasNextPage: false, nextPage: undefined });
+    });
+
     it("stops when the count is exhausted", async () => {
       mockedRawFetch.mockResolvedValueOnce({
         data: [giteaTag],

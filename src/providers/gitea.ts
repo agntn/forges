@@ -346,6 +346,13 @@ interface GiteaReviewThread {
   comments: GiteaPullReviewComment[];
 }
 
+/** Gitea clamps `limit` and may send no Link, so a short page that doesn't close the count isn't the end. */
+function countedNextPage(page: number, perPage: number, served: number, total: number): boolean {
+  if (served === 0 || !Number.isFinite(total)) return false;
+  if (served >= perPage) return page * perPage < total;
+  return (page - 1) * perPage + served !== total && page * served < total;
+}
+
 function branchName(ref: string | null | undefined): string {
   return ref?.replace(/^refs\/heads\//u, "") ?? "";
 }
@@ -821,7 +828,8 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         name: raw.name,
         sha: raw.commit?.sha || null,
       }));
-      const hasNextPage = result.hasNextPage || (Number.isFinite(total) && page * perPage < total);
+      const hasNextPage =
+        result.hasNextPage || countedNextPage(page, perPage, result.items.length, total);
       return {
         ...result,
         totalCount: Number.isFinite(total) ? total : undefined,
