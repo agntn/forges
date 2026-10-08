@@ -69,8 +69,10 @@ import type {
   CreateReleaseInput,
   IssueState,
   ListReleasesOptions,
+  ListTagsOptions,
   Release,
   ReplyThreadInput,
+  Tag,
   Thread,
   ThreadComment,
   UpdateIssueInput,
@@ -113,6 +115,7 @@ const MAX_SEARCH_PROJECT_REQUESTS = 5;
 /** Matches GitLab's basic search counts beyond the pages already read. */
 const SEARCH_COUNT_LIMIT = 100;
 const MAX_PIPELINE_NAME_REQUESTS = 5;
+const MAX_TAG_TARGET_REQUESTS = 5;
 const MAX_CONTRIBUTION_TEMPLATE_PAGES = 100;
 
 // GitLab API response types (internal)
@@ -337,6 +340,24 @@ interface GitLabMergeRequestApprovals {
 }
 
 /** GitLab releases carry no id; the tag is the whole identity. */
+interface GitLabTag {
+  name: string;
+  /** The tag object of an annotated tag, the commit itself for a lightweight one. */
+  target: string;
+  /** Null without a tagger, which is how a tag on a tree arrives. Missing before GitLab 16.11. */
+  created_at?: string | null;
+  /** Already peeled, but the default branch head for a tag on a tree. */
+  commit: { id: string; committed_date: string } | null;
+}
+
+/** A tag never predates its commit, so a missing or earlier date marks the answer as suspect. */
+function tagPredatesCommit(raw: GitLabTag): boolean {
+  if (raw.created_at === undefined) return false;
+  const tagged = Date.parse(raw.created_at ?? "");
+  const committed = Date.parse(raw.commit?.committed_date ?? "");
+  return !(tagged >= committed);
+}
+
 interface GitLabRelease {
   tag_name: string;
   name: string | null;
@@ -905,6 +926,55 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   }
 
   /** Git keeps no empty directories, so an empty tree below the root is a missing path. */
+  /** Version order, newest first, the order GitHub lists tags in. */
+  protected override async listTags(
+    owner: string,
+    repo: string,
+    options?: ListTagsOptions,
+  ): Promise<PageResult<Tag>> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const { data, headers } = await rawFetch<GitLabTag[]>(
+        this.client,
+        `/projects/${projectId}/repository/tags`,
+        {
+          query: {
+            order_by: "version",
+            sort: "desc",
+            page: options?.page ?? 1,
+            per_page: options?.perPage ?? 30,
+          },
+        },
+      );
+      const rows = data ?? [];
+      const tags: Tag[] = [];
+      for (let offset = 0; offset < rows.length; offset += MAX_TAG_TARGET_REQUESTS) {
+        const batch = rows.slice(offset, offset + MAX_TAG_TARGET_REQUESTS);
+        tags.push(...(await Promise.all(batch.map((raw) => this.mapTag(projectId, raw)))));
+      }
+      return this.parsePagination(tags, headers);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  /** Reads the target of a tag GitLab can't date after its commit. A 404 means a tree. */
+  private async mapTag(projectId: number, raw: GitLabTag): Promise<Tag> {
+    const sha = raw.commit?.id ?? null;
+    if (sha === null || raw.target === sha || !tagPredatesCommit(raw))
+      return { name: raw.name, sha };
+    try {
+      const commit = await this.client<{ id: string }>(
+        `/projects/${projectId}/repository/commits/${encodePathSegment(raw.target)}`,
+      );
+      return { name: raw.name, sha: commit.id };
+    } catch (error: unknown) {
+      const normalized = normalizeError(error, "gitlab");
+      if (normalized.status === 404) return { name: raw.name, sha: null };
+      throw normalized;
+    }
+  }
+
   protected override async readRepositoryContents(
     owner: string,
     repo: string,

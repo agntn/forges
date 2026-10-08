@@ -507,6 +507,19 @@ export interface ListReleasesOptions {
   perPage?: number;
 }
 
+/** One Git tag of a repository. */
+export interface Tag {
+  name: string;
+  /** The commit, peeled past an annotated tag. Null when the tag points at a tree or blob. */
+  sha: string | null;
+}
+
+/** List options for repository tags. */
+export interface ListTagsOptions {
+  page?: number;
+  perPage?: number;
+}
+
 /** Input for creating a release. */
 export interface CreateReleaseInput {
   tag: string;
@@ -787,6 +800,7 @@ export interface RepositoryResource {
     path: string,
     options?: RepositoryContentsOptions,
   ): Promise<RepositoryContents>;
+  listTags(owner: string, repo: string, options?: ListTagsOptions): Promise<PageResult<Tag>>;
 }
 
 /** Resource accessor for effective repository contribution templates. */

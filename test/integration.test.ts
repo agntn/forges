@@ -152,6 +152,7 @@ describe("createProvider factory", () => {
     ],
     ["readContributionTemplate", "Contribution template reads are not supported by this provider"],
     ["searchCode", "Code search is not supported by this provider"],
+    ["listTags", "Tag listing is not supported by this provider"],
     ["listCiRuns", "CI-run listing is not supported by this provider"],
     ["listPullRequestChecks", "Pull request checks are not supported by this provider"],
     ["listPullRequestReviews", "Pull request reviews are not supported by this provider"],

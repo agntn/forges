@@ -48,6 +48,7 @@ import type {
   ListPullRequestFilesOptions,
   ListPullRequestReviewsOptions,
   ListReleasesOptions,
+  ListTagsOptions,
   ListThreadOptions,
   MergePullRequestInput,
   PageResult,
@@ -66,6 +67,7 @@ import type {
   RepositoryContents,
   RepositoryContentsOptions,
   SearchPageResult,
+  Tag,
   Thread,
   ThreadComment,
   ThreadState,
@@ -550,6 +552,11 @@ export interface ListReleasesParams extends RepositoryParams {
   perPage?: number;
 }
 
+export interface ListTagsParams extends RepositoryParams {
+  page?: number;
+  perPage?: number;
+}
+
 export interface GetReleaseParams extends RepositoryParams {
   tag: string;
 }
@@ -981,6 +988,14 @@ export async function readRepositoryContents(
     maxChars: params.maxChars,
   });
   return result(params.platform, contents);
+}
+
+export async function listTags(args: ListTagsParams): Promise<ForgesToolResult<PageResult<Tag>>> {
+  const params = repositoryTarget(args);
+  const options: ListTagsOptions = { page: params.page, perPage: params.perPage };
+  const provider = await readProvider(params.platform);
+  const tags = await provider.repos.listTags(params.owner, params.repo, options);
+  return result(params.platform, tags);
 }
 
 export async function getCommit(args: GetCommitParams): Promise<ForgesToolResult<Commit>> {

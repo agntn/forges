@@ -821,6 +821,147 @@ describe("GitLabProvider", () => {
 
   // --- CI runs ---
 
+  describe("repos.listTags", () => {
+    const glTag = {
+      name: "v1.121.0",
+      message: "Release v1.121.0",
+      target: "e3abc8e79c419e580779d26c1f72ab463095ac70",
+      commit: {
+        id: "4d447cc6c19858928884626d802c8f7b7c5f799e",
+        short_id: "4d447cc6",
+        created_at: "2026-10-06T11:37:36.000+02:00",
+        parent_ids: [
+          "44e9f48f1565e27bc1500310e8c6c28b8f39dc59",
+          "048eec04a2cca8410ac7b56b5a9d17c9b8057e6b",
+        ],
+        title: "Merge branch 'renovate/github.com-tidwall-pretty-1.x' into 'main'",
+        committed_date: "2026-10-06T11:37:36.000+02:00",
+        web_url:
+          "https://gitlab.com/gitlab-org/cli/-/commit/4d447cc6c19858928884626d802c8f7b7c5f799e",
+      },
+      release: null,
+      protected: true,
+      created_at: "2026-10-06T12:08:58.000Z",
+    };
+
+    it("lists tags in version order with the peeled commit, not the tag object", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glTag],
+        headers: glHeaders({ nextPage: "2", total: "157" }),
+      });
+
+      const result = await gl.repos.listTags("gitlab-org", "cli", { perPage: 1 });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/repository/tags",
+        { query: { order_by: "version", sort: "desc", page: 1, per_page: 1 } },
+      );
+      expect(result).toEqual({
+        items: [{ name: "v1.121.0", sha: "4d447cc6c19858928884626d802c8f7b7c5f799e" }],
+        totalCount: 157,
+        hasNextPage: true,
+        nextPage: 2,
+      });
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+    });
+
+    it("gives a tag on a tree a null sha instead of the default branch head", async () => {
+      mockProjectResolve(28181);
+      const head = {
+        ...glTag.commit,
+        id: "a90ee4305c4a5df72c11b31dacfdc76e00fcf78a",
+        title: "Linux 7.3-rc6",
+        committed_date: "2026-10-04T13:45:25.000-07:00",
+      };
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          {
+            name: "v2.6.11-tree",
+            message: "",
+            target: "5dc01c595e6c6ec9ccda4f6f69c131c0dd945f8c",
+            commit: head,
+            release: null,
+            protected: false,
+            created_at: null,
+          },
+        ],
+        headers: glHeaders(),
+      });
+      mocks.client.mockRejectedValueOnce(makeFetchError(404, "404 Commit Not Found"));
+
+      const result = await gl.repos.listTags("linux-kernel", "stable");
+
+      expect(mocks.client).toHaveBeenCalledWith(
+        "/projects/28181/repository/commits/5dc01c595e6c6ec9ccda4f6f69c131c0dd945f8c",
+      );
+      expect(result.items).toEqual([{ name: "v2.6.11-tree", sha: null }]);
+    });
+
+    it("trusts the commit when GitLab sends no tag date at all", async () => {
+      mockProjectResolve(278964);
+      const { created_at: _created, ...undated } = glTag;
+      mocks.rawFetch.mockResolvedValueOnce({ data: [undated], headers: glHeaders() });
+
+      const result = await gl.repos.listTags("gitlab-org", "cli");
+
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+      expect(result.items).toEqual([{ name: "v1.121.0", sha: glTag.commit.id }]);
+    });
+
+    it("reads suspect targets five at a time", async () => {
+      mockProjectResolve(278964);
+      const rows = Array.from({ length: 12 }, (_, index) => ({
+        ...glTag,
+        name: `v1.${index}.0`,
+        created_at: null,
+      }));
+      mocks.rawFetch.mockResolvedValueOnce({ data: rows, headers: glHeaders() });
+      let inFlight = 0;
+      let peak = 0;
+      mocks.client.mockImplementation(async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await Promise.resolve();
+        inFlight -= 1;
+        return { id: glTag.commit.id };
+      });
+
+      const result = await gl.repos.listTags("gitlab-org", "cli");
+
+      expect(result.items).toHaveLength(12);
+      expect(peak).toBe(5);
+    });
+
+    it("fails the page when the target read fails for a reason other than a tree", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [{ ...glTag, created_at: null }],
+        headers: glHeaders(),
+      });
+      mocks.client.mockRejectedValueOnce(makeFetchError(503));
+
+      await expect(gl.repos.listTags("gitlab-org", "cli")).rejects.toMatchObject({ status: 503 });
+    });
+
+    it("keeps an undated annotated tag on the commit its target peels to", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [{ ...glTag, created_at: null }],
+        headers: glHeaders(),
+      });
+      mocks.client.mockResolvedValueOnce({ id: glTag.commit.id });
+
+      const result = await gl.repos.listTags("gitlab-org", "cli");
+
+      expect(mocks.client).toHaveBeenCalledWith(
+        "/projects/278964/repository/commits/e3abc8e79c419e580779d26c1f72ab463095ac70",
+      );
+      expect(result.items).toEqual([{ name: "v1.121.0", sha: glTag.commit.id }]);
+    });
+  });
+
   describe("repos.readContents", () => {
     const sha = "f5016eda261bb7142627d05d1d85a20d6dd56ddc";
     const glFile = (content: string | Uint8Array) => ({

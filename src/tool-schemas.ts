@@ -362,6 +362,7 @@ export function forgesToolSchemas() {
       }),
     ),
   });
+  const listTagsParameters = closed({ platform, owner, repo, page, perPage });
   const listReleasesParameters = closed({ platform, owner, repo, page, perPage });
   const releaseParameters = closed({ platform, owner, repo, tag });
   const createReleaseParameters = closed({
@@ -693,6 +694,7 @@ export function forgesToolSchemas() {
     listCiRunsParameters,
     listCiJobsParameters,
     ciJobLogParameters,
+    listTagsParameters,
     listReleasesParameters,
     releaseParameters,
     createReleaseParameters,

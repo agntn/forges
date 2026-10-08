@@ -606,6 +606,97 @@ describe("Gitea Provider", () => {
 
   // --- CI runs ---
 
+  describe("repos.listTags", () => {
+    const giteaTag = {
+      name: "v6.3",
+      message:
+        "v6.3\n\nHere is everything that changed from the last release: https://codeberg.org/Codeberg/pages-server/compare/v6.2.1...v6.3",
+      id: "f09b82340464ab2a168a858a0ea4f1de0fefea06",
+      commit: {
+        url: "https://codeberg.org/api/v1/repos/Codeberg/pages-server/git/commits/f09b82340464ab2a168a858a0ea4f1de0fefea06",
+        sha: "838a5bda92846725034218500ea1f498eb2e5d6f",
+        created: "2025-07-03T23:00:11+02:00",
+      },
+      zipball_url: "https://codeberg.org/Codeberg/pages-server/archive/v6.3.zip",
+      tarball_url: "https://codeberg.org/Codeberg/pages-server/archive/v6.3.tar.gz",
+      archive_download_count: { zip: 25, tar_gz: 43 },
+    };
+
+    it("lists tags with limit and the peeled commit, not the tag object", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [giteaTag],
+        headers: makeHeaders({ "x-total-count": "36" }),
+        status: 200,
+      });
+
+      const result = await provider.repos.listTags("Codeberg", "pages-server", { perPage: 1 });
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        expect.anything(),
+        "/repos/Codeberg/pages-server/tags",
+        { query: { page: "1", limit: "1" } },
+      );
+      expect(result).toEqual({
+        items: [{ name: "v6.3", sha: "838a5bda92846725034218500ea1f498eb2e5d6f" }],
+        totalCount: 36,
+        hasNextPage: true,
+        nextPage: 2,
+      });
+    });
+
+    it("keeps paging when the server clamps limit and sends no Link", async () => {
+      const page = (count: number) => Array.from({ length: count }, () => giteaTag);
+      const total = makeHeaders({ "x-total-count": "123" });
+      mockedRawFetch
+        .mockResolvedValueOnce({ data: page(50), headers: total, status: 200 })
+        .mockResolvedValueOnce({ data: page(50), headers: total, status: 200 })
+        .mockResolvedValueOnce({ data: page(23), headers: total, status: 200 })
+        .mockResolvedValueOnce({ data: [], headers: total, status: 200 });
+
+      const pages = [];
+      for (let next: number | undefined = 1; next !== undefined;) {
+        const result = await provider.repos.listTags("gitea", "act_runner", {
+          page: next,
+          perPage: 100,
+        });
+        pages.push(result.items.length);
+        next = result.nextPage;
+      }
+
+      expect(pages).toEqual([50, 50, 23, 0]);
+    });
+
+    it("stops on a short page that closes the count", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [giteaTag, giteaTag],
+        headers: makeHeaders({ "x-total-count": "32" }),
+        status: 200,
+      });
+
+      const result = await provider.repos.listTags("Codeberg", "pages-server", {
+        page: 2,
+        perPage: 30,
+      });
+
+      expect(result).toMatchObject({ hasNextPage: false, nextPage: undefined });
+    });
+
+    it("stops when the count is exhausted", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: [giteaTag],
+        headers: makeHeaders({ "x-total-count": "3" }),
+        status: 200,
+      });
+
+      const result = await provider.repos.listTags("Codeberg", "pages-server", {
+        page: 2,
+        perPage: 2,
+      });
+
+      expect(result).toMatchObject({ totalCount: 3, hasNextPage: false, nextPage: undefined });
+    });
+  });
+
   describe("repos.readContents", () => {
     const sha = "180e6101d078152f14b018fdb908c821c16cb091";
     const giteaFile = (content: string | Uint8Array) => ({

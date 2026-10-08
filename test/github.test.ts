@@ -944,6 +944,74 @@ describe("GitHubProvider", () => {
 
   // --- CI runs ---
 
+  describe("repos.listTags", () => {
+    const ghTag = {
+      name: "v0.5.0",
+      zipball_url: "https://api.github.com/repos/agntn/forges/zipball/refs/tags/v0.5.0",
+      tarball_url: "https://api.github.com/repos/agntn/forges/tarball/refs/tags/v0.5.0",
+      commit: {
+        sha: "394bceb8d2c93f0afaf21a08e47505347e95ab5e",
+        url: "https://api.github.com/repos/agntn/forges/commits/394bceb8d2c93f0afaf21a08e47505347e95ab5e",
+      },
+      node_id: "REF_kwDORfLBQrByZWZzL3RhZ3MvdjAuNS4w",
+    };
+
+    it("lists tags with the commit an annotated tag points at", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          ghTag,
+          {
+            ...ghTag,
+            name: "v0.4.1",
+            commit: { ...ghTag.commit, sha: "939eda0d708f4731f75b9df55c0a471af455ec7b" },
+          },
+        ],
+        headers: makeHeaders(
+          '<https://api.github.com/repositories/1173537090/tags?per_page=2&page=2>; rel="next"',
+        ),
+      });
+
+      const result = await gh.repos.listTags("agntn", "forges", { perPage: 2 });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/repos/agntn/forges/tags", {
+        query: { per_page: "2" },
+      });
+      expect(result).toEqual({
+        items: [
+          { name: "v0.5.0", sha: "394bceb8d2c93f0afaf21a08e47505347e95ab5e" },
+          { name: "v0.4.1", sha: "939eda0d708f4731f75b9df55c0a471af455ec7b" },
+        ],
+        hasNextPage: true,
+        nextPage: 2,
+      });
+    });
+
+    it("gives a tag on a tree a null sha, not an empty one", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          {
+            commit: { sha: "", url: "" },
+            name: "v2.6.11-tree",
+            node_id: "MDM6UmVmMjMyNTI5ODpyZWZzL3RhZ3MvdjIuNi4xMS10cmVl",
+            tarball_url: "",
+            zipball_url: "",
+          },
+        ],
+        headers: makeHeaders(),
+      });
+
+      const result = await gh.repos.listTags("torvalds", "linux");
+
+      expect(result.items).toEqual([{ name: "v2.6.11-tree", sha: null }]);
+    });
+
+    it("maps a missing repository to NotFoundError", async () => {
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(gh.repos.listTags("agntn", "missing")).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+
   describe("repos.readContents", () => {
     const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
     const base64 = (value: string | Uint8Array) => Buffer.from(value).toString("base64");
