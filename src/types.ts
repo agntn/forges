@@ -42,7 +42,7 @@ export type RepositoryPermission = "none" | "read" | "triage" | "write" | "maint
 
 /** How a repository lands pull requests, and how GitHub words a squash commit. */
 export interface RepositoryMergeSettings {
-  /** Allowed methods in this order. GitLab's fast forward method counts as `rebase`. */
+  /** What `pullRequests.merge` takes here, in this order. GitLab never lists `rebase`. */
   methods: MergeMethod[];
   /** The method the platform preselects, or null when it has no default. */
   defaultMethod: MergeMethod | null;

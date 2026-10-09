@@ -754,7 +754,7 @@ describe("GitLabProvider", () => {
       const cases = [
         ["merge", "default_off", ["merge", "squash"], "merge"],
         ["rebase_merge", "default_on", ["merge", "squash"], "squash"],
-        ["ff", "never", ["rebase"], "rebase"],
+        ["ff", "never", ["merge"], "merge"],
         ["ff", "always", ["squash"], "squash"],
         ["merge", "always", ["squash"], "squash"],
       ] as const;

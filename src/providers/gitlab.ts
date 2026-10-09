@@ -450,12 +450,8 @@ function normalizePositiveInteger(value: number | undefined, fallback: number): 
   return Math.floor(value);
 }
 
-/** `merge` and `rebase_merge` both end in a merge commit; `ff` lands the commits as they are. */
-const GITLAB_LANDINGS: Readonly<Record<string, "merge" | "rebase">> = {
-  merge: "merge",
-  rebase_merge: "merge",
-  ff: "rebase",
-};
+/** A merge request asks for `merge` under all three, and the project picks how it lands. */
+const GITLAB_MERGE_METHODS: ReadonlySet<unknown> = new Set(["merge", "rebase_merge", "ff"]);
 
 const GITLAB_SQUASH_OPTIONS: ReadonlySet<unknown> = new Set([
   "never",
@@ -466,20 +462,15 @@ const GITLAB_SQUASH_OPTIONS: ReadonlySet<unknown> = new Set([
 
 /** `merge_method` decides how an unsquashed merge lands, `squash_option` whether it may. */
 function mapGitLabMergeSettings(raw: GitLabProject): RepositoryMergeSettings | null {
-  const method = raw.merge_method ?? "";
-  const landing = Object.hasOwn(GITLAB_LANDINGS, method) ? GITLAB_LANDINGS[method] : undefined;
   const squash = raw.squash_option;
-  if (landing === undefined || !GITLAB_SQUASH_OPTIONS.has(squash)) return null;
+  if (!GITLAB_MERGE_METHODS.has(raw.merge_method) || !GITLAB_SQUASH_OPTIONS.has(squash)) {
+    return null;
+  }
   const open = raw.merge_requests_access_level !== "disabled";
-  const plain = open && squash !== "always";
   return mergeSettings(
+    { merge: open && squash !== "always", squash: open && squash !== "never", rebase: false },
     {
-      merge: plain && landing === "merge",
-      squash: open && squash !== "never",
-      rebase: plain && landing === "rebase",
-    },
-    {
-      defaultMethod: squash === "always" || squash === "default_on" ? "squash" : landing,
+      defaultMethod: squash === "always" || squash === "default_on" ? "squash" : "merge",
       squashTitle: null,
       squashMessage: null,
       deleteBranchOnMerge: raw.remove_source_branch_after_merge ?? null,
