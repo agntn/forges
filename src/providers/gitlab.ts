@@ -181,6 +181,7 @@ interface GitLabProject {
   merge_method?: string | null;
   squash_option?: string | null;
   remove_source_branch_after_merge?: boolean | null;
+  merge_requests_access_level?: string | null;
 }
 
 interface GitLabJob {
@@ -469,11 +470,12 @@ function mapGitLabMergeSettings(raw: GitLabProject): RepositoryMergeSettings | n
   const landing = Object.hasOwn(GITLAB_LANDINGS, method) ? GITLAB_LANDINGS[method] : undefined;
   const squash = raw.squash_option;
   if (landing === undefined || !GITLAB_SQUASH_OPTIONS.has(squash)) return null;
-  const plain = squash !== "always";
+  const open = raw.merge_requests_access_level !== "disabled";
+  const plain = open && squash !== "always";
   return mergeSettings(
     {
       merge: plain && landing === "merge",
-      squash: squash !== "never",
+      squash: open && squash !== "never",
       rebase: plain && landing === "rebase",
     },
     {

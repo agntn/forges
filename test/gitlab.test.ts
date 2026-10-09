@@ -779,6 +779,20 @@ describe("GitLabProvider", () => {
       }
     });
 
+    it("allows no method and no default once merge requests are disabled", async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...glProject,
+        merge_method: "merge",
+        squash_option: "default_on",
+        remove_source_branch_after_merge: true,
+        merge_requests_access_level: "disabled",
+      });
+
+      const repo = await gl.repos.get("gitlab-org", "gitlab-foss");
+
+      expect(repo.merge).toMatchObject({ methods: [], defaultMethod: null });
+    });
+
     it("keeps merge settings unknown for an anonymous read or an unknown merge method", async () => {
       mocks.client.mockResolvedValueOnce(glProject).mockResolvedValueOnce({
         ...glProject,
