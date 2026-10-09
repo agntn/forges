@@ -69,7 +69,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_repos_get",
       title: forgeToolTitle("forges_repos_get", "Get Repository"),
       description:
-        "Get one repository by owner and name, normalized across platforms: description, visibility, default branch, fork parent, viewer permission, merge settings, web and clone URL, and owner. A null viewerPermission means the platform omitted access metadata. A null merge means the platform kept its settings back, as GitHub does without push access and GitLab without a token, not that no method works.",
+        "Get one repository by owner and name, normalized across platforms: description, visibility, default branch, fork parent, viewer permission, merge settings, web and clone URL, and owner. A null viewerPermission means the platform omitted access metadata. A null merge means the platform kept its settings back, as GitHub does without push access and GitLab without a token, or has no pull requests to merge, as Cloudflare Artifacts. It never means no method works.",
       snippet:
         "Get normalized repository metadata from GitHub, GitLab, Gitea, or Cloudflare Artifacts.",
       guidelines: [

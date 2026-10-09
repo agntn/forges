@@ -71,7 +71,7 @@ export interface Repository {
   parent: RepositoryParent | null;
   /** Null when the platform omits access metadata for the current viewer. */
   viewerPermission: RepositoryPermission | null;
-  /** Null when kept back: GitHub without push access or on a list, GitLab when anonymous. */
+  /** Null when kept back (GitHub without push, GitLab anonymous) or moot, as on Artifacts. */
   merge: RepositoryMergeSettings | null;
   owner: Owner;
 }
