@@ -924,6 +924,25 @@ describe("GitHubProvider", () => {
       });
     });
 
+    it("allows no method once pull requests are off, push access or not", async () => {
+      mocks.client
+        .mockResolvedValueOnce({ ...ghRepo, has_pull_requests: false })
+        .mockResolvedValueOnce({
+          ...ghRepo,
+          has_pull_requests: false,
+          allow_merge_commit: true,
+          allow_squash_merge: true,
+          allow_rebase_merge: true,
+          delete_branch_on_merge: false,
+        });
+
+      const anonymous = await gh.repos.get("torvalds", "linux");
+      const pushed = await gh.repos.get("torvalds", "linux");
+
+      expect(anonymous.merge?.methods).toEqual([]);
+      expect(pushed.merge?.methods).toEqual([]);
+    });
+
     it("keeps merge settings unknown without push access instead of allowing nothing", async () => {
       mocks.client.mockResolvedValueOnce(ghRepo).mockResolvedValueOnce({
         ...ghRepo,

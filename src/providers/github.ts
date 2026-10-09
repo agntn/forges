@@ -8,6 +8,7 @@ import { Provider, type ProviderRawTypes } from "../provider.ts";
 import type {
   ProviderConfig,
   Repository,
+  RepositoryMergeSettings,
   RepositoryContents,
   RepositoryContentsOptions,
   CodeSearchItem,
@@ -175,6 +176,7 @@ interface GitHubRepo {
     triage?: boolean;
     pull?: boolean;
   } | null;
+  has_pull_requests?: boolean;
   /** The merge settings come back only with push access, and never on a list page. */
   allow_merge_commit?: boolean | null;
   allow_squash_merge?: boolean | null;
@@ -183,6 +185,24 @@ interface GitHubRepo {
   squash_merge_commit_message?: string | null;
   delete_branch_on_merge?: boolean | null;
   owner: GitHubOwner;
+}
+
+/** Pull requests switched off leave nothing to merge, and GitHub says so without push access. */
+function mapGitHubMergeSettings(raw: GitHubRepo): RepositoryMergeSettings | null {
+  const open = raw.has_pull_requests !== false;
+  return mergeSettings(
+    {
+      merge: open && raw.allow_merge_commit,
+      squash: open && raw.allow_squash_merge,
+      rebase: open && raw.allow_rebase_merge,
+    },
+    {
+      defaultMethod: null,
+      squashTitle: raw.squash_merge_commit_title ?? null,
+      squashMessage: raw.squash_merge_commit_message ?? null,
+      deleteBranchOnMerge: raw.delete_branch_on_merge ?? null,
+    },
+  );
 }
 
 /**
@@ -938,19 +958,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       isFork: raw.fork,
       parent: raw.parent ? { fullName: raw.parent.full_name, url: raw.parent.html_url } : null,
       viewerPermission: mapBooleanRepositoryPermission(raw.permissions),
-      merge: mergeSettings(
-        {
-          merge: raw.allow_merge_commit,
-          squash: raw.allow_squash_merge,
-          rebase: raw.allow_rebase_merge,
-        },
-        {
-          defaultMethod: null,
-          squashTitle: raw.squash_merge_commit_title ?? null,
-          squashMessage: raw.squash_merge_commit_message ?? null,
-          deleteBranchOnMerge: raw.delete_branch_on_merge ?? null,
-        },
-      ),
+      merge: mapGitHubMergeSettings(raw),
       owner: this.mapOwner(raw.owner),
     };
   }
