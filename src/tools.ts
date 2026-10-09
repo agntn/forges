@@ -56,7 +56,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_repos_list",
       title: forgeToolTitle("forges_repos_list", "List Repositories"),
       description:
-        "List the repositories owned by one user or organization on GitHub, GitLab, Gitea, or Forgejo, or in a Cloudflare Artifacts namespace, normalized to one shape. A row leaves out an owner that repeats the one asked for. Results are paged: read hasNextPage and nextPage instead of assuming the first page is everything.",
+        "List the repositories owned by one user or organization on GitHub, GitLab, Gitea, or Forgejo, or in a Cloudflare Artifacts namespace, normalized to one shape. A row leaves out an owner that repeats the one asked for, and the merge settings, which come with forges_repos_get. Results are paged: read hasNextPage and nextPage instead of assuming the first page is everything.",
       snippet: "List repositories through GitHub, GitLab, Gitea, or Cloudflare Artifacts.",
       guidelines: [
         "Use forges_repos_list for repository discovery instead of constructing provider API requests.",
@@ -69,10 +69,13 @@ function defineTools(): ToolDefinition[] {
       name: "forges_repos_get",
       title: forgeToolTitle("forges_repos_get", "Get Repository"),
       description:
-        "Get one repository by owner and name, normalized across platforms: description, visibility, default branch, fork parent, viewer permission, web and clone URL, and owner. A null viewerPermission means the platform omitted access metadata.",
+        "Get one repository by owner and name, normalized across platforms: description, visibility, default branch, fork parent, viewer permission, merge settings, web and clone URL, and owner. A null viewerPermission means the platform omitted access metadata. A null merge means the platform kept its settings back, as GitHub does without push access and GitLab without a token, not that no method works.",
       snippet:
         "Get normalized repository metadata from GitHub, GitLab, Gitea, or Cloudflare Artifacts.",
-      guidelines: ["Use forges_repos_get when exact normalized repository metadata is required."],
+      guidelines: [
+        "Use forges_repos_get when exact normalized repository metadata is required.",
+        "Read merge from forges_repos_get before a pull request instead of gh api repos/<owner>/<repo>: with squash and squashTitle COMMIT_OR_PR_TITLE, a lone commit's subject becomes the merged title.",
+      ],
       ...effect("forges_repos_get"),
       input: schemas.repositoryParameters,
       execute: (args) => call((operations) => operations.getRepository(args)),

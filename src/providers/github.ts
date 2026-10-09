@@ -88,6 +88,7 @@ import {
   encodeRevisionPathSegment,
 } from "./base-url.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
+import { mergeSettings } from "../repository-merge.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
 import { isPullRequestReview, normalizeReviewState } from "../review.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
@@ -174,6 +175,13 @@ interface GitHubRepo {
     triage?: boolean;
     pull?: boolean;
   } | null;
+  /** The merge settings come back only with push access, and never on a list page. */
+  allow_merge_commit?: boolean | null;
+  allow_squash_merge?: boolean | null;
+  allow_rebase_merge?: boolean | null;
+  squash_merge_commit_title?: string | null;
+  squash_merge_commit_message?: string | null;
+  delete_branch_on_merge?: boolean | null;
   owner: GitHubOwner;
 }
 
@@ -930,6 +938,19 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       isFork: raw.fork,
       parent: raw.parent ? { fullName: raw.parent.full_name, url: raw.parent.html_url } : null,
       viewerPermission: mapBooleanRepositoryPermission(raw.permissions),
+      merge: mergeSettings(
+        {
+          merge: raw.allow_merge_commit,
+          squash: raw.allow_squash_merge,
+          rebase: raw.allow_rebase_merge,
+        },
+        {
+          defaultMethod: null,
+          squashTitle: raw.squash_merge_commit_title ?? null,
+          squashMessage: raw.squash_merge_commit_message ?? null,
+          deleteBranchOnMerge: raw.delete_branch_on_merge ?? null,
+        },
+      ),
       owner: this.mapOwner(raw.owner),
     };
   }

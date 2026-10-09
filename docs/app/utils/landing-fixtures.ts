@@ -5,6 +5,8 @@ import type { CiRunConclusion, CiRunStatus, IssueState, Repository } from "@agnt
  * before the docs worker answers and when it cannot. Every panel labels a recorded answer
  * as a sample and swaps to a live one as soon as it arrives.
  *
+ * The `merge` settings come from a recording on 2026-10-09, when the field was added.
+ *
  * Regenerate with the library (see docs/AGENTS.md); do not edit by hand.
  */
 
@@ -106,6 +108,7 @@ export const LANDING_SAMPLES: readonly ForgeSample[] = [
       isFork: false,
       parent: null,
       viewerPermission: null,
+      merge: null,
       owner: {
         login: "nitrojs",
         avatarUrl: "https://avatars.githubusercontent.com/u/183071544?v=4",
@@ -373,6 +376,7 @@ export const LANDING_SAMPLES: readonly ForgeSample[] = [
       isFork: false,
       parent: null,
       viewerPermission: null,
+      merge: null,
       owner: {
         login: "gitlab-org",
         avatarUrl: "/uploads/-/system/group/avatar/9970/project_avatar.png?v=1750616408",
@@ -639,6 +643,13 @@ export const LANDING_SAMPLES: readonly ForgeSample[] = [
       isFork: false,
       parent: null,
       viewerPermission: null,
+      merge: {
+        methods: ["merge", "squash", "rebase"],
+        defaultMethod: "squash",
+        squashTitle: null,
+        squashMessage: null,
+        deleteBranchOnMerge: true,
+      },
       owner: {
         login: "forgejo",
         avatarUrl: "https://codeberg.org/avatars/dae8ab126a96f6fbd6942cf08ab92382",

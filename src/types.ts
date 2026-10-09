@@ -40,6 +40,20 @@ export interface RepositoryParent {
 /** The authenticated viewer's highest repository role, or `null` when the API omits it. */
 export type RepositoryPermission = "none" | "read" | "triage" | "write" | "maintain" | "admin";
 
+/** How a repository lands pull requests, and how GitHub words a squash commit. */
+export interface RepositoryMergeSettings {
+  /** Allowed methods in this order. GitLab's fast forward method counts as `rebase`. */
+  methods: MergeMethod[];
+  /** The method the platform preselects, or null when it has no default. */
+  defaultMethod: MergeMethod | null;
+  /** GitHub's `squash_merge_commit_title`, such as `COMMIT_OR_PR_TITLE`. */
+  squashTitle: string | null;
+  /** GitHub's `squash_merge_commit_message`, such as `COMMIT_MESSAGES`. */
+  squashMessage: string | null;
+  /** Whether the head branch goes away after a merge, null when unreported. */
+  deleteBranchOnMerge: boolean | null;
+}
+
 /**
  * Repository information
  */
@@ -57,6 +71,8 @@ export interface Repository {
   parent: RepositoryParent | null;
   /** Null when the platform omits access metadata for the current viewer. */
   viewerPermission: RepositoryPermission | null;
+  /** Null when kept back: GitHub without push access or on a list, GitLab when anonymous. */
+  merge: RepositoryMergeSettings | null;
   owner: Owner;
 }
 

@@ -750,6 +750,49 @@ describe("GitLabProvider", () => {
       expect(unavailable.viewerPermission).toBeNull();
     });
 
+    it("maps the merge method and squash option a signed-in caller sees", async () => {
+      const cases = [
+        ["merge", "default_off", ["merge", "squash"], "merge"],
+        ["rebase_merge", "default_on", ["merge", "squash"], "squash"],
+        ["ff", "never", ["rebase"], "rebase"],
+        ["ff", "always", ["squash"], "squash"],
+        ["merge", "always", ["squash"], "squash"],
+      ] as const;
+
+      for (const [mergeMethod, squashOption, methods, defaultMethod] of cases) {
+        mocks.client.mockResolvedValueOnce({
+          ...glProject,
+          merge_method: mergeMethod,
+          squash_option: squashOption,
+          remove_source_branch_after_merge: true,
+        });
+
+        const repo = await gl.repos.get("gitlab-org", "gitlab-foss");
+
+        expect(repo.merge).toEqual({
+          methods,
+          defaultMethod,
+          squashTitle: null,
+          squashMessage: null,
+          deleteBranchOnMerge: true,
+        });
+      }
+    });
+
+    it("keeps merge settings unknown for an anonymous read or an unknown merge method", async () => {
+      mocks.client.mockResolvedValueOnce(glProject).mockResolvedValueOnce({
+        ...glProject,
+        merge_method: "squash_and_ff",
+        squash_option: "default_off",
+      });
+
+      const anonymous = await gl.repos.get("gitlab-org", "gitlab-foss");
+      const unknown = await gl.repos.get("gitlab-org", "gitlab-foss");
+
+      expect(anonymous.merge).toBeNull();
+      expect(unknown.merge).toBeNull();
+    });
+
     it("maps Guest to read and the roles below Developer to triage", async () => {
       const ladder = [
         [5, "none"],

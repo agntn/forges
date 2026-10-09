@@ -25,6 +25,7 @@ import {
 } from "./base-url.ts";
 import { Provider, type ProviderRawTypes } from "../provider.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
+import { knownMergeMethod, mergeSettings } from "../repository-merge.ts";
 import type {
   RepositoryContents,
   RepositoryContentsOptions,
@@ -199,6 +200,12 @@ interface GiteaRepository {
     push?: boolean;
     pull?: boolean;
   } | null;
+  /** All false with pull requests off. `rebase-merge` and `fast-forward-only` stay out. */
+  allow_merge_commits?: boolean | null;
+  allow_squash_merge?: boolean | null;
+  allow_rebase?: boolean | null;
+  default_merge_style?: string | null;
+  default_delete_branch_after_merge?: boolean | null;
   owner: GiteaOwner;
 }
 
@@ -593,6 +600,19 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         ? { fullName: raw.parent.full_name, url: raw.parent.html_url ?? "" }
         : null,
       viewerPermission: mapBooleanRepositoryPermission(raw.permissions),
+      merge: mergeSettings(
+        {
+          merge: raw.allow_merge_commits,
+          squash: raw.allow_squash_merge,
+          rebase: raw.allow_rebase,
+        },
+        {
+          defaultMethod: knownMergeMethod(raw.default_merge_style),
+          squashTitle: null,
+          squashMessage: null,
+          deleteBranchOnMerge: raw.default_delete_branch_after_merge ?? null,
+        },
+      ),
       owner: this.mapOwner(raw.owner),
     };
   }

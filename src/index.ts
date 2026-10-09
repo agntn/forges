@@ -15,6 +15,7 @@ export type {
   User,
   Owner,
   RepositoryParent,
+  RepositoryMergeSettings,
   RepositoryPermission,
   Repository,
   RepositoryEntryType,
