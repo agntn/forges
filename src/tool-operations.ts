@@ -804,17 +804,17 @@ export async function listRepositories(
 }
 
 /**
- * Nearly every row of an owner's page belongs to the owner the call named, so the model text
- * leaves out an owner that repeats it; `fullName` still carries the login's case. A project
- * another namespace shares with a GitLab group keeps its owner.
+ * The model text drops merge settings, which forges_repos_get has, and an owner that repeats the
+ * one asked for. `fullName` keeps the login's case, and a GitLab group's shared project its owner.
  */
 function repositoryRowText(
   repository: Repository,
   owner: string,
-): Repository | Omit<Repository, "owner"> {
-  if (repository.owner.login.toLowerCase() !== owner) return repository;
-  const { owner: _owner, ...row } = repository;
-  return row;
+): Omit<Repository, "merge"> | Omit<Repository, "merge" | "owner"> {
+  const { merge: _merge, ...row } = repository;
+  if (row.owner.login.toLowerCase() !== owner) return row;
+  const { owner: _owner, ...ownRow } = row;
+  return ownRow;
 }
 
 export async function getRepository(

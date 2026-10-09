@@ -318,6 +318,7 @@ describe("Gitea Provider", () => {
         isFork: false,
         parent: null,
         viewerPermission: "read",
+        merge: null,
         owner: { login: "testowner", avatarUrl: "https://gitea.com/avatars/1" },
       });
       expect(result.items[1].id).toBe("101");
@@ -567,6 +568,90 @@ describe("Gitea Provider", () => {
       const result = await provider.repos.get("testowner", "test-repo");
 
       expect(result.viewerPermission).toBeNull();
+    });
+
+    it("maps merge settings the way gitea.com reports them without push access", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaRepo({
+          permissions: { admin: false, push: false, pull: true },
+          allow_merge_commits: false,
+          allow_rebase: false,
+          allow_rebase_explicit: false,
+          allow_squash_merge: true,
+          allow_fast_forward_only_merge: true,
+          default_merge_style: "squash",
+          default_delete_branch_after_merge: true,
+        }),
+      );
+
+      const result = await provider.repos.get("gitea", "helm-gitea");
+
+      expect(result.merge).toEqual({
+        methods: ["squash"],
+        defaultMethod: "squash",
+        squashTitle: null,
+        squashMessage: null,
+        deleteBranchOnMerge: true,
+      });
+    });
+
+    it("lists every shared method Codeberg allows and leaves out a style without one", async () => {
+      mockClient
+        .mockResolvedValueOnce(
+          giteaRepo({
+            allow_merge_commits: true,
+            allow_rebase: true,
+            allow_squash_merge: true,
+            default_merge_style: "squash",
+            default_delete_branch_after_merge: true,
+          }),
+        )
+        .mockResolvedValueOnce(
+          giteaRepo({
+            allow_merge_commits: true,
+            allow_rebase: true,
+            allow_squash_merge: true,
+            default_merge_style: "rebase-merge",
+            default_delete_branch_after_merge: false,
+          }),
+        );
+
+      const forgejo = await provider.repos.get("forgejo", "forgejo");
+      const rebaseMerge = await provider.repos.get("forgejo", "forgejo");
+
+      expect(forgejo.merge).toMatchObject({
+        methods: ["merge", "squash", "rebase"],
+        defaultMethod: "squash",
+      });
+      expect(rebaseMerge.merge).toMatchObject({
+        defaultMethod: null,
+        deleteBranchOnMerge: false,
+      });
+    });
+
+    it("allows no method and no default once pull requests are off", async () => {
+      mockClient.mockResolvedValueOnce(
+        giteaRepo({
+          has_pull_requests: false,
+          allow_merge_commits: false,
+          allow_rebase: false,
+          allow_squash_merge: false,
+          default_merge_style: "merge",
+          default_delete_branch_after_merge: false,
+        }),
+      );
+
+      const result = await provider.repos.get("testowner", "test-repo");
+
+      expect(result.merge).toMatchObject({ methods: [], defaultMethod: null });
+    });
+
+    it("keeps merge settings unknown when a server leaves the flags out", async () => {
+      mockClient.mockResolvedValueOnce(giteaRepo({ allow_squash_merge: true }));
+
+      const result = await provider.repos.get("testowner", "test-repo");
+
+      expect(result.merge).toBeNull();
     });
 
     it("reads current viewer permission on every call", async () => {

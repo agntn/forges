@@ -18,6 +18,7 @@ import type {
   RepositoryEntry,
   ProviderConfig,
   Repository,
+  RepositoryMergeSettings,
   RepositoryPermission,
   CodeSearchItem,
   CodeSearchOptions,
@@ -100,6 +101,7 @@ import { normalizeCiRunState } from "../ci-run.ts";
 import { normalizeReviewState } from "../review.ts";
 import { countDiffLines } from "../changed-file.ts";
 import { changesAssignees, nextAssignees } from "../update-input.ts";
+import { mergeSettings } from "../repository-merge.ts";
 import { buildCommitPatch } from "../commit-patch.ts";
 import { slicePage } from "../pagination.ts";
 import { buildCiJobLog, cleanGitLabTrace, jobStarted, readJobLogText } from "../ci-job-log.ts";
@@ -175,6 +177,11 @@ interface GitLabProject {
     project_access: GitLabProjectAccess | null;
     group_access: GitLabProjectAccess | null;
   } | null;
+  /** Sent only to a signed-in caller. An anonymous read gets the basic project. */
+  merge_method?: string | null;
+  squash_option?: string | null;
+  remove_source_branch_after_merge?: boolean | null;
+  merge_requests_access_level?: string | null;
 }
 
 interface GitLabJob {
@@ -443,6 +450,34 @@ function normalizePositiveInteger(value: number | undefined, fallback: number): 
   return Math.floor(value);
 }
 
+/** A merge request asks for `merge` under all three, and the project picks how it lands. */
+const GITLAB_MERGE_METHODS: ReadonlySet<unknown> = new Set(["merge", "rebase_merge", "ff"]);
+
+const GITLAB_SQUASH_OPTIONS: ReadonlySet<unknown> = new Set([
+  "never",
+  "always",
+  "default_on",
+  "default_off",
+]);
+
+/** `merge_method` decides how an unsquashed merge lands, `squash_option` whether it may. */
+function mapGitLabMergeSettings(raw: GitLabProject): RepositoryMergeSettings | null {
+  const squash = raw.squash_option;
+  if (!GITLAB_MERGE_METHODS.has(raw.merge_method) || !GITLAB_SQUASH_OPTIONS.has(squash)) {
+    return null;
+  }
+  const open = raw.merge_requests_access_level !== "disabled";
+  return mergeSettings(
+    { merge: open && squash !== "always", squash: open && squash !== "never", rebase: false },
+    {
+      defaultMethod: squash === "always" || squash === "default_on" ? "squash" : "merge",
+      squashTitle: null,
+      squashMessage: null,
+      deleteBranchOnMerge: raw.remove_source_branch_after_merge ?? null,
+    },
+  );
+}
+
 /** Guest views and comments: read. Planner and Reporter manage issues, no push: triage. */
 function mapGitLabPermission(
   permissions: GitLabProject["permissions"],
@@ -552,6 +587,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
           }
         : null,
       viewerPermission: mapGitLabPermission(raw.permissions),
+      merge: mapGitLabMergeSettings(raw),
       owner: this.mapOwner(raw),
     };
   }

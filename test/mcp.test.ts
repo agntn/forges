@@ -157,6 +157,13 @@ const repository = {
   owner: { login: "agntn" },
   private: false,
   defaultBranch: "main",
+  merge: {
+    methods: ["squash", "rebase"],
+    defaultMethod: null,
+    squashTitle: "COMMIT_OR_PR_TITLE",
+    squashMessage: "COMMIT_MESSAGES",
+    deleteBranchOnMerge: true,
+  },
 };
 
 const openConnections: Array<{ close(): Promise<void> }> = [];
@@ -690,7 +697,14 @@ describe("forges MCP server", () => {
     expect(search.note).toContain("forges_commits_get");
   });
 
-  it("leaves an owner that repeats the one asked for out of repository rows", async () => {
+  it("leaves an owner that repeats the one asked for and merge settings out of repository rows", async () => {
+    const merge = {
+      methods: ["merge", "squash"],
+      defaultMethod: "merge",
+      squashTitle: null,
+      squashMessage: null,
+      deleteBranchOnMerge: true,
+    };
     const row = (fullName: string, login: string) => ({
       id: fullName,
       name: fullName.split("/")[1],
@@ -703,6 +717,7 @@ describe("forges MCP server", () => {
       isFork: false,
       parent: null,
       viewerPermission: null,
+      merge,
       owner: { login, avatarUrl: `https://avatars.example/${login}` },
     });
     const items = [
@@ -726,6 +741,7 @@ describe("forges MCP server", () => {
       items[2]?.owner,
     ]);
     expect(answer.result.items[1].fullName).toBe("Agntn/keys");
+    expect(answer.result.items.some((item: object) => "merge" in item)).toBe(false);
     const listed = await listRepositories({ owner: "agntn" });
     expect(listed.details.result.items).toEqual(items);
   });

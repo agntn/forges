@@ -187,6 +187,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
                   : "",
             },
       viewerPermission: null,
+      merge: null,
       owner: this.mapOwner(namespace),
     };
   }

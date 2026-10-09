@@ -226,6 +226,7 @@ describe("repos", () => {
       isFork: false,
       parent: null,
       viewerPermission: null,
+      merge: null,
       owner: { login: "tools", avatarUrl: "" },
     });
   });

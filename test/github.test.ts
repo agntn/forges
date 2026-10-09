@@ -899,6 +899,67 @@ describe("GitHubProvider", () => {
       expect(repo.viewerPermission).toBeNull();
     });
 
+    it("maps merge settings a token with push access sees", async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...ghRepo,
+        allow_merge_commit: false,
+        allow_squash_merge: true,
+        allow_rebase_merge: true,
+        allow_auto_merge: false,
+        squash_merge_commit_title: "COMMIT_OR_PR_TITLE",
+        squash_merge_commit_message: "COMMIT_MESSAGES",
+        merge_commit_title: "MERGE_MESSAGE",
+        merge_commit_message: "PR_TITLE",
+        delete_branch_on_merge: true,
+      });
+
+      const repo = await gh.repos.get("agntn", "forges");
+
+      expect(repo.merge).toEqual({
+        methods: ["squash", "rebase"],
+        defaultMethod: null,
+        squashTitle: "COMMIT_OR_PR_TITLE",
+        squashMessage: "COMMIT_MESSAGES",
+        deleteBranchOnMerge: true,
+      });
+    });
+
+    it("allows no method once pull requests are off, push access or not", async () => {
+      mocks.client
+        .mockResolvedValueOnce({ ...ghRepo, has_pull_requests: false })
+        .mockResolvedValueOnce({
+          ...ghRepo,
+          has_pull_requests: false,
+          allow_merge_commit: true,
+          allow_squash_merge: true,
+          allow_rebase_merge: true,
+          delete_branch_on_merge: false,
+        });
+
+      const anonymous = await gh.repos.get("torvalds", "linux");
+      const pushed = await gh.repos.get("torvalds", "linux");
+
+      expect(anonymous.merge?.methods).toEqual([]);
+      expect(pushed.merge?.methods).toEqual([]);
+    });
+
+    it("keeps merge settings unknown without push access instead of allowing nothing", async () => {
+      mocks.client.mockResolvedValueOnce(ghRepo).mockResolvedValueOnce({
+        ...ghRepo,
+        allow_merge_commit: null,
+        allow_squash_merge: null,
+        allow_rebase_merge: null,
+        squash_merge_commit_title: null,
+        delete_branch_on_merge: null,
+      });
+
+      const omitted = await gh.repos.get("nodejs", "node");
+      const nulled = await gh.repos.get("nodejs", "node");
+
+      expect(omitted.merge).toBeNull();
+      expect(nulled.merge).toBeNull();
+    });
+
     it("reads current viewer permission on every call", async () => {
       mocks.cachedFetch.mockResolvedValue(ghRepo);
       mocks.client.mockResolvedValueOnce(ghRepo).mockResolvedValueOnce({
