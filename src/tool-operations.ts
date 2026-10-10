@@ -1259,7 +1259,9 @@ export async function listPullRequestChecks(
     return result(params.platform, await readPage(requestedPage));
   }
 
-  const waited = await waitForChecks(readPage, requestedPage, params.waitSeconds);
+  const readLastChange = async () =>
+    (await provider.pullRequests.get(params.owner, params.repo, params.number)).updatedAt;
+  const waited = await waitForChecks(readPage, requestedPage, params.waitSeconds, readLastChange);
   return result(params.platform, waited.page, waited.note);
 }
 

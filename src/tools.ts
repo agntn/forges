@@ -7,6 +7,7 @@ import {
   type ToolEffect,
 } from "../packages/shared/tool-effects.ts";
 import { forgeToolTitle } from "../packages/shared/tui.ts";
+import { EMPTY_CHECK_GRACE_SECONDS } from "./check-wait.ts";
 import { forgesToolSchemas } from "./tool-schemas.ts";
 
 type Operations = typeof import("./tool-operations.ts");
@@ -491,7 +492,8 @@ function defineTools(): ToolDefinition[] {
       name: "forges_pull_requests_checks",
       title: forgeToolTitle("forges_pull_requests_checks", "List Pull Request Checks"),
       description:
-        "List the checks or pipelines associated with one pull request head revision, normalized to name, lifecycle status, terminal conclusion, and URL. On GitHub the rows are the commit statuses followed by the check runs, so a CLA bot or a Jenkins job that branch protection requires is listed too. A host without check runs, GitBucket for one, returns those statuses and treats the missing route as an empty list. On GitLab they are the merge request pipelines on the head plus its head_pipeline, which is how a merged results or merge train pipeline is found. Pass waitSeconds instead of polling this tool: the call then returns once every check of the pull request concludes, or when the budget ends, carrying a wait field with settled, waitedMs, polls, and the names still pending.",
+        "List the checks or pipelines associated with one pull request head revision, normalized to name, lifecycle status, terminal conclusion, and URL. On GitHub the rows are the commit statuses followed by the check runs, so a CLA bot or a Jenkins job that branch protection requires is listed too. A host without check runs, GitBucket for one, returns those statuses and treats the missing route as an empty list. On GitLab they are the merge request pipelines on the head plus its head_pipeline, which is how a merged results or merge train pipeline is found. Pass waitSeconds instead of polling this tool: the call then returns once every check of the pull request concludes, or when the budget ends, carrying a wait field with settled, waitedMs, polls, and the names still pending. " +
+        `An empty list counts only after ${EMPTY_CHECK_GRACE_SECONDS} seconds without a change to the pull request, so a call right after a push waits for the first check; wait.noChecks says quiet or waited.`,
       snippet: "Read the checks for a pull request on GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_pull_requests_checks to verify pull-request CI before merging or reviewing.",
