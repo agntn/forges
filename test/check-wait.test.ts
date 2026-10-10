@@ -35,7 +35,8 @@ function polls(responses: Array<PageResult<PullRequestCheck>>): ReadCheckPage {
 
 /** Reports the pull request as last changed this many seconds before the wait starts. */
 function changedAt(secondsAgo: number): ReadLastChange {
-  return vi.fn(async () => new Date(Date.now() - secondsAgo * 1_000).toISOString());
+  const at = new Date(Date.now() - secondsAgo * 1_000).toISOString();
+  return vi.fn(async () => at);
 }
 
 /** Runs a wait to completion with the clock under test control. */
@@ -99,8 +100,42 @@ describe("check wait", () => {
     expect(settled.wait).toMatchObject({ settled: true, noChecks: "waited" });
     expect(settled.wait.waitedMs).toBeGreaterThanOrEqual(30_000);
     expect(settled.wait.waitedMs).toBeLessThan(60_000);
-    expect(lastChange).toHaveBeenCalledTimes(1);
     expect(note).toBeUndefined();
+  });
+
+  it("starts the window over when the pull request changes during it", async () => {
+    const read = polls([page([])]);
+    const before = new Date(Date.now()).toISOString();
+    const after = new Date(Date.now() + 10_000).toISOString();
+    let call = 0;
+    const lastChange: ReadLastChange = vi.fn(async () => (call++ < 3 ? before : after));
+
+    const { page: settled } = await run(waitForChecks(read, 1, 300, lastChange));
+
+    expect(settled.wait).toMatchObject({ settled: true, noChecks: "waited" });
+    expect(settled.wait.waitedMs).toBeGreaterThanOrEqual(12_000 + 30_000);
+  });
+
+  it("gives a push that empties the list mid wait its own window", async () => {
+    const read = polls([
+      page([check("build", true)]),
+      page([check("build", true)]),
+      page([check("build", true)]),
+      page([]),
+    ]);
+    const pushedAt = new Date(Date.now() + 10_000).toISOString();
+
+    const { page: settled } = await run(
+      waitForChecks(
+        read,
+        1,
+        300,
+        vi.fn(async () => pushedAt),
+      ),
+    );
+
+    expect(settled.wait).toMatchObject({ settled: true, noChecks: "waited" });
+    expect(settled.wait.waitedMs).toBeGreaterThanOrEqual(12_000 + 30_000);
   });
 
   it("sits the window out instead of failing when the last change can't be read", async () => {

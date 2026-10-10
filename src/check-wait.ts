@@ -47,6 +47,13 @@ export interface CheckWaitResult {
   note: string | undefined;
 }
 
+/** A run of empty reads under one last change; another change starts a new one. */
+interface EmptyRun {
+  sinceMs: number;
+  changedAt: string | undefined;
+  quiet: boolean;
+}
+
 interface Scan {
   requested: PageResult<PullRequestCheck>;
   checks: number;
@@ -97,13 +104,29 @@ async function scanChecks(read: ReadCheckPage, requestedPage: number): Promise<S
   };
 }
 
-/** A failed read, a future date or one that doesn't parse costs the window, never the answer. */
-async function quietForGrace(readLastChange: ReadLastChange): Promise<boolean> {
+/** A failed read tells nothing new, so it costs the window, never the answer. */
+async function lastChangeOrNothing(readLastChange: ReadLastChange): Promise<string | undefined> {
   try {
-    return Date.now() - Date.parse(await readLastChange()) >= EMPTY_GRACE_MS;
+    return await readLastChange();
   } catch {
-    return false;
+    return undefined;
   }
+}
+
+/** A future date or one that doesn't parse counts as a change just now. */
+function quietForGrace(changedAt: string | undefined): boolean {
+  return changedAt !== undefined && Date.now() - Date.parse(changedAt) >= EMPTY_GRACE_MS;
+}
+
+/** Keeps the run while the last change holds and starts a fresh one when it moves. */
+function continueEmptyRun(
+  run: EmptyRun | undefined,
+  changedAt: string | undefined,
+  waitedMs: number,
+): EmptyRun {
+  const known = changedAt ?? run?.changedAt;
+  if (run && known === run.changedAt) return run;
+  return { sinceMs: waitedMs, changedAt: known, quiet: quietForGrace(known) };
 }
 
 function pendingText(pending: string[]): string {
@@ -131,9 +154,10 @@ function waitNote(
  * Polls one pull request's checks until every one concludes or the budget ends.
  *
  * An empty list right after a push looks just like a pull request without CI, so it
- * settles at once only when the pull request was already quiet, and otherwise after
- * the grace window. A timeout is an ordinary result carrying the names that were
- * still running, because an error would cost the caller the state it asked for.
+ * settles at once only when the pull request was already quiet, and otherwise once it
+ * stays empty for the grace window, which any change to the pull request starts over.
+ * A timeout is an ordinary result carrying the names that were still running,
+ * because an error would cost the caller the state it asked for.
  */
 export async function waitForChecks(
   read: ReadCheckPage,
@@ -144,7 +168,7 @@ export async function waitForChecks(
   const budgetMs = Math.min(waitSeconds, MAX_CHECK_WAIT_SECONDS) * 1_000;
   const startedAt = performance.now();
   let polls = 0;
-  let quiet: boolean | undefined;
+  let emptyRun: EmptyRun | undefined;
 
   while (true) {
     polls += 1;
@@ -153,9 +177,12 @@ export async function waitForChecks(
     const empty = scan.examinedEveryPage && scan.checks === 0;
     let noChecks: CheckWait["noChecks"];
     if (empty) {
-      quiet ??= await quietForGrace(readLastChange);
-      if (quiet) noChecks = "quiet";
-      else if (waitedMs >= EMPTY_GRACE_MS) noChecks = "waited";
+      const changedAt = await lastChangeOrNothing(readLastChange);
+      emptyRun = continueEmptyRun(emptyRun, changedAt, waitedMs);
+      if (emptyRun.quiet) noChecks = "quiet";
+      else if (waitedMs - emptyRun.sinceMs >= EMPTY_GRACE_MS) noChecks = "waited";
+    } else {
+      emptyRun = undefined;
     }
     const settled = empty
       ? noChecks !== undefined
