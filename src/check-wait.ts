@@ -104,7 +104,7 @@ async function scanChecks(read: ReadCheckPage, requestedPage: number): Promise<S
   };
 }
 
-/** A failed read tells nothing new, so it costs the window, never the answer. */
+/** A failed read comes back as unknown, never as an error that would cost the answer. */
 async function lastChangeOrNothing(readLastChange: ReadLastChange): Promise<string | undefined> {
   try {
     return await readLastChange();
@@ -118,15 +118,18 @@ function quietForGrace(changedAt: string | undefined): boolean {
   return changedAt !== undefined && Date.now() - Date.parse(changedAt) >= EMPTY_GRACE_MS;
 }
 
-/** Keeps the run while the last change holds and starts a fresh one when it moves. */
+/** Keeps the run while the last change holds; a move or an unknown read starts it over. */
 function continueEmptyRun(
   run: EmptyRun | undefined,
   changedAt: string | undefined,
   waitedMs: number,
 ): EmptyRun {
-  const known = changedAt ?? run?.changedAt;
-  if (run && known === run.changedAt) return run;
-  return { sinceMs: waitedMs, changedAt: known, quiet: quietForGrace(known) };
+  if (run && changedAt !== undefined && changedAt === run.changedAt) return run;
+  return {
+    sinceMs: waitedMs,
+    changedAt: changedAt ?? run?.changedAt,
+    quiet: quietForGrace(changedAt),
+  };
 }
 
 function pendingText(pending: string[]): string {

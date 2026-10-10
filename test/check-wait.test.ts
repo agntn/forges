@@ -138,15 +138,19 @@ describe("check wait", () => {
     expect(settled.wait.waitedMs).toBeGreaterThanOrEqual(12_000 + 30_000);
   });
 
-  it("sits the window out instead of failing when the last change can't be read", async () => {
+  it("starts the window over instead of failing when the last change can't be read", async () => {
     const read = polls([page([])]);
+    const at = new Date(Date.now()).toISOString();
+    let call = 0;
     const lastChange: ReadLastChange = vi.fn(async () => {
-      throw new Error("rate limited");
+      if (call++ === 3) throw new Error("rate limited");
+      return at;
     });
 
     const { page: settled } = await run(waitForChecks(read, 1, 300, lastChange));
 
     expect(settled.wait).toMatchObject({ settled: true, noChecks: "waited" });
+    expect(settled.wait.waitedMs).toBeGreaterThanOrEqual(12_000 + 30_000);
   });
 
   it("does not call an empty list final when the budget ends inside the grace window", async () => {
