@@ -17,21 +17,29 @@ const MAX_POLL_INTERVAL_MS = 10_000;
 const MAX_SCAN_PAGES = 20;
 /** A long pending list belongs in the payload, not repeated in full in the note. */
 const NOTE_PENDING_LIMIT = 10;
+/** CI lists a fresh head seconds after the push, so an empty list proves nothing before this. */
+export const EMPTY_CHECK_GRACE_SECONDS = 30;
+const EMPTY_GRACE_MS = EMPTY_CHECK_GRACE_SECONDS * 1_000;
 
 /** What one bounded wait did, reported next to the page it returns. */
 export interface CheckWait {
-  /** True only when every check of the pull request reached a conclusion. */
+  /** True once every check concluded, or once no check showed up within the grace window. */
   settled: boolean;
   waitedMs: number;
   polls: number;
   /** Names of the checks that had not concluded when the wait ended. */
   pending: string[];
+  /** Why an empty list settled: the pull request was already quiet, or the wait sat it out. */
+  noChecks?: "quiet" | "waited";
 }
 
 export type WaitedCheckPage = PageResult<PullRequestCheck> & { wait: CheckWait };
 
 /** Reads one page of checks; the wait calls it repeatedly with the same page size. */
 export type ReadCheckPage = (page: number) => Promise<PageResult<PullRequestCheck>>;
+
+/** Reads when the pull request last changed; a push moves it on GitHub, GitLab and Gitea. */
+export type ReadLastChange = () => Promise<string>;
 
 export interface CheckWaitResult {
   page: WaitedCheckPage;
@@ -41,6 +49,7 @@ export interface CheckWaitResult {
 
 interface Scan {
   requested: PageResult<PullRequestCheck>;
+  checks: number;
   pending: string[];
   /** False when the check set outran the scan bound, so settlement cannot be claimed. */
   examinedEveryPage: boolean;
@@ -61,6 +70,7 @@ function delay(milliseconds: number): Promise<void> {
  */
 async function scanChecks(read: ReadCheckPage, requestedPage: number): Promise<Scan> {
   let requested: PageResult<PullRequestCheck> | undefined;
+  let checks = 0;
   const pending: string[] = [];
   let page = 1;
   let examinedEveryPage = false;
@@ -68,6 +78,7 @@ async function scanChecks(read: ReadCheckPage, requestedPage: number): Promise<S
   for (let visited = 0; visited < MAX_SCAN_PAGES; visited += 1) {
     const result = await read(page);
     if (page === requestedPage) requested = result;
+    checks += result.items.length;
     for (const check of result.items) {
       if (check.status !== "completed") pending.push(check.name);
     }
@@ -78,7 +89,21 @@ async function scanChecks(read: ReadCheckPage, requestedPage: number): Promise<S
     page = result.nextPage ?? page + 1;
   }
 
-  return { requested: requested ?? (await read(requestedPage)), pending, examinedEveryPage };
+  return {
+    requested: requested ?? (await read(requestedPage)),
+    checks,
+    pending,
+    examinedEveryPage,
+  };
+}
+
+/** A failed read, a future date or one that doesn't parse costs the window, never the answer. */
+async function quietForGrace(readLastChange: ReadLastChange): Promise<boolean> {
+  try {
+    return Date.now() - Date.parse(await readLastChange()) >= EMPTY_GRACE_MS;
+  } catch {
+    return false;
+  }
 }
 
 function pendingText(pending: string[]): string {
@@ -96,34 +121,50 @@ function waitNote(
   if (!examinedEveryPage) {
     return `The wait stopped after ${MAX_SCAN_PAGES} pages of checks without reaching the end of the set; read the remaining pages before treating this pull request as finished.`;
   }
+  if (wait.pending.length === 0) {
+    return `No check has shown up for this head within the ${waitSeconds}s budget, which is too soon to call it final: CI may still be starting. Call again with waitSeconds; do not treat the pull request as finished.`;
+  }
   return `Checks were still running when the ${waitSeconds}s budget ran out: ${pendingText(wait.pending)}. Call again with waitSeconds to keep waiting; do not treat the pull request as finished.`;
 }
 
 /**
  * Polls one pull request's checks until every one concludes or the budget ends.
  *
- * A pull request with no checks settles on the first read instead of waiting the
- * budget out, and a timeout is an ordinary result carrying the names that were
+ * An empty list right after a push looks just like a pull request without CI, so it
+ * settles at once only when the pull request was already quiet, and otherwise after
+ * the grace window. A timeout is an ordinary result carrying the names that were
  * still running, because an error would cost the caller the state it asked for.
  */
 export async function waitForChecks(
   read: ReadCheckPage,
   requestedPage: number,
   waitSeconds: number,
+  readLastChange: ReadLastChange,
 ): Promise<CheckWaitResult> {
   const budgetMs = Math.min(waitSeconds, MAX_CHECK_WAIT_SECONDS) * 1_000;
   const startedAt = performance.now();
   let polls = 0;
+  let quiet: boolean | undefined;
 
   while (true) {
     polls += 1;
     const scan = await scanChecks(read, requestedPage);
     const waitedMs = Math.round(performance.now() - startedAt);
-    const settled = scan.examinedEveryPage && scan.pending.length === 0;
+    const empty = scan.examinedEveryPage && scan.checks === 0;
+    let noChecks: CheckWait["noChecks"];
+    if (empty) {
+      quiet ??= await quietForGrace(readLastChange);
+      if (quiet) noChecks = "quiet";
+      else if (waitedMs >= EMPTY_GRACE_MS) noChecks = "waited";
+    }
+    const settled = empty
+      ? noChecks !== undefined
+      : scan.examinedEveryPage && scan.pending.length === 0;
     const remainingMs = budgetMs - waitedMs;
 
     if (settled || !scan.examinedEveryPage || remainingMs <= 0) {
       const wait: CheckWait = { settled, waitedMs, polls, pending: scan.pending };
+      if (noChecks) wait.noChecks = noChecks;
       return {
         page: { ...scan.requested, wait },
         note: waitNote(wait, scan.examinedEveryPage, waitSeconds),

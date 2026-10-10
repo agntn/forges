@@ -1073,6 +1073,21 @@ describe("forges MCP server", () => {
     expect(payload.note).toBeUndefined();
   });
 
+  it("reads when the pull request last changed before trusting an empty check list", async () => {
+    mocks.pullRequests.listChecks.mockResolvedValue({ items: [], hasNextPage: false });
+    mocks.pullRequests.get.mockResolvedValue({ number: 53, updatedAt: "2026-01-01T00:00:00Z" });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_checks",
+      arguments: { repo: "agntn/forges", number: 53, waitSeconds: 30 },
+    });
+
+    expect(mocks.pullRequests.get).toHaveBeenCalledWith("agntn", "forges", 53);
+    const payload = JSON.parse(text(response.content));
+    expect(payload.result.wait).toMatchObject({ settled: true, polls: 1, noChecks: "quiet" });
+  });
+
   it("rejects a wait budget outside the accepted range", async () => {
     const client = await connectTestClient();
 
