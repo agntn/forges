@@ -2378,6 +2378,24 @@ describe("GitHubProvider", () => {
       );
     });
 
+    it("keeps a missing issue a 404 on a GitHub-compatible host", async () => {
+      const gitbucket = new GitHubProvider({
+        baseURL: "https://gitbucket.example.com/api/v3",
+        token: "gb_test",
+      });
+      mocks.client.mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        throw makeFetchError(404);
+      });
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+
+      const error = await gitbucket.issues
+        .listReactions("octocat", "hello-world", 404)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(NotFoundError);
+    });
+
     it("reports reactions as unsupported on a GitHub-compatible host that 404s them", async () => {
       const gitbucket = new GitHubProvider({
         baseURL: "https://gitbucket.example.com/api/v3",

@@ -2695,7 +2695,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     return this.listReactions(owner, repo, number, true, options);
   }
 
-  /** The routes take either kind and a comment ignores its issue, so reads alongside check both. */
+  /** Routes take either kind and a comment ignores its issue; checks win over the reaction 404. */
   private async listReactions(
     owner: string,
     repo: string,
@@ -2710,18 +2710,21 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
       const base = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`;
       const commentId = options?.commentId;
-      const read = rawFetch<GitHubReaction[]>(
-        this.client,
-        commentId === undefined
-          ? `${base}/${encodePathSegment(number)}/reactions`
-          : `${base}/comments/${encodePathSegment(commentId)}/reactions`,
-        { query },
-      );
-      const [{ data, headers }] = await Promise.all([
-        read,
+      const [read, ...checks] = await Promise.allSettled([
+        rawFetch<GitHubReaction[]>(
+          this.client,
+          commentId === undefined
+            ? `${base}/${encodePathSegment(number)}/reactions`
+            : `${base}/comments/${encodePathSegment(commentId)}/reactions`,
+          { query },
+        ),
         this.assertIssueKind(owner, repo, number, pullRequest),
         commentId === undefined ? undefined : this.getIssueComment(owner, repo, number, commentId),
       ]);
+      const failed = checks.find((check) => check.status === "rejected");
+      if (failed) throw failed.reason;
+      if (read.status === "rejected") throw read.reason;
+      const { data, headers } = read.value;
       return buildPageResult(data ?? [], headers, (raw) => ({
         content: raw.content,
         user: { login: raw.user?.login ?? "" },
@@ -2751,9 +2754,14 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     number: number,
     pullRequest: boolean,
   ): Promise<void> {
-    const issue = await this.client<{ pull_request?: unknown }>(
-      `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}`,
-    );
+    let issue: { pull_request?: unknown };
+    try {
+      issue = await this.client<{ pull_request?: unknown }>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}`,
+      );
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
     if ((issue.pull_request !== undefined) !== pullRequest) {
       const kind = pullRequest ? "Pull request" : "Issue";
       throw new NotFoundError(`${kind} not found: ${number}`, "github");
