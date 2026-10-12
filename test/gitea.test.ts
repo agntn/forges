@@ -677,9 +677,10 @@ describe("Gitea Provider", () => {
     it.each(["", ".", "..", "../admin", "team/admin", "team\\admin", "%2e%2e", "%2Fadmin"])(
       "rejects unsafe repository path segment %j before transport",
       async (segment) => {
-        await expect(provider.repos.get(segment, "test-repo")).rejects.toThrow(
-          "Invalid API path segment",
-        );
+        await expect(provider.repos.get(segment, "test-repo")).rejects.toMatchObject({
+          status: 400,
+          message: expect.stringContaining("Owner must be one path segment"),
+        });
         expect(mockClient).not.toHaveBeenCalled();
       },
     );
@@ -2417,6 +2418,18 @@ describe("Gitea Provider", () => {
 
   describe("pullRequests.merge", () => {
     const pull = "/repos/testowner/test-repo/pulls/5";
+
+    it.each([
+      ["pullRequests.merge", () => provider.pullRequests.merge("..", "test-repo", 5, {})],
+      [
+        "pullRequests.update",
+        () => provider.pullRequests.update("..", "test-repo", 5, { title: "x" }),
+      ],
+      ["issues.update", () => provider.issues.update("..", "test-repo", 5, { title: "x" })],
+    ])("%s names the platform when the owner is no path segment", async (_name, write) => {
+      await expect(write()).rejects.toMatchObject({ status: 400, platform: "gitea" });
+      expect(mockClient).not.toHaveBeenCalled();
+    });
 
     it("posts the method with Gitea's field names, then reads the pull request", async () => {
       mockClient

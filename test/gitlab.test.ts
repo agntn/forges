@@ -385,6 +385,24 @@ describe("GitLabProvider", () => {
       ]);
       expect(result).toMatchObject({ totalCount: 2, incomplete: true });
     });
+
+    it("links a file whose name holds a percent sign", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [{ ...glCodeSearchItem, path: "docs/100%.md" }],
+        headers: glHeaders({ total: "1" }),
+      });
+      mocks.client.mockResolvedValueOnce(glProject);
+
+      const result = await gl.code.search("Provider");
+
+      expect(result.items).toEqual([
+        {
+          repository: "gitlab-org/gitlab-foss",
+          path: "docs/100%.md",
+          url: "https://gitlab.com/gitlab-org/gitlab-foss/-/blob/main/docs/100%25.md",
+        },
+      ]);
+    });
   });
 
   describe("contributionTemplates", () => {
@@ -637,7 +655,11 @@ describe("GitLabProvider", () => {
     });
 
     it("rejects unsafe namespace segments before transport", async () => {
-      await expect(gl.repos.list("../admin")).rejects.toThrow("Invalid API path segment");
+      await expect(gl.repos.list("../admin")).rejects.toMatchObject({
+        status: 400,
+        message:
+          'Each owner group must be one path segment: not empty, "." or "..", and without "/", "\\", "%" or control characters',
+      });
       expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
 

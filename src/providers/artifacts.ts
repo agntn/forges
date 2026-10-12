@@ -537,11 +537,11 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
   }
 
   private namespacePath(namespace: string): string {
-    return `/namespaces/${encodePathSegment(namespace)}`;
+    return `/namespaces/${encodePathSegment(namespace, "Owner")}`;
   }
 
   private repoPath(namespace: string, repo: string): string {
-    return `${this.namespacePath(namespace)}/repos/${encodePathSegment(repo)}`;
+    return `${this.namespacePath(namespace)}/repos/${encodePathSegment(repo, "Repository name")}`;
   }
 
   private async accountURL(): Promise<string> {
@@ -549,7 +549,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
   }
 
   private accountBase(accountId: string): string {
-    return `${this.apiBaseURL.replace(/\/+$/u, "")}/accounts/${encodePathSegment(accountId)}/artifacts`;
+    return `${this.apiBaseURL.replace(/\/+$/u, "")}/accounts/${encodePathSegment(accountId, "Account id")}/artifacts`;
   }
 
   private credential(refresh = false): Promise<CloudflareCredential> {

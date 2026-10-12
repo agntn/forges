@@ -691,8 +691,11 @@ describe("GitHubProvider", () => {
         "Code search repository scope requires an owner",
       );
       await expect(gh.code.search("   ")).rejects.toThrow("Code search query must not be empty");
-      await expect(gh.code.search("Provider", { owner: "agntn repo:other" })).rejects.toThrow(
-        "Invalid GitHub search qualifier segment",
+      await expect(gh.code.search("Provider", { owner: "agntn repo:other" })).rejects.toMatchObject(
+        {
+          status: 400,
+          message: 'Owner must not contain spaces, ":" or quotes in a search',
+        },
       );
       expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
@@ -996,9 +999,18 @@ describe("GitHubProvider", () => {
       String.fromCharCode(10),
       String.fromCharCode(127),
     ])("rejects unsafe repository path segment %j before transport", async (segment) => {
-      await expect(gh.repos.get(segment, "hello-world")).rejects.toThrow(
-        "Invalid API path segment",
-      );
+      await expect(gh.repos.get(segment, "hello-world")).rejects.toMatchObject({
+        status: 400,
+        message: expect.stringContaining("Owner must be one path segment"),
+      });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("names the repository when the name is the bad segment", async () => {
+      await expect(gh.repos.get("agntn", "..")).rejects.toMatchObject({
+        status: 400,
+        message: expect.stringMatching(/^Repository name must be one path segment/u),
+      });
       expect(mocks.client).not.toHaveBeenCalled();
     });
   });
@@ -1662,9 +1674,10 @@ describe("GitHubProvider", () => {
     });
 
     it("refuses a revision git would not accept before any request", async () => {
-      await expect(gh.commits.compare("agntn", "forges", "main~3b", "main")).rejects.toThrow(
-        "Invalid git revision path segment",
-      );
+      await expect(gh.commits.compare("agntn", "forges", "main~3b", "main")).rejects.toMatchObject({
+        status: 400,
+        message: "Base must be a ref name git accepts, optionally with ~N or ^N steps",
+      });
       expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
 
@@ -2061,9 +2074,10 @@ describe("GitHubProvider", () => {
       1.5,
       Number.MAX_SAFE_INTEGER + 1,
     ])("rejects invalid issue number %s before transport", async (number) => {
-      await expect(gh.issues.get("octocat", "hello-world", number)).rejects.toThrow(
-        "Invalid API path segment",
-      );
+      await expect(gh.issues.get("octocat", "hello-world", number)).rejects.toMatchObject({
+        status: 400,
+        message: "Number must be a positive integer",
+      });
       expect(mocks.client).not.toHaveBeenCalled();
     });
   });
@@ -3685,6 +3699,15 @@ describe("GitHubProvider", () => {
   });
 
   describe("pullRequests.merge", () => {
+    it.each([
+      ["pullRequests.merge", () => gh.pullRequests.merge("..", "hello-world", 1, {})],
+      ["pullRequests.update", () => gh.pullRequests.update("..", "hello-world", 1, { title: "x" })],
+      ["issues.update", () => gh.issues.update("..", "hello-world", 1, { title: "x" })],
+    ])("%s names the platform when the owner is no path segment", async (_name, write) => {
+      await expect(write()).rejects.toMatchObject({ status: 400, platform: "github" });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
     it("merges with the given method, head and commit text, then reads the pull request", async () => {
       const merged = {
         ...ghPullRequest,

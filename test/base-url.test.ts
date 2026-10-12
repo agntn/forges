@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { ForgesError } from "../src/errors.ts";
 import {
   encodeApiResponsePathSegment,
   encodeLabelPathSegment,
@@ -18,7 +19,7 @@ describe("encodeLabelPathSegment", () => {
   });
 
   it.each(["", ".", ".."])("rejects %j", (name) => {
-    expect(() => encodeLabelPathSegment(name)).toThrow("Invalid label name");
+    expect(() => encodeLabelPathSegment(name)).toThrow('Label name must not be empty, "." or ".."');
   });
 });
 
@@ -34,14 +35,30 @@ describe("encodePathSegment", () => {
   it.each(["", ".", "..", "owner/repo", "owner\\repo", "already%20encoded", "\0", "\n", "\x7f"])(
     "rejects unsafe string %j",
     (value) => {
-      expect(() => encodePathSegment(value)).toThrow("Invalid API path segment");
+      expect(() => encodePathSegment(value)).toThrow("Identifier must be one path segment");
     },
   );
+
+  it("answers a 400 that names the field", () => {
+    let thrown: unknown;
+    try {
+      encodePathSegment("for%ges", "Repository name");
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ForgesError);
+    expect(thrown).toMatchObject({
+      status: 400,
+      message:
+        'Repository name must be one path segment: not empty, "." or "..", and without "/", "\\", "%" or control characters',
+    });
+  });
 
   it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 2 ** 53])(
     "rejects unsafe number %j",
     (value) => {
-      expect(() => encodePathSegment(value)).toThrow("Invalid API path segment");
+      expect(() => encodePathSegment(value)).toThrow("Identifier must be a positive integer");
     },
   );
 });
@@ -86,7 +103,7 @@ describe("encodeRefPathSegment", () => {
     "\n",
     "\x7f",
   ])("rejects %j, which git check-ref-format refuses too", (value) => {
-    expect(() => encodeRefPathSegment(value)).toThrow("Invalid git ref path segment");
+    expect(() => encodeRefPathSegment(value)).toThrow("Ref must be a ref name git accepts");
   });
 });
 
@@ -107,14 +124,18 @@ describe("encodeRevisionPathSegment", () => {
   it.each(["", "~1", "^", "a~b", "a~1b", "a^{tree}", "a@{1}", "a:b", "v1.~1", "a..b~1", "a/~1"])(
     "rejects %j, which is no ref name with parent steps",
     (value) => {
-      expect(() => encodeRevisionPathSegment(value)).toThrow("Invalid git revision path segment");
+      expect(() => encodeRevisionPathSegment(value)).toThrow(
+        "Revision must be a ref name git accepts",
+      );
     },
   );
 
   it("refuses a long run of steps without a ref name in linear time", () => {
     const value = `${"~".repeat(100_000)}x`;
     const started = performance.now();
-    expect(() => encodeRevisionPathSegment(value)).toThrow("Invalid git revision path segment");
+    expect(() => encodeRevisionPathSegment(value)).toThrow(
+      "Revision must be a ref name git accepts",
+    );
     expect(performance.now() - started).toBeLessThan(1_000);
   });
 });

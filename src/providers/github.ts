@@ -641,17 +641,16 @@ function comparisonStatus(status: string): CommitComparisonStatus | null {
     : null;
 }
 
-function githubSearchQualifierSegment(value: string): string {
-  try {
-    encodePathSegment(value);
-    if (/[\s:'"]/u.test(value)) {
-      throw new TypeError("Invalid GitHub search qualifier segment");
-    }
-    return value;
-  } catch (error) {
-    if (!(error instanceof TypeError)) throw error;
-    throw new ForgesError(error.message, 400, "github", error);
+function githubSearchQualifierSegment(value: string, field: string): string {
+  encodePathSegment(value, field);
+  if (/[\s:'"]/u.test(value)) {
+    throw new ForgesError(
+      `${field} must not contain spaces, ":" or quotes in a search`,
+      400,
+      "github",
+    );
   }
+  return value;
 }
 
 // --- Provider ---
@@ -700,7 +699,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     if (segments.length !== 2 || owner === undefined || repo === undefined) {
       throw new ForgesError("GitHub returned an invalid repository name", 502, "github");
     }
-    return `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`;
+    return `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
   }
 
   private contentsRoute(fullName: string, path: string): string {
@@ -713,7 +712,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   private async tryRepository(owner: string, repo: string): Promise<GitHubRepo | null> {
     try {
       return await this.client<GitHubRepo>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`,
       );
     } catch (error) {
       const normalized = normalizeError(error, "github");
@@ -730,7 +729,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     try {
       const { headers } = await rawFetch<GitHubRepo>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`,
       );
       this.gitHubHost = headers.has("x-github-enterprise-version");
       return this.gitHubHost;
@@ -896,7 +895,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   ): Promise<ContributionTemplateSummary[]> {
     try {
       const repository = await this.client<GitHubRepo>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`,
       );
       const local =
         kind === "issue"
@@ -1162,7 +1161,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       try {
         response = await rawFetch<GitHubRepo[]>(
           this.client,
-          `/orgs/${encodePathSegment(owner)}/repos`,
+          `/orgs/${encodePathSegment(owner, "Owner")}/repos`,
           { query },
         );
       } catch (error) {
@@ -1175,9 +1174,13 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
           ? await rawFetch<GitHubRepo[]>(this.client, "/user/repos", {
               query: { ...query, affiliation: "owner" },
             })
-          : await rawFetch<GitHubRepo[]>(this.client, `/users/${encodePathSegment(owner)}/repos`, {
-              query,
-            });
+          : await rawFetch<GitHubRepo[]>(
+              this.client,
+              `/users/${encodePathSegment(owner, "Owner")}/repos`,
+              {
+                query,
+              },
+            );
       }
 
       return buildPageResult(response.data ?? [], response.headers, (raw) =>
@@ -1191,7 +1194,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   protected override async getRepo(owner: string, repo: string): Promise<Repository> {
     try {
       const data = await this.client<GitHubRepo>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`,
       );
       return this.mapRepository(data);
     } catch (error) {
@@ -1211,7 +1214,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
       const { data, headers } = await rawFetch<GitHubTag[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/tags`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/tags`,
         { query },
       );
       return buildPageResult(data ?? [], headers, (raw) => ({
@@ -1230,7 +1233,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     options?: RepositoryContentsOptions,
   ): Promise<RepositoryContents> {
     try {
-      const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`;
+      const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
       const sha = isCommitSha(options?.ref)
         ? options.ref
         : await this.resolveCommitSha(route, options?.ref ?? "HEAD");
@@ -1268,7 +1271,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   /** Resolve a ref to a commit SHA; GitBucket ignores the sha media type and sends the commit. */
   private async resolveCommitSha(route: string, ref: string): Promise<string> {
     const body = await this.client<string, "text">(
-      `${route}/commits/${encodeRevisionPathSegment(ref)}`,
+      `${route}/commits/${encodeRevisionPathSegment(ref, "Ref")}`,
       {
         headers: { Accept: "application/vnd.github.sha" },
         responseType: "text",
@@ -1301,7 +1304,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
       const { data, headers } = await rawFetch<GitHubCiRunsResponse>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/actions/runs`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/runs`,
         { query },
       );
       return {
@@ -1326,7 +1329,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
       const { data, headers } = await rawFetch<GitHubCiJobsResponse>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/actions/runs/${runId}/jobs`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/runs/${runId}/jobs`,
         { query },
       );
       return {
@@ -1345,7 +1348,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     options?: CiJobLogOptions,
   ): Promise<CiJobLog> {
     try {
-      const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/actions/jobs/${jobId}`;
+      const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/jobs/${jobId}`;
       const job = mapActionsJob(await this.client<ActionsJob>(route));
       if (!jobStarted(job, true)) return buildCiJobLog(job, null, options);
       // The route redirects to blob storage; fetch drops the token on that cross-origin hop.
@@ -1384,11 +1387,11 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       }
       let query = searchQuery;
       if (options?.owner !== undefined) {
-        const owner = githubSearchQualifierSegment(options.owner);
+        const owner = githubSearchQualifierSegment(options.owner, "Owner");
         query +=
           options.repo === undefined
             ? ` user:${owner}`
-            : ` repo:${owner}/${githubSearchQualifierSegment(options.repo)}`;
+            : ` repo:${owner}/${githubSearchQualifierSegment(options.repo, "Repository name")}`;
       }
       const { data, headers } = await rawFetch<GitHubCommitSearchResponse>(
         this.client,
@@ -1450,7 +1453,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
       const { data, headers } = await rawFetch<GitHubCommit[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits`,
         { query },
       );
       return buildPageResult(data ?? [], headers, (raw) => this.mapCommitSummary(raw));
@@ -1461,7 +1464,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   protected override async getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
     try {
-      const path = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodePathSegment(sha)}`;
+      const path = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodePathSegment(sha, "Commit SHA")}`;
       const files: PullRequestFile[] = [];
       let commit: GitHubCommit | undefined;
       let filesComplete: boolean | null = true;
@@ -1512,7 +1515,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       const page = options?.page ?? 1;
       const { data, headers } = await rawFetch<GitHubComparison>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/compare/${encodeRevisionPathSegment(base)}...${encodeRevisionPathSegment(head)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/compare/${encodeRevisionPathSegment(base, "Base")}...${encodeRevisionPathSegment(head, "Head")}`,
         { query: { page: String(page), per_page: String(options?.perPage ?? 30) } },
       );
       if (!data) throw new ForgesError("GitHub returned no comparison data", 502, "github");
@@ -1550,9 +1553,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         const commitRef = resolvedSha ?? sha;
         const encodedCommitRef =
           resolvedSha === undefined
-            ? encodeRevisionPathSegment(commitRef)
+            ? encodeRevisionPathSegment(commitRef, "Commit SHA")
             : encodePathSegment(commitRef);
-        const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodedCommitRef}`;
+        const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodedCommitRef}`;
         const { data, headers } = await rawFetch<GitHubCommit>(this.client, route, {
           query: { page: String(page), per_page: "100" },
         });
@@ -1616,11 +1619,11 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     try {
       const qualifiers: string[] = [];
       if (options?.owner !== undefined && options.repo !== undefined) {
-        const owner = githubSearchQualifierSegment(options.owner);
-        const repo = githubSearchQualifierSegment(options.repo);
+        const owner = githubSearchQualifierSegment(options.owner, "Owner");
+        const repo = githubSearchQualifierSegment(options.repo, "Repository name");
         qualifiers.push(`repo:${owner}/${repo}`);
       } else if (options?.owner !== undefined) {
-        qualifiers.push(`user:${githubSearchQualifierSegment(options.owner)}`);
+        qualifiers.push(`user:${githubSearchQualifierSegment(options.owner, "Owner")}`);
       }
 
       const query: Record<string, string> = {
@@ -1679,7 +1682,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   ): Promise<PullRequestReview> {
     try {
       const raw = await this.client<GitHubPullRequestReview>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews/${encodePathSegment(reviewId)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews/${encodePathSegment(reviewId, "Review id")}`,
       );
       const review = this.mapPullRequestReview(raw);
       if (review === null) {
@@ -1720,7 +1723,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
       const { data, headers } = await rawFetch<GitHubPullRequestReview[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews`,
         { query },
       );
       const page = buildPageResult(data ?? [], headers, (raw) => this.mapPullRequestReview(raw));
@@ -1745,7 +1748,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   // --- Releases ---
 
   private releasesRoute(owner: string, repo: string): string {
-    return `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/releases`;
+    return `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/releases`;
   }
 
   /** A 404 from a host without the releases API, GitBucket for one, is a 501, not a missing release. */
@@ -1812,7 +1815,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   private async readRelease(owner: string, repo: string, tag: string): Promise<GitHubRelease> {
     try {
       return await this.client<GitHubRelease>(
-        `${this.releasesRoute(owner, repo)}/tags/${encodeRefPathSegment(tag)}`,
+        `${this.releasesRoute(owner, repo)}/tags/${encodeRefPathSegment(tag, "Tag")}`,
       );
     } catch (error) {
       const normalized = await this.releaseError(owner, repo, error);
@@ -1892,7 +1895,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
       const { data, headers } = await rawFetch<GitHubIssue[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues`,
         { query },
       );
 
@@ -1910,8 +1913,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     options?: ListOptions,
   ): Promise<SearchPageResult<Issue>> {
     try {
-      const encodedOwner = encodePathSegment(owner);
-      const encodedRepo = encodePathSegment(repo);
+      const encodedOwner = encodePathSegment(owner, "Owner");
+      const encodedRepo = encodePathSegment(repo, "Repository name");
       const qualifiers = [`repo:${owner}/${repo}`, "is:issue"];
       if (options?.state && options.state !== "all") qualifiers.push(`is:${options.state}`);
 
@@ -1958,7 +1961,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   ): Promise<Issue> {
     try {
       const data = await this.client<GitHubIssue>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(issueNumber)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(issueNumber, "Number")}`,
       );
       if (data.pull_request !== undefined) {
         throw new NotFoundError(`Issue not found: ${issueNumber}`, "github");
@@ -1976,7 +1979,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   ): Promise<Issue> {
     try {
       const data = await this.client<GitHubIssue>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues`,
         {
           method: "POST",
           body: {
@@ -2008,7 +2011,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
       const { data, headers } = await rawFetch<GitHubPullRequest[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls`,
         { query },
       );
 
@@ -2031,7 +2034,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
       const { data, headers } = await rawFetch<GitHubPullRequestFile[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/files`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/files`,
         { query },
       );
       return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequestFile(raw));
@@ -2057,7 +2060,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       const page = options?.page ?? 1;
       const skip = (page - 1) * perPage;
       const wanted = skip + perPage + 1;
-      const revision = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodePathSegment(pullRequest.headSha)}`;
+      const revision = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodePathSegment(pullRequest.headSha)}`;
 
       const statuses = await this.readRevisionRows<GitHubCombinedStatus, GitHubCommitStatus>(
         `${revision}/status`,
@@ -2198,14 +2201,14 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       }
       for (const label of filters?.labels ?? []) query += ` label:"${label}"`;
       if (options?.author !== undefined) {
-        query += ` author:${githubSearchQualifierSegment(options.author)}`;
+        query += ` author:${githubSearchQualifierSegment(options.author, "Author")}`;
       }
       if (options?.owner !== undefined) {
-        const owner = githubSearchQualifierSegment(options.owner);
+        const owner = githubSearchQualifierSegment(options.owner, "Owner");
         query +=
           options.repo === undefined
             ? ` user:${owner}`
-            : ` repo:${owner}/${githubSearchQualifierSegment(options.repo)}`;
+            : ` repo:${owner}/${githubSearchQualifierSegment(options.repo, "Repository name")}`;
       }
       const { data, headers } = await rawFetch<GitHubIssueSearchResponse>(
         this.client,
@@ -2229,7 +2232,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         try {
           const match = new URL(raw.repository_url).pathname.match(/\/repos\/([^/]+)\/([^/]+)$/u);
           if (!match) continue;
-          repository = `${githubSearchQualifierSegment(decodeURIComponent(match[1]!))}/${githubSearchQualifierSegment(decodeURIComponent(match[2]!))}`;
+          repository = `${githubSearchQualifierSegment(decodeURIComponent(match[1]!), "Result owner")}/${githubSearchQualifierSegment(decodeURIComponent(match[2]!), "Result repository name")}`;
         } catch {
           continue;
         }
@@ -2280,8 +2283,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     options?: ListOptions,
   ): Promise<SearchPageResult<PullRequestSearchItem>> {
     try {
-      const encodedOwner = encodePathSegment(owner);
-      const encodedRepo = encodePathSegment(repo);
+      const encodedOwner = encodePathSegment(owner, "Owner");
+      const encodedRepo = encodePathSegment(repo, "Repository name");
       const qualifiers = [`repo:${owner}/${repo}`, "is:pr"];
       if (options?.state && options.state !== "all") qualifiers.push(`is:${options.state}`);
 
@@ -2332,7 +2335,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   ): Promise<PullRequest> {
     try {
       const data = await this.client<GitHubPullRequest>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(prNumber)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(prNumber, "Number")}`,
       );
       return this.mapPullRequest(data);
     } catch (error) {
@@ -2399,7 +2402,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   ): Promise<PullRequest> {
     try {
       const data = await this.client<GitHubPullRequest>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls`,
         {
           method: "POST",
           body: {
@@ -2417,7 +2420,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
       try {
         const assigned = await this.client<GitHubIssue>(
-          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(data.number)}/assignees`,
+          `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(data.number)}/assignees`,
           { method: "POST", body: { assignees: input.assignees } },
         );
         return this.mapPullRequest({ ...data, assignees: assigned.assignees });
@@ -2442,10 +2445,10 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     prNumber: number,
     input: UpdatePullRequestInput,
   ): Promise<PullRequest> {
-    const repository = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`;
-    const pullPath = `${repository}/pulls/${encodePathSegment(prNumber)}`;
-    const issuePath = `${repository}/issues/${encodePathSegment(prNumber)}`;
     try {
+      const repository = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
+      const pullPath = `${repository}/pulls/${encodePathSegment(prNumber, "Number")}`;
+      const issuePath = `${repository}/issues/${encodePathSegment(prNumber, "Number")}`;
       const removedLabelPaths = this.removedLabelPaths(issuePath, input.removeLabels);
       const fields = { title: input.title, body: input.body, state: input.state };
       const patched = Object.values(fields).some((value) => value !== undefined);
@@ -2469,8 +2472,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     prNumber: number,
     input: MergePullRequestInput,
   ): Promise<PullRequest> {
-    const pullPath = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(prNumber)}`;
+    let pullPath: string;
     try {
+      pullPath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(prNumber, "Number")}`;
       await this.client(`${pullPath}/merge`, {
         method: "PUT",
         body: {
@@ -2502,8 +2506,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     issueNumber: number,
     input: UpdateIssueInput,
   ): Promise<Issue> {
-    const issuePath = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(issueNumber)}`;
     try {
+      const issuePath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(issueNumber, "Number")}`;
       const removedLabelPaths = this.removedLabelPaths(issuePath, input.removeLabels);
       let data = await this.client<GitHubIssue>(issuePath);
       if (data.pull_request !== undefined) {
@@ -2591,7 +2595,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
       const { data, headers } = await rawFetch<GitHubComment[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}/comments`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}/comments`,
         { query },
       );
 
@@ -2626,7 +2630,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   ): Promise<Comment> {
     try {
       const data = await this.client<GitHubComment>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/comments/${encodePathSegment(commentId)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/comments/${encodePathSegment(commentId, "Comment id")}`,
       );
       if (data.issue_url && !data.issue_url.endsWith(`/issues/${number}`)) {
         throw new NotFoundError(`Comment not found: ${commentId}`, "github");
@@ -2655,7 +2659,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   ): Promise<Comment> {
     try {
       const data = await this.client<GitHubComment>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}/comments`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}/comments`,
         { method: "POST", body: { body: input.body } },
       );
       return this.mapComment(data);
@@ -2708,14 +2712,14 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       if (options?.page) query.page = String(options.page);
       if (options?.perPage) query.per_page = String(options.perPage);
 
-      const base = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`;
+      const base = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues`;
       const commentId = options?.commentId;
       const [read, ...checks] = await Promise.allSettled([
         rawFetch<GitHubReaction[]>(
           this.client,
           commentId === undefined
-            ? `${base}/${encodePathSegment(number)}/reactions`
-            : `${base}/comments/${encodePathSegment(commentId)}/reactions`,
+            ? `${base}/${encodePathSegment(number, "Number")}/reactions`
+            : `${base}/comments/${encodePathSegment(commentId, "Comment id")}/reactions`,
           { query },
         ),
         this.assertIssueKind(owner, repo, number, pullRequest),
@@ -2757,7 +2761,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     let issue: { pull_request?: unknown };
     try {
       issue = await this.client<{ pull_request?: unknown }>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`,
       );
     } catch (error) {
       throw normalizeError(error, "github");
@@ -2772,7 +2776,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   protected override async getUser(username: string): Promise<User> {
     try {
-      const data = await this.client<GitHubUser>(`/users/${encodePathSegment(username)}`);
+      const data = await this.client<GitHubUser>(
+        `/users/${encodePathSegment(username, "Username")}`,
+      );
       return this.mapUser(data);
     } catch (error) {
       throw normalizeError(error, "github");
@@ -2885,7 +2891,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       // comment id could point at another thread on the same pull request.
       const commentId = await this.rootCommentId(owner, repo, number, threadId);
       const data = await this.client<GitHubReviewComment>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/comments/${encodePathSegment(commentId)}/replies`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/comments/${encodePathSegment(commentId, "Comment id")}/replies`,
         {
           method: "POST",
           body: { body: input.body },
