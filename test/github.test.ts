@@ -2261,6 +2261,163 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("reactions", () => {
+    const ghReaction = {
+      id: 562477420,
+      node_id: "REA_lAHORfLBQs8AAAABWsMA284hhrls",
+      user: {
+        login: "chatgpt-codex-connector[bot]",
+        id: 199175422,
+        type: "User",
+        site_admin: false,
+      },
+      content: "+1",
+      created_at: "2026-10-12T17:20:01Z",
+    };
+
+    const ghPull = {
+      ...ghIssue,
+      pull_request: { url: "https://api.github.com/repos/agntn/forges/pulls/266" },
+    };
+    /** Answers the kind and comment reads the way GitHub would for one item. */
+    const serve = (item: object) =>
+      mocks.client.mockImplementation(async (url: string) =>
+        url.includes("/issues/comments/") ? ghComment : item,
+      );
+
+    it("lists the reactions on an issue with its pages", async () => {
+      serve(ghIssue);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [ghReaction, { ...ghReaction, id: 562477421, content: "eyes", user: null }],
+        headers: makeHeaders(
+          '<https://api.github.com/repositories/1173537090/issues/42/reactions?per_page=2&page=2>; rel="next"',
+        ),
+      });
+
+      const result = await gh.issues.listReactions("octocat", "hello-world", 42, { perPage: 2 });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/octocat/hello-world/issues/42/reactions",
+        { query: { per_page: "2" } },
+      );
+      expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/42");
+      expect(result).toEqual({
+        items: [
+          {
+            content: "+1",
+            user: { login: "chatgpt-codex-connector[bot]" },
+            createdAt: "2026-10-12T17:20:01Z",
+          },
+          { content: "eyes", user: { login: "" }, createdAt: "2026-10-12T17:20:01Z" },
+        ],
+        hasNextPage: true,
+        nextPage: 2,
+      });
+    });
+
+    it("reads a pull request's reactions through its issue", async () => {
+      serve(ghPull);
+      mocks.rawFetch.mockResolvedValueOnce({ data: [ghReaction], headers: makeHeaders() });
+
+      const result = await gh.pullRequests.listReactions("agntn", "forges", 266);
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/agntn/forges/issues/266/reactions",
+        { query: {} },
+      );
+      expect(result.items.map((reaction) => reaction.content)).toEqual(["+1"]);
+    });
+
+    it("answers 404 when the number is the other kind", async () => {
+      serve(ghIssue);
+      mocks.rawFetch.mockResolvedValue({ data: [ghReaction], headers: makeHeaders() });
+
+      await expect(gh.pullRequests.listReactions("octocat", "hello-world", 42)).rejects.toThrow(
+        "Pull request not found: 42",
+      );
+      serve(ghPull);
+      await expect(gh.issues.listReactions("agntn", "forges", 266)).rejects.toThrow(
+        "Issue not found: 266",
+      );
+    });
+
+    it("reads a comment's reactions and checks the comment is under the issue", async () => {
+      serve(ghIssue);
+      mocks.rawFetch.mockResolvedValueOnce({ data: [ghReaction], headers: makeHeaders() });
+
+      const result = await gh.issues.listReactions("octocat", "hello-world", 42, {
+        commentId: "3001",
+      });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/octocat/hello-world/issues/comments/3001/reactions",
+        { query: {} },
+      );
+      expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/comments/3001");
+      expect(result.items).toHaveLength(1);
+    });
+
+    it("answers 404 for a comment from another issue", async () => {
+      serve(ghIssue);
+      mocks.rawFetch.mockResolvedValueOnce({ data: [ghReaction], headers: makeHeaders() });
+
+      await expect(
+        gh.issues.listReactions("octocat", "hello-world", 7, { commentId: "3001" }),
+      ).rejects.toThrow("Comment not found: 3001");
+    });
+
+    it("maps a missing issue to NotFoundError", async () => {
+      serve(ghIssue);
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(gh.issues.listReactions("octocat", "hello-world", 404)).rejects.toThrow(
+        NotFoundError,
+      );
+    });
+
+    it("keeps a missing issue a 404 on a GitHub-compatible host", async () => {
+      const gitbucket = new GitHubProvider({
+        baseURL: "https://gitbucket.example.com/api/v3",
+        token: "gb_test",
+      });
+      mocks.client.mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        throw makeFetchError(404);
+      });
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+
+      const error = await gitbucket.issues
+        .listReactions("octocat", "hello-world", 404)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(NotFoundError);
+    });
+
+    it("reports reactions as unsupported on a GitHub-compatible host that 404s them", async () => {
+      const gitbucket = new GitHubProvider({
+        baseURL: "https://gitbucket.example.com/api/v3",
+        token: "gb_test",
+      });
+      serve(ghPull);
+      mocks.rawFetch
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce({ data: ghRepo, headers: new Headers(), status: 200 });
+
+      const error = await gitbucket.pullRequests
+        .listReactions("octocat", "hello-world", 99)
+        .catch((e: unknown) => e);
+
+      expect(error).not.toBeInstanceOf(NotFoundError);
+      expect(error).toMatchObject({
+        status: 501,
+        message: "Reactions are not supported by this GitHub-compatible host",
+      });
+    });
+  });
+
   // --- Pull Requests ---
 
   describe("pullRequests.list", () => {

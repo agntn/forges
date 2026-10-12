@@ -36,6 +36,7 @@ import type {
   PullRequestReview,
   PullRequestFile,
   PullRequestSearchItem,
+  Reaction,
   GlobalPullRequestSearchOptions,
   GlobalPullRequestSearchResult,
   GlobalIssueSearchOptions,
@@ -52,6 +53,7 @@ import type {
   ListPullRequestChecksOptions,
   ListPullRequestReviewsOptions,
   ListPullRequestFilesOptions,
+  ListReactionOptions,
   ListThreadOptions,
   Comment,
   CreateCommentInput,
@@ -374,6 +376,13 @@ interface GitHubComment {
   issue_url?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface GitHubReaction {
+  /** Null once the account that reacted is gone. */
+  user: { login: string } | null;
+  content: string;
+  created_at: string;
 }
 
 interface GitHubTag {
@@ -2663,6 +2672,100 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     input: CreateCommentInput,
   ): Promise<Comment> {
     return this.createIssueComment(owner, repo, number, input);
+  }
+
+  // --- Reactions ---
+
+  protected override async listIssueReactions(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    return this.listReactions(owner, repo, number, false, options);
+  }
+
+  /** Pull requests take reactions on the issue routes too. */
+  protected override async listPullRequestReactions(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    return this.listReactions(owner, repo, number, true, options);
+  }
+
+  /** Routes take either kind and a comment ignores its issue; checks win over the reaction 404. */
+  private async listReactions(
+    owner: string,
+    repo: string,
+    number: number,
+    pullRequest: boolean,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    try {
+      const query: Record<string, string> = {};
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+
+      const base = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`;
+      const commentId = options?.commentId;
+      const [read, ...checks] = await Promise.allSettled([
+        rawFetch<GitHubReaction[]>(
+          this.client,
+          commentId === undefined
+            ? `${base}/${encodePathSegment(number)}/reactions`
+            : `${base}/comments/${encodePathSegment(commentId)}/reactions`,
+          { query },
+        ),
+        this.assertIssueKind(owner, repo, number, pullRequest),
+        commentId === undefined ? undefined : this.getIssueComment(owner, repo, number, commentId),
+      ]);
+      const failed = checks.find((check) => check.status === "rejected");
+      if (failed) throw failed.reason;
+      if (read.status === "rejected") throw read.reason;
+      const { data, headers } = read.value;
+      return buildPageResult(data ?? [], headers, (raw) => ({
+        content: raw.content,
+        user: { login: raw.user?.login ?? "" },
+        createdAt: raw.created_at,
+      }));
+    } catch (error) {
+      if (
+        error instanceof FetchError &&
+        error.status === 404 &&
+        !(await this.isGitHubHost(owner, repo))
+      ) {
+        throw new ForgesError(
+          "Reactions are not supported by this GitHub-compatible host",
+          501,
+          "github",
+          error,
+        );
+      }
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /** An issue read tells the kinds apart, so the wrong one is a 404 as on GitLab. */
+  private async assertIssueKind(
+    owner: string,
+    repo: string,
+    number: number,
+    pullRequest: boolean,
+  ): Promise<void> {
+    let issue: { pull_request?: unknown };
+    try {
+      issue = await this.client<{ pull_request?: unknown }>(
+        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}`,
+      );
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+    if ((issue.pull_request !== undefined) !== pullRequest) {
+      const kind = pullRequest ? "Pull request" : "Issue";
+      throw new NotFoundError(`${kind} not found: ${number}`, "github");
+    }
   }
 
   // --- Users ---

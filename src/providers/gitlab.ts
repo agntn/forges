@@ -62,6 +62,7 @@ import type {
   ListPullRequestChecksOptions,
   ListPullRequestReviewsOptions,
   ListPullRequestFilesOptions,
+  ListReactionOptions,
   ListThreadOptions,
   Comment,
   CreateCommentInput,
@@ -71,6 +72,7 @@ import type {
   IssueState,
   ListReleasesOptions,
   ListTagsOptions,
+  Reaction,
   Release,
   ReplyThreadInput,
   Tag,
@@ -345,6 +347,20 @@ interface GitLabMergeRequestApproval {
 interface GitLabMergeRequestApprovals {
   approved_by?: GitLabMergeRequestApproval[] | null;
 }
+
+interface GitLabAwardEmoji {
+  name: string;
+  user: { username: string } | null;
+  created_at: string;
+}
+
+/** GitLab names the GitHub reactions by shortcode, and four of them differ. */
+const GITHUB_REACTIONS = new Map([
+  ["thumbsup", "+1"],
+  ["thumbsdown", "-1"],
+  ["smile", "laugh"],
+  ["tada", "hooray"],
+]);
 
 /** GitLab releases carry no id; the tag is the whole identity. */
 interface GitLabTag {
@@ -2497,6 +2513,53 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     input: CreateCommentInput,
   ): Promise<Comment> {
     return this.createNote(owner, repo, "merge_requests", number, input);
+  }
+
+  protected override async listIssueReactions(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    return this.listAwardEmoji(owner, repo, "issues", number, options);
+  }
+
+  protected override async listPullRequestReactions(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    return this.listAwardEmoji(owner, repo, "merge_requests", number, options);
+  }
+
+  /** Oldest first, and a note's route already sits under its issue or merge request. */
+  private async listAwardEmoji(
+    owner: string,
+    repo: string,
+    resource: "issues" | "merge_requests",
+    number: number,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const noteable = `/projects/${projectId}/${resource}/${encodePathSegment(number)}`;
+      const { data, headers } = await rawFetch<GitLabAwardEmoji[]>(
+        this.client,
+        options?.commentId === undefined
+          ? `${noteable}/award_emoji`
+          : `${noteable}/notes/${encodePathSegment(options.commentId)}/award_emoji`,
+        { query: { page: options?.page ?? 1, per_page: options?.perPage ?? 30 } },
+      );
+      const reactions = (data ?? []).map((raw) => ({
+        content: GITHUB_REACTIONS.get(raw.name) ?? raw.name,
+        user: { login: raw.user?.username ?? "" },
+        createdAt: raw.created_at,
+      }));
+      return this.parsePagination(reactions, headers);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
   }
 
   private async createNote(

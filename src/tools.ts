@@ -44,7 +44,7 @@ async function call<T>(run: (operations: Operations) => Promise<T>): Promise<T> 
 
 let tools: readonly ToolDefinition[] | undefined;
 
-/** The 52 tools for every surface, built on the first call so an import parses nothing. */
+/** The 54 tools for every surface, built on the first call so an import parses nothing. */
 export function forgesTools(): readonly ToolDefinition[] {
   tools ??= defineTools();
   return tools;
@@ -384,6 +384,19 @@ function defineTools(): ToolDefinition[] {
       execute: (args) => call((operations) => operations.getIssueComment(args)),
     }),
     defineTool({
+      name: "forges_issues_reactions",
+      title: forgeToolTitle("forges_issues_reactions", "List Issue Reactions"),
+      description:
+        "List the emoji reactions on one issue, oldest first, or on one of its discussion comments when commentId is an id forges_issues_comments returned. Each row names the reaction the way GitHub does (+1, -1, laugh, confused, heart, hooray, rocket, eyes), who reacted and createdAt; an emoji GitHub has no reaction for keeps the forge's own name. A pull request number answers not found; read those with forges_pull_requests_reactions. Results are paged: read hasNextPage and nextPage instead of assuming the first page is everything.",
+      snippet: "Read the reactions on an issue or its comments on GitHub, GitLab, or Gitea.",
+      guidelines: [
+        "Use forges_issues_reactions instead of gh api .../reactions; pass commentId for a comment's reactions.",
+      ],
+      ...effect("forges_issues_reactions"),
+      input: schemas.listReactionsParameters,
+      execute: (args) => call((operations) => operations.listIssueReactions(args)),
+    }),
+    defineTool({
       name: "forges_issues_comments_create",
       title: forgeToolTitle("forges_issues_comments_create", "Comment on Issue"),
       description:
@@ -554,6 +567,19 @@ function defineTools(): ToolDefinition[] {
       ...effect("forges_pull_requests_comments_get"),
       input: schemas.commentParameters,
       execute: (args) => call((operations) => operations.getPullRequestComment(args)),
+    }),
+    defineTool({
+      name: "forges_pull_requests_reactions",
+      title: forgeToolTitle("forges_pull_requests_reactions", "List Pull Request Reactions"),
+      description:
+        "List the emoji reactions on one pull request, oldest first, or on one of its conversation comments when commentId is an id forges_pull_requests_comments returned. Some review bots answer with a reaction and nothing else, eyes while they review and +1 when they have nothing to say, so compare createdAt with the latest push before trusting one. Each row names the reaction the way GitHub does (+1, -1, laugh, confused, heart, hooray, rocket, eyes), who reacted and createdAt; an emoji GitHub has no reaction for keeps the forge's own name. An issue number answers not found. Results are paged: read hasNextPage and nextPage instead of assuming the first page is everything.",
+      snippet: "Read the reactions on a pull request or its comments on GitHub, GitLab, or Gitea.",
+      guidelines: [
+        "Use forges_pull_requests_reactions instead of gh api .../reactions to see whether a review bot reacted after the latest push.",
+      ],
+      ...effect("forges_pull_requests_reactions"),
+      input: schemas.listReactionsParameters,
+      execute: (args) => call((operations) => operations.listPullRequestReactions(args)),
     }),
     defineTool({
       name: "forges_pull_requests_comments_create",

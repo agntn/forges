@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => {
     searchGlobal: vi.fn(),
     get: vi.fn(),
     create: vi.fn(),
+    listReactions: vi.fn(),
   };
   const pullRequests = {
     list: vi.fn(),
@@ -36,6 +37,7 @@ const mocks = vi.hoisted(() => {
     search: vi.fn(),
     get: vi.fn(),
     create: vi.fn(),
+    listReactions: vi.fn(),
   };
   const users = { get: vi.fn(), authenticated: vi.fn() };
   const threads = {
@@ -105,6 +107,7 @@ const toolNames = [
   "forges_issues_get",
   "forges_issues_comments",
   "forges_issues_comments_get",
+  "forges_issues_reactions",
   "forges_issues_comments_create",
   "forges_issues_create",
   "forges_issues_update",
@@ -118,6 +121,7 @@ const toolNames = [
   "forges_pull_requests_reviews_get",
   "forges_pull_requests_comments",
   "forges_pull_requests_comments_get",
+  "forges_pull_requests_reactions",
   "forges_pull_requests_comments_create",
   "forges_pull_requests_create",
   "forges_pull_requests_update",
@@ -1387,6 +1391,55 @@ describe("forges MCP server", () => {
       note: "Pull-request bodies and revision details are omitted from search output; use forges_pull_requests_get to read one in full.",
       result: { items: [{ number: 82, merged: true }], incomplete: false },
     });
+  });
+
+  it("reads a comment's reactions on a pull request from an owner/name slug", async () => {
+    const page = {
+      items: [
+        {
+          content: "+1",
+          user: { login: "chatgpt-codex-connector[bot]" },
+          createdAt: "2026-10-12T17:20:01Z",
+        },
+      ],
+      hasNextPage: false,
+    };
+    mocks.pullRequests.listReactions.mockResolvedValue(page);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_reactions",
+      arguments: { repo: "agntn/forges", number: 266, commentId: "6129105893", perPage: 5 },
+    });
+
+    expect(mocks.pullRequests.listReactions).toHaveBeenCalledWith("agntn", "forges", 266, {
+      commentId: "6129105893",
+      page: undefined,
+      perPage: 5,
+    });
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: page });
+  });
+
+  it("reads an issue's own reactions and refuses an empty comment id", async () => {
+    mocks.issues.listReactions.mockResolvedValue({ items: [], hasNextPage: false });
+    const client = await connectTestClient();
+
+    await client.callTool({
+      name: "forges_issues_reactions",
+      arguments: { owner: "agntn", repo: "forges", number: 256 },
+    });
+    const invalid = await client.callTool({
+      name: "forges_issues_reactions",
+      arguments: { owner: "agntn", repo: "forges", number: 256, commentId: "" },
+    });
+
+    expect(mocks.issues.listReactions).toHaveBeenCalledTimes(1);
+    expect(mocks.issues.listReactions).toHaveBeenCalledWith("agntn", "forges", 256, {
+      commentId: undefined,
+      page: undefined,
+      perPage: undefined,
+    });
+    expect(invalid.isError).toBe(true);
   });
 
   it("lists tags from an owner/name slug, page and all", async () => {

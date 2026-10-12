@@ -66,6 +66,7 @@ import type {
   ListPullRequestChecksOptions,
   ListPullRequestReviewsOptions,
   ListPullRequestFilesOptions,
+  ListReactionOptions,
   ListThreadOptions,
   Comment,
   CreateCommentInput,
@@ -74,6 +75,7 @@ import type {
   CreateReleaseInput,
   ListReleasesOptions,
   ListTagsOptions,
+  Reaction,
   Release,
   ReplyThreadInput,
   Tag,
@@ -294,6 +296,20 @@ interface GiteaComment {
   pull_request_url?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface GiteaReaction {
+  user: { login: string } | null;
+  content: string;
+  created_at: string;
+}
+
+function mapReaction(raw: GiteaReaction): Reaction {
+  return {
+    content: raw.content,
+    user: { login: raw.user?.login ?? "" },
+    createdAt: raw.created_at,
+  };
 }
 
 interface GiteaTag {
@@ -2084,6 +2100,88 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     input: CreateCommentInput,
   ): Promise<Comment> {
     return this.createIssueComment(owner, repo, number, input);
+  }
+
+  protected override async listIssueReactions(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    return this.listReactions(owner, repo, number, false, options);
+  }
+
+  /** Gitea indexes pull requests as issues, so their reactions share these routes. */
+  protected override async listPullRequestReactions(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    return this.listReactions(owner, repo, number, true, options);
+  }
+
+  /** Item reactions page by count like tags; a comment's come whole and ignore the issue. */
+  private async listReactions(
+    owner: string,
+    repo: string,
+    number: number,
+    pullRequest: boolean,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    try {
+      const page = options?.page ?? 1;
+      const perPage = options?.perPage ?? 30;
+      const base = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`;
+      const commentId = options?.commentId;
+      if (commentId !== undefined) {
+        const [reactions] = await Promise.all([
+          this.client<GiteaReaction[] | null>(
+            `${base}/comments/${encodePathSegment(commentId)}/reactions`,
+          ),
+          this.assertIssueKind(owner, repo, number, pullRequest),
+          this.getIssueComment(owner, repo, number, commentId),
+        ]);
+        return slicePage((reactions ?? []).map(mapReaction), page, perPage);
+      }
+
+      const [{ data, headers }] = await Promise.all([
+        rawFetch<GiteaReaction[] | null>(
+          this.client,
+          `${base}/${encodePathSegment(number)}/reactions`,
+          { query: { page: String(page), limit: String(perPage) } },
+        ),
+        this.assertIssueKind(owner, repo, number, pullRequest),
+      ]);
+      const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
+      const result = buildPageResult(data ?? [], headers, mapReaction);
+      const hasNextPage =
+        result.hasNextPage || countedNextPage(page, perPage, result.items.length, total);
+      return {
+        ...result,
+        totalCount: Number.isFinite(total) ? total : undefined,
+        hasNextPage,
+        nextPage: hasNextPage ? (result.nextPage ?? page + 1) : undefined,
+      };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  /** An issue read tells the kinds apart, so the wrong one is a 404 as on GitLab. */
+  private async assertIssueKind(
+    owner: string,
+    repo: string,
+    number: number,
+    pullRequest: boolean,
+  ): Promise<void> {
+    const issue = await this.client<GiteaIssue>(
+      `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}`,
+    );
+    if ((issue.pull_request != null) !== pullRequest) {
+      const kind = pullRequest ? "Pull request" : "Issue";
+      throw new NotFoundError(`${kind} not found: ${number}`, PLATFORM);
+    }
   }
 
   protected override async getUser(username: string): Promise<User> {
