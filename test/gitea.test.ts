@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { GiteaProvider } from "../src/providers/gitea.ts";
-import { Provider } from "../src/provider.ts";
+import type { Provider } from "../src/provider.ts";
 import { NotFoundError } from "../src/errors.ts";
 
 // -- Mock HTTP layer --
@@ -231,10 +231,6 @@ describe("Gitea Provider", () => {
   });
 
   describe("provider setup", () => {
-    it("extends the abstract Provider base class", () => {
-      expect(provider).toBeInstanceOf(Provider);
-    });
-
     it("defaults to the public API base URL", () => {
       expect(mockedCreateHttpClient).toHaveBeenCalledWith(
         expect.objectContaining({ baseURL: "https://gitea.com/api/v1" }),
@@ -3031,7 +3027,6 @@ describe("Gitea Provider", () => {
 
       const result = await provider.repos.get("testowner", "test-repo");
       expect(result.id).toBe("999");
-      expect(typeof result.id).toBe("string");
     });
 
     it("converts numeric IDs to strings for issues", async () => {
@@ -3039,7 +3034,6 @@ describe("Gitea Provider", () => {
 
       const result = await provider.issues.get("testowner", "test-repo", 1);
       expect(result.id).toBe("888");
-      expect(typeof result.id).toBe("string");
     });
 
     it("converts numeric IDs to strings for users", async () => {
@@ -3047,7 +3041,6 @@ describe("Gitea Provider", () => {
 
       const result = await provider.users.get("testuser");
       expect(result.id).toBe("777");
-      expect(typeof result.id).toBe("string");
     });
   });
 
