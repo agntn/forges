@@ -456,3 +456,41 @@ describe("GitLab global pull-request search", () => {
     });
   });
 });
+
+describe("pull-request search scoped to an owner, without a query", () => {
+  it.each([
+    [
+      "github",
+      () => new GitHubProvider({ token: "" }),
+      "/search/issues",
+      { q: "is:pr user:agntn", page: "1", per_page: "30" },
+    ],
+    [
+      "gitlab",
+      () => new GitLabProvider({ token: "" }),
+      "/groups/agntn/merge_requests",
+      { state: "all", order_by: "created_at", sort: "desc", page: "1", per_page: "30" },
+    ],
+    [
+      "gitea",
+      () => new GiteaProvider({ token: "" }),
+      "/repos/issues/search",
+      { type: "pulls", state: "all", page: "1", limit: "30", owner: "agntn" },
+    ],
+  ] as const)("lists every pull request of the owner on %s", async (_, provider, path, query) => {
+    mocks.rawFetch.mockResolvedValue({ data: [], headers: new Headers() });
+    await provider().pullRequests.searchGlobal("", { owner: "agntn" });
+    expect(mocks.rawFetch.mock.calls[0]?.[1]).toBe(path);
+    expect(mocks.rawFetch.mock.calls[0]?.[2].query).toEqual(query);
+  });
+
+  it("still refuses a search with no scope at all and says how to narrow it", async () => {
+    await expect(
+      new GitHubProvider({ token: "" }).pullRequests.searchGlobal(""),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: "Pull-request search needs a query, an author or an owner",
+    });
+    expect(mocks.rawFetch).not.toHaveBeenCalled();
+  });
+});

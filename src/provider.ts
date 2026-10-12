@@ -164,12 +164,16 @@ function assertGlobalSearch(
   if (options?.author !== undefined && !/^[^\s:'"]+$/u.test(options.author)) {
     throw new ForgesError(`${noun} search author must be a single login`, 400);
   }
+  if (options?.owner?.trim() === "") {
+    throw new ForgesError(`${noun} search owner must not be empty`, 400);
+  }
   const labelled = noun === "Issue" && (options?.labels?.length ?? 0) > 0;
-  if (query.trim() === "" && options?.author === undefined && !labelled) {
+  const scoped = options?.author !== undefined || options?.owner !== undefined || labelled;
+  if (query.trim() === "" && !scoped) {
     throw new ForgesError(
       noun === "Issue"
-        ? "Issue search needs a query, an author or a label"
-        : `${noun} search needs a query or an author`,
+        ? "Issue search needs a query, an author, a label or an owner"
+        : `${noun} search needs a query, an author or an owner`,
       400,
     );
   }
