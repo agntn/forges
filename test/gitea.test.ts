@@ -677,9 +677,10 @@ describe("Gitea Provider", () => {
     it.each(["", ".", "..", "../admin", "team/admin", "team\\admin", "%2e%2e", "%2Fadmin"])(
       "rejects unsafe repository path segment %j before transport",
       async (segment) => {
-        await expect(provider.repos.get(segment, "test-repo")).rejects.toThrow(
-          "Invalid API path segment",
-        );
+        await expect(provider.repos.get(segment, "test-repo")).rejects.toMatchObject({
+          status: 400,
+          message: expect.stringContaining("Owner must be one path segment"),
+        });
         expect(mockClient).not.toHaveBeenCalled();
       },
     );

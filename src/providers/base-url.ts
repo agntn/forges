@@ -1,14 +1,19 @@
+import { ForgesError } from "../errors.ts";
+
 /**
  * Encode an API identifier as exactly one URL path segment.
  *
- * @throws {TypeError} When a numeric identifier is not a positive safe integer,
+ * @param field - Names the argument in the refusal, so the caller knows which value to fix.
+ * @throws {ForgesError} A 400 when a numeric identifier is not a positive safe integer,
  * or when a string identifier is empty, a dot segment, contains a path
  * separator or control character, or is already percent-encoded.
  */
-export function encodePathSegment(value: string | number): string {
+export function encodePathSegment(value: string | number, field = "Identifier"): string {
   const segment = String(value);
+  if (typeof value === "number" && (!Number.isSafeInteger(value) || value < 1)) {
+    throw new ForgesError(`${field} must be a positive integer`, 400);
+  }
   if (
-    (typeof value === "number" && (!Number.isSafeInteger(value) || value < 1)) ||
     segment.length === 0 ||
     segment === "." ||
     segment === ".." ||
@@ -18,7 +23,10 @@ export function encodePathSegment(value: string | number): string {
     /* oxlint-disable-next-line no-control-regex */
     /[\u0000-\u001F\u007F]/.test(segment)
   ) {
-    throw new TypeError("Invalid API path segment");
+    throw new ForgesError(
+      `${field} must be one path segment: not empty, "." or "..", and without "/", "\\", "%" or control characters`,
+      400,
+    );
   }
 
   return encodeURIComponent(segment);
@@ -51,7 +59,7 @@ export function encodeApiResponsePathSegment(value: string): string {
  */
 export function encodeLabelPathSegment(name: string): string {
   if (name.length === 0 || name === "." || name === "..") {
-    throw new TypeError("Invalid label name");
+    throw new ForgesError('Label name must not be empty, "." or ".."', 400);
   }
 
   return encodeURIComponent(name);
@@ -71,16 +79,16 @@ const INVALID_REF_NAME =
  * so both are percent-encoded instead of refused; a name git itself would not
  * accept as a ref is refused before any request goes out.
  */
-export function encodeRefPathSegment(value: string): string {
+export function encodeRefPathSegment(value: string, field = "Ref"): string {
   if (value.length === 0 || INVALID_REF_NAME.test(value)) {
-    throw new TypeError("Invalid git ref path segment");
+    throw new ForgesError(`${field} must be a ref name git accepts`, 400);
   }
 
   return encodeURIComponent(value);
 }
 
 /** A ref name with optional `~N` and `^N` steps, such as `main~2`. Tags take a bare ref name. */
-export function encodeRevisionPathSegment(value: string): string {
+export function encodeRevisionPathSegment(value: string, field = "Revision"): string {
   let nameEnd = value.length;
   while (nameEnd > 0) {
     let stepStart = nameEnd;
@@ -92,7 +100,10 @@ export function encodeRevisionPathSegment(value: string): string {
 
   const name = value.slice(0, nameEnd);
   if (name.length === 0 || INVALID_REF_NAME.test(name)) {
-    throw new TypeError("Invalid git revision path segment");
+    throw new ForgesError(
+      `${field} must be a ref name git accepts, optionally with ~N or ^N steps`,
+      400,
+    );
   }
 
   return encodeURIComponent(value);

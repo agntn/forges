@@ -637,7 +637,11 @@ describe("GitLabProvider", () => {
     });
 
     it("rejects unsafe namespace segments before transport", async () => {
-      await expect(gl.repos.list("../admin")).rejects.toThrow("Invalid API path segment");
+      await expect(gl.repos.list("../admin")).rejects.toMatchObject({
+        status: 400,
+        message:
+          'Each owner group must be one path segment: not empty, "." or "..", and without "/", "\\", "%" or control characters',
+      });
       expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
 

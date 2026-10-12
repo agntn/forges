@@ -825,7 +825,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const query = buildListQuery(options);
       const { data, headers } = await rawFetch<GiteaRepository[]>(
         this.client,
-        `/users/${encodePathSegment(owner)}/repos`,
+        `/users/${encodePathSegment(owner, "Owner")}/repos`,
         { query },
       );
       return buildPageResult(data ?? [], headers, (raw) => this.mapRepository(raw));
@@ -838,7 +838,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     try {
       return this.mapRepository(
         await this.client<GiteaRepository>(
-          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
+          `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`,
         ),
       );
     } catch (error) {
@@ -856,7 +856,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const perPage = options?.perPage ?? 30;
       const { data, headers } = await rawFetch<GiteaTag[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/tags`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/tags`,
         { query: { page: String(page), limit: String(perPage) } },
       );
       const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
@@ -884,12 +884,12 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     options?: RepositoryContentsOptions,
   ): Promise<RepositoryContents> {
     try {
-      const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`;
+      const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
       const sha = isCommitSha(options?.ref)
         ? options.ref
         : (
             await this.client<GiteaCommit>(
-              `${route}/git/commits/${encodeRevisionPathSegment(options?.ref ?? "HEAD")}`,
+              `${route}/git/commits/${encodeRevisionPathSegment(options?.ref ?? "HEAD", "Ref")}`,
               { query: { stat: "false", files: "false", verification: "false" } },
             )
           ).sha;
@@ -925,7 +925,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
 
   private contributionTemplateContentsRoute(owner: string, repo: string, path: string): string {
     const encodedPath = path.split("/").map(encodeApiResponsePathSegment).join("/");
-    return `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/contents/${encodedPath}`;
+    return `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/contents/${encodedPath}`;
   }
 
   private async tryContributionTemplateFile(
@@ -972,11 +972,11 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<ContributionTemplateSummary[]> {
     try {
       const repository = await this.client<GiteaRepository>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`,
       );
       if (kind === "issue") {
         const rows = await this.client<GiteaIssueTemplate[]>(
-          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issue_templates`,
+          `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issue_templates`,
         );
         const seen = new Set<string>();
         return rows.flatMap((row): ContributionTemplateSummary[] => {
@@ -1044,7 +1044,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
 
       const { data, headers } = await rawFetch<GiteaCiRunsResponse>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/actions/runs`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/runs`,
         { query },
       );
       const totalCount = data?.total_count;
@@ -1075,7 +1075,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const perPage = options?.perPage ?? 30;
       const { data, headers } = await rawFetch<GiteaCiJobsResponse>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/actions/runs/${runId}/jobs`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/runs/${runId}/jobs`,
         { query: { page: String(page), limit: String(perPage) } },
       );
       const totalCount = data?.total_count;
@@ -1100,7 +1100,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     options?: CiJobLogOptions,
   ): Promise<CiJobLog> {
     try {
-      const route = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/actions/jobs/${jobId}`;
+      const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/jobs/${jobId}`;
       const job = mapActionsJob(await this.client<ActionsJob>(route));
       if (!jobStarted(job, true)) return buildCiJobLog(job, null, options);
       const stream = await this.client<unknown, "stream">(`${route}/logs`, {
@@ -1155,7 +1155,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
 
       const { data, headers } = await rawFetch<GiteaCommit[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits`,
         { query },
       );
       const result = buildPageResult(data ?? [], headers, (raw) => this.mapCommitSummary(raw));
@@ -1176,7 +1176,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   protected override async getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
     try {
       const commit = await this.client<GiteaCommit>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodePathSegment(sha)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/git/commits/${encodePathSegment(sha, "Commit SHA")}`,
       );
       return {
         ...this.mapCommitSummary(commit),
@@ -1201,7 +1201,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<CommitComparison> {
     try {
       const comparison = await this.client<GiteaComparison>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/compare/${encodeRevisionPathSegment(base)}...${encodeRevisionPathSegment(head)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/compare/${encodeRevisionPathSegment(base, "Base")}...${encodeRevisionPathSegment(head, "Head")}`,
         { query: { files: "false", verification: "false" } },
       );
       const commits = comparison.commits.map((raw) => this.mapCommitSummary(raw)).toReversed();
@@ -1228,7 +1228,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<CommitPatch> {
     try {
       const commit = await this.client<GiteaCommit>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodeRevisionPathSegment(sha)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/git/commits/${encodeRevisionPathSegment(sha, "Commit SHA")}`,
       );
       if ((options?.offset ?? 0) > 0 && sha !== commit.sha) {
         throw new ForgesError(
@@ -1237,7 +1237,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         );
       }
       const diffStream = await this.client<unknown, "stream">(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/git/commits/${encodePathSegment(commit.sha)}.diff`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/git/commits/${encodePathSegment(commit.sha)}.diff`,
         { responseType: "stream" },
       );
       const commitFiles = commit.files ?? [];
@@ -1265,7 +1265,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   // --- Releases ---
 
   private releasesRoute(owner: string, repo: string): string {
-    return `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/releases`;
+    return `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/releases`;
   }
 
   protected override async listReleases(
@@ -1298,7 +1298,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   private async readRelease(owner: string, repo: string, tag: string): Promise<GiteaRelease> {
     try {
       return await this.client<GiteaRelease>(
-        `${this.releasesRoute(owner, repo)}/tags/${encodeRefPathSegment(tag)}`,
+        `${this.releasesRoute(owner, repo)}/tags/${encodeRefPathSegment(tag, "Tag")}`,
       );
     } catch (error) {
       throw normalizeError(error, PLATFORM);
@@ -1371,7 +1371,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       query.type = "issues";
       const { data, headers } = await rawFetch<GiteaIssue[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues`,
         { query },
       );
       return buildPageResult(data ?? [], headers, (raw) => this.mapIssue(raw));
@@ -1394,7 +1394,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       query.type = "issues";
       const { data, headers } = await rawFetch<GiteaIssue[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues`,
         { query },
       );
       return {
@@ -1409,7 +1409,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   protected override async getIssue(owner: string, repo: string, number: number): Promise<Issue> {
     try {
       const issue = await this.client<GiteaIssue>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`,
       );
       if (issue.pull_request != null) {
         throw new NotFoundError(`Issue not found: ${number}`, PLATFORM);
@@ -1438,7 +1438,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       }
       return this.mapIssue(
         await this.client<GiteaIssue>(
-          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`,
+          `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues`,
           {
             method: "POST",
             body,
@@ -1458,14 +1458,18 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     const ids = new Map<string, number>();
     const pending = new Set(names);
     await this.collectIssueLabelIds(
-      `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/labels`,
+      `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/labels`,
       pending,
       ids,
     );
 
     if (pending.size > 0) {
       try {
-        await this.collectIssueLabelIds(`/orgs/${encodePathSegment(owner)}/labels`, pending, ids);
+        await this.collectIssueLabelIds(
+          `/orgs/${encodePathSegment(owner, "Owner")}/labels`,
+          pending,
+          ids,
+        );
       } catch (error) {
         const normalized = normalizeError(error, PLATFORM);
         if (normalized.status !== 404) throw normalized;
@@ -1524,7 +1528,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const query = buildListQuery(options);
       const { data, headers } = await rawFetch<GiteaPullRequest[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls`,
         { query },
       );
       return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequest(raw));
@@ -1543,7 +1547,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const query = buildListQuery(options);
       const { data, headers } = await rawFetch<GiteaPullRequestFile[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/files`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/files`,
         { query },
       );
       return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequestFile(raw));
@@ -1562,7 +1566,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const pullRequest = await this.getPullRequest(owner, repo, number);
       const page = options?.page ?? 1;
       const perPage = options?.perPage ?? 30;
-      const path = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/commits/${encodePathSegment(pullRequest.headSha)}/status`;
+      const path = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodePathSegment(pullRequest.headSha)}/status`;
       const { data, headers } = await rawFetch<GiteaCombinedStatus>(this.client, path, {
         query: { page: String(page), limit: String(perPage) },
       });
@@ -1596,7 +1600,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<PullRequestReview> {
     try {
       const raw = await this.client<GiteaPullReview>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews/${encodePathSegment(reviewId)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews/${encodePathSegment(reviewId, "Review id")}`,
       );
       const review = this.mapPullRequestReview(raw);
       if (review === null) {
@@ -1627,7 +1631,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const perPage = options?.perPage ?? 30;
       const { data, headers } = await rawFetch<GiteaPullReview[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews`,
         { query: { page: String(page), limit: String(perPage) } },
       );
       const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
@@ -1660,7 +1664,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       query.type = "pulls";
       const { data, headers } = await rawFetch<GiteaIssue[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues`,
         { query },
       );
       return {
@@ -1735,7 +1739,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       };
       let path = "/repos/issues/search";
       if (options?.owner !== undefined && options.repo !== undefined) {
-        path = `/repos/${encodePathSegment(options.owner)}/${encodePathSegment(options.repo)}/issues`;
+        path = `/repos/${encodePathSegment(options.owner, "Owner")}/${encodePathSegment(options.repo, "Repository name")}/issues`;
       } else if (options?.owner !== undefined) {
         query.owner = options.owner;
       }
@@ -1797,7 +1801,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     try {
       return this.mapPullRequest(
         await this.client<GiteaPullRequest>(
-          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}`,
+          `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}`,
         ),
       );
     } catch (error) {
@@ -1825,7 +1829,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       }
       return this.mapPullRequest(
         await this.client<GiteaPullRequest>(
-          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls`,
+          `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls`,
           {
             method: "POST",
             body,
@@ -1850,9 +1854,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     number: number,
     input: UpdatePullRequestInput,
   ): Promise<PullRequest> {
-    const repository = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}`;
-    const pullPath = `${repository}/pulls/${encodePathSegment(number)}`;
-    const issuePath = `${repository}/issues/${encodePathSegment(number)}`;
+    const repository = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
+    const pullPath = `${repository}/pulls/${encodePathSegment(number, "Number")}`;
+    const issuePath = `${repository}/issues/${encodePathSegment(number, "Number")}`;
     try {
       const labelWrites = Boolean(input.addLabels?.length || input.removeLabels?.length);
       const current =
@@ -1880,7 +1884,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     number: number,
     input: MergePullRequestInput,
   ): Promise<PullRequest> {
-    const pullPath = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}`;
+    const pullPath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}`;
     try {
       await this.client(`${pullPath}/merge`, {
         method: "POST",
@@ -1911,7 +1915,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     number: number,
     input: UpdateIssueInput,
   ): Promise<Issue> {
-    const issuePath = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}`;
+    const issuePath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`;
     try {
       const current = await this.client<GiteaIssue>(issuePath);
       if (current.pull_request != null) {
@@ -1996,7 +2000,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       while (hasMore && comments.length <= start + perPage) {
         const { data, headers } = await rawFetch<GiteaComment[]>(
           this.client,
-          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}/comments`,
+          `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}/comments`,
           { query: { page: String(remotePage), limit: "50" } },
         );
         const batch = data ?? [];
@@ -2048,7 +2052,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<Comment> {
     try {
       const data = await this.client<GiteaComment>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/comments/${encodePathSegment(commentId)}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/comments/${encodePathSegment(commentId, "Comment id")}`,
       );
       const association = data.issue_url || data.pull_request_url;
       if (
@@ -2083,7 +2087,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     try {
       return this.mapComment(
         await this.client<GiteaComment>(
-          `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}/comments`,
+          `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}/comments`,
           { method: "POST", body: { body: input.body } },
         ),
       );
@@ -2132,12 +2136,12 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     try {
       const page = options?.page ?? 1;
       const perPage = options?.perPage ?? 30;
-      const base = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`;
+      const base = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues`;
       const commentId = options?.commentId;
       if (commentId !== undefined) {
         const [reactions] = await Promise.all([
           this.client<GiteaReaction[] | null>(
-            `${base}/comments/${encodePathSegment(commentId)}/reactions`,
+            `${base}/comments/${encodePathSegment(commentId, "Comment id")}/reactions`,
           ),
           this.assertIssueKind(owner, repo, number, pullRequest),
           this.getIssueComment(owner, repo, number, commentId),
@@ -2148,7 +2152,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const [{ data, headers }] = await Promise.all([
         rawFetch<GiteaReaction[] | null>(
           this.client,
-          `${base}/${encodePathSegment(number)}/reactions`,
+          `${base}/${encodePathSegment(number, "Number")}/reactions`,
           { query: { page: String(page), limit: String(perPage) } },
         ),
         this.assertIssueKind(owner, repo, number, pullRequest),
@@ -2176,7 +2180,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     pullRequest: boolean,
   ): Promise<void> {
     const issue = await this.client<GiteaIssue>(
-      `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}`,
+      `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`,
     );
     if ((issue.pull_request != null) !== pullRequest) {
       const kind = pullRequest ? "Pull request" : "Issue";
@@ -2186,7 +2190,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
 
   protected override async getUser(username: string): Promise<User> {
     try {
-      return this.mapUser(await this.client<GiteaUser>(`/users/${encodePathSegment(username)}`));
+      return this.mapUser(
+        await this.client<GiteaUser>(`/users/${encodePathSegment(username, "Username")}`),
+      );
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
@@ -2257,7 +2263,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<ThreadComment> {
     try {
       const comment = await this.client<GiteaPullReviewComment>(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/comments/${encodePathSegment(threadId)}/replies`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/comments/${encodePathSegment(threadId, "Thread id")}/replies`,
         {
           method: "POST",
           body: { body: input.body },
@@ -2307,7 +2313,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const thread = await this.findReviewThread(owner, repo, number, threadId);
       const action = resolved ? "resolve" : "unresolve";
       await this.client(
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/comments/${encodePathSegment(threadId)}/${action}`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/comments/${encodePathSegment(threadId, "Thread id")}/${action}`,
         { method: "POST" },
       );
       return { ...this.mapThread(thread), isResolved: resolved };
@@ -2346,7 +2352,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     while (hasNextPage) {
       const { data, headers } = await rawFetch<GiteaPullReviewComment[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews/${encodePathSegment(reviewId)}/comments`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews/${encodePathSegment(reviewId, "Review id")}/comments`,
         { query: { page: String(page), limit: "50" } },
       );
       const batch = data ?? [];
@@ -2373,7 +2379,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     while (hasNextPage) {
       const { data, headers } = await rawFetch<GiteaPullReview[]>(
         this.client,
-        `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/pulls/${encodePathSegment(number)}/reviews`,
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews`,
         { query: { page: String(page), limit: "50" } },
       );
       const reviews = data ?? [];

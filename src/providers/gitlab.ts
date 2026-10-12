@@ -432,7 +432,10 @@ interface GitLabDiscussion {
  * Encode a GitLab namespace path while preserving nested group boundaries.
  */
 function encodeNamespacePath(namespace: string): string {
-  return namespace.split("/").map(encodePathSegment).join("%2F");
+  return namespace
+    .split("/")
+    .map((group) => encodePathSegment(group, "Each owner group"))
+    .join("%2F");
 }
 
 /**
@@ -440,11 +443,14 @@ function encodeNamespacePath(namespace: string): string {
  * GitLab requires URL-encoding of the full path (e.g., "owner/repo" → "owner%2Frepo").
  */
 function encodeProjectPath(owner: string, repo: string): string {
-  return `${encodeNamespacePath(owner)}%2F${encodePathSegment(repo)}`;
+  return `${encodeNamespacePath(owner)}%2F${encodePathSegment(repo, "Repository name")}`;
 }
 
 function encodeWebPath(path: string): string {
-  return path.split("/").map(encodePathSegment).join("/");
+  return path
+    .split("/")
+    .map((segment) => encodePathSegment(segment))
+    .join("/");
 }
 
 /** The default retry codes without 408: a search that timed out times out again. */
@@ -1049,7 +1055,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       }
 
       const commit = await this.client<GitLabCommit>(
-        `/projects/${projectId}/repository/commits/${encodeRevisionPathSegment(ref)}`,
+        `/projects/${projectId}/repository/commits/${encodeRevisionPathSegment(ref, "Ref")}`,
       );
       assertContinuationRef(options, commit.id);
       const entries: RepositoryEntry[] = [];
@@ -1346,7 +1352,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   protected override async getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const encodedSha = encodePathSegment(sha);
+      const encodedSha = encodePathSegment(sha, "Commit SHA");
       const commit = await this.client<GitLabCommit>(
         `/projects/${projectId}/repository/commits/${encodedSha}`,
       );
@@ -1422,7 +1428,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   ): Promise<CommitPatch> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const encodedSha = encodeRevisionPathSegment(sha);
+      const encodedSha = encodeRevisionPathSegment(sha, "Commit SHA");
       const commit = await this.client<GitLabCommit>(
         `/projects/${projectId}/repository/commits/${encodedSha}`,
       );
@@ -1697,7 +1703,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const issue = await this.client<GitLabIssue>(
-        `/projects/${projectId}/issues/${encodePathSegment(iid)}`,
+        `/projects/${projectId}/issues/${encodePathSegment(iid, "Number")}`,
       );
       return this.mapIssue(issue);
     } catch (error: unknown) {
@@ -1770,7 +1776,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       const projectId = await this.resolveProjectId(owner, repo);
       const response = await rawFetch<GitLabMergeRequestDiff[]>(
         this.client,
-        `/projects/${projectId}/merge_requests/${encodePathSegment(number)}/diffs`,
+        `/projects/${projectId}/merge_requests/${encodePathSegment(number, "Number")}/diffs`,
         {
           query: {
             page: options?.page ?? 1,
@@ -1800,7 +1806,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   ): Promise<PageResult<PullRequestCheck>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const base = `/projects/${projectId}/merge_requests/${encodePathSegment(number)}`;
+      const base = `/projects/${projectId}/merge_requests/${encodePathSegment(number, "Number")}`;
       const mergeRequest = await this.client<GitLabMergeRequest>(base);
       const headSha = mergeRequest.sha ?? "";
       const headPipelineId = mergeRequest.head_pipeline?.id;
@@ -1881,7 +1887,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   ): Promise<PageResult<PullRequestReview>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const base = `/projects/${projectId}/merge_requests/${encodePathSegment(number)}`;
+      const base = `/projects/${projectId}/merge_requests/${encodePathSegment(number, "Number")}`;
       const [approvals, reviewers] = await Promise.all([
         this.client<GitLabMergeRequestApprovals>(`${base}/approvals`),
         this.client<GitLabMergeRequestReviewer[]>(`${base}/reviewers`),
@@ -1990,7 +1996,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const release = await this.client<GitLabRelease>(
-        `/projects/${projectId}/releases/${encodeRefPathSegment(tag)}`,
+        `/projects/${projectId}/releases/${encodeRefPathSegment(tag, "Tag")}`,
       );
       return this.mapRelease(release);
     } catch (error: unknown) {
@@ -2035,7 +2041,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const release = await this.client<GitLabRelease>(
-        `/projects/${projectId}/releases/${encodeRefPathSegment(tag)}`,
+        `/projects/${projectId}/releases/${encodeRefPathSegment(tag, "Tag")}`,
         {
           method: "PUT",
           body: {
@@ -2207,7 +2213,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const mr = await this.client<GitLabMergeRequest>(
-        `/projects/${projectId}/merge_requests/${encodePathSegment(iid)}`,
+        `/projects/${projectId}/merge_requests/${encodePathSegment(iid, "Number")}`,
       );
       return this.mapPullRequest(mr);
     } catch (error: unknown) {
@@ -2227,7 +2233,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       for (;;) {
         const { data, headers } = await rawFetch<Array<Partial<GitLabIssue>>>(
           this.client,
-          `/projects/${projectId}/merge_requests/${encodePathSegment(iid)}/closes_issues`,
+          `/projects/${projectId}/merge_requests/${encodePathSegment(iid, "Number")}/closes_issues`,
           { query: { page, per_page: 100 } },
         );
         for (const raw of data ?? []) {
@@ -2295,7 +2301,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     assertNoCommaLabels(input);
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const path = `/projects/${projectId}/merge_requests/${encodePathSegment(iid)}`;
+      const path = `/projects/${projectId}/merge_requests/${encodePathSegment(iid, "Number")}`;
       const body = await this.updateBody(path, input);
       const mr = await this.client<GitLabMergeRequest>(path, { method: "PUT", body });
       return this.mapPullRequest(mr);
@@ -2339,7 +2345,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const mr = await this.client<GitLabMergeRequest>(
-        `/projects/${projectId}/merge_requests/${encodePathSegment(iid)}/merge`,
+        `/projects/${projectId}/merge_requests/${encodePathSegment(iid, "Number")}/merge`,
         {
           method: "PUT",
           body: {
@@ -2366,7 +2372,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     assertNoCommaLabels(input);
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const path = `/projects/${projectId}/issues/${encodePathSegment(iid)}`;
+      const path = `/projects/${projectId}/issues/${encodePathSegment(iid, "Number")}`;
       const body = await this.updateBody(path, input);
       const issue = await this.client<GitLabIssue>(path, { method: "PUT", body });
       return this.mapIssue(issue);
@@ -2457,7 +2463,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       const projectId = await this.resolveProjectId(owner, repo);
       const response = await rawFetch<GitLabNote[]>(
         this.client,
-        `/projects/${projectId}/${resource}/${encodePathSegment(number)}/notes`,
+        `/projects/${projectId}/${resource}/${encodePathSegment(number, "Number")}/notes`,
         {
           query: {
             page: options?.page ?? 1,
@@ -2543,12 +2549,12 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   ): Promise<PageResult<Reaction>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const noteable = `/projects/${projectId}/${resource}/${encodePathSegment(number)}`;
+      const noteable = `/projects/${projectId}/${resource}/${encodePathSegment(number, "Number")}`;
       const { data, headers } = await rawFetch<GitLabAwardEmoji[]>(
         this.client,
         options?.commentId === undefined
           ? `${noteable}/award_emoji`
-          : `${noteable}/notes/${encodePathSegment(options.commentId)}/award_emoji`,
+          : `${noteable}/notes/${encodePathSegment(options.commentId, "Comment id")}/award_emoji`,
         { query: { page: options?.page ?? 1, per_page: options?.perPage ?? 30 } },
       );
       const reactions = (data ?? []).map((raw) => ({
@@ -2572,7 +2578,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const note = await this.client<GitLabNote>(
-        `/projects/${projectId}/${resource}/${encodePathSegment(number)}/notes`,
+        `/projects/${projectId}/${resource}/${encodePathSegment(number, "Number")}/notes`,
         { method: "POST", body: { body: input.body } },
       );
       return this.mapComment(note);
@@ -2602,7 +2608,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const note = await this.client<GitLabNote>(
-        `/projects/${projectId}/${resource}/${encodePathSegment(number)}/notes/${encodePathSegment(commentId)}`,
+        `/projects/${projectId}/${resource}/${encodePathSegment(number, "Number")}/notes/${encodePathSegment(commentId, "Comment id")}`,
       );
       if (!this.isDiscussionNote(note)) {
         throw new NotFoundError(`Comment not found: ${commentId}`, "gitlab");
@@ -2666,7 +2672,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       while (hasMore && matched.length <= skip + perPage) {
         const response = await rawFetch<GitLabDiscussion[]>(
           this.client,
-          `/projects/${projectId}/merge_requests/${encodePathSegment(number)}/discussions`,
+          `/projects/${projectId}/merge_requests/${encodePathSegment(number, "Number")}/discussions`,
           {
             query: {
               page: remotePage,
@@ -2782,7 +2788,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     threadId: string,
   ): Promise<string> {
     const projectId = await this.resolveProjectId(owner, repo);
-    return `/projects/${projectId}/merge_requests/${encodePathSegment(number)}/discussions/${encodePathSegment(threadId)}`;
+    return `/projects/${projectId}/merge_requests/${encodePathSegment(number, "Number")}/discussions/${encodePathSegment(threadId, "Thread id")}`;
   }
 
   private async fetchDiscussion(
