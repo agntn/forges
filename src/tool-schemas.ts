@@ -188,7 +188,7 @@ export function forgesToolSchemas() {
     query: Type.Optional(
       Type.String({
         description:
-          "Native pull-request query: qualifiers such as created: on GitHub, keywords on Gitea and GitLab. Optional with author",
+          "Native pull-request query: qualifiers such as created: on GitHub, keywords on Gitea and GitLab. Optional with author or owner",
         minLength: 1,
       }),
     ),
@@ -222,7 +222,7 @@ export function forgesToolSchemas() {
     query: Type.Optional(
       Type.String({
         description:
-          "Native issue query: qualifiers such as no:assignee on GitHub, keywords on Gitea and GitLab. Optional with author or labels",
+          "Native issue query: qualifiers such as no:assignee on GitHub, keywords on Gitea and GitLab. Optional with author, labels or owner",
         minLength: 1,
       }),
     ),

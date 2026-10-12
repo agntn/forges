@@ -104,7 +104,7 @@ describe("GitHub global issue search", () => {
     const resource = new GitHubProvider({ token: "" }).issues;
     await expect(resource.searchGlobal(" ")).rejects.toMatchObject({
       status: 400,
-      message: "Issue search needs a query, an author or a label",
+      message: "Issue search needs a query, an author, a label or an owner",
     });
     for (const options of [
       { labels: ["bug,help wanted"] },
@@ -361,4 +361,55 @@ describe("GitLab global issue search", () => {
       message: "No GitLab group someone. For one user's issues, pass author instead",
     });
   });
+});
+
+describe("issue search scoped to an owner, without a query", () => {
+  it.each([
+    [
+      "github",
+      () => new GitHubProvider({ token: "" }),
+      "/search/issues",
+      { q: "is:issue is:open user:agntn", page: "1", per_page: "30" },
+    ],
+    [
+      "gitlab",
+      () => new GitLabProvider({ token: "" }),
+      "/groups/agntn/issues",
+      { state: "opened", order_by: "created_at", sort: "desc", page: "1", per_page: "30" },
+    ],
+    [
+      "gitea",
+      () => new GiteaProvider({ token: "" }),
+      "/repos/issues/search",
+      { type: "issues", state: "open", page: "1", limit: "30", owner: "agntn" },
+    ],
+  ] as const)("lists every open issue of the owner on %s", async (_, provider, path, query) => {
+    mocks.rawFetch.mockResolvedValue({ data: [], headers: new Headers() });
+    await provider().issues.searchGlobal("", { owner: "agntn", state: "open" });
+    expect(mocks.rawFetch.mock.calls[0]?.[1]).toBe(path);
+    expect(mocks.rawFetch.mock.calls[0]?.[2].query).toEqual(query);
+  });
+
+  it("still refuses a search with no scope at all and says how to narrow it", async () => {
+    await expect(
+      new GitHubProvider({ token: "" }).issues.searchGlobal("", { state: "open" }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: "Issue search needs a query, an author, a label or an owner",
+    });
+    expect(mocks.rawFetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["", " ", " agntn "])(
+    "refuses the owner %j instead of searching every repository or none",
+    async (owner) => {
+      await expect(
+        new GiteaProvider({ token: "" }).issues.searchGlobal("", { owner }),
+      ).rejects.toMatchObject({
+        status: 400,
+        message: "Issue search owner must be one name without spaces",
+      });
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    },
+  );
 });
