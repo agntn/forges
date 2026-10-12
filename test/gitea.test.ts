@@ -2419,6 +2419,18 @@ describe("Gitea Provider", () => {
   describe("pullRequests.merge", () => {
     const pull = "/repos/testowner/test-repo/pulls/5";
 
+    it.each([
+      ["pullRequests.merge", () => provider.pullRequests.merge("..", "test-repo", 5, {})],
+      [
+        "pullRequests.update",
+        () => provider.pullRequests.update("..", "test-repo", 5, { title: "x" }),
+      ],
+      ["issues.update", () => provider.issues.update("..", "test-repo", 5, { title: "x" })],
+    ])("%s names the platform when the owner is no path segment", async (_name, write) => {
+      await expect(write()).rejects.toMatchObject({ status: 400, platform: "gitea" });
+      expect(mockClient).not.toHaveBeenCalled();
+    });
+
     it("posts the method with Gitea's field names, then reads the pull request", async () => {
       mockClient
         .mockResolvedValueOnce(undefined)

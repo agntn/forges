@@ -2445,10 +2445,10 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     prNumber: number,
     input: UpdatePullRequestInput,
   ): Promise<PullRequest> {
-    const repository = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
-    const pullPath = `${repository}/pulls/${encodePathSegment(prNumber, "Number")}`;
-    const issuePath = `${repository}/issues/${encodePathSegment(prNumber, "Number")}`;
     try {
+      const repository = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
+      const pullPath = `${repository}/pulls/${encodePathSegment(prNumber, "Number")}`;
+      const issuePath = `${repository}/issues/${encodePathSegment(prNumber, "Number")}`;
       const removedLabelPaths = this.removedLabelPaths(issuePath, input.removeLabels);
       const fields = { title: input.title, body: input.body, state: input.state };
       const patched = Object.values(fields).some((value) => value !== undefined);
@@ -2472,8 +2472,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     prNumber: number,
     input: MergePullRequestInput,
   ): Promise<PullRequest> {
-    const pullPath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(prNumber, "Number")}`;
+    let pullPath: string;
     try {
+      pullPath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(prNumber, "Number")}`;
       await this.client(`${pullPath}/merge`, {
         method: "PUT",
         body: {
@@ -2505,8 +2506,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     issueNumber: number,
     input: UpdateIssueInput,
   ): Promise<Issue> {
-    const issuePath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(issueNumber, "Number")}`;
     try {
+      const issuePath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(issueNumber, "Number")}`;
       const removedLabelPaths = this.removedLabelPaths(issuePath, input.removeLabels);
       let data = await this.client<GitHubIssue>(issuePath);
       if (data.pull_request !== undefined) {

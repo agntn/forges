@@ -1854,10 +1854,10 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     number: number,
     input: UpdatePullRequestInput,
   ): Promise<PullRequest> {
-    const repository = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
-    const pullPath = `${repository}/pulls/${encodePathSegment(number, "Number")}`;
-    const issuePath = `${repository}/issues/${encodePathSegment(number, "Number")}`;
     try {
+      const repository = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
+      const pullPath = `${repository}/pulls/${encodePathSegment(number, "Number")}`;
+      const issuePath = `${repository}/issues/${encodePathSegment(number, "Number")}`;
       const labelWrites = Boolean(input.addLabels?.length || input.removeLabels?.length);
       const current =
         labelWrites || changesAssignees(input)
@@ -1884,8 +1884,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     number: number,
     input: MergePullRequestInput,
   ): Promise<PullRequest> {
-    const pullPath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}`;
+    let pullPath: string;
     try {
+      pullPath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}`;
       await this.client(`${pullPath}/merge`, {
         method: "POST",
         body: {
@@ -1915,8 +1916,8 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     number: number,
     input: UpdateIssueInput,
   ): Promise<Issue> {
-    const issuePath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`;
     try {
+      const issuePath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`;
       const current = await this.client<GiteaIssue>(issuePath);
       if (current.pull_request != null) {
         throw new NotFoundError(`Issue not found: ${number}`, PLATFORM);

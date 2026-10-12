@@ -3699,6 +3699,15 @@ describe("GitHubProvider", () => {
   });
 
   describe("pullRequests.merge", () => {
+    it.each([
+      ["pullRequests.merge", () => gh.pullRequests.merge("..", "hello-world", 1, {})],
+      ["pullRequests.update", () => gh.pullRequests.update("..", "hello-world", 1, { title: "x" })],
+      ["issues.update", () => gh.issues.update("..", "hello-world", 1, { title: "x" })],
+    ])("%s names the platform when the owner is no path segment", async (_name, write) => {
+      await expect(write()).rejects.toMatchObject({ status: 400, platform: "github" });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
     it("merges with the given method, head and commit text, then reads the pull request", async () => {
       const merged = {
         ...ghPullRequest,
