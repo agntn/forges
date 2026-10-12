@@ -720,6 +720,24 @@ export interface CreateCommentInput {
   body: string;
 }
 
+/** One emoji reaction on an issue, a pull request or one of their discussion comments. */
+export interface Reaction {
+  /** GitHub's name, `+1` to `eyes`. An emoji GitHub can't react with keeps the forge's own. */
+  content: string;
+  user: {
+    login: string;
+  };
+  createdAt: string;
+}
+
+/** List options for reactions. Without `commentId` they are the reactions on the item itself. */
+export interface ListReactionOptions {
+  /** A discussion comment under the issue or pull request, by the id the comment reads return. */
+  commentId?: string;
+  page?: number;
+  perPage?: number;
+}
+
 /** List operation options for pull-request files. */
 export interface ListPullRequestFilesOptions {
   page?: number;
@@ -917,6 +935,12 @@ export interface IssueResource {
     number: number,
     input: CreateCommentInput,
   ): Promise<Comment>;
+  listReactions(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>>;
 }
 
 /**
@@ -991,6 +1015,12 @@ export interface PullRequestResource {
     number: number,
     input: CreateCommentInput,
   ): Promise<Comment>;
+  listReactions(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>>;
 }
 
 /**

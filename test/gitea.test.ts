@@ -2811,6 +2811,112 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("reactions", () => {
+    const giteaReaction = (content: string, login: string, created_at: string) => ({
+      user: { id: 1, login, full_name: "", html_url: `https://gitea.com/${login}` },
+      content,
+      created_at,
+    });
+    const tea37 = [
+      giteaReaction("hooray", "mrsdizzie", "2019-07-17T16:31:58Z"),
+      giteaReaction("+1", "6543", "2019-11-08T03:40:04Z"),
+      giteaReaction("+1", "strk", "2019-11-11T11:36:42Z"),
+      giteaReaction("+1", "lunny", "2020-03-05T15:47:58Z"),
+      giteaReaction("gitea", "lunny", "2020-03-05T15:48:00Z"),
+      giteaReaction("hooray", "lunny", "2020-03-05T15:48:01Z"),
+    ];
+
+    it("lists an issue's reactions by limit and keeps a custom emoji's name", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: tea37.slice(4),
+        headers: makeHeaders({ "x-total-count": "6" }),
+        status: 200,
+      });
+
+      const result = await provider.issues.listReactions("gitea", "tea", 37, {
+        page: 3,
+        perPage: 2,
+      });
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(
+        expect.anything(),
+        "/repos/gitea/tea/issues/37/reactions",
+        { query: { page: "3", limit: "2" } },
+      );
+      expect(result).toEqual({
+        items: [
+          { content: "gitea", user: { login: "lunny" }, createdAt: "2020-03-05T15:48:00Z" },
+          { content: "hooray", user: { login: "lunny" }, createdAt: "2020-03-05T15:48:01Z" },
+        ],
+        totalCount: 6,
+        hasNextPage: false,
+        nextPage: undefined,
+      });
+    });
+
+    it("keeps paging when the server clamps limit and sends no Link", async () => {
+      const total = makeHeaders({ "x-total-count": "6" });
+      mockedRawFetch.mockResolvedValueOnce({
+        data: tea37.slice(0, 4),
+        headers: total,
+        status: 200,
+      });
+
+      const result = await provider.pullRequests.listReactions("gitea", "tea", 37, { perPage: 5 });
+
+      expect(result).toMatchObject({ totalCount: 6, hasNextPage: true, nextPage: 2 });
+    });
+
+    it("reads an empty list from the null Gitea answers with", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: null,
+        headers: makeHeaders({ "x-total-count": "0" }),
+        status: 200,
+      });
+
+      const result = await provider.issues.listReactions("gitea", "tea", 1);
+
+      expect(result).toMatchObject({ items: [], hasNextPage: false });
+    });
+
+    it("cuts a comment's whole list locally after checking the comment's issue", async () => {
+      mockClient.mockImplementation(async (url: string) =>
+        url.endsWith("/reactions") ? tea37 : giteaComment(),
+      );
+
+      const result = await provider.issues.listReactions("testowner", "test-repo", 1, {
+        commentId: "21",
+        page: 2,
+        perPage: 4,
+      });
+
+      expect(mockClient).toHaveBeenCalledWith(
+        "/repos/testowner/test-repo/issues/comments/21/reactions",
+      );
+      expect(mockClient).toHaveBeenCalledWith("/repos/testowner/test-repo/issues/comments/21");
+      expect(mockedRawFetch).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        items: [
+          { content: "gitea", user: { login: "lunny" }, createdAt: "2020-03-05T15:48:00Z" },
+          { content: "hooray", user: { login: "lunny" }, createdAt: "2020-03-05T15:48:01Z" },
+        ],
+        totalCount: 6,
+        hasNextPage: false,
+        nextPage: undefined,
+      });
+    });
+
+    it("answers 404 for a comment from another issue", async () => {
+      mockClient.mockImplementation(async (url: string) =>
+        url.endsWith("/reactions") ? tea37 : giteaComment(),
+      );
+
+      await expect(
+        provider.issues.listReactions("testowner", "test-repo", 9, { commentId: "21" }),
+      ).rejects.toThrow(NotFoundError);
+    });
+  });
+
   // --- users ---
 
   describe("users.get", () => {

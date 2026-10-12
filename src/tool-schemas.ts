@@ -459,6 +459,21 @@ export function forgesToolSchemas() {
     reviewId: Type.String({ description: "Review id returned by the reviews list", minLength: 1 }),
   });
   const commentParameters = closed({ platform, owner, repo, number, commentId });
+  const listReactionsParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    commentId: Type.Optional(
+      Type.String({
+        description:
+          "Read the reactions on this discussion comment, by the id the comment list returned, instead of on the issue or pull request itself",
+        minLength: 1,
+      }),
+    ),
+    page,
+    perPage,
+  });
   const createCommentParameters = closed({
     platform,
     owner,
@@ -709,6 +724,7 @@ export function forgesToolSchemas() {
     listPullRequestReviewsParameters,
     pullRequestReviewParameters,
     commentParameters,
+    listReactionsParameters,
     createCommentParameters,
     createIssueParameters,
     updateIssueParameters,

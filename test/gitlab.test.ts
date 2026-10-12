@@ -2964,6 +2964,107 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("reactions", () => {
+    const glAward = (id: number, name: string, created_at: string) => ({
+      id,
+      name,
+      user: { id: 33467498, username: "secresearch2026x", state: "active" },
+      created_at,
+      updated_at: created_at,
+      awardable_id: 382515,
+      awardable_type: "Issue",
+      url: null,
+    });
+
+    it("lists award emoji under GitHub's names and keeps the rest", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          glAward(41959775, "thumbsup", "2026-02-05T18:02:26.874Z"),
+          glAward(41977501, "thumbsdown", "2026-02-05T23:17:54.303Z"),
+          glAward(41977502, "smile", "2026-02-05T23:17:55.090Z"),
+          glAward(41977503, "tada", "2026-02-05T23:17:55.995Z"),
+          glAward(41977504, "eyes", "2026-02-05T23:17:57.340Z"),
+          glAward(41977505, "fire", "2026-02-05T23:17:58.020Z"),
+        ],
+        headers: glHeaders({ nextPage: "2", total: "8" }),
+      });
+
+      const result = await gl.issues.listReactions("gitlab-org", "gitlab", 1, { perPage: 6 });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/issues/1/award_emoji",
+        { query: { page: 1, per_page: 6 } },
+      );
+      expect(result.items.map((reaction) => reaction.content)).toEqual([
+        "+1",
+        "-1",
+        "laugh",
+        "hooray",
+        "eyes",
+        "fire",
+      ]);
+      expect(result.items[0]).toEqual({
+        content: "+1",
+        user: { login: "secresearch2026x" },
+        createdAt: "2026-02-05T18:02:26.874Z",
+      });
+      expect(result).toMatchObject({ totalCount: 8, hasNextPage: true, nextPage: 2 });
+    });
+
+    it("reads a merge request's award emoji, not an issue's", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({ data: [], headers: glHeaders({ nextPage: "" }) });
+
+      const result = await gl.pullRequests.listReactions("gitlab-org", "gitlab", 8, { page: 2 });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/merge_requests/8/award_emoji",
+        { query: { page: 2, per_page: 30 } },
+      );
+      expect(result).toMatchObject({ items: [], hasNextPage: false });
+    });
+
+    it("reads a note's award emoji under its merge request", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glAward(1, "heart", "2026-02-05T23:17:55.995Z")],
+        headers: glHeaders(),
+      });
+
+      await gl.pullRequests.listReactions("gitlab-org", "gitlab", 8, { commentId: "2201" });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/projects/278964/merge_requests/8/notes/2201/award_emoji",
+        { query: { page: 1, per_page: 30 } },
+      );
+    });
+
+    it("keeps a name that only looks like an object key", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [glAward(1, "constructor", "2026-02-05T23:17:55.995Z")],
+        headers: glHeaders(),
+      });
+
+      const result = await gl.issues.listReactions("gitlab-org", "gitlab", 1);
+
+      expect(result.items[0]?.content).toBe("constructor");
+    });
+
+    it("maps a missing note to NotFoundError", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(
+        gl.issues.listReactions("gitlab-org", "gitlab", 1, { commentId: "9" }),
+      ).rejects.toThrow(NotFoundError);
+    });
+  });
+
   // --- Users ---
 
   describe("users.get", () => {

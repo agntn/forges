@@ -47,6 +47,7 @@ import type {
   ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
   ListPullRequestReviewsOptions,
+  ListReactionOptions,
   ListReleasesOptions,
   ListTagsOptions,
   ListThreadOptions,
@@ -57,6 +58,7 @@ import type {
   PullRequestFile,
   PullRequestReview,
   PullRequestSearchItem,
+  Reaction,
   GlobalPullRequestSearchOptions,
   GlobalPullRequestSearchItem,
   GlobalIssueSearchOptions,
@@ -617,6 +619,10 @@ export interface GetPullRequestParams extends GetRepositoryItemParams {
 
 export interface GetPullRequestReviewParams extends GetRepositoryItemParams {
   reviewId: string;
+}
+
+export interface ListReactionsParams extends ListCommentsParams {
+  commentId?: string;
 }
 
 export interface GetCommentParams extends RepositoryParams {
@@ -1194,6 +1200,24 @@ export async function createIssueComment(
   });
 }
 
+function reactionListOptions(params: ListReactionsParams): ListReactionOptions {
+  return { commentId: params.commentId, page: params.page, perPage: params.perPage };
+}
+
+export async function listIssueReactions(
+  args: ListReactionsParams,
+): Promise<ForgesToolResult<PageResult<Reaction>>> {
+  const params = repositoryTarget(args);
+  const provider = await readProvider(params.platform);
+  const reactions = await provider.issues.listReactions(
+    params.owner,
+    params.repo,
+    params.number,
+    reactionListOptions(params),
+  );
+  return result(params.platform, reactions);
+}
+
 export async function createIssue(args: CreateIssueParams): Promise<ForgesToolResult<Issue>> {
   const params = repositoryTarget(args);
   assertAssignees(params.assignees, params.platform);
@@ -1401,6 +1425,20 @@ export async function createPullRequestComment(
     );
     return result(params.platform, comment);
   });
+}
+
+export async function listPullRequestReactions(
+  args: ListReactionsParams,
+): Promise<ForgesToolResult<PageResult<Reaction>>> {
+  const params = repositoryTarget(args);
+  const provider = await readProvider(params.platform);
+  const reactions = await provider.pullRequests.listReactions(
+    params.owner,
+    params.repo,
+    params.number,
+    reactionListOptions(params),
+  );
+  return result(params.platform, reactions);
 }
 
 export async function createPullRequest(

@@ -46,6 +46,7 @@ import type {
   ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
   ListPullRequestReviewsOptions,
+  ListReactionOptions,
   ListReleasesOptions,
   ListTagsOptions,
   ListThreadOptions,
@@ -59,6 +60,7 @@ import type {
   PullRequestResource,
   PullRequestReview,
   PullRequestSearchItem,
+  Reaction,
   GlobalPullRequestSearchOptions,
   GlobalPullRequestSearchResult,
   GlobalIssueSearchOptions,
@@ -345,6 +347,8 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         assertCommentBody(input.body);
         return this.createIssueComment(owner, repo, number, input);
       },
+      listReactions: (owner, repo, number, options) =>
+        this.listIssueReactions(owner, repo, number, options),
     };
     this.pullRequests = {
       searchGlobal: async (query, options) => {
@@ -400,6 +404,8 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         assertCommentBody(input.body);
         return this.createPullRequestComment(owner, repo, number, input);
       },
+      listReactions: (owner, repo, number, options) =>
+        this.listPullRequestReactions(owner, repo, number, options),
     };
     this.users = {
       get: (username) => this.getUser(username),
@@ -737,6 +743,26 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   ): Promise<Comment> {
     return Promise.reject(
       new ForgesError("Pull request comments are not supported by this provider", 501),
+    );
+  }
+  protected listIssueReactions(
+    _owner: string,
+    _repo: string,
+    _number: number,
+    _options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    return Promise.reject(
+      new ForgesError("Issue reactions are not supported by this provider", 501),
+    );
+  }
+  protected listPullRequestReactions(
+    _owner: string,
+    _repo: string,
+    _number: number,
+    _options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    return Promise.reject(
+      new ForgesError("Pull request reactions are not supported by this provider", 501),
     );
   }
   protected abstract getUser(username: string): Promise<User>;

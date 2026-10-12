@@ -36,6 +36,7 @@ import type {
   PullRequestReview,
   PullRequestFile,
   PullRequestSearchItem,
+  Reaction,
   GlobalPullRequestSearchOptions,
   GlobalPullRequestSearchResult,
   GlobalIssueSearchOptions,
@@ -52,6 +53,7 @@ import type {
   ListPullRequestChecksOptions,
   ListPullRequestReviewsOptions,
   ListPullRequestFilesOptions,
+  ListReactionOptions,
   ListThreadOptions,
   Comment,
   CreateCommentInput,
@@ -374,6 +376,13 @@ interface GitHubComment {
   issue_url?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface GitHubReaction {
+  /** Null once the account that reacted is gone. */
+  user: { login: string } | null;
+  content: string;
+  created_at: string;
 }
 
 interface GitHubTag {
@@ -2663,6 +2672,65 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     input: CreateCommentInput,
   ): Promise<Comment> {
     return this.createIssueComment(owner, repo, number, input);
+  }
+
+  // --- Reactions ---
+
+  /** The comment route ignores the issue, so a read of the comment checks it alongside. */
+  protected override async listIssueReactions(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    try {
+      const query: Record<string, string> = {};
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+
+      const base = `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues`;
+      const commentId = options?.commentId;
+      const read = rawFetch<GitHubReaction[]>(
+        this.client,
+        commentId === undefined
+          ? `${base}/${encodePathSegment(number)}/reactions`
+          : `${base}/comments/${encodePathSegment(commentId)}/reactions`,
+        { query },
+      );
+      const [{ data, headers }] = await Promise.all([
+        read,
+        commentId === undefined ? undefined : this.getIssueComment(owner, repo, number, commentId),
+      ]);
+      return buildPageResult(data ?? [], headers, (raw) => ({
+        content: raw.content,
+        user: { login: raw.user?.login ?? "" },
+        createdAt: raw.created_at,
+      }));
+    } catch (error) {
+      if (
+        error instanceof FetchError &&
+        error.status === 404 &&
+        !(await this.isGitHubHost(owner, repo))
+      ) {
+        throw new ForgesError(
+          "Reactions are not supported by this GitHub-compatible host",
+          501,
+          "github",
+          error,
+        );
+      }
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /** A pull request and its conversation take reactions through the issue routes. */
+  protected override async listPullRequestReactions(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    return this.listIssueReactions(owner, repo, number, options);
   }
 
   // --- Users ---
