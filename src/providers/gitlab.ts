@@ -447,10 +447,7 @@ function encodeProjectPath(owner: string, repo: string): string {
 }
 
 function encodeWebPath(path: string): string {
-  return path
-    .split("/")
-    .map((segment) => encodePathSegment(segment))
-    .join("/");
+  return path.split("/").map(encodeApiResponsePathSegment).join("/");
 }
 
 /** The default retry codes without 408: a search that timed out times out again. */
