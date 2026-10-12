@@ -2275,7 +2275,18 @@ describe("GitHubProvider", () => {
       created_at: "2026-10-12T17:20:01Z",
     };
 
+    const ghPull = {
+      ...ghIssue,
+      pull_request: { url: "https://api.github.com/repos/agntn/forges/pulls/266" },
+    };
+    /** Answers the kind and comment reads the way GitHub would for one item. */
+    const serve = (item: object) =>
+      mocks.client.mockImplementation(async (url: string) =>
+        url.includes("/issues/comments/") ? ghComment : item,
+      );
+
     it("lists the reactions on an issue with its pages", async () => {
+      serve(ghIssue);
       mocks.rawFetch.mockResolvedValueOnce({
         data: [ghReaction, { ...ghReaction, id: 562477421, content: "eyes", user: null }],
         headers: makeHeaders(
@@ -2290,7 +2301,7 @@ describe("GitHubProvider", () => {
         "/repos/octocat/hello-world/issues/42/reactions",
         { query: { per_page: "2" } },
       );
-      expect(mocks.client).not.toHaveBeenCalled();
+      expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/42");
       expect(result).toEqual({
         items: [
           {
@@ -2306,6 +2317,7 @@ describe("GitHubProvider", () => {
     });
 
     it("reads a pull request's reactions through its issue", async () => {
+      serve(ghPull);
       mocks.rawFetch.mockResolvedValueOnce({ data: [ghReaction], headers: makeHeaders() });
 
       const result = await gh.pullRequests.listReactions("agntn", "forges", 266);
@@ -2318,9 +2330,22 @@ describe("GitHubProvider", () => {
       expect(result.items.map((reaction) => reaction.content)).toEqual(["+1"]);
     });
 
+    it("answers 404 when the number is the other kind", async () => {
+      serve(ghIssue);
+      mocks.rawFetch.mockResolvedValue({ data: [ghReaction], headers: makeHeaders() });
+
+      await expect(gh.pullRequests.listReactions("octocat", "hello-world", 42)).rejects.toThrow(
+        "Pull request not found: 42",
+      );
+      serve(ghPull);
+      await expect(gh.issues.listReactions("agntn", "forges", 266)).rejects.toThrow(
+        "Issue not found: 266",
+      );
+    });
+
     it("reads a comment's reactions and checks the comment is under the issue", async () => {
+      serve(ghIssue);
       mocks.rawFetch.mockResolvedValueOnce({ data: [ghReaction], headers: makeHeaders() });
-      mocks.client.mockResolvedValueOnce(ghComment);
 
       const result = await gh.issues.listReactions("octocat", "hello-world", 42, {
         commentId: "3001",
@@ -2336,15 +2361,16 @@ describe("GitHubProvider", () => {
     });
 
     it("answers 404 for a comment from another issue", async () => {
+      serve(ghIssue);
       mocks.rawFetch.mockResolvedValueOnce({ data: [ghReaction], headers: makeHeaders() });
-      mocks.client.mockResolvedValueOnce(ghComment);
 
       await expect(
         gh.issues.listReactions("octocat", "hello-world", 7, { commentId: "3001" }),
-      ).rejects.toThrow(NotFoundError);
+      ).rejects.toThrow("Comment not found: 3001");
     });
 
     it("maps a missing issue to NotFoundError", async () => {
+      serve(ghIssue);
       mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
 
       await expect(gh.issues.listReactions("octocat", "hello-world", 404)).rejects.toThrow(
@@ -2357,6 +2383,7 @@ describe("GitHubProvider", () => {
         baseURL: "https://gitbucket.example.com/api/v3",
         token: "gb_test",
       });
+      serve(ghPull);
       mocks.rawFetch
         .mockRejectedValueOnce(makeFetchError(404))
         .mockResolvedValueOnce({ data: ghRepo, headers: new Headers(), status: 200 });

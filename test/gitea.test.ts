@@ -2855,6 +2855,7 @@ describe("Gitea Provider", () => {
     });
 
     it("keeps paging when the server clamps limit and sends no Link", async () => {
+      mockClient.mockResolvedValue(giteaIssue({ pull_request: { merged: false } }));
       const total = makeHeaders({ "x-total-count": "6" });
       mockedRawFetch.mockResolvedValueOnce({
         data: tea37.slice(0, 4),
@@ -2865,6 +2866,23 @@ describe("Gitea Provider", () => {
       const result = await provider.pullRequests.listReactions("gitea", "tea", 37, { perPage: 5 });
 
       expect(result).toMatchObject({ totalCount: 6, hasNextPage: true, nextPage: 2 });
+    });
+
+    it("answers 404 when the number is the other kind", async () => {
+      mockedRawFetch.mockResolvedValue({
+        data: tea37,
+        headers: makeHeaders({ "x-total-count": "6" }),
+        status: 200,
+      });
+
+      await expect(provider.pullRequests.listReactions("gitea", "tea", 37)).rejects.toThrow(
+        "Pull request not found: 37",
+      );
+      expect(mockClient).toHaveBeenCalledWith("/repos/gitea/tea/issues/37");
+      mockClient.mockResolvedValue(giteaIssue({ pull_request: { merged: false } }));
+      await expect(provider.issues.listReactions("gitea", "tea", 37)).rejects.toThrow(
+        "Issue not found: 37",
+      );
     });
 
     it("reads an empty list from the null Gitea answers with", async () => {

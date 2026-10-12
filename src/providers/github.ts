@@ -2676,11 +2676,31 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   // --- Reactions ---
 
-  /** The comment route ignores the issue, so a read of the comment checks it alongside. */
   protected override async listIssueReactions(
     owner: string,
     repo: string,
     number: number,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    return this.listReactions(owner, repo, number, false, options);
+  }
+
+  /** Pull requests take reactions on the issue routes too. */
+  protected override async listPullRequestReactions(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: ListReactionOptions,
+  ): Promise<PageResult<Reaction>> {
+    return this.listReactions(owner, repo, number, true, options);
+  }
+
+  /** The routes take either kind and a comment ignores its issue, so reads alongside check both. */
+  private async listReactions(
+    owner: string,
+    repo: string,
+    number: number,
+    pullRequest: boolean,
     options?: ListReactionOptions,
   ): Promise<PageResult<Reaction>> {
     try {
@@ -2699,6 +2719,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
       );
       const [{ data, headers }] = await Promise.all([
         read,
+        this.assertIssueKind(owner, repo, number, pullRequest),
         commentId === undefined ? undefined : this.getIssueComment(owner, repo, number, commentId),
       ]);
       return buildPageResult(data ?? [], headers, (raw) => ({
@@ -2723,14 +2744,20 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
-  /** A pull request and its conversation take reactions through the issue routes. */
-  protected override async listPullRequestReactions(
+  /** An issue read tells the kinds apart, so the wrong one is a 404 as on GitLab. */
+  private async assertIssueKind(
     owner: string,
     repo: string,
     number: number,
-    options?: ListReactionOptions,
-  ): Promise<PageResult<Reaction>> {
-    return this.listIssueReactions(owner, repo, number, options);
+    pullRequest: boolean,
+  ): Promise<void> {
+    const issue = await this.client<{ pull_request?: unknown }>(
+      `/repos/${encodePathSegment(owner)}/${encodePathSegment(repo)}/issues/${encodePathSegment(number)}`,
+    );
+    if ((issue.pull_request !== undefined) !== pullRequest) {
+      const kind = pullRequest ? "Pull request" : "Issue";
+      throw new NotFoundError(`${kind} not found: ${number}`, "github");
+    }
   }
 
   // --- Users ---
