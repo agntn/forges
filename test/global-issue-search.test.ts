@@ -400,12 +400,15 @@ describe("issue search scoped to an owner, without a query", () => {
     expect(mocks.rawFetch).not.toHaveBeenCalled();
   });
 
-  it.each(["", " "])(
-    "refuses the blank owner %j instead of searching every repository",
+  it.each(["", " ", " agntn "])(
+    "refuses the owner %j instead of searching every repository or none",
     async (owner) => {
       await expect(
         new GiteaProvider({ token: "" }).issues.searchGlobal("", { owner }),
-      ).rejects.toMatchObject({ status: 400, message: "Issue search owner must not be empty" });
+      ).rejects.toMatchObject({
+        status: 400,
+        message: "Issue search owner must be one name without spaces",
+      });
       expect(mocks.rawFetch).not.toHaveBeenCalled();
     },
   );

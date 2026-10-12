@@ -164,8 +164,8 @@ function assertGlobalSearch(
   if (options?.author !== undefined && !/^[^\s:'"]+$/u.test(options.author)) {
     throw new ForgesError(`${noun} search author must be a single login`, 400);
   }
-  if (options?.owner?.trim() === "") {
-    throw new ForgesError(`${noun} search owner must not be empty`, 400);
+  if (options?.owner !== undefined && !/^\S+$/u.test(options.owner)) {
+    throw new ForgesError(`${noun} search owner must be one name without spaces`, 400);
   }
   const labelled = noun === "Issue" && (options?.labels?.length ?? 0) > 0;
   const scoped = options?.author !== undefined || options?.owner !== undefined || labelled;
