@@ -92,8 +92,9 @@ export function normalizeError(error: unknown, platform?: string): ForgesError {
 }
 
 function classifyError(error: unknown, platform?: string): ForgesError {
-  // Already a ForgesError
+  // Already a ForgesError; an input check that threw it never knew the platform
   if (error instanceof ForgesError) {
+    error.platform ??= platform;
     return error;
   }
 

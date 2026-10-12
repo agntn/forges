@@ -245,6 +245,13 @@ describe("normalizeError", () => {
     expect(result).toBe(original);
   });
 
+  it("names the platform on a ForgesError thrown before it knew one", () => {
+    const refused = new ForgesError("Owner must be one path segment", 400);
+
+    expect(normalizeError(refused, "gitea")).toMatchObject({ status: 400, platform: "gitea" });
+    expect(normalizeError(new NotFoundError("Gone", "github"), "gitea").platform).toBe("github");
+  });
+
   it("converts unknown error types to ForgesError", () => {
     const result = normalizeError("string error", "github");
 
