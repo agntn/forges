@@ -12,6 +12,7 @@ const description =
 const cardDescription =
   "Read any repository on GitHub or GitLab or Gitea through the docs worker. Issues and pull requests and commits and CI and review threads in one shape.";
 
+// Outside the content collection, so Docus does not set this page's SEO or OG image.
 useSeo({
   title,
   description,

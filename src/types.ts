@@ -659,6 +659,7 @@ export interface UpdateIssueInput {
 
 /**
  * Input for updating a pull request, with the same rules as an issue update.
+ * `draft` stays out: none of the three REST edit routes takes it.
  */
 export interface UpdatePullRequestInput extends UpdateIssueInput {
   /** Closes or reopens it. A merged pull request stays merged. */

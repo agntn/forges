@@ -1,6 +1,6 @@
 /**
  * Cache layer using unstorage with lru-cache driver
- * Provides caching for HTTP requests with TTL support
+ * Provides caching for HTTP requests with TTL support; the memory driver has no TTL
  */
 
 import { createStorage, type Storage } from "unstorage";
@@ -145,7 +145,9 @@ function compareQueryEntries(
 
 /**
  * Wrapper around HTTP client that caches GET requests. A storage that fails to
- * read or write costs the call its cache, never the platform's answer.
+ * read or write costs the call its cache, never the platform's answer. Only stable
+ * item reads use it: repository, issue, pull request, release, discussion comment
+ * and user reads call the client directly, because callers act on their current state.
  * @param client HTTP client
  * @param url Request URL
  * @param options Request options

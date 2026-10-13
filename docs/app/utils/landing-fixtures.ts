@@ -7,7 +7,7 @@ import type { CiRunConclusion, CiRunStatus, IssueState, Repository } from "@agnt
  *
  * The `merge` settings come from a recording on 2026-10-09, when the field was added.
  *
- * Regenerate with the library (see docs/AGENTS.md); do not edit by hand.
+ * Regenerate with `node scripts/record-fixtures.mjs` from docs/; do not edit by hand.
  */
 
 export type SamplePlatform = "github" | "gitlab" | "gitea";
