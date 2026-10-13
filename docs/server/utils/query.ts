@@ -246,7 +246,10 @@ interface CachedEntry<T> {
   expires: number;
 }
 
-/** Serves from the cache or produces and stores; a thrown failure is never stored. */
+/**
+ * Serves from the cache or produces and stores; a thrown failure is never stored. Every route
+ * goes through it: anonymous GitHub reads share one rate limit per address, and the page runs on it.
+ */
 export async function cachedAnswer<T>(
   event: H3Event,
   prefix: string,

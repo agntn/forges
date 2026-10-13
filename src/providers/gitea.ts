@@ -540,6 +540,7 @@ async function readBoundedGiteaDiff(stream: ReadableStream<Uint8Array>): Promise
     reader.releaseLock();
   }
 }
+/** Gitea reads templates from the repository only, with no owner-level inheritance as on GitHub. */
 const GITEA_PULL_REQUEST_TEMPLATE_CANDIDATES = [
   "PULL_REQUEST_TEMPLATE.md",
   "PULL_REQUEST_TEMPLATE.yaml",
@@ -1757,6 +1758,8 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
           PLATFORM,
         );
       }
+      // Gitea and Forgejo drop an unknown label name and answer unfiltered, so a row
+      // without the labels asked for means the filter never ran.
       const wanted = labels.map((label) => label.toLowerCase());
       const missing = (raw: GiteaIssue) => {
         const carried = new Set((raw.labels ?? []).map((label) => label.name.toLowerCase()));

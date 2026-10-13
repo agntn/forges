@@ -188,7 +188,7 @@ function text(content: unknown): string {
 }
 
 beforeEach(() => {
-  // resetAllMocks, per AGENTS.md: it drops each test's own stub while keeping the
+  // resetAllMocks: it drops each test's own stub while keeping the
   // vi.fn(impl) factory, so a rejection armed by one test cannot reach the next.
   vi.resetAllMocks();
   // The provider is pinned per platform for the process, so one case's pin would

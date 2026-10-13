@@ -1899,6 +1899,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
         { query },
       );
 
+      // GitHub's `/issues` lists pull requests too.
       const issuesOnly = (data ?? []).filter((issue) => issue.pull_request === undefined);
       return buildPageResult(issuesOnly, headers, (raw) => this.mapIssue(raw));
     } catch (error) {
