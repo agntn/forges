@@ -11,6 +11,7 @@ const refusals: [string, (provider: Provider) => Promise<unknown>][] = [
   ["code search query", (p) => p.code.search(" ")],
   ["code search scope", (p) => p.code.search("x", { repo: "r" })],
   ["CI run id", (p) => p.ciRuns.listJobs("o", "r", "0")],
+  ["CI job page", (p) => p.ciRuns.listJobs("o", "r", "1", { perPage: 0 })],
   ["CI job log offset", (p) => p.ciRuns.readJobLog("o", "r", "1", { offset: -1 })],
   ["commit search query", (p) => p.commits.search(" ")],
   ["commit search scope", (p) => p.commits.search("x", { repo: "r" })],

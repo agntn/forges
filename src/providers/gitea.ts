@@ -477,10 +477,6 @@ function eventPayloadBranch(eventPayload: string | null | undefined): string {
   }
 }
 
-/**
- * Build query params for Gitea list endpoints.
- * Uses `limit` instead of `per_page` (key Gitea difference).
- */
 /** Forgejo ignores page and limit on jobs, so the page is cut here unless Link says it paged. */
 function forgejoJobsPage(
   rows: ForgejoActionsJob[],
@@ -492,6 +488,10 @@ function forgejoJobsPage(
   return slicePage(rows.map(mapForgejoActionsJob), page, perPage);
 }
 
+/**
+ * Build query params for Gitea list endpoints.
+ * Uses `limit` instead of `per_page` (key Gitea difference).
+ */
 function buildListQuery(options?: ListOptions): Record<string, string> {
   const query: Record<string, string> = {};
   if (options?.page) query.page = String(options.page);

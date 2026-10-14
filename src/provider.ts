@@ -285,7 +285,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       list: (owner, repo, options) => this.listCiRuns(owner, repo, options),
       listJobs: async (owner, repo, runId, options) => {
         assertCiId(runId, "run", this.#platform);
-        return this.listCiJobs(owner, repo, runId, options);
+        return this.listCiJobs(owner, repo, runId, {
+          page: paginationPageValue(options?.page, 1, "page", this.#platform),
+          perPage: paginationPageValue(options?.perPage, 30, "perPage", this.#platform, 100),
+        });
       },
       readJobLog: async (owner, repo, jobId, options) => {
         assertCiId(jobId, "job", this.#platform);
