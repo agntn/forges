@@ -165,7 +165,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_ci_jobs_list",
       title: forgeToolTitle("forges_ci_jobs_list", "List CI Jobs"),
       description:
-        "List the jobs of one CI run with their lifecycle status, terminal conclusion, start and end times, web URL and, on GitHub and Gitea, their steps. A failed job has conclusion failure; read its log with forges_ci_jobs_log. An empty page 1 means the run started no jobs. GitLab jobs report no steps.",
+        "List the jobs of one CI run with their lifecycle status, terminal conclusion, start and end times, web URL and, on GitHub and Gitea, their steps. A failed job has conclusion failure; read its log with forges_ci_jobs_log. An empty page 1 means the run started no jobs. GitLab jobs report no steps. Forgejo jobs bring only id, name and state: no steps, null times and an empty url.",
       snippet: "List the jobs and steps of one CI run to find the one that failed.",
       guidelines: [
         "Use forges_ci_jobs_list instead of gh run view --json jobs to find which job and step of a run failed.",
