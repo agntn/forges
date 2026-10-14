@@ -51,6 +51,7 @@ import type {
   ListCommentOptions,
   ListCommitOptions,
   ListPullRequestChecksOptions,
+  ListCommitChecksOptions,
   ListPullRequestReviewsOptions,
   ListPullRequestFilesOptions,
   ListReactionOptions,
@@ -2057,38 +2058,61 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   ): Promise<PageResult<PullRequestCheck>> {
     try {
       const pullRequest = await this.getPullRequest(owner, repo, number);
-      const perPage = options?.perPage ?? 30;
-      const page = options?.page ?? 1;
-      const skip = (page - 1) * perPage;
-      const wanted = skip + perPage + 1;
-      const revision = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodePathSegment(pullRequest.headSha)}`;
-
-      const statuses = await this.readRevisionRows<GitHubCombinedStatus, GitHubCommitStatus>(
-        `${revision}/status`,
-        (data) => data.statuses,
-        wanted,
-      );
-      const runs = await this.readCheckRuns(
-        owner,
-        repo,
-        `${revision}/check-runs`,
-        Math.max(1, wanted - statuses.rows.length),
-      );
-      const checks = [
-        ...statuses.rows.map((raw) => this.mapCommitStatus(raw)),
-        ...runs.rows.map((raw) => this.mapPullRequestCheck(raw)),
-      ];
-      const items = checks.slice(skip, skip + perPage);
-      const hasNextPage = checks.length > skip + perPage;
-      return {
-        items,
-        totalCount: statuses.total + runs.total,
-        hasNextPage,
-        nextPage: hasNextPage ? page + 1 : undefined,
-      };
+      return await this.#readRevisionChecks(owner, repo, pullRequest.headSha, options);
     } catch (error) {
       throw normalizeError(error, "github");
     }
+  }
+
+  /** The status and check-runs routes take a branch or tag as readily as a SHA. */
+  protected override async listCommitChecks(
+    owner: string,
+    repo: string,
+    ref: string,
+    options?: ListCommitChecksOptions,
+  ): Promise<PageResult<PullRequestCheck>> {
+    try {
+      return await this.#readRevisionChecks(owner, repo, ref, options);
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  async #readRevisionChecks(
+    owner: string,
+    repo: string,
+    ref: string,
+    options: ListCommitChecksOptions | undefined,
+  ): Promise<PageResult<PullRequestCheck>> {
+    const perPage = options?.perPage ?? 30;
+    const page = options?.page ?? 1;
+    const skip = (page - 1) * perPage;
+    const wanted = skip + perPage + 1;
+    const revision = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodeRefPathSegment(ref, "Ref")}`;
+
+    const statuses = await this.readRevisionRows<GitHubCombinedStatus, GitHubCommitStatus>(
+      `${revision}/status`,
+      (data) => data.statuses,
+      wanted,
+    );
+    const runs = await this.readCheckRuns(
+      owner,
+      repo,
+      `${revision}/check-runs`,
+      Math.max(1, wanted - statuses.rows.length),
+    );
+    const checks = [
+      ...statuses.rows.map((raw) => this.mapCommitStatus(raw)),
+      ...runs.rows.map((raw) => this.mapPullRequestCheck(raw)),
+    ];
+    const items = checks.slice(skip, skip + perPage);
+    const hasNextPage = checks.length > skip + perPage;
+    return {
+      items,
+      totalCount: statuses.total + runs.total,
+      hasNextPage,
+      nextPage: hasNextPage ? page + 1 : undefined,
+    };
   }
 
   /** A 404 from a host without check runs, GitBucket for one, leaves the commit statuses. */

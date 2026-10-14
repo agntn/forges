@@ -40,6 +40,7 @@ import type {
   ListCiJobsOptions,
   ListCiRunsOptions,
   ListCommentOptions,
+  ListCommitChecksOptions,
   ListCommitOptions,
   ListContributionTemplatesOptions,
   ListOptions,
@@ -304,6 +305,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       },
       list: (owner, repo, options) => this.listCommits(owner, repo, options),
       get: (owner, repo, sha) => this.getCommit(owner, repo, sha),
+      listChecks: async (owner, repo, ref, options) => {
+        if (ref.trim() === "") {
+          throw this.#refusal("Commit checks need a SHA, branch or tag");
+        }
+        this.#assertCheckPage(options);
+        return this.listCommitChecks(owner, repo, ref, options);
+      },
       compare: async (owner, repo, base, head, options) => {
         if (base.trim() === "" || head.trim() === "") {
           throw this.#refusal("Commit comparison needs a base and a head ref");
@@ -378,11 +386,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       listFiles: (owner, repo, number, options) =>
         this.listPullRequestFiles(owner, repo, number, options),
       listChecks: async (owner, repo, number, options) => {
-        const page = paginationPageValue(options?.page, 1, "page", this.#platform);
-        const perPage = paginationPageValue(options?.perPage, 30, "perPage", this.#platform, 100);
-        if (!Number.isSafeInteger(page * perPage + 1)) {
-          throw this.#refusal("Check pagination exceeds the safe integer range");
-        }
+        this.#assertCheckPage(options);
         return this.listPullRequestChecks(owner, repo, number, options);
       },
       listReviews: (owner, repo, number, options) =>
@@ -443,6 +447,14 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
 
   #refusal(message: string): ForgesError {
     return new ForgesError(message, 400, this.#platform);
+  }
+
+  #assertCheckPage(options: ListPullRequestChecksOptions | undefined): void {
+    const page = paginationPageValue(options?.page, 1, "page", this.#platform);
+    const perPage = paginationPageValue(options?.perPage, 30, "perPage", this.#platform, 100);
+    if (!Number.isSafeInteger(page * perPage + 1)) {
+      throw this.#refusal("Check pagination exceeds the safe integer range");
+    }
   }
 
   #unsupported(message: string): Promise<never> {
@@ -546,6 +558,14 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     return this.#unsupported("Commit listing is not supported by this provider");
   }
   protected abstract getCommit(owner: string, repo: string, sha: string): Promise<Commit>;
+  protected listCommitChecks(
+    _owner: string,
+    _repo: string,
+    _ref: string,
+    _options?: ListCommitChecksOptions,
+  ): Promise<PageResult<PullRequestCheck>> {
+    return this.#unsupported("Commit checks are not supported by this provider");
+  }
   protected compareCommits(
     _owner: string,
     _repo: string,

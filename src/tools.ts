@@ -245,6 +245,19 @@ function defineTools(): ToolDefinition[] {
       execute: (args) => call((operations) => operations.getCommit(args)),
     }),
     defineTool({
+      name: "forges_commits_checks",
+      title: forgeToolTitle("forges_commits_checks", "List Commit Checks"),
+      description:
+        "List the checks or pipelines that ran on one commit, given as a SHA, branch, or tag, in the rows forges_pull_requests_checks returns: name, lifecycle status, terminal conclusion, and URL. On GitHub the commit statuses come before the check runs; a host without check runs, GitBucket for one, returns the statuses alone. On GitLab the rows are the commit's pipelines, newest first, and a merged results pipeline is missing because it runs on a merge commit. On Gitea they are the combined commit statuses, Actions included. A ref the repository lacks is not found, never an empty list. Continue with nextPage while hasNextPage is true.",
+      snippet: "Read the checks for one commit, branch, or tag on GitHub, GitLab, or Gitea.",
+      guidelines: [
+        "Use forges_commits_checks for a commit no pull request points at: a branch pushed before its pull request, or a head the pull request has moved past.",
+      ],
+      ...effect("forges_commits_checks"),
+      input: schemas.listCommitChecksParameters,
+      execute: (args) => call((operations) => operations.listCommitChecks(args)),
+    }),
+    defineTool({
       name: "forges_commits_patch",
       title: forgeToolTitle("forges_commits_patch", "Read Commit Patch"),
       description:

@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
     list: vi.fn(),
     compare: vi.fn(),
     get: vi.fn(),
+    listChecks: vi.fn(),
     readPatch: vi.fn(),
   };
   const releases = { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn() };
@@ -101,6 +102,7 @@ const toolNames = [
   "forges_commits_list",
   "forges_commits_compare",
   "forges_commits_get",
+  "forges_commits_checks",
   "forges_commits_patch",
   "forges_releases_list",
   "forges_releases_get",
@@ -1008,6 +1010,40 @@ describe("forges MCP server", () => {
       perPage: 10,
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: files });
+  });
+
+  it("lists the checks of a branch through the shared operation", async () => {
+    const checks = {
+      items: [
+        {
+          id: "6001",
+          name: "test",
+          status: "in_progress",
+          conclusion: null,
+          url: "https://github.com/agntn/forges/runs/6001",
+        },
+      ],
+      hasNextPage: false,
+    };
+    mocks.commits.listChecks.mockResolvedValue(checks);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_commits_checks",
+      arguments: {
+        platform: "github",
+        owner: "agntn",
+        repo: "forges",
+        ref: "feat/commit-checks",
+        perPage: 10,
+      },
+    });
+
+    expect(mocks.commits.listChecks).toHaveBeenCalledWith("agntn", "forges", "feat/commit-checks", {
+      page: undefined,
+      perPage: 10,
+    });
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: checks });
   });
 
   it("lists pull-request checks through the shared operation", async () => {

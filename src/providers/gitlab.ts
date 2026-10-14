@@ -60,6 +60,7 @@ import type {
   ListCommentOptions,
   ListCommitOptions,
   ListPullRequestChecksOptions,
+  ListCommitChecksOptions,
   ListPullRequestReviewsOptions,
   ListPullRequestFilesOptions,
   ListReactionOptions,
@@ -707,6 +708,16 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       console.warn(`[forges] Could not read the name of pipeline ${raw.id}: ${String(error)}`);
       return this.mapPullRequestCheck(raw);
     }
+  }
+
+  /** List rows carry no pipeline name, so each one costs a read, a few at a time. */
+  async #readPipelineChecks(pipelines: GitLabPipeline[]): Promise<PullRequestCheck[]> {
+    const items: PullRequestCheck[] = [];
+    for (let offset = 0; offset < pipelines.length; offset += MAX_PIPELINE_NAME_REQUESTS) {
+      const batch = pipelines.slice(offset, offset + MAX_PIPELINE_NAME_REQUESTS);
+      items.push(...(await Promise.all(batch.map((raw) => this.readPullRequestCheck(raw)))));
+    }
+    return items;
   }
 
   private mapPullRequestFile(raw: GitLabMergeRequestDiff): PullRequestFile {
@@ -1864,17 +1875,40 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       }
 
       const listed = matched.slice(skip, skip + perPage);
-      const items: PullRequestCheck[] = [];
-      for (let offset = 0; offset < listed.length; offset += MAX_PIPELINE_NAME_REQUESTS) {
-        const batch = listed.slice(offset, offset + MAX_PIPELINE_NAME_REQUESTS);
-        items.push(...(await Promise.all(batch.map((raw) => this.readPullRequestCheck(raw)))));
-      }
+      const items = await this.#readPipelineChecks(listed);
       const hasNextPage = matched.length > skip + perPage;
       return {
         items,
         hasNextPage,
         nextPage: hasNextPage ? page + 1 : undefined,
       };
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  /** Pipelines filter on an exact SHA, so a branch or tag is resolved to its commit first. */
+  protected override async listCommitChecks(
+    owner: string,
+    repo: string,
+    ref: string,
+    options?: ListCommitChecksOptions,
+  ): Promise<PageResult<PullRequestCheck>> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const commit = await this.client<GitLabCommit>(
+        `/projects/${projectId}/repository/commits/${encodeRefPathSegment(ref, "Ref")}`,
+      );
+      const { data, headers } = await rawFetch<GitLabPipeline[]>(
+        this.client,
+        `/projects/${projectId}/pipelines`,
+        {
+          query: { sha: commit.id, page: options?.page ?? 1, per_page: options?.perPage ?? 30 },
+        },
+      );
+      const pipelines = data ?? [];
+      const items = await this.#readPipelineChecks(pipelines);
+      return { ...this.parsePagination(pipelines, headers), items };
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }

@@ -47,6 +47,7 @@ import type {
   IssueState,
   ListCiRunsOptions,
   ListCommentOptions,
+  ListCommitChecksOptions,
   ListCommitOptions,
   ListContributionTemplatesOptions,
   ListOptions,
@@ -60,6 +61,7 @@ import type {
   MergePullRequestInput,
   PageResult,
   PullRequest,
+  PullRequestCheck,
   PullRequestFile,
   PullRequestReview,
   PullRequestSearchItem,
@@ -536,6 +538,8 @@ export type ReadRepositoryContentsParams = RepositoryParams &
 export type ReadCommitPatchParams = RepositoryParams & CommitPatchOptions & { sha: string };
 
 export type ListCommitsParams = RepositoryParams & ListCommitOptions;
+
+export type ListCommitChecksParams = RepositoryParams & ListCommitChecksOptions & { ref: string };
 
 export type CompareCommitsParams = RepositoryParams &
   CompareCommitsOptions & { base: string; head: string; files?: boolean };
@@ -1016,6 +1020,16 @@ export async function getCommit(args: GetCommitParams): Promise<ForgesToolResult
   const provider = await readProvider(params.platform);
   const commit = await provider.commits.get(params.owner, params.repo, params.sha);
   return result(params.platform, commit);
+}
+
+export async function listCommitChecks(
+  args: ListCommitChecksParams,
+): Promise<ForgesToolResult<PageResult<PullRequestCheck>>> {
+  const params = repositoryTarget(args);
+  const options: ListCommitChecksOptions = { page: params.page, perPage: params.perPage };
+  const provider = await readProvider(params.platform);
+  const checks = await provider.commits.listChecks(params.owner, params.repo, params.ref, options);
+  return result(params.platform, checks);
 }
 
 export async function readCommitPatch(

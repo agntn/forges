@@ -114,6 +114,7 @@ const toolNames = [
   "forges_commits_list",
   "forges_commits_compare",
   "forges_commits_get",
+  "forges_commits_checks",
   "forges_commits_patch",
   "forges_releases_list",
   "forges_releases_get",

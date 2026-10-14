@@ -2591,6 +2591,43 @@ describe("GitHubProvider", () => {
       },
     ];
 
+    it("lists a branch's statuses and check runs without reading a pull request", async () => {
+      mocks.rawFetch
+        .mockResolvedValueOnce({
+          data: { total_count: 2, statuses: ghStatuses },
+          headers: makeHeaders(),
+        })
+        .mockResolvedValueOnce({
+          data: { total_count: 1, check_runs: [ghCheckRun(6001)] },
+          headers: makeHeaders(),
+        });
+
+      const result = await gh.commits.listChecks("octocat", "hello-world", "feat/checks");
+
+      const branch = "/repos/octocat/hello-world/commits/feat%2Fchecks";
+      expect(mocks.client).not.toHaveBeenCalled();
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, `${branch}/status`, {
+        query: { page: "1", per_page: "31" },
+      });
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${branch}/check-runs`, {
+        query: { page: "1", per_page: "29" },
+      });
+      expect(result).toEqual({
+        items: [...statuses, checkRun(6001)],
+        totalCount: 3,
+        hasNextPage: false,
+        nextPage: undefined,
+      });
+    });
+
+    it("refuses an empty ref before any request", async () => {
+      await expect(gh.commits.listChecks("octocat", "hello-world", " ")).rejects.toMatchObject({
+        status: 400,
+        platform: "github",
+      });
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    });
+
     it("rejects page zero instead of reporting no checks", async () => {
       mocks.client.mockResolvedValueOnce(ghPullRequest);
       mocks.rawFetch
