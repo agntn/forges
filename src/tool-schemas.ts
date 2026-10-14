@@ -271,6 +271,18 @@ export function forgesToolSchemas() {
     perPage,
   });
   const commitParameters = closed({ platform: gitPlatform, owner, repo, sha });
+  const listCommitChecksParameters = closed({
+    platform,
+    owner,
+    repo,
+    ref: Type.String({
+      description:
+        "Commit SHA, branch, or tag whose checks to list; a branch or tag reads the commit it points at now",
+      minLength: 1,
+    }),
+    page,
+    perPage,
+  });
   const commitPatchParameters = closed({
     platform,
     owner,
@@ -707,6 +719,7 @@ export function forgesToolSchemas() {
     contributionTemplateParameters,
     codeSearchParameters,
     commitParameters,
+    listCommitChecksParameters,
     commitPatchParameters,
     listCommitsParameters,
     compareCommitsParameters,

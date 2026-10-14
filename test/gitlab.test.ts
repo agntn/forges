@@ -1936,6 +1936,55 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("commits.listChecks", () => {
+    it("resolves a branch to its commit and lists that commit's pipelines", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce({ id: glPipeline.sha });
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [{ ...glPipeline, status: "running" }],
+        headers: glHeaders({ nextPage: "3", total: "5" }),
+      });
+      mocks.client.mockResolvedValueOnce({ ...glPipeline, name: "verify" });
+
+      const result = await gl.commits.listChecks("gitlab-org", "gitlab-foss", "feat/checks", {
+        page: 2,
+        perPage: 1,
+      });
+
+      expect(mocks.client).toHaveBeenNthCalledWith(
+        2,
+        "/projects/278964/repository/commits/feat%2Fchecks",
+      );
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/projects/278964/pipelines", {
+        query: { sha: glPipeline.sha, page: 2, per_page: 1 },
+      });
+      expect(result).toEqual({
+        items: [
+          {
+            id: "9001",
+            name: "verify",
+            status: "in_progress",
+            conclusion: null,
+            url: "https://gitlab.com/gitlab-org/gitlab-foss/-/pipelines/9001",
+          },
+        ],
+        totalCount: 5,
+        hasNextPage: true,
+        nextPage: 3,
+      });
+    });
+
+    it("answers NotFoundError for a ref the project lacks", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(
+        gl.commits.listChecks("gitlab-org", "gitlab-foss", "missing"),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    });
+  });
+
   describe("pullRequests.listChecks", () => {
     it("reads and normalizes merge-request pipelines", async () => {
       mockProjectResolve(278964);

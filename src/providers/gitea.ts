@@ -64,6 +64,7 @@ import type {
   ListCommentOptions,
   ListCommitOptions,
   ListPullRequestChecksOptions,
+  ListCommitChecksOptions,
   ListPullRequestReviewsOptions,
   ListPullRequestFilesOptions,
   ListReactionOptions,
@@ -1565,32 +1566,60 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<PageResult<PullRequestCheck>> {
     try {
       const pullRequest = await this.getPullRequest(owner, repo, number);
-      const page = options?.page ?? 1;
-      const perPage = options?.perPage ?? 30;
-      const path = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodePathSegment(pullRequest.headSha)}/status`;
-      const { data, headers } = await rawFetch<GiteaCombinedStatus>(this.client, path, {
-        query: { page: String(page), limit: String(perPage) },
-      });
-      const statuses = data?.statuses ?? [];
-      let hasNextPage = !!parseLinkHeader(headers.get("Link")).next;
-
-      // Forgejo paginates combined statuses but omits Link. Probe only when a
-      // full page leaves the existence of another page ambiguous.
-      if (!hasNextPage && statuses.length === perPage) {
-        const next = await rawFetch<GiteaCombinedStatus>(this.client, path, {
-          query: { page: String(page + 1), limit: String(perPage) },
-        });
-        hasNextPage = (next.data?.statuses.length ?? 0) > 0;
-      }
-
-      return {
-        items: statuses.map((raw) => this.mapPullRequestCheck(raw)),
-        hasNextPage,
-        nextPage: hasNextPage ? page + 1 : undefined,
-      };
+      return await this.#readRevisionChecks(owner, repo, pullRequest.headSha, options);
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
+  }
+
+  /** Forgejo answers an unknown ref with an empty status, so an empty page checks the ref. */
+  protected override async listCommitChecks(
+    owner: string,
+    repo: string,
+    ref: string,
+    options?: ListCommitChecksOptions,
+  ): Promise<PageResult<PullRequestCheck>> {
+    try {
+      const checks = await this.#readRevisionChecks(owner, repo, ref, options);
+      if (checks.items.length === 0) {
+        await this.client(
+          `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/git/commits/${encodeRefPathSegment(ref, "Ref")}`,
+          { query: { stat: "false", files: "false", verification: "false" } },
+        );
+      }
+      return checks;
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  /** Forgejo pages combined statuses without Link, so only a full page probes the next. */
+  async #readRevisionChecks(
+    owner: string,
+    repo: string,
+    ref: string,
+    options: ListCommitChecksOptions | undefined,
+  ): Promise<PageResult<PullRequestCheck>> {
+    const page = options?.page ?? 1;
+    const perPage = options?.perPage ?? 30;
+    const path = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodeRefPathSegment(ref, "Ref")}/status`;
+    const { data, headers } = await rawFetch<GiteaCombinedStatus>(this.client, path, {
+      query: { page: String(page), limit: String(perPage) },
+    });
+    const statuses = data?.statuses ?? [];
+    let hasNextPage = !!parseLinkHeader(headers.get("Link")).next;
+    if (!hasNextPage && statuses.length === perPage) {
+      const next = await rawFetch<GiteaCombinedStatus>(this.client, path, {
+        query: { page: String(page + 1), limit: String(perPage) },
+      });
+      hasNextPage = (next.data?.statuses.length ?? 0) > 0;
+    }
+
+    return {
+      items: statuses.map((raw) => this.mapPullRequestCheck(raw)),
+      hasNextPage,
+      nextPage: hasNextPage ? page + 1 : undefined,
+    };
   }
 
   protected override async getPullRequestReview(

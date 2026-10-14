@@ -83,6 +83,7 @@ export type {
   ListCommentOptions,
   ListContributionTemplatesOptions,
   ListCommitOptions,
+  ListCommitChecksOptions,
   ListPullRequestFilesOptions,
   ListPullRequestChecksOptions,
   ListPullRequestReviewsOptions,

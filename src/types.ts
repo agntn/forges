@@ -751,6 +751,12 @@ export interface ListPullRequestChecksOptions {
   perPage?: number;
 }
 
+/** List operation options for the checks of one commit. */
+export interface ListCommitChecksOptions {
+  page?: number;
+  perPage?: number;
+}
+
 /** List operation options for pull-request reviews. */
 export interface ListPullRequestReviewsOptions {
   page?: number;
@@ -885,6 +891,13 @@ export interface CommitResource {
     options?: ListCommitOptions,
   ): Promise<PageResult<CommitSummary>>;
   get(owner: string, repo: string, sha: string): Promise<Commit>;
+  /** Checks for a SHA, branch or tag, in the rows pullRequests.listChecks returns. */
+  listChecks(
+    owner: string,
+    repo: string,
+    ref: string,
+    options?: ListCommitChecksOptions,
+  ): Promise<PageResult<PullRequestCheck>>;
   compare(
     owner: string,
     repo: string,

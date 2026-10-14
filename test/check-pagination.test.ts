@@ -34,6 +34,20 @@ describe.each(["github", "gitlab", "gitea"] as const)("%s check pagination", (pl
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it.each(invalidOptions)(
+    "rejects invalid commit check options %o before HTTP",
+    async (options) => {
+      const fetch = vi.fn(async () => new Response(null, { status: 404 }));
+      vi.stubGlobal("fetch", fetch);
+      const provider = await createProvider(platform, { token: "" });
+
+      await expect(
+        provider.commits.listChecks("owner", "repo", "main", options),
+      ).rejects.toMatchObject({ status: 400, platform });
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     undefined,
     {},

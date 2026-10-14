@@ -49,6 +49,7 @@ describe("createProvider factory", () => {
     ["listTags", "Tag listing is not supported by this provider"],
     ["listCiRuns", "CI-run listing is not supported by this provider"],
     ["listPullRequestChecks", "Pull request checks are not supported by this provider"],
+    ["listCommitChecks", "Commit checks are not supported by this provider"],
     ["listPullRequestReviews", "Pull request reviews are not supported by this provider"],
     ["getPullRequestReview", "Individual pull request reviews are not supported by this provider"],
     ["listReleases", "Releases are not supported by this provider"],

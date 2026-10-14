@@ -51,6 +51,7 @@ import type {
   ListCommentOptions,
   ListCommitOptions,
   ListPullRequestChecksOptions,
+  ListCommitChecksOptions,
   ListPullRequestReviewsOptions,
   ListPullRequestFilesOptions,
   ListReactionOptions,
@@ -2057,38 +2058,77 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   ): Promise<PageResult<PullRequestCheck>> {
     try {
       const pullRequest = await this.getPullRequest(owner, repo, number);
-      const perPage = options?.perPage ?? 30;
-      const page = options?.page ?? 1;
-      const skip = (page - 1) * perPage;
-      const wanted = skip + perPage + 1;
-      const revision = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodePathSegment(pullRequest.headSha)}`;
-
-      const statuses = await this.readRevisionRows<GitHubCombinedStatus, GitHubCommitStatus>(
-        `${revision}/status`,
-        (data) => data.statuses,
-        wanted,
-      );
-      const runs = await this.readCheckRuns(
-        owner,
-        repo,
-        `${revision}/check-runs`,
-        Math.max(1, wanted - statuses.rows.length),
-      );
-      const checks = [
-        ...statuses.rows.map((raw) => this.mapCommitStatus(raw)),
-        ...runs.rows.map((raw) => this.mapPullRequestCheck(raw)),
-      ];
-      const items = checks.slice(skip, skip + perPage);
-      const hasNextPage = checks.length > skip + perPage;
-      return {
-        items,
-        totalCount: statuses.total + runs.total,
-        hasNextPage,
-        nextPage: hasNextPage ? page + 1 : undefined,
-      };
+      return await this.#readRevisionChecks(owner, repo, pullRequest.headSha, options);
     } catch (error) {
       throw normalizeError(error, "github");
     }
+  }
+
+  /** A branch is pinned to one SHA first, so a push between reads can't mix two commits. */
+  protected override async listCommitChecks(
+    owner: string,
+    repo: string,
+    ref: string,
+    options?: ListCommitChecksOptions,
+  ): Promise<PageResult<PullRequestCheck>> {
+    try {
+      const sha = isCommitSha(ref) ? ref : await this.#commitOf(owner, repo, ref);
+      return await this.#readRevisionChecks(owner, repo, sha, options);
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /** The sha media type answers an unknown ref with 422, the status route with 404. */
+  async #commitOf(owner: string, repo: string, ref: string): Promise<string> {
+    try {
+      return await this.resolveCommitSha(
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`,
+        ref,
+      );
+    } catch (error) {
+      if (error instanceof FetchError && error.status === 422) {
+        throw new NotFoundError(`Ref not found: ${ref}`, "github", error);
+      }
+      throw error;
+    }
+  }
+
+  async #readRevisionChecks(
+    owner: string,
+    repo: string,
+    ref: string,
+    options: ListCommitChecksOptions | undefined,
+  ): Promise<PageResult<PullRequestCheck>> {
+    const perPage = options?.perPage ?? 30;
+    const page = options?.page ?? 1;
+    const skip = (page - 1) * perPage;
+    const wanted = skip + perPage + 1;
+    const revision = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodeRefPathSegment(ref, "Ref")}`;
+
+    const statuses = await this.readRevisionRows<GitHubCombinedStatus, GitHubCommitStatus>(
+      `${revision}/status`,
+      (data) => data.statuses,
+      wanted,
+    );
+    const runs = await this.readCheckRuns(
+      owner,
+      repo,
+      `${revision}/check-runs`,
+      Math.max(1, wanted - statuses.rows.length),
+    );
+    const checks = [
+      ...statuses.rows.map((raw) => this.mapCommitStatus(raw)),
+      ...runs.rows.map((raw) => this.mapPullRequestCheck(raw)),
+    ];
+    const items = checks.slice(skip, skip + perPage);
+    const hasNextPage = checks.length > skip + perPage;
+    return {
+      items,
+      totalCount: statuses.total + runs.total,
+      hasNextPage,
+      nextPage: hasNextPage ? page + 1 : undefined,
+    };
   }
 
   /** A 404 from a host without check runs, GitBucket for one, leaves the commit statuses. */

@@ -1804,6 +1804,68 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("commits.listChecks", () => {
+    it("reads the combined status of a branch without a pull request", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: { statuses: [{ id: 501, context: "ci/test", status: "success" }] },
+        headers: makeHeaders(),
+        status: 200,
+      });
+
+      const result = await provider.commits.listChecks("testowner", "test-repo", "feat/checks");
+
+      expect(mockClient).not.toHaveBeenCalled();
+      expect(mockedRawFetch).toHaveBeenCalledExactlyOnceWith(
+        expect.anything(),
+        "/repos/testowner/test-repo/commits/feat%2Fchecks/status",
+        { query: { page: "1", limit: "30" } },
+      );
+      expect(result).toEqual({
+        items: [
+          {
+            id: "501",
+            name: "ci/test",
+            status: "completed",
+            conclusion: "success",
+            url: "",
+          },
+        ],
+        hasNextPage: false,
+        nextPage: undefined,
+      });
+    });
+
+    it("keeps an empty page when the ref exists", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: { sha: "", statuses: [] },
+        headers: makeHeaders(),
+        status: 200,
+      });
+      mockClient.mockResolvedValueOnce({ sha: "42190a2e08172b2d2e3f63f7b848231ec566b08f" });
+
+      const result = await provider.commits.listChecks("testowner", "test-repo", "main");
+
+      expect(mockClient).toHaveBeenCalledExactlyOnceWith(
+        "/repos/testowner/test-repo/git/commits/main",
+        { query: { stat: "false", files: "false", verification: "false" } },
+      );
+      expect(result).toEqual({ items: [], hasNextPage: false, nextPage: undefined });
+    });
+
+    it("answers NotFoundError for a ref Forgejo hands an empty status", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: { sha: "", statuses: [] },
+        headers: makeHeaders(),
+        status: 200,
+      });
+      mockClient.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(
+        provider.commits.listChecks("testowner", "test-repo", "no-such-branch"),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+
   describe("pullRequests.listChecks", () => {
     it("reads commit statuses for the pull-request head revision", async () => {
       mockClient.mockResolvedValueOnce(giteaPullRequest());
