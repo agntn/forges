@@ -27,12 +27,16 @@ const refusals: [string, (provider: Provider) => Promise<unknown>][] = [
   ["issue assignees", (p) => p.issues.create("o", "r", { title: "t", body: "", assignees: [""] })],
   ["issue update", (p) => p.issues.update("o", "r", 1, {})],
   ["issue comment", (p) => p.issues.createComment("o", "r", 1, { body: " " })],
+  ["issue comment page", (p) => p.issues.listComments("o", "r", 1, { perPage: 0 })],
+  ["issue reaction page", (p) => p.issues.listReactions("o", "r", 1, { perPage: 0 })],
   ["global pull request search", (p) => p.pullRequests.searchGlobal(" ")],
   ["check page", (p) => p.pullRequests.listChecks("o", "r", 1, { page: 0 })],
   ["pull request search query", (p) => p.pullRequests.search("o", "r", " ")],
   ["pull request update", (p) => p.pullRequests.update("o", "r", 1, {})],
   ["merge head", (p) => p.pullRequests.merge("o", "r", 1, { headSha: " " })],
   ["pull request comment", (p) => p.pullRequests.createComment("o", "r", 1, { body: " " })],
+  ["pull request comment page", (p) => p.pullRequests.listComments("o", "r", 1, { page: 0 })],
+  ["pull request reaction page", (p) => p.pullRequests.listReactions("o", "r", 1, { page: 0 })],
 ];
 
 afterEach(() => {
