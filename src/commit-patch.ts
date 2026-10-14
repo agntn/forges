@@ -10,23 +10,27 @@ export const DEFAULT_PATCH_MAX_CHARS = 20_000;
 export const MAX_PATCH_CHARS = 200_000;
 
 /** Validate patch selection and output bounds before provider I/O. */
-export function assertCommitPatchOptions(options: CommitPatchOptions = {}): void {
+export function assertCommitPatchOptions(
+  options: CommitPatchOptions = {},
+  platform?: string,
+): void {
   const offset = options.offset ?? 0;
   const maxChars = options.maxChars ?? DEFAULT_PATCH_MAX_CHARS;
   if (!Number.isSafeInteger(offset) || offset < 0) {
-    throw new ForgesError("Commit patch offset must be a non-negative integer", 400);
+    throw new ForgesError("Commit patch offset must be a non-negative integer", 400, platform);
   }
   if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > MAX_PATCH_CHARS) {
     throw new ForgesError(
       `Commit patch maxChars must be an integer from 1 to ${MAX_PATCH_CHARS}`,
       400,
+      platform,
     );
   }
   if (!Number.isSafeInteger(offset + maxChars)) {
-    throw new ForgesError("Commit patch range exceeds the safe integer limit", 400);
+    throw new ForgesError("Commit patch range exceeds the safe integer limit", 400, platform);
   }
   if (options.path !== undefined && options.path.length === 0) {
-    throw new ForgesError("Commit patch path must not be empty", 400);
+    throw new ForgesError("Commit patch path must not be empty", 400, platform);
   }
 }
 

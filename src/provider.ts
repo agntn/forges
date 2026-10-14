@@ -105,6 +105,7 @@ function paginationPageValue(
   value: number | undefined,
   fallback: number,
   label: string,
+  platform: string | undefined,
   maximum?: number,
 ): number {
   const resolved = value ?? fallback;
@@ -114,7 +115,7 @@ function paginationPageValue(
     (maximum !== undefined && resolved > maximum)
   ) {
     const range = maximum === undefined ? "a positive integer" : `an integer from 1 to ${maximum}`;
-    throw new ForgesError(`${label} must be ${range}`, 400);
+    throw new ForgesError(`${label} must be ${range}`, 400, platform);
   }
   return resolved;
 }
@@ -125,11 +126,12 @@ interface ContributionTemplatePagination {
 }
 
 function contributionTemplatePagination(
-  options?: ListContributionTemplatesOptions,
+  options: ListContributionTemplatesOptions | undefined,
+  platform: string | undefined,
 ): ContributionTemplatePagination {
   return {
-    page: paginationPageValue(options?.page, 1, "page"),
-    perPage: paginationPageValue(options?.perPage, 30, "perPage", 100),
+    page: paginationPageValue(options?.page, 1, "page", platform),
+    perPage: paginationPageValue(options?.perPage, 30, "perPage", platform, 100),
   };
 }
 
@@ -149,9 +151,9 @@ function paginateContributionTemplates(
   };
 }
 
-function assertReleaseTag(tag: string): void {
+function assertReleaseTag(tag: string, platform?: string): void {
   if (tag.trim() === "") {
-    throw new ForgesError("Release tag must not be empty", 400);
+    throw new ForgesError("Release tag must not be empty", 400, platform);
   }
 }
 
@@ -160,12 +162,13 @@ function assertGlobalSearch(
   noun: "Pull-request" | "Issue",
   query: string,
   options: GlobalIssueSearchOptions | undefined,
+  platform?: string,
 ): void {
   if (options?.author !== undefined && !/^[^\s:'"]+$/u.test(options.author)) {
-    throw new ForgesError(`${noun} search author must be a single login`, 400);
+    throw new ForgesError(`${noun} search author must be a single login`, 400, platform);
   }
   if (options?.owner !== undefined && !/^\S+$/u.test(options.owner)) {
-    throw new ForgesError(`${noun} search owner must be one name without spaces`, 400);
+    throw new ForgesError(`${noun} search owner must be one name without spaces`, 400, platform);
   }
   const labelled = noun === "Issue" && (options?.labels?.length ?? 0) > 0;
   const scoped = options?.author !== undefined || options?.owner !== undefined || labelled;
@@ -175,35 +178,40 @@ function assertGlobalSearch(
         ? "Issue search needs a query, an author, a label or an owner"
         : `${noun} search needs a query, an author or an owner`,
       400,
+      platform,
     );
   }
   if (options?.repo !== undefined && options.owner === undefined) {
-    throw new ForgesError(`${noun} search repository scope requires an owner`, 400);
+    throw new ForgesError(`${noun} search repository scope requires an owner`, 400, platform);
   }
 }
 
 /** Gitea and GitLab split labels on commas and GitHub quotes each one. */
-function assertGlobalIssueFilters(options: GlobalIssueSearchOptions | undefined): void {
+function assertGlobalIssueFilters(
+  options: GlobalIssueSearchOptions | undefined,
+  platform?: string,
+): void {
   if (options?.state !== undefined && !["open", "closed", "all"].includes(options.state)) {
-    throw new ForgesError("Issue search state must be open, closed or all", 400);
+    throw new ForgesError("Issue search state must be open, closed or all", 400, platform);
   }
   if ((options?.labels?.length ?? 0) > 10) {
-    throw new ForgesError("Issue search takes at most 10 labels", 400);
+    throw new ForgesError("Issue search takes at most 10 labels", 400, platform);
   }
   for (const [index, label] of (options?.labels ?? []).entries()) {
     if (label.trim() === "" || /[,"\p{Cc}]/u.test(label)) {
       throw new ForgesError(
         `Issue search label ${index + 1} must be a name without commas or double quotes`,
         400,
+        platform,
       );
     }
   }
 }
 
 /** A blank comment is never what the caller meant, so it fails here without a request. */
-function assertCommentBody(body: string): void {
+function assertCommentBody(body: string, platform?: string): void {
   if (body.trim() === "") {
-    throw new ForgesError("Comment body must not be empty", 400);
+    throw new ForgesError("Comment body must not be empty", 400, platform);
   }
 }
 
@@ -224,31 +232,38 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   public readonly pullRequests: PullRequestResource;
   public readonly users: UserResource;
   public readonly threads: ThreadResource;
+  /** Named on every refusal from the base class, which runs before any platform code. */
+  readonly #platform: string | undefined;
 
-  protected constructor() {
+  protected constructor(platform?: string) {
+    this.#platform = platform;
     this.repos = {
       list: (owner, options) => this.listRepos(owner, options),
       get: (owner, repo) => this.getRepo(owner, repo),
       readContents: async (owner, repo, path, options) => {
-        assertRepositoryContentsOptions(options);
-        return this.readRepositoryContents(owner, repo, normalizeRepositoryPath(path), options);
+        assertRepositoryContentsOptions(options, this.#platform);
+        const normalizedPath = normalizeRepositoryPath(path, this.#platform);
+        return this.readRepositoryContents(owner, repo, normalizedPath, options);
       },
       listTags: (owner, repo, options) => this.listTags(owner, repo, options),
     };
     this.contributionTemplates = {
       list: async (owner, repo, kind, options) => {
-        const pagination = contributionTemplatePagination(options);
+        const pagination = contributionTemplatePagination(options, this.#platform);
         const templates = await this.listContributionTemplates(owner, repo, kind);
         return paginateContributionTemplates(templates, pagination);
       },
       get: async (owner, repo, kind, key) => {
         if (key.length === 0) {
-          throw new ForgesError("Contribution template key must not be empty", 400);
+          throw this.#refusal("Contribution template key must not be empty");
         }
         const templates = await this.listContributionTemplates(owner, repo, kind);
         const template = templates.find((candidate) => candidate.key === key);
         if (!template) {
-          throw new NotFoundError(`Contribution template not found: ${kind}/${key}`);
+          throw new NotFoundError(
+            `Contribution template not found: ${kind}/${key}`,
+            this.#platform,
+          );
         }
         const content = await this.readContributionTemplate(owner, repo, template);
         return { ...template, content };
@@ -257,10 +272,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     this.code = {
       search: async (query, options) => {
         if (query.trim() === "") {
-          throw new ForgesError("Code search query must not be empty", 400);
+          throw this.#refusal("Code search query must not be empty");
         }
         if (options?.repo !== undefined && options.owner === undefined) {
-          throw new ForgesError("Code search repository scope requires an owner", 400);
+          throw this.#refusal("Code search repository scope requires an owner");
         }
         return this.searchCode(query, options);
       },
@@ -268,22 +283,22 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     this.ciRuns = {
       list: (owner, repo, options) => this.listCiRuns(owner, repo, options),
       listJobs: async (owner, repo, runId, options) => {
-        assertCiId(runId, "run");
+        assertCiId(runId, "run", this.#platform);
         return this.listCiJobs(owner, repo, runId, options);
       },
       readJobLog: async (owner, repo, jobId, options) => {
-        assertCiId(jobId, "job");
-        assertCiJobLogOptions(options);
+        assertCiId(jobId, "job", this.#platform);
+        assertCiJobLogOptions(options, this.#platform);
         return this.readCiJobLog(owner, repo, jobId, options);
       },
     };
     this.commits = {
       search: async (query, options) => {
         if (query.trim() === "") {
-          throw new ForgesError("Commit search query must not be empty", 400);
+          throw this.#refusal("Commit search query must not be empty");
         }
         if (options?.repo !== undefined && options.owner === undefined) {
-          throw new ForgesError("Commit search repository scope requires an owner", 400);
+          throw this.#refusal("Commit search repository scope requires an owner");
         }
         return this.searchCommits(query, options);
       },
@@ -291,56 +306,56 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       get: (owner, repo, sha) => this.getCommit(owner, repo, sha),
       compare: async (owner, repo, base, head, options) => {
         if (base.trim() === "" || head.trim() === "") {
-          throw new ForgesError("Commit comparison needs a base and a head ref", 400);
+          throw this.#refusal("Commit comparison needs a base and a head ref");
         }
         return this.compareCommits(owner, repo, base, head, {
-          page: paginationPageValue(options?.page, 1, "page"),
-          perPage: paginationPageValue(options?.perPage, 30, "perPage", 100),
+          page: paginationPageValue(options?.page, 1, "page", this.#platform),
+          perPage: paginationPageValue(options?.perPage, 30, "perPage", this.#platform, 100),
         });
       },
       readPatch: async (owner, repo, sha, options) => {
-        assertCommitPatchOptions(options);
+        assertCommitPatchOptions(options, this.#platform);
         return this.readCommitPatch(owner, repo, sha, options);
       },
     };
     this.releases = {
       list: (owner, repo, options) => this.listReleases(owner, repo, options),
       get: async (owner, repo, tag) => {
-        assertReleaseTag(tag);
+        assertReleaseTag(tag, this.#platform);
         return this.getRelease(owner, repo, tag);
       },
       create: async (owner, repo, input) => {
-        assertReleaseTag(input.tag);
+        assertReleaseTag(input.tag, this.#platform);
         return this.createRelease(owner, repo, input);
       },
       update: async (owner, repo, tag, input) => {
-        assertReleaseTag(tag);
+        assertReleaseTag(tag, this.#platform);
         if (Object.values(input).every((value) => value === undefined)) {
-          throw new ForgesError("Release update needs at least one field", 400);
+          throw this.#refusal("Release update needs at least one field");
         }
         return this.updateRelease(owner, repo, tag, input);
       },
     };
     this.issues = {
       searchGlobal: async (query, options) => {
-        assertGlobalSearch("Issue", query, options);
-        assertGlobalIssueFilters(options);
+        assertGlobalSearch("Issue", query, options, this.#platform);
+        assertGlobalIssueFilters(options, this.#platform);
         return this.searchIssuesGlobal(query, options);
       },
       list: (owner, repo, options) => this.listIssues(owner, repo, options),
       search: async (owner, repo, query, options) => {
         if (query.trim() === "") {
-          throw new ForgesError("Issue search query must not be empty", 400);
+          throw this.#refusal("Issue search query must not be empty");
         }
         return this.searchIssues(owner, repo, query, options);
       },
       get: (owner, repo, number) => this.getIssue(owner, repo, number),
       create: async (owner, repo, input) => {
-        assertAssignees(input.assignees);
+        assertAssignees(input.assignees, this.#platform);
         return this.createIssue(owner, repo, input);
       },
       update: async (owner, repo, number, input) => {
-        assertIssueUpdate(input);
+        assertIssueUpdate(input, this.#platform);
         return this.updateIssue(owner, repo, number, input);
       },
       listComments: (owner, repo, number, options) =>
@@ -348,7 +363,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       getComment: (owner, repo, number, commentId) =>
         this.getIssueComment(owner, repo, number, commentId),
       createComment: async (owner, repo, number, input) => {
-        assertCommentBody(input.body);
+        assertCommentBody(input.body, this.#platform);
         return this.createIssueComment(owner, repo, number, input);
       },
       listReactions: (owner, repo, number, options) =>
@@ -356,17 +371,17 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.pullRequests = {
       searchGlobal: async (query, options) => {
-        assertGlobalSearch("Pull-request", query, options);
+        assertGlobalSearch("Pull-request", query, options, this.#platform);
         return this.searchPullRequestsGlobal(query, options);
       },
       list: (owner, repo, options) => this.listPullRequests(owner, repo, options),
       listFiles: (owner, repo, number, options) =>
         this.listPullRequestFiles(owner, repo, number, options),
       listChecks: async (owner, repo, number, options) => {
-        const page = paginationPageValue(options?.page, 1, "page");
-        const perPage = paginationPageValue(options?.perPage, 30, "perPage", 100);
+        const page = paginationPageValue(options?.page, 1, "page", this.#platform);
+        const perPage = paginationPageValue(options?.perPage, 30, "perPage", this.#platform, 100);
         if (!Number.isSafeInteger(page * perPage + 1)) {
-          throw new ForgesError("Check pagination exceeds the safe integer range", 400);
+          throw this.#refusal("Check pagination exceeds the safe integer range");
         }
         return this.listPullRequestChecks(owner, repo, number, options);
       },
@@ -376,7 +391,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         this.getPullRequestReview(owner, repo, number, reviewId),
       search: async (owner, repo, query, options) => {
         if (query.trim() === "") {
-          throw new ForgesError("Pull-request search query must not be empty", 400);
+          throw this.#refusal("Pull-request search query must not be empty");
         }
         return this.searchPullRequests(owner, repo, query, options);
       },
@@ -389,15 +404,15 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         return { ...pullRequest, closingIssues };
       },
       create: async (owner, repo, input) => {
-        assertAssignees(input.assignees);
+        assertAssignees(input.assignees, this.#platform);
         return this.createPullRequest(owner, repo, input);
       },
       update: async (owner, repo, number, input) => {
-        assertPullRequestUpdate(input);
+        assertPullRequestUpdate(input, this.#platform);
         return this.updatePullRequest(owner, repo, number, input);
       },
       merge: async (owner, repo, number, input = {}) => {
-        assertMergeInput(input);
+        assertMergeInput(input, this.#platform);
         return this.mergePullRequest(owner, repo, number, input);
       },
       listComments: (owner, repo, number, options) =>
@@ -405,7 +420,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       getComment: (owner, repo, number, commentId) =>
         this.getPullRequestComment(owner, repo, number, commentId),
       createComment: async (owner, repo, number, input) => {
-        assertCommentBody(input.body);
+        assertCommentBody(input.body, this.#platform);
         return this.createPullRequestComment(owner, repo, number, input);
       },
       listReactions: (owner, repo, number, options) =>
@@ -426,6 +441,14 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
   }
 
+  #refusal(message: string): ForgesError {
+    return new ForgesError(message, 400, this.#platform);
+  }
+
+  #unsupported(message: string): Promise<never> {
+    return Promise.reject(new ForgesError(message, 501, this.#platform));
+  }
+
   protected abstract mapOwner(raw: Raw["owner"]): Owner;
   protected abstract mapRepository(raw: Raw["repository"]): Repository;
   protected abstract mapIssue(raw: Raw["issue"]): Issue;
@@ -444,9 +467,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _repo: string,
     _kind: ContributionTemplateKind,
   ): Promise<ContributionTemplateSummary[]> {
-    return Promise.reject(
-      new ForgesError("Contribution template discovery is not supported by this provider", 501),
-    );
+    return this.#unsupported("Contribution template discovery is not supported by this provider");
   }
   protected readRepositoryContents(
     _owner: string,
@@ -454,38 +475,34 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _path: string,
     _options?: RepositoryContentsOptions,
   ): Promise<RepositoryContents> {
-    return Promise.reject(
-      new ForgesError("Repository contents reads are not supported by this provider", 501),
-    );
+    return this.#unsupported("Repository contents reads are not supported by this provider");
   }
   protected listTags(
     _owner: string,
     _repo: string,
     _options?: ListTagsOptions,
   ): Promise<PageResult<Tag>> {
-    return Promise.reject(new ForgesError("Tag listing is not supported by this provider", 501));
+    return this.#unsupported("Tag listing is not supported by this provider");
   }
   protected readContributionTemplate(
     _owner: string,
     _repo: string,
     _template: ContributionTemplateSummary,
   ): Promise<ContributionTemplate["content"]> {
-    return Promise.reject(
-      new ForgesError("Contribution template reads are not supported by this provider", 501),
-    );
+    return this.#unsupported("Contribution template reads are not supported by this provider");
   }
   protected searchCode(
     _query: string,
     _options?: CodeSearchOptions,
   ): Promise<SearchPageResult<CodeSearchItem>> {
-    return Promise.reject(new ForgesError("Code search is not supported by this provider", 501));
+    return this.#unsupported("Code search is not supported by this provider");
   }
   protected listCiRuns(
     _owner: string,
     _repo: string,
     _options?: ListCiRunsOptions,
   ): Promise<PageResult<CiRun>> {
-    return Promise.reject(new ForgesError("CI-run listing is not supported by this provider", 501));
+    return this.#unsupported("CI-run listing is not supported by this provider");
   }
   protected listCiJobs(
     _owner: string,
@@ -493,7 +510,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _runId: string,
     _options?: ListCiJobsOptions,
   ): Promise<PageResult<CiJob>> {
-    return Promise.reject(new ForgesError("CI-job listing is not supported by this provider", 501));
+    return this.#unsupported("CI-job listing is not supported by this provider");
   }
   protected readCiJobLog(
     _owner: string,
@@ -501,38 +518,32 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _jobId: string,
     _options?: CiJobLogOptions,
   ): Promise<CiJobLog> {
-    return Promise.reject(
-      new ForgesError("CI-job log reads are not supported by this provider", 501),
-    );
+    return this.#unsupported("CI-job log reads are not supported by this provider");
   }
   protected searchPullRequestsGlobal(
     _query: string,
     _options?: GlobalPullRequestSearchOptions,
   ): Promise<GlobalPullRequestSearchResult> {
-    return Promise.reject(
-      new ForgesError("Global pull-request search is not supported by this provider", 501),
-    );
+    return this.#unsupported("Global pull-request search is not supported by this provider");
   }
   protected searchIssuesGlobal(
     _query: string,
     _options?: GlobalIssueSearchOptions,
   ): Promise<GlobalIssueSearchResult> {
-    return Promise.reject(
-      new ForgesError("Global issue search is not supported by this provider", 501),
-    );
+    return this.#unsupported("Global issue search is not supported by this provider");
   }
   protected searchCommits(
     _query: string,
     _options?: CommitSearchOptions,
   ): Promise<CommitSearchResult> {
-    return Promise.reject(new ForgesError("Commit search is not supported by this provider", 501));
+    return this.#unsupported("Commit search is not supported by this provider");
   }
   protected listCommits(
     _owner: string,
     _repo: string,
     _options?: ListCommitOptions,
   ): Promise<PageResult<CommitSummary>> {
-    return Promise.reject(new ForgesError("Commit listing is not supported by this provider", 501));
+    return this.#unsupported("Commit listing is not supported by this provider");
   }
   protected abstract getCommit(owner: string, repo: string, sha: string): Promise<Commit>;
   protected compareCommits(
@@ -542,9 +553,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _head: string,
     _options?: CompareCommitsOptions,
   ): Promise<CommitComparison> {
-    return Promise.reject(
-      new ForgesError("Commit comparison is not supported by this provider", 501),
-    );
+    return this.#unsupported("Commit comparison is not supported by this provider");
   }
   protected readCommitPatch(
     _owner: string,
@@ -552,28 +561,24 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _sha: string,
     _options?: CommitPatchOptions,
   ): Promise<CommitPatch> {
-    return Promise.reject(
-      new ForgesError("Commit patch reads are not supported by this provider", 501),
-    );
+    return this.#unsupported("Commit patch reads are not supported by this provider");
   }
   protected listReleases(
     _owner: string,
     _repo: string,
     _options?: ListReleasesOptions,
   ): Promise<PageResult<Release>> {
-    return Promise.reject(new ForgesError("Releases are not supported by this provider", 501));
+    return this.#unsupported("Releases are not supported by this provider");
   }
   protected getRelease(_owner: string, _repo: string, _tag: string): Promise<Release> {
-    return Promise.reject(new ForgesError("Releases are not supported by this provider", 501));
+    return this.#unsupported("Releases are not supported by this provider");
   }
   protected createRelease(
     _owner: string,
     _repo: string,
     _input: CreateReleaseInput,
   ): Promise<Release> {
-    return Promise.reject(
-      new ForgesError("Release creation is not supported by this provider", 501),
-    );
+    return this.#unsupported("Release creation is not supported by this provider");
   }
   protected updateRelease(
     _owner: string,
@@ -581,9 +586,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _tag: string,
     _input: UpdateReleaseInput,
   ): Promise<Release> {
-    return Promise.reject(
-      new ForgesError("Release updates are not supported by this provider", 501),
-    );
+    return this.#unsupported("Release updates are not supported by this provider");
   }
   protected abstract listIssues(
     owner: string,
@@ -596,7 +599,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _query: string,
     _options?: ListOptions,
   ): Promise<SearchPageResult<Issue>> {
-    return Promise.reject(new ForgesError("Issue search is not supported by this provider", 501));
+    return this.#unsupported("Issue search is not supported by this provider");
   }
   protected abstract getIssue(owner: string, repo: string, number: number): Promise<Issue>;
   protected abstract createIssue(
@@ -610,7 +613,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _input: UpdateIssueInput,
   ): Promise<Issue> {
-    return Promise.reject(new ForgesError("Issue updates are not supported by this provider", 501));
+    return this.#unsupported("Issue updates are not supported by this provider");
   }
   protected abstract listPullRequests(
     owner: string,
@@ -623,9 +626,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _options?: ListPullRequestFilesOptions,
   ): Promise<PageResult<PullRequestFile>> {
-    return Promise.reject(
-      new ForgesError("Pull request file listing is not supported by this provider", 501),
-    );
+    return this.#unsupported("Pull request file listing is not supported by this provider");
   }
   protected listPullRequestChecks(
     _owner: string,
@@ -633,9 +634,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _options?: ListPullRequestChecksOptions,
   ): Promise<PageResult<PullRequestCheck>> {
-    return Promise.reject(
-      new ForgesError("Pull request checks are not supported by this provider", 501),
-    );
+    return this.#unsupported("Pull request checks are not supported by this provider");
   }
   protected listPullRequestReviews(
     _owner: string,
@@ -643,9 +642,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _options?: ListPullRequestReviewsOptions,
   ): Promise<PageResult<PullRequestReview>> {
-    return Promise.reject(
-      new ForgesError("Pull request reviews are not supported by this provider", 501),
-    );
+    return this.#unsupported("Pull request reviews are not supported by this provider");
   }
   protected getPullRequestReview(
     _owner: string,
@@ -653,9 +650,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _reviewId: string,
   ): Promise<PullRequestReview> {
-    return Promise.reject(
-      new ForgesError("Individual pull request reviews are not supported by this provider", 501),
-    );
+    return this.#unsupported("Individual pull request reviews are not supported by this provider");
   }
   protected searchPullRequests(
     _owner: string,
@@ -663,9 +658,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _query: string,
     _options?: ListOptions,
   ): Promise<SearchPageResult<PullRequestSearchItem>> {
-    return Promise.reject(
-      new ForgesError("Pull-request search is not supported by this provider", 501),
-    );
+    return this.#unsupported("Pull-request search is not supported by this provider");
   }
   protected abstract getPullRequest(
     owner: string,
@@ -691,9 +684,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _input: UpdatePullRequestInput,
   ): Promise<PullRequest> {
-    return Promise.reject(
-      new ForgesError("Pull request updates are not supported by this provider", 501),
-    );
+    return this.#unsupported("Pull request updates are not supported by this provider");
   }
   protected mergePullRequest(
     _owner: string,
@@ -701,9 +692,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _input: MergePullRequestInput,
   ): Promise<PullRequest> {
-    return Promise.reject(
-      new ForgesError("Pull request merges are not supported by this provider", 501),
-    );
+    return this.#unsupported("Pull request merges are not supported by this provider");
   }
   protected abstract listIssueComments(
     owner: string,
@@ -735,9 +724,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _input: CreateCommentInput,
   ): Promise<Comment> {
-    return Promise.reject(
-      new ForgesError("Issue comments are not supported by this provider", 501),
-    );
+    return this.#unsupported("Issue comments are not supported by this provider");
   }
   protected createPullRequestComment(
     _owner: string,
@@ -745,9 +732,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _input: CreateCommentInput,
   ): Promise<Comment> {
-    return Promise.reject(
-      new ForgesError("Pull request comments are not supported by this provider", 501),
-    );
+    return this.#unsupported("Pull request comments are not supported by this provider");
   }
   protected listIssueReactions(
     _owner: string,
@@ -755,9 +740,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _options?: ListReactionOptions,
   ): Promise<PageResult<Reaction>> {
-    return Promise.reject(
-      new ForgesError("Issue reactions are not supported by this provider", 501),
-    );
+    return this.#unsupported("Issue reactions are not supported by this provider");
   }
   protected listPullRequestReactions(
     _owner: string,
@@ -765,9 +748,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _options?: ListReactionOptions,
   ): Promise<PageResult<Reaction>> {
-    return Promise.reject(
-      new ForgesError("Pull request reactions are not supported by this provider", 501),
-    );
+    return this.#unsupported("Pull request reactions are not supported by this provider");
   }
   protected abstract getUser(username: string): Promise<User>;
   protected abstract getAuthenticatedUser(): Promise<User>;

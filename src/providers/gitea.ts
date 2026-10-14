@@ -583,7 +583,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
    * @param config Provider configuration. `baseURL` defaults to `https://gitea.com/api/v1`.
    */
   constructor(config: ProviderConfig) {
-    super();
+    super(PLATFORM);
     const baseURL = normalizeApiBaseURL(config.baseURL, "https://gitea.com/api/v1", "/api/v1");
     this.apiBaseURL = baseURL;
 
