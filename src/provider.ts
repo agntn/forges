@@ -369,16 +369,20 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         assertIssueUpdate(input, this.#platform);
         return this.updateIssue(owner, repo, number, input);
       },
-      listComments: (owner, repo, number, options) =>
-        this.listIssueComments(owner, repo, number, options),
+      listComments: async (owner, repo, number, options) => {
+        this.#assertListPage(options);
+        return this.listIssueComments(owner, repo, number, options);
+      },
       getComment: (owner, repo, number, commentId) =>
         this.getIssueComment(owner, repo, number, commentId),
       createComment: async (owner, repo, number, input) => {
         assertCommentBody(input.body, this.#platform);
         return this.createIssueComment(owner, repo, number, input);
       },
-      listReactions: (owner, repo, number, options) =>
-        this.listIssueReactions(owner, repo, number, options),
+      listReactions: async (owner, repo, number, options) => {
+        this.#assertListPage(options);
+        return this.listIssueReactions(owner, repo, number, options);
+      },
     };
     this.pullRequests = {
       searchGlobal: async (query, options) => {
@@ -422,16 +426,20 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         assertMergeInput(input, this.#platform);
         return this.mergePullRequest(owner, repo, number, input);
       },
-      listComments: (owner, repo, number, options) =>
-        this.listPullRequestComments(owner, repo, number, options),
+      listComments: async (owner, repo, number, options) => {
+        this.#assertListPage(options);
+        return this.listPullRequestComments(owner, repo, number, options);
+      },
       getComment: (owner, repo, number, commentId) =>
         this.getPullRequestComment(owner, repo, number, commentId),
       createComment: async (owner, repo, number, input) => {
         assertCommentBody(input.body, this.#platform);
         return this.createPullRequestComment(owner, repo, number, input);
       },
-      listReactions: (owner, repo, number, options) =>
-        this.listPullRequestReactions(owner, repo, number, options),
+      listReactions: async (owner, repo, number, options) => {
+        this.#assertListPage(options);
+        return this.listPullRequestReactions(owner, repo, number, options);
+      },
     };
     this.users = {
       get: (username) => this.getUser(username),
@@ -458,6 +466,12 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     if (!Number.isSafeInteger(page * perPage + 1)) {
       throw this.#refusal("Check pagination exceeds the safe integer range");
     }
+  }
+
+  /** Gitea cuts discussions and comment reactions locally, where a zero page never ends. */
+  #assertListPage(options: ListCommentOptions | undefined): void {
+    paginationPageValue(options?.page, 1, "page", this.#platform);
+    paginationPageValue(options?.perPage, 30, "perPage", this.#platform, 100);
   }
 
   #unsupported(message: string): Promise<never> {

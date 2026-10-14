@@ -3230,6 +3230,16 @@ describe("Gitea Provider", () => {
       expect(result.nextPage).toBe(2);
     });
 
+    it.each([
+      ["issues", { perPage: 0 }, "perPage must be an integer from 1 to 100"],
+      ["pullRequests", { page: 0 }, "page must be a positive integer"],
+    ] as const)("refuses %s %o before the local cut pages forever", async (kind, page, message) => {
+      await expect(
+        provider[kind].listComments("testowner", "test-repo", 1, page),
+      ).rejects.toMatchObject({ status: 400, message });
+      expect(mockedRawFetch).not.toHaveBeenCalled();
+    });
+
     it("serves a later page from the same response", async () => {
       mockedRawFetch.mockResolvedValueOnce({
         data: [giteaComment(), giteaComment({ id: 22 }), giteaComment({ id: 23 })],
@@ -3515,6 +3525,18 @@ describe("Gitea Provider", () => {
         hasNextPage: false,
         nextPage: undefined,
       });
+    });
+
+    it.each([
+      ["issues", { perPage: 0 }, "perPage must be an integer from 1 to 100"],
+      ["issues", { perPage: 101 }, "perPage must be an integer from 1 to 100"],
+      ["pullRequests", { page: 0 }, "page must be a positive integer"],
+    ] as const)("refuses %s %o before the local cut pages forever", async (kind, page, message) => {
+      await expect(
+        provider[kind].listReactions("testowner", "test-repo", 1, { commentId: "21", ...page }),
+      ).rejects.toMatchObject({ status: 400, message });
+      expect(mockClient).not.toHaveBeenCalled();
+      expect(mockedRawFetch).not.toHaveBeenCalled();
     });
 
     it("answers 404 for a comment from another issue", async () => {
