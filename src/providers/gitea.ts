@@ -1218,7 +1218,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     }
   }
 
-  /** A job with a task has started, even before its first step reports a time or its log exists. */
+  /** A job with a task has started, so a log it hasn't written yet reads empty. */
   async #readForgejoJobLog(
     route: string,
     raw: ForgejoActionsJob,
@@ -1230,8 +1230,8 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       return buildCiJobLog(job, await this.#readActionsJobLog(route), options);
     } catch (error) {
       const normalized = normalizeError(error, PLATFORM);
-      if (normalized.status === 404) return buildCiJobLog(job, null, options);
-      throw normalized;
+      if (normalized.status !== 404 || job.status === "completed") throw normalized;
+      return buildCiJobLog(job, { text: "", complete: true, timestamped: false }, options);
     }
   }
 

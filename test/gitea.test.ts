@@ -1278,7 +1278,7 @@ describe("Gitea Provider", () => {
         expect(log.content).toContain("curl: (22) The requested URL returned error: 504");
       });
 
-      it("says a job whose task wrote no log yet has none", async () => {
+      it("reads a running job whose task wrote no log yet as started and empty", async () => {
         mockClient
           .mockResolvedValueOnce({ ...forgejoJob, status: "running" })
           .mockRejectedValueOnce(makeFetchError(404));
@@ -1289,7 +1289,15 @@ describe("Gitea Provider", () => {
           "404651",
         );
 
-        expect(log).toMatchObject({ started: false, status: "in_progress", content: "" });
+        expect(log).toMatchObject({ started: true, status: "in_progress", content: "" });
+      });
+
+      it("answers NotFoundError for a finished job whose log is gone", async () => {
+        mockClient.mockResolvedValueOnce(forgejoJob).mockRejectedValueOnce(makeFetchError(404));
+
+        await expect(
+          provider.ciRuns.readJobLog("forgejo", "release-notes-assistant", "404651"),
+        ).rejects.toBeInstanceOf(NotFoundError);
       });
 
       it("reads the log in order where the job route is missing", async () => {
