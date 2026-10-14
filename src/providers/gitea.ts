@@ -144,6 +144,27 @@ interface GiteaCiJobsResponse {
   jobs?: ActionsJob[];
 }
 
+/** Forgejo serves a run's jobs as a bare array of these, with no steps, times or URL. */
+interface ForgejoActionsJob {
+  id: number;
+  run_id: number;
+  name: string;
+  status: string;
+}
+
+function mapForgejoActionsJob(raw: ForgejoActionsJob): CiJob {
+  return {
+    id: String(raw.id),
+    runId: String(raw.run_id),
+    name: raw.name,
+    ...normalizeCiRunState(raw.status),
+    startedAt: null,
+    completedAt: null,
+    url: "",
+    steps: [],
+  };
+}
+
 interface GiteaCiRunsResponse {
   total_count: number;
   workflow_runs: GiteaCiRun[];
@@ -399,6 +420,17 @@ function eventPayloadBranch(eventPayload: string | null | undefined): string {
  * Build query params for Gitea list endpoints.
  * Uses `limit` instead of `per_page` (key Gitea difference).
  */
+/** Forgejo ignores page and limit on jobs, so the page is cut here unless Link says it paged. */
+function forgejoJobsPage(
+  rows: ForgejoActionsJob[],
+  headers: Headers,
+  page: number,
+  perPage: number,
+): PageResult<CiJob> {
+  if (headers.has("Link")) return buildPageResult(rows, headers, mapForgejoActionsJob);
+  return slicePage(rows.map(mapForgejoActionsJob), page, perPage);
+}
+
 function buildListQuery(options?: ListOptions): Record<string, string> {
   const query: Record<string, string> = {};
   if (options?.page) query.page = String(options.page);
@@ -1077,11 +1109,12 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     try {
       const page = options?.page ?? 1;
       const perPage = options?.perPage ?? 30;
-      const { data, headers } = await rawFetch<GiteaCiJobsResponse>(
+      const { data, headers } = await rawFetch<GiteaCiJobsResponse | ForgejoActionsJob[]>(
         this.client,
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/runs/${runId}/jobs`,
         { query: { page: String(page), limit: String(perPage) } },
       );
+      if (Array.isArray(data)) return forgejoJobsPage(data, headers, page, perPage);
       const totalCount = data?.total_count;
       const result = buildPageResult(data?.jobs ?? [], headers, mapActionsJob);
       const hasNextPage =

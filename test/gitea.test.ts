@@ -987,6 +987,115 @@ describe("Gitea Provider", () => {
       expect(pages).toEqual([50, 50, 23, 0]);
     });
 
+    describe("on Forgejo, which answers with a bare array", () => {
+      /* Rows as Codeberg served forgejo/website run 7529583 on Forgejo 16. */
+      const forgejoJobs = [
+        {
+          id: 13806279,
+          run_id: 7529583,
+          attempt: 1,
+          handle: "ed7d28f5-82db-48be-ac19-329535cfd3bc",
+          repo_id: 73168,
+          owner_id: 70422,
+          name: "publish",
+          needs: null,
+          runs_on: ["docker"],
+          task_id: 10189305,
+          status: "success",
+        },
+        {
+          id: 13806282,
+          run_id: 7529583,
+          attempt: 1,
+          handle: "79c11142-cb51-4b71-947b-261ace239cef",
+          repo_id: 73168,
+          owner_id: 70422,
+          name: "sync",
+          needs: ["publish"],
+          runs_on: ["docker"],
+          task_id: 10189365,
+          status: "running",
+        },
+      ];
+
+      it("maps every job of the run", async () => {
+        mockedRawFetch.mockResolvedValueOnce({
+          data: forgejoJobs,
+          headers: makeHeaders(),
+          status: 200,
+        });
+
+        const result = await provider.ciRuns.listJobs("forgejo", "website", "7529583");
+
+        expect(result).toEqual({
+          items: [
+            {
+              id: "13806279",
+              runId: "7529583",
+              name: "publish",
+              status: "completed",
+              conclusion: "success",
+              startedAt: null,
+              completedAt: null,
+              url: "",
+              steps: [],
+            },
+            {
+              id: "13806282",
+              runId: "7529583",
+              name: "sync",
+              status: "in_progress",
+              conclusion: null,
+              startedAt: null,
+              completedAt: null,
+              url: "",
+              steps: [],
+            },
+          ],
+          totalCount: 2,
+          hasNextPage: false,
+          nextPage: undefined,
+        });
+      });
+
+      it("cuts the page itself, since the route ignores limit and page", async () => {
+        mockedRawFetch
+          .mockResolvedValueOnce({ data: forgejoJobs, headers: makeHeaders(), status: 200 })
+          .mockResolvedValueOnce({ data: forgejoJobs, headers: makeHeaders(), status: 200 });
+
+        const first = await provider.ciRuns.listJobs("forgejo", "website", "7529583", {
+          perPage: 1,
+        });
+        const second = await provider.ciRuns.listJobs("forgejo", "website", "7529583", {
+          page: 2,
+          perPage: 1,
+        });
+
+        expect(first.items.map((job) => job.name)).toEqual(["publish"]);
+        expect(first).toMatchObject({ totalCount: 2, hasNextPage: true, nextPage: 2 });
+        expect(second.items.map((job) => job.name)).toEqual(["sync"]);
+        expect(second).toMatchObject({ totalCount: 2, hasNextPage: false });
+      });
+
+      it("trusts Link when the host does page the route", async () => {
+        mockedRawFetch.mockResolvedValueOnce({
+          data: [forgejoJobs[1]],
+          headers: makeHeaders({
+            Link: '<https://codeberg.org/api/v1/repos/forgejo/website/actions/runs/7529583/jobs?page=1&limit=1>; rel="prev"',
+          }),
+          status: 200,
+        });
+
+        const result = await provider.ciRuns.listJobs("forgejo", "website", "7529583", {
+          page: 2,
+          perPage: 1,
+        });
+
+        expect(result.items.map((job) => job.name)).toEqual(["sync"]);
+        expect(result.hasNextPage).toBe(false);
+      });
+    });
+
     it("reads a job log with the failing step first", async () => {
       mockClient.mockResolvedValueOnce(rawJob).mockResolvedValueOnce(new Response(jobLog).body);
 
