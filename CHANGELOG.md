@@ -1,5 +1,49 @@
 # Changelog
 
+## v0.5.1
+
+[compare changes](https://github.com/agntn/forges/compare/v0.5.0...v0.5.1)
+
+### 🚀 Enhancements
+
+- List repository tags ([#253](https://github.com/agntn/forges/pull/253))
+- Report repository merge settings ([#258](https://github.com/agntn/forges/pull/258))
+- List issue and pull request reactions ([#267](https://github.com/agntn/forges/pull/267))
+- Accept an owner as search scope ([#268](https://github.com/agntn/forges/pull/268))
+- List checks for any commit ([#277](https://github.com/agntn/forges/pull/277))
+
+### 🔥 Performance
+
+- Drop empty merge fields from PR rows ([#290](https://github.com/agntn/forges/pull/290))
+
+### 🩹 Fixes
+
+- Wait for the first check after a push ([#260](https://github.com/agntn/forges/pull/260))
+- Name the field in path segment errors ([#270](https://github.com/agntn/forges/pull/270))
+- Name the platform on base class refusals ([#274](https://github.com/agntn/forges/pull/274))
+- Wait for the pushed head in checks ([#275](https://github.com/agntn/forges/pull/275))
+- Skip the stale GitLab head pipeline ([#276](https://github.com/agntn/forges/pull/276))
+- Say where a rejected token came from ([#279](https://github.com/agntn/forges/pull/279))
+- Keep paging past the Gitea limit clamp ([#281](https://github.com/agntn/forges/pull/281))
+- Read Forgejo jobs from a bare array ([#283](https://github.com/agntn/forges/pull/283))
+- Read Forgejo job logs ([#286](https://github.com/agntn/forges/pull/286))
+- Refuse a zero page on CI job lists ([#287](https://github.com/agntn/forges/pull/287))
+- Refuse a zero comment or reaction page ([#289](https://github.com/agntn/forges/pull/289))
+
+### 📖 Documentation
+
+- Trim the agents page ([#263](https://github.com/agntn/forges/pull/263))
+- Move AGENTS.md into the code it explains ([#272](https://github.com/agntn/forges/pull/272))
+
+### ✅ Tests
+
+- Drop tautological assertions ([#266](https://github.com/agntn/forges/pull/266))
+
+### ❤️ Contributors
+
+- Ori
+- Aeitwoen
+
 ## v0.5.0
 
 [compare changes](https://github.com/agntn/forges/compare/v0.4.1...v0.5.0)
