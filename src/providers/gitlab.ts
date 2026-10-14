@@ -122,6 +122,15 @@ const MAX_PIPELINE_NAME_REQUESTS = 5;
 const MAX_TAG_TARGET_REQUESTS = 5;
 const MAX_CONTRIBUTION_TEMPLATE_PAGES = 100;
 
+/** By project id, so a renamed project resolves the way its REST lookup did. */
+const MERGE_REQUEST_HEAD_QUERY = `
+  query($projects: [ID!], $iid: String!) {
+    projects(ids: $projects) {
+      nodes { mergeRequest(iid: $iid) { diffHeadSha headPipeline { id } } }
+    }
+  }
+`;
+
 // GitLab API response types (internal)
 
 interface GitLabContributionTemplate {
@@ -254,6 +263,19 @@ interface GitLabMergeRequest {
   detailed_merge_status?: string | null;
   head_pipeline?: GitLabPipeline | null;
   references?: { full?: string | null } | null;
+}
+
+interface GitLabGraphQLResponse<T> {
+  data?: T | null;
+  errors?: Array<{ message: string }>;
+}
+
+interface GitLabMergeRequestHeadData {
+  projects: {
+    nodes: Array<{
+      mergeRequest: { diffHeadSha: string | null; headPipeline: { id: string } | null } | null;
+    }>;
+  } | null;
 }
 
 interface GitLabMergeRequestDiff {
@@ -436,6 +458,11 @@ function encodeNamespacePath(namespace: string): string {
     .split("/")
     .map((group) => encodePathSegment(group, "Each owner group"))
     .join("%2F");
+}
+
+/** GitLab serves GraphQL beside REST, at `api/graphql` under the same instance. */
+function gitlabGraphqlUrl(apiBaseURL: string): string {
+  return new URL("graphql", apiBaseURL.replace(/\/v4\/*$/u, "/")).toString();
 }
 
 /**
@@ -1791,9 +1818,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   }
 
   /**
-   * Merged results and merge train pipelines run on a merge commit GitLab builds, and the REST
-   * row has no source sha, so `head_pipeline` stands in. GitLab moves that pointer only once a
-   * pipeline for the new head exists, so right after a push it can still name the previous one.
+   * A merged results pipeline runs on a merge commit, so the head pipeline stands in for it.
+   * GraphQL names that one, while REST can still point at the previous head's after a push.
    */
   protected override async listPullRequestChecks(
     owner: string,
@@ -1804,9 +1830,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const base = `/projects/${projectId}/merge_requests/${encodePathSegment(number, "Number")}`;
-      const mergeRequest = await this.client<GitLabMergeRequest>(base);
-      const headSha = mergeRequest.sha ?? "";
-      const headPipelineId = mergeRequest.head_pipeline?.id;
+      const { headSha, headPipelineId } = await this.#readMergeRequestHead(projectId, number);
       const perPage = options?.perPage ?? 30;
       const page = options?.page ?? 1;
       const skip = (page - 1) * perPage;
@@ -1854,6 +1878,36 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }
+  }
+
+  /** The head sha and the pipeline GitLab evaluates for it, from one read so they agree. */
+  async #readMergeRequestHead(
+    projectId: number,
+    number: number,
+  ): Promise<{ headSha: string; headPipelineId: number | undefined }> {
+    const response = await this.client<GitLabGraphQLResponse<GitLabMergeRequestHeadData>>(
+      gitlabGraphqlUrl(this.apiBaseURL),
+      {
+        method: "POST",
+        body: {
+          query: MERGE_REQUEST_HEAD_QUERY,
+          variables: { projects: [`gid://gitlab/Project/${projectId}`], iid: String(number) },
+        },
+        retry: 2,
+      },
+    );
+    const error = response.errors?.[0];
+    if (error) throw new ForgesError(error.message, undefined, "gitlab");
+    const mergeRequest = response.data?.projects?.nodes[0]?.mergeRequest;
+    if (!mergeRequest) throw new NotFoundError(`Merge request not found: !${number}`, "gitlab");
+    const pipelineGid = mergeRequest.headPipeline?.id;
+    return {
+      headSha: mergeRequest.diffHeadSha ?? "",
+      headPipelineId:
+        pipelineGid === undefined
+          ? undefined
+          : Number(pipelineGid.slice(pipelineGid.lastIndexOf("/") + 1)),
+    };
   }
 
   protected override getPullRequestReview(

@@ -96,6 +96,25 @@ describe("createHttpClient", () => {
     expect(sent().url).toBe("https://api.github.com/user/repos?page=2");
   });
 
+  it("leaves a URL on the base URL's host alone, outside the base path too", async () => {
+    fetchMock.mockResolvedValueOnce(json({ data: {} }));
+    const client = createHttpClient({ baseURL: "https://git.example.com/api/v3", token: "t" });
+
+    await client("https://git.example.com/api/graphql", { method: "POST", body: { query: "{}" } });
+
+    expect(sent().url).toBe("https://git.example.com/api/graphql");
+    expect(sent().headers.get("Authorization")).toBe("token t");
+  });
+
+  it("keeps a URL on another host under the base URL, so the token stays home", async () => {
+    fetchMock.mockResolvedValueOnce(json({}));
+    const client = createHttpClient({ baseURL: "https://git.example.com/api/v3", token: "t" });
+
+    await client("https://evil.example/collect");
+
+    expect(new URL(sent().url).host).toBe("git.example.com");
+  });
+
   it("uses custom userAgent when provided", async () => {
     fetchMock.mockResolvedValueOnce(json({}));
     const client = createHttpClient({
