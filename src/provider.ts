@@ -255,7 +255,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       },
       get: async (owner, repo, kind, key) => {
         if (key.length === 0) {
-          throw this.refusal("Contribution template key must not be empty");
+          throw this.#refusal("Contribution template key must not be empty");
         }
         const templates = await this.listContributionTemplates(owner, repo, kind);
         const template = templates.find((candidate) => candidate.key === key);
@@ -272,10 +272,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     this.code = {
       search: async (query, options) => {
         if (query.trim() === "") {
-          throw this.refusal("Code search query must not be empty");
+          throw this.#refusal("Code search query must not be empty");
         }
         if (options?.repo !== undefined && options.owner === undefined) {
-          throw this.refusal("Code search repository scope requires an owner");
+          throw this.#refusal("Code search repository scope requires an owner");
         }
         return this.searchCode(query, options);
       },
@@ -295,10 +295,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     this.commits = {
       search: async (query, options) => {
         if (query.trim() === "") {
-          throw this.refusal("Commit search query must not be empty");
+          throw this.#refusal("Commit search query must not be empty");
         }
         if (options?.repo !== undefined && options.owner === undefined) {
-          throw this.refusal("Commit search repository scope requires an owner");
+          throw this.#refusal("Commit search repository scope requires an owner");
         }
         return this.searchCommits(query, options);
       },
@@ -306,7 +306,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       get: (owner, repo, sha) => this.getCommit(owner, repo, sha),
       compare: async (owner, repo, base, head, options) => {
         if (base.trim() === "" || head.trim() === "") {
-          throw this.refusal("Commit comparison needs a base and a head ref");
+          throw this.#refusal("Commit comparison needs a base and a head ref");
         }
         return this.compareCommits(owner, repo, base, head, {
           page: paginationPageValue(options?.page, 1, "page", this.#platform),
@@ -331,7 +331,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       update: async (owner, repo, tag, input) => {
         assertReleaseTag(tag, this.#platform);
         if (Object.values(input).every((value) => value === undefined)) {
-          throw this.refusal("Release update needs at least one field");
+          throw this.#refusal("Release update needs at least one field");
         }
         return this.updateRelease(owner, repo, tag, input);
       },
@@ -345,7 +345,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       list: (owner, repo, options) => this.listIssues(owner, repo, options),
       search: async (owner, repo, query, options) => {
         if (query.trim() === "") {
-          throw this.refusal("Issue search query must not be empty");
+          throw this.#refusal("Issue search query must not be empty");
         }
         return this.searchIssues(owner, repo, query, options);
       },
@@ -381,7 +381,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         const page = paginationPageValue(options?.page, 1, "page", this.#platform);
         const perPage = paginationPageValue(options?.perPage, 30, "perPage", this.#platform, 100);
         if (!Number.isSafeInteger(page * perPage + 1)) {
-          throw this.refusal("Check pagination exceeds the safe integer range");
+          throw this.#refusal("Check pagination exceeds the safe integer range");
         }
         return this.listPullRequestChecks(owner, repo, number, options);
       },
@@ -391,7 +391,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         this.getPullRequestReview(owner, repo, number, reviewId),
       search: async (owner, repo, query, options) => {
         if (query.trim() === "") {
-          throw this.refusal("Pull-request search query must not be empty");
+          throw this.#refusal("Pull-request search query must not be empty");
         }
         return this.searchPullRequests(owner, repo, query, options);
       },
@@ -441,11 +441,11 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
   }
 
-  private refusal(message: string): ForgesError {
+  #refusal(message: string): ForgesError {
     return new ForgesError(message, 400, this.#platform);
   }
 
-  private unsupported(message: string): Promise<never> {
+  #unsupported(message: string): Promise<never> {
     return Promise.reject(new ForgesError(message, 501, this.#platform));
   }
 
@@ -467,7 +467,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _repo: string,
     _kind: ContributionTemplateKind,
   ): Promise<ContributionTemplateSummary[]> {
-    return this.unsupported("Contribution template discovery is not supported by this provider");
+    return this.#unsupported("Contribution template discovery is not supported by this provider");
   }
   protected readRepositoryContents(
     _owner: string,
@@ -475,34 +475,34 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _path: string,
     _options?: RepositoryContentsOptions,
   ): Promise<RepositoryContents> {
-    return this.unsupported("Repository contents reads are not supported by this provider");
+    return this.#unsupported("Repository contents reads are not supported by this provider");
   }
   protected listTags(
     _owner: string,
     _repo: string,
     _options?: ListTagsOptions,
   ): Promise<PageResult<Tag>> {
-    return this.unsupported("Tag listing is not supported by this provider");
+    return this.#unsupported("Tag listing is not supported by this provider");
   }
   protected readContributionTemplate(
     _owner: string,
     _repo: string,
     _template: ContributionTemplateSummary,
   ): Promise<ContributionTemplate["content"]> {
-    return this.unsupported("Contribution template reads are not supported by this provider");
+    return this.#unsupported("Contribution template reads are not supported by this provider");
   }
   protected searchCode(
     _query: string,
     _options?: CodeSearchOptions,
   ): Promise<SearchPageResult<CodeSearchItem>> {
-    return this.unsupported("Code search is not supported by this provider");
+    return this.#unsupported("Code search is not supported by this provider");
   }
   protected listCiRuns(
     _owner: string,
     _repo: string,
     _options?: ListCiRunsOptions,
   ): Promise<PageResult<CiRun>> {
-    return this.unsupported("CI-run listing is not supported by this provider");
+    return this.#unsupported("CI-run listing is not supported by this provider");
   }
   protected listCiJobs(
     _owner: string,
@@ -510,7 +510,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _runId: string,
     _options?: ListCiJobsOptions,
   ): Promise<PageResult<CiJob>> {
-    return this.unsupported("CI-job listing is not supported by this provider");
+    return this.#unsupported("CI-job listing is not supported by this provider");
   }
   protected readCiJobLog(
     _owner: string,
@@ -518,32 +518,32 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _jobId: string,
     _options?: CiJobLogOptions,
   ): Promise<CiJobLog> {
-    return this.unsupported("CI-job log reads are not supported by this provider");
+    return this.#unsupported("CI-job log reads are not supported by this provider");
   }
   protected searchPullRequestsGlobal(
     _query: string,
     _options?: GlobalPullRequestSearchOptions,
   ): Promise<GlobalPullRequestSearchResult> {
-    return this.unsupported("Global pull-request search is not supported by this provider");
+    return this.#unsupported("Global pull-request search is not supported by this provider");
   }
   protected searchIssuesGlobal(
     _query: string,
     _options?: GlobalIssueSearchOptions,
   ): Promise<GlobalIssueSearchResult> {
-    return this.unsupported("Global issue search is not supported by this provider");
+    return this.#unsupported("Global issue search is not supported by this provider");
   }
   protected searchCommits(
     _query: string,
     _options?: CommitSearchOptions,
   ): Promise<CommitSearchResult> {
-    return this.unsupported("Commit search is not supported by this provider");
+    return this.#unsupported("Commit search is not supported by this provider");
   }
   protected listCommits(
     _owner: string,
     _repo: string,
     _options?: ListCommitOptions,
   ): Promise<PageResult<CommitSummary>> {
-    return this.unsupported("Commit listing is not supported by this provider");
+    return this.#unsupported("Commit listing is not supported by this provider");
   }
   protected abstract getCommit(owner: string, repo: string, sha: string): Promise<Commit>;
   protected compareCommits(
@@ -553,7 +553,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _head: string,
     _options?: CompareCommitsOptions,
   ): Promise<CommitComparison> {
-    return this.unsupported("Commit comparison is not supported by this provider");
+    return this.#unsupported("Commit comparison is not supported by this provider");
   }
   protected readCommitPatch(
     _owner: string,
@@ -561,24 +561,24 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _sha: string,
     _options?: CommitPatchOptions,
   ): Promise<CommitPatch> {
-    return this.unsupported("Commit patch reads are not supported by this provider");
+    return this.#unsupported("Commit patch reads are not supported by this provider");
   }
   protected listReleases(
     _owner: string,
     _repo: string,
     _options?: ListReleasesOptions,
   ): Promise<PageResult<Release>> {
-    return this.unsupported("Releases are not supported by this provider");
+    return this.#unsupported("Releases are not supported by this provider");
   }
   protected getRelease(_owner: string, _repo: string, _tag: string): Promise<Release> {
-    return this.unsupported("Releases are not supported by this provider");
+    return this.#unsupported("Releases are not supported by this provider");
   }
   protected createRelease(
     _owner: string,
     _repo: string,
     _input: CreateReleaseInput,
   ): Promise<Release> {
-    return this.unsupported("Release creation is not supported by this provider");
+    return this.#unsupported("Release creation is not supported by this provider");
   }
   protected updateRelease(
     _owner: string,
@@ -586,7 +586,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _tag: string,
     _input: UpdateReleaseInput,
   ): Promise<Release> {
-    return this.unsupported("Release updates are not supported by this provider");
+    return this.#unsupported("Release updates are not supported by this provider");
   }
   protected abstract listIssues(
     owner: string,
@@ -599,7 +599,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _query: string,
     _options?: ListOptions,
   ): Promise<SearchPageResult<Issue>> {
-    return this.unsupported("Issue search is not supported by this provider");
+    return this.#unsupported("Issue search is not supported by this provider");
   }
   protected abstract getIssue(owner: string, repo: string, number: number): Promise<Issue>;
   protected abstract createIssue(
@@ -613,7 +613,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _input: UpdateIssueInput,
   ): Promise<Issue> {
-    return this.unsupported("Issue updates are not supported by this provider");
+    return this.#unsupported("Issue updates are not supported by this provider");
   }
   protected abstract listPullRequests(
     owner: string,
@@ -626,7 +626,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _options?: ListPullRequestFilesOptions,
   ): Promise<PageResult<PullRequestFile>> {
-    return this.unsupported("Pull request file listing is not supported by this provider");
+    return this.#unsupported("Pull request file listing is not supported by this provider");
   }
   protected listPullRequestChecks(
     _owner: string,
@@ -634,7 +634,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _options?: ListPullRequestChecksOptions,
   ): Promise<PageResult<PullRequestCheck>> {
-    return this.unsupported("Pull request checks are not supported by this provider");
+    return this.#unsupported("Pull request checks are not supported by this provider");
   }
   protected listPullRequestReviews(
     _owner: string,
@@ -642,7 +642,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _options?: ListPullRequestReviewsOptions,
   ): Promise<PageResult<PullRequestReview>> {
-    return this.unsupported("Pull request reviews are not supported by this provider");
+    return this.#unsupported("Pull request reviews are not supported by this provider");
   }
   protected getPullRequestReview(
     _owner: string,
@@ -650,7 +650,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _reviewId: string,
   ): Promise<PullRequestReview> {
-    return this.unsupported("Individual pull request reviews are not supported by this provider");
+    return this.#unsupported("Individual pull request reviews are not supported by this provider");
   }
   protected searchPullRequests(
     _owner: string,
@@ -658,7 +658,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _query: string,
     _options?: ListOptions,
   ): Promise<SearchPageResult<PullRequestSearchItem>> {
-    return this.unsupported("Pull-request search is not supported by this provider");
+    return this.#unsupported("Pull-request search is not supported by this provider");
   }
   protected abstract getPullRequest(
     owner: string,
@@ -684,7 +684,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _input: UpdatePullRequestInput,
   ): Promise<PullRequest> {
-    return this.unsupported("Pull request updates are not supported by this provider");
+    return this.#unsupported("Pull request updates are not supported by this provider");
   }
   protected mergePullRequest(
     _owner: string,
@@ -692,7 +692,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _input: MergePullRequestInput,
   ): Promise<PullRequest> {
-    return this.unsupported("Pull request merges are not supported by this provider");
+    return this.#unsupported("Pull request merges are not supported by this provider");
   }
   protected abstract listIssueComments(
     owner: string,
@@ -724,7 +724,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _input: CreateCommentInput,
   ): Promise<Comment> {
-    return this.unsupported("Issue comments are not supported by this provider");
+    return this.#unsupported("Issue comments are not supported by this provider");
   }
   protected createPullRequestComment(
     _owner: string,
@@ -732,7 +732,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _input: CreateCommentInput,
   ): Promise<Comment> {
-    return this.unsupported("Pull request comments are not supported by this provider");
+    return this.#unsupported("Pull request comments are not supported by this provider");
   }
   protected listIssueReactions(
     _owner: string,
@@ -740,7 +740,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _options?: ListReactionOptions,
   ): Promise<PageResult<Reaction>> {
-    return this.unsupported("Issue reactions are not supported by this provider");
+    return this.#unsupported("Issue reactions are not supported by this provider");
   }
   protected listPullRequestReactions(
     _owner: string,
@@ -748,7 +748,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _number: number,
     _options?: ListReactionOptions,
   ): Promise<PageResult<Reaction>> {
-    return this.unsupported("Pull request reactions are not supported by this provider");
+    return this.#unsupported("Pull request reactions are not supported by this provider");
   }
   protected abstract getUser(username: string): Promise<User>;
   protected abstract getAuthenticatedUser(): Promise<User>;
