@@ -1262,6 +1262,36 @@ describe("Gitea Provider", () => {
         expect(log).toMatchObject({ started: false, status: "waiting", content: "" });
       });
 
+      it("reads the log of a job a runner took before any step reports a time", async () => {
+        const steps = forgejoJob.steps.map((step) => ({ ...step, started: null, stopped: null }));
+        mockClient
+          .mockResolvedValueOnce({ ...forgejoJob, status: "cancelled", steps })
+          .mockResolvedValueOnce(new Response(forgejoLog).body);
+
+        const log = await provider.ciRuns.readJobLog(
+          "forgejo",
+          "release-notes-assistant",
+          "404651",
+        );
+
+        expect(log).toMatchObject({ started: true, conclusion: "cancelled" });
+        expect(log.content).toContain("curl: (22) The requested URL returned error: 504");
+      });
+
+      it("says a job whose task wrote no log yet has none", async () => {
+        mockClient
+          .mockResolvedValueOnce({ ...forgejoJob, status: "running" })
+          .mockRejectedValueOnce(makeFetchError(404));
+
+        const log = await provider.ciRuns.readJobLog(
+          "forgejo",
+          "release-notes-assistant",
+          "404651",
+        );
+
+        expect(log).toMatchObject({ started: false, status: "in_progress", content: "" });
+      });
+
       it("reads the log in order where the job route is missing", async () => {
         mockClient
           .mockRejectedValueOnce(makeFetchError(404))
@@ -1289,6 +1319,20 @@ describe("Gitea Provider", () => {
             "",
           ].join("\n"),
         );
+      });
+
+      it("names the job from its first line when the log is too long to keep it", async () => {
+        const [header, ...rest] = codebergLog.split("\n");
+        const filler = `2026-10-06T22:42:03.0000000Z ${"x".repeat(70)}\n`;
+        mockClient
+          .mockRejectedValueOnce(makeFetchError(404))
+          .mockResolvedValueOnce(
+            textStream(`${header}\n`, filler.repeat(8_000_000 / filler.length), rest.join("\n")),
+          );
+
+        const log = await provider.ciRuns.readJobLog("forgejo", "website", "13806279");
+
+        expect(log).toMatchObject({ name: "publish", conclusion: "success", logComplete: false });
       });
 
       it("keeps a job without its own closing banner in progress", async () => {

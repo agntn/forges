@@ -98,15 +98,27 @@ export function jobStarted(job: CiJob, reportsSteps: boolean): boolean {
   return !reportsSteps || job.steps.length > 0;
 }
 
-/** Read a log stream, keeping its last {@link MAX_JOB_LOG_INPUT_CHARS} when it runs longer. */
+/** The text before the first line break, read across chunks. */
+function leadingLine(chunks: readonly string[]): string {
+  let line = "";
+  for (const chunk of chunks) {
+    const end = chunk.indexOf("\n");
+    if (end !== -1) return line + chunk.slice(0, end);
+    line += chunk;
+  }
+  return line;
+}
+
+/** Read a log stream; past {@link MAX_JOB_LOG_INPUT_CHARS} it keeps the end and the first line. */
 export async function readJobLogText(
   stream: ReadableStream<Uint8Array>,
-): Promise<{ text: string; complete: boolean }> {
+): Promise<{ text: string; complete: boolean; firstLine: string }> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   const chunks: string[] = [];
   let length = 0;
   let complete = true;
+  let firstLine: string | undefined;
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -115,6 +127,7 @@ export async function readJobLogText(
         chunks.push(chunk);
         length += chunk.length;
         while (length - chunks[0]!.length >= MAX_JOB_LOG_INPUT_CHARS) {
+          firstLine ??= leadingLine(chunks);
           length -= chunks.shift()!.length;
           complete = false;
         }
@@ -125,6 +138,7 @@ export async function readJobLogText(
     reader.releaseLock();
   }
   let text = chunks.join("");
+  firstLine ??= leadingLine([text]);
   if (text.length > MAX_JOB_LOG_INPUT_CHARS) {
     text = text.slice(text.length - MAX_JOB_LOG_INPUT_CHARS);
     complete = false;
@@ -134,7 +148,7 @@ export async function readJobLogText(
     const newline = text.indexOf("\n");
     text = newline === -1 ? "" : text.slice(newline + 1);
   }
-  return { text, complete };
+  return { text, complete, firstLine };
 }
 
 function plain(text: string): string {

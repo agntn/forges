@@ -176,7 +176,7 @@ function mapForgejoActionsJob(raw: ForgejoActionsJob): CiJob {
     runId: String(raw.run_id),
     name: raw.name,
     ...state,
-    startedAt: steps[0]?.startedAt ?? null,
+    startedAt: steps.find((step) => step.startedAt !== null)?.startedAt ?? null,
     completedAt: state.status === "completed" ? (steps.at(-1)?.completedAt ?? null) : null,
     url: raw.html_url ?? "",
     steps,
@@ -196,12 +196,15 @@ const FORGEJO_JOB_OUTCOMES: Readonly<Record<string, string>> = {
 };
 
 /** Forgejo 16 has no route for one job, so the log has to say which job it was and how it ended. */
-function jobFromForgejoLog(jobId: string, log: string): CiJob {
-  const result = [...log.matchAll(FORGEJO_JOB_RESULT)].at(-1)?.[1] ?? "";
+function jobFromForgejoLog(
+  jobId: string,
+  log: Readonly<{ text: string; firstLine: string }>,
+): CiJob {
+  const result = [...log.text.matchAll(FORGEJO_JOB_RESULT)].at(-1)?.[1] ?? "";
   return {
     id: jobId,
     runId: "",
-    name: FORGEJO_TASK_LINE.exec(log.split("\n", 1)[0] ?? "")?.[1] ?? "",
+    name: FORGEJO_TASK_LINE.exec(log.firstLine)?.[1] ?? "",
     ...normalizeCiRunState(FORGEJO_JOB_OUTCOMES[result] ?? "running"),
     startedAt: null,
     completedAt: null,
@@ -1193,9 +1196,10 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const raw = await this.#tryActionsJob(route);
       if (raw === null) {
         const log = await this.#readActionsJobLog(route);
-        return buildCiJobLog(jobFromForgejoLog(jobId, log.text), log, options);
+        return buildCiJobLog(jobFromForgejoLog(jobId, log), log, options);
       }
-      const job = isForgejoActionsJob(raw) ? mapForgejoActionsJob(raw) : mapActionsJob(raw);
+      if (isForgejoActionsJob(raw)) return await this.#readForgejoJobLog(route, raw, options);
+      const job = mapActionsJob(raw);
       if (!jobStarted(job, true)) return buildCiJobLog(job, null, options);
       return buildCiJobLog(job, await this.#readActionsJobLog(route), options);
     } catch (error) {
@@ -1210,6 +1214,23 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     } catch (error) {
       const normalized = normalizeError(error, PLATFORM);
       if (normalized.status === 404) return null;
+      throw normalized;
+    }
+  }
+
+  /** A job with a task has started, even before its first step reports a time or its log exists. */
+  async #readForgejoJobLog(
+    route: string,
+    raw: ForgejoActionsJob,
+    options?: CiJobLogOptions,
+  ): Promise<CiJobLog> {
+    const job = mapForgejoActionsJob(raw);
+    if (raw.task_id === 0) return buildCiJobLog(job, null, options);
+    try {
+      return buildCiJobLog(job, await this.#readActionsJobLog(route), options);
+    } catch (error) {
+      const normalized = normalizeError(error, PLATFORM);
+      if (normalized.status === 404) return buildCiJobLog(job, null, options);
       throw normalized;
     }
   }
