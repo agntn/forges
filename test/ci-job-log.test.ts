@@ -250,15 +250,25 @@ describe("readJobLogText", () => {
       },
     });
 
-    await expect(readJobLogText(stream)).resolves.toEqual({ text: "✓ ok\n", complete: true });
+    await expect(readJobLogText(stream)).resolves.toEqual({
+      text: "✓ ok\n",
+      complete: true,
+      head: "✓ ok\n",
+    });
   });
 
   it("keeps the end of a log longer than the input limit from a whole line", async () => {
     const line = `${"x".repeat(99)}\n`;
     const head = line.repeat(MAX_JOB_LOG_INPUT_CHARS / line.length);
-    const { text, complete } = await readJobLogText(textStream("cut me\n", head, "the failure\n"));
+    const {
+      text,
+      complete,
+      head: kept,
+    } = await readJobLogText(textStream("cut me\n", head, "the failure\n"));
 
     expect(complete).toBe(false);
+    expect(kept.startsWith("cut me\nxxx")).toBe(true);
+    expect(kept).toHaveLength(4096);
     expect(text.length).toBeLessThanOrEqual(MAX_JOB_LOG_INPUT_CHARS);
     expect(text.startsWith(line)).toBe(true);
     expect(text.endsWith("the failure\n")).toBe(true);

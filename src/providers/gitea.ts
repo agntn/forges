@@ -144,20 +144,81 @@ interface GiteaCiJobsResponse {
   jobs?: ActionsJob[];
 }
 
-/** Forgejo serves a run's jobs as a bare array of these, with no steps, times or URL. */
+/** A Forgejo job; only the single-job route of Forgejo 17 lists its steps. */
 interface ForgejoActionsJob {
   id: number;
   run_id: number;
   name: string;
   status: string;
+  /** Zero until a runner takes the job; Gitea has no such field. */
+  task_id: number;
+  html_url?: string;
+  steps?: {
+    number: number;
+    name: string;
+    status: string;
+    started: string | null;
+    stopped: string | null;
+  }[];
 }
 
 function mapForgejoActionsJob(raw: ForgejoActionsJob): CiJob {
+  const state = normalizeCiRunState(raw.status);
+  const steps = (raw.steps ?? []).map((step) => ({
+    number: step.number,
+    name: step.name,
+    ...normalizeCiRunState(step.status),
+    startedAt: step.started ?? null,
+    completedAt: step.stopped ?? null,
+  }));
   return {
     id: String(raw.id),
     runId: String(raw.run_id),
     name: raw.name,
-    ...normalizeCiRunState(raw.status),
+    ...state,
+    startedAt: steps.find((step) => step.startedAt !== null)?.startedAt ?? null,
+    completedAt: state.status === "completed" ? (steps.at(-1)?.completedAt ?? null) : null,
+    url: raw.html_url ?? "",
+    steps,
+  };
+}
+
+function isForgejoActionsJob(raw: ActionsJob | ForgejoActionsJob): raw is ForgejoActionsJob {
+  return "task_id" in raw;
+}
+
+/** Forgejo runners and old act_runner name the job up front, newer act_runner a few lines in. */
+const FORGEJO_TASK_LINE = /^\S+Z .* received task \d+ of job (.+), (?:be )?triggered by event: /u;
+const ACT_RUNNER_JOB_LINE = /^\S+Z Job: (.+)$/mu;
+/** act_runner drops the flag from the banner and also reports a cancelled job. */
+const FORGEJO_JOB_RESULT = /^\S+Z (?:\u{1F3C1} {2})?Job (succeeded|failed|cancelled)$/u;
+const FORGEJO_RUN_ERROR = /^\S+Z Job '.+' failed$/u;
+const FORGEJO_JOB_OUTCOMES: Readonly<Record<string, string>> = {
+  succeeded: "success",
+  failed: "failure",
+  cancelled: "cancelled",
+};
+
+function forgejoJobName(head: string): string {
+  return (FORGEJO_TASK_LINE.exec(head) ?? ACT_RUNNER_JOB_LINE.exec(head))?.[1] ?? "";
+}
+
+/** The banner ends the log, or sits just above the run error the runner writes last. */
+function forgejoJobResult(log: string): string {
+  const lines = log.slice(-2000).trimEnd().split(/\r?\n/u);
+  const last = lines.at(-1) ?? "";
+  const banner = FORGEJO_RUN_ERROR.test(last) ? (lines.at(-2) ?? "") : last;
+  return FORGEJO_JOB_RESULT.exec(banner)?.[1] ?? "";
+}
+
+/** Forgejo 16 has no route for one job, so the log has to say which job it was and how it ended. */
+function jobFromForgejoLog(jobId: string, log: Readonly<{ text: string; head: string }>): CiJob {
+  const result = forgejoJobResult(log.text);
+  return {
+    id: jobId,
+    runId: "",
+    name: forgejoJobName(log.head),
+    ...normalizeCiRunState(FORGEJO_JOB_OUTCOMES[result] ?? "running"),
     startedAt: null,
     completedAt: null,
     url: "",
@@ -1145,16 +1206,53 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<CiJobLog> {
     try {
       const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/jobs/${jobId}`;
-      const job = mapActionsJob(await this.client<ActionsJob>(route));
+      const raw = await this.#tryActionsJob(route);
+      if (raw === null) {
+        const log = await this.#readActionsJobLog(route);
+        return buildCiJobLog(jobFromForgejoLog(jobId, log), log, options);
+      }
+      if (isForgejoActionsJob(raw)) return await this.#readForgejoJobLog(route, raw, options);
+      const job = mapActionsJob(raw);
       if (!jobStarted(job, true)) return buildCiJobLog(job, null, options);
-      const stream = await this.client<unknown, "stream">(`${route}/logs`, {
-        responseType: "stream",
-      });
-      const log = await readJobLogText(stream);
-      return buildCiJobLog(job, { ...log, timestamped: true }, options);
+      return buildCiJobLog(job, await this.#readActionsJobLog(route), options);
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
+  }
+
+  /** Forgejo 16 answers 404 for every job, so only a missing log proves the job is gone. */
+  async #tryActionsJob(route: string): Promise<ActionsJob | ForgejoActionsJob | null> {
+    try {
+      return await this.client<ActionsJob | ForgejoActionsJob>(route);
+    } catch (error) {
+      const normalized = normalizeError(error, PLATFORM);
+      if (normalized.status === 404) return null;
+      throw normalized;
+    }
+  }
+
+  /** A job with a task has started, so a log it hasn't written yet reads empty. */
+  async #readForgejoJobLog(
+    route: string,
+    raw: ForgejoActionsJob,
+    options?: CiJobLogOptions,
+  ): Promise<CiJobLog> {
+    const job = mapForgejoActionsJob(raw);
+    if (raw.task_id === 0) return buildCiJobLog(job, null, options);
+    try {
+      return buildCiJobLog(job, await this.#readActionsJobLog(route), options);
+    } catch (error) {
+      const normalized = normalizeError(error, PLATFORM);
+      if (normalized.status !== 404 || job.status === "completed") throw normalized;
+      return buildCiJobLog(job, { text: "", complete: true, timestamped: false }, options);
+    }
+  }
+
+  async #readActionsJobLog(route: string) {
+    const stream = await this.client<unknown, "stream">(`${route}/logs`, {
+      responseType: "stream",
+    });
+    return { ...(await readJobLogText(stream)), timestamped: true };
   }
 
   /** Gitea clamps `limit`, so a short page goes by the real page size, or keeps paging blind. */

@@ -98,15 +98,28 @@ export function jobStarted(job: CiJob, reportsSteps: boolean): boolean {
   return !reportsSteps || job.steps.length > 0;
 }
 
-/** Read a log stream, keeping its last {@link MAX_JOB_LOG_INPUT_CHARS} when it runs longer. */
+/** How much of a log's start a read keeps, enough for the header a runner prints first. */
+const JOB_LOG_HEAD_CHARS = 4096;
+
+function leadingText(chunks: readonly string[]): string {
+  let head = "";
+  for (const chunk of chunks) {
+    head += chunk.slice(0, JOB_LOG_HEAD_CHARS - head.length);
+    if (head.length >= JOB_LOG_HEAD_CHARS) break;
+  }
+  return head;
+}
+
+/** Read a log stream; past {@link MAX_JOB_LOG_INPUT_CHARS} it keeps the end and the header. */
 export async function readJobLogText(
   stream: ReadableStream<Uint8Array>,
-): Promise<{ text: string; complete: boolean }> {
+): Promise<{ text: string; complete: boolean; head: string }> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   const chunks: string[] = [];
   let length = 0;
   let complete = true;
+  let head: string | undefined;
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -115,6 +128,7 @@ export async function readJobLogText(
         chunks.push(chunk);
         length += chunk.length;
         while (length - chunks[0]!.length >= MAX_JOB_LOG_INPUT_CHARS) {
+          head ??= leadingText(chunks);
           length -= chunks.shift()!.length;
           complete = false;
         }
@@ -125,6 +139,7 @@ export async function readJobLogText(
     reader.releaseLock();
   }
   let text = chunks.join("");
+  head ??= leadingText([text]);
   if (text.length > MAX_JOB_LOG_INPUT_CHARS) {
     text = text.slice(text.length - MAX_JOB_LOG_INPUT_CHARS);
     complete = false;
@@ -134,7 +149,7 @@ export async function readJobLogText(
     const newline = text.indexOf("\n");
     text = newline === -1 ? "" : text.slice(newline + 1);
   }
-  return { text, complete };
+  return { text, complete, head };
 }
 
 function plain(text: string): string {
