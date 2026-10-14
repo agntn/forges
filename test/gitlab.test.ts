@@ -267,6 +267,17 @@ function mockProjectResolve(projectId: number = 278964) {
   mocks.client.mockResolvedValueOnce({ id: projectId });
 }
 
+const glGraphqlUrl = "https://gitlab.com/api/graphql";
+
+/** A merge request's head as GraphQL reports it, with the pipeline GitLab evaluates for it. */
+function mergeRequestHead(sha: string | null, headPipelineId?: number) {
+  const headPipeline =
+    headPipelineId === undefined ? null : { id: `gid://gitlab/Ci::Pipeline/${headPipelineId}` };
+  return {
+    data: { projects: { nodes: [{ mergeRequest: { diffHeadSha: sha, headPipeline } }] } },
+  };
+}
+
 // --- Tests ---
 
 describe("GitLabProvider", () => {
@@ -1928,7 +1939,7 @@ describe("GitLabProvider", () => {
   describe("pullRequests.listChecks", () => {
     it("reads and normalizes merge-request pipelines", async () => {
       mockProjectResolve(278964);
-      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      mocks.client.mockResolvedValueOnce(mergeRequestHead(glMergeRequest.sha));
       mocks.rawFetch.mockResolvedValueOnce({
         data: [
           { ...glPipeline, id: 8999, sha: "stale-revision" },
@@ -1966,7 +1977,7 @@ describe("GitLabProvider", () => {
 
     it("walks stale pipeline pages to preserve normalized pagination", async () => {
       mockProjectResolve(278964);
-      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      mocks.client.mockResolvedValueOnce(mergeRequestHead(glMergeRequest.sha));
       mocks.rawFetch
         .mockResolvedValueOnce({
           data: [{ ...glPipeline, sha: "stale-revision" }],
@@ -2006,7 +2017,7 @@ describe("GitLabProvider", () => {
 
     it("uses stable fallbacks when the pipeline has no name and no URL", async () => {
       mockProjectResolve(278964);
-      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      mocks.client.mockResolvedValueOnce(mergeRequestHead(glMergeRequest.sha));
       mocks.rawFetch.mockResolvedValueOnce({
         data: [{ ...glPipeline, sha: glMergeRequest.sha, web_url: null }],
         headers: glHeaders(),
@@ -2021,7 +2032,7 @@ describe("GitLabProvider", () => {
     it("reads the name of a fork pipeline from the fork", async () => {
       const forkPipeline = { ...glPipeline, project_id: 41372369, sha: glMergeRequest.sha };
       mockProjectResolve(278964);
-      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      mocks.client.mockResolvedValueOnce(mergeRequestHead(glMergeRequest.sha));
       mocks.rawFetch.mockResolvedValueOnce({ data: [forkPipeline], headers: glHeaders() });
       mocks.client.mockResolvedValueOnce({
         ...forkPipeline,
@@ -2045,7 +2056,7 @@ describe("GitLabProvider", () => {
     it("keeps every listed pipeline whose name lookup fails", async () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       mockProjectResolve(278964);
-      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      mocks.client.mockResolvedValueOnce(mergeRequestHead(glMergeRequest.sha));
       mocks.rawFetch.mockResolvedValueOnce({
         data: [
           { ...glPipeline, sha: glMergeRequest.sha },
@@ -2076,7 +2087,7 @@ describe("GitLabProvider", () => {
     it("reads the pipeline name again on every call", async () => {
       mockProjectResolve(278964);
       for (const name of ["Ruby 3.3.12 MR", "Ruby 3.3.12 MR [renamed]"]) {
-        mocks.client.mockResolvedValueOnce(glMergeRequest);
+        mocks.client.mockResolvedValueOnce(mergeRequestHead(glMergeRequest.sha));
         mocks.rawFetch.mockResolvedValueOnce({
           data: [{ ...glPipeline, sha: glMergeRequest.sha }],
           headers: glHeaders(),
@@ -2099,7 +2110,7 @@ describe("GitLabProvider", () => {
       let inFlight = 0;
       let peak = 0;
       mockProjectResolve(278964);
-      mocks.client.mockResolvedValueOnce(glMergeRequest);
+      mocks.client.mockResolvedValueOnce(mergeRequestHead(glMergeRequest.sha));
       mocks.rawFetch.mockResolvedValueOnce({ data: rows, headers: glHeaders() });
       mocks.client.mockImplementation(async () => {
         inFlight += 1;
@@ -2120,7 +2131,7 @@ describe("GitLabProvider", () => {
       const mergeRef = "refs/merge-requests/33/merge";
       const headPipeline = { ...glPipeline, id: 9003, sha: "merge-commit-revision", ref: mergeRef };
       mockProjectResolve(278964);
-      mocks.client.mockResolvedValueOnce({ ...glMergeRequest, head_pipeline: headPipeline });
+      mocks.client.mockResolvedValueOnce(mergeRequestHead(glMergeRequest.sha, 9003));
       mocks.rawFetch.mockResolvedValueOnce({
         data: [
           { ...headPipeline, status: "success" },
@@ -2135,13 +2146,86 @@ describe("GitLabProvider", () => {
 
       const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
 
-      expect(mocks.client).toHaveBeenCalledWith("/projects/278964/merge_requests/33");
       expect(mocks.client).toHaveBeenCalledWith("/projects/278964/pipelines/9003");
       expect(mocks.client).toHaveBeenCalledWith("/projects/278964/pipelines/9001");
       expect(result.items.map((check) => [check.id, check.conclusion])).toEqual([
         ["9003", "success"],
         ["9001", null],
       ]);
+    });
+
+    it("leaves out the previous head's pipeline that head_pipeline still names", async () => {
+      const previousHead = { ...glPipeline, id: 9000, sha: "previous-revision" };
+      mocks.client.mockImplementation(async (url: string) => {
+        if (url === "/projects/gitlab-org%2Fgitlab-foss") return { id: 278964 };
+        if (url === "/projects/278964/merge_requests/33") {
+          return { ...glMergeRequest, head_pipeline: previousHead };
+        }
+        if (url === glGraphqlUrl) return mergeRequestHead(glMergeRequest.sha);
+        return { ...glPipeline, name: null };
+      });
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [{ ...glPipeline, sha: glMergeRequest.sha, status: "running" }, previousHead],
+        headers: glHeaders(),
+      });
+
+      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+
+      expect(result.items.map((check) => check.id)).toEqual(["9001"]);
+    });
+
+    it("reads the head by project id from the instance's GraphQL endpoint", async () => {
+      const selfHosted = new GitLabProvider({
+        baseURL: "https://gitlab.example.com/gitlab/",
+        token: "glpat-test",
+      });
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce(mergeRequestHead(glMergeRequest.sha));
+      mocks.rawFetch.mockResolvedValueOnce({ data: [], headers: glHeaders() });
+
+      await selfHosted.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+
+      expect(mocks.client).toHaveBeenCalledWith("https://gitlab.example.com/gitlab/api/graphql", {
+        method: "POST",
+        body: {
+          query: expect.stringContaining("headPipeline"),
+          variables: { projects: ["gid://gitlab/Project/278964"], iid: "33" },
+        },
+        retry: 2,
+      });
+    });
+
+    it("answers a merge request GraphQL cannot find as not found", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce({
+        data: { projects: { nodes: [{ mergeRequest: null }] } },
+      });
+
+      const error = await gl.pullRequests
+        .listChecks("gitlab-org", "gitlab-foss", 33)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(NotFoundError);
+      expect(error).toMatchObject({ message: "Merge request not found: !33", platform: "gitlab" });
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    });
+
+    it("passes on the first GraphQL error", async () => {
+      mockProjectResolve(278964);
+      mocks.client.mockResolvedValueOnce({
+        data: null,
+        errors: [{ message: "Query has complexity of 300, which exceeds max complexity of 250" }],
+      });
+
+      const error = await gl.pullRequests
+        .listChecks("gitlab-org", "gitlab-foss", 33)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ForgesError);
+      expect(error).toMatchObject({
+        message: "Query has complexity of 300, which exceeds max complexity of 250",
+        platform: "gitlab",
+      });
     });
   });
 

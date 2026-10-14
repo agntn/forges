@@ -187,12 +187,17 @@ export function rawFetch<T = unknown, R extends ResponseType = "json">(
   return client.raw<T, R>(url, options);
 }
 
-/** A path joins the base URL. A URL that already starts with it stays as it is. */
+/** A path joins the base URL. A URL on its host stays as it is, one elsewhere is joined too. */
 function withBase(url: string, baseURL: string): string {
   const base = baseURL.endsWith("/") ? baseURL.slice(0, -1) : baseURL;
-  if (!base || url.startsWith(base)) return url;
+  if (!base || url.startsWith(base) || sameOrigin(url, base)) return url;
   if (!url || url === "/") return base;
   return `${base}/${url.replace(/^\.?\//u, "")}`;
+}
+
+/** Same scheme, host and port, so the token goes nowhere the base URL wouldn't take it. */
+function sameOrigin(url: string, base: string): boolean {
+  return URL.canParse(url) && URL.canParse(base) && new URL(url).origin === new URL(base).origin;
 }
 
 /** Merge query values into the URL. A key given here replaces the same key already in it. */
