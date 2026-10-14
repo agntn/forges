@@ -748,7 +748,52 @@ describe("Gitea Provider", () => {
       expect(pages).toEqual([50, 50, 23, 0]);
     });
 
+    it("walks a clamped list to its last row with the server's page size", async () => {
+      mockClient.mockResolvedValueOnce({ max_response_items: 50 });
+      const page = (count: number) => Array.from({ length: count }, () => giteaTag);
+      const total = makeHeaders({ "x-total-count": "123" });
+      mockedRawFetch
+        .mockResolvedValueOnce({ data: page(50), headers: total, status: 200 })
+        .mockResolvedValueOnce({ data: page(50), headers: total, status: 200 })
+        .mockResolvedValueOnce({ data: page(23), headers: total, status: 200 });
+
+      const pages = [];
+      for (let next: number | undefined = 1; next !== undefined;) {
+        const result = await provider.repos.listTags("gitea", "act_runner", {
+          page: next,
+          perPage: 100,
+        });
+        pages.push(result.items.length);
+        next = result.nextPage;
+      }
+
+      expect(pages).toEqual([50, 50, 23]);
+      expect(mockClient).toHaveBeenCalledTimes(1);
+      expect(mockClient).toHaveBeenCalledWith("/settings/api");
+    });
+
+    it.each([
+      ["the server's page size", { max_response_items: 50 }],
+      ["no page size to go by", new Error("settings unavailable")],
+    ])("reads a clamped page as half the count, not all of it, with %s", async (_, settings) => {
+      if (settings instanceof Error) mockClient.mockRejectedValueOnce(settings);
+      else mockClient.mockResolvedValueOnce(settings);
+      mockedRawFetch.mockResolvedValueOnce({
+        data: Array.from({ length: 50 }, () => giteaTag),
+        headers: makeHeaders({ "x-total-count": "150" }),
+        status: 200,
+      });
+
+      const result = await provider.repos.listTags("gitea", "act_runner", {
+        page: 2,
+        perPage: 100,
+      });
+
+      expect(result).toMatchObject({ hasNextPage: true, nextPage: 3 });
+    });
+
     it("stops on a short page that closes the count", async () => {
+      mockClient.mockResolvedValueOnce({ max_response_items: 50 });
       mockedRawFetch.mockResolvedValueOnce({
         data: [giteaTag, giteaTag],
         headers: makeHeaders({ "x-total-count": "32" }),
@@ -764,6 +809,7 @@ describe("Gitea Provider", () => {
     });
 
     it("stops when the count is exhausted", async () => {
+      mockClient.mockResolvedValueOnce({ max_response_items: 50 });
       mockedRawFetch.mockResolvedValueOnce({
         data: [giteaTag],
         headers: makeHeaders({ "x-total-count": "3" }),
@@ -2091,6 +2137,7 @@ describe("Gitea Provider", () => {
     });
 
     it("stops when the count is exhausted and no Link header exists", async () => {
+      mockClient.mockResolvedValueOnce({ max_response_items: 50 });
       mockedRawFetch.mockResolvedValueOnce({
         data: reviews.slice(0, 1),
         headers: makeHeaders({ "x-total-count": "3" }),
@@ -2106,6 +2153,7 @@ describe("Gitea Provider", () => {
     });
 
     it("stops on a short page that closes the count with a review request in it", async () => {
+      mockClient.mockResolvedValueOnce({ max_response_items: 50 });
       mockedRawFetch.mockResolvedValueOnce({
         data: reviews.slice(1),
         headers: makeHeaders({ "x-total-count": "5" }),

@@ -370,13 +370,6 @@ interface GiteaReviewThread {
   comments: GiteaPullReviewComment[];
 }
 
-/** Gitea clamps `limit` and may skip Link, so a short page below the count isn't the end. */
-function countedNextPage(page: number, perPage: number, served: number, total: number): boolean {
-  if (served === 0 || !Number.isFinite(total)) return false;
-  if (served >= perPage) return page * perPage < total;
-  return (page - 1) * perPage + served !== total && page * served < total;
-}
-
 function branchName(ref: string | null | undefined): string {
   return ref?.replace(/^refs\/heads\//u, "") ?? "";
 }
@@ -577,6 +570,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   private client: HttpClient;
   private readonly apiBaseURL: string;
   private pagedCommitPathFilter: boolean | undefined;
+  #responseItemLimit: number | null | undefined;
 
   /**
    * Create a Gitea/Forgejo provider.
@@ -867,7 +861,8 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         sha: raw.commit?.sha || null,
       }));
       const hasNextPage =
-        result.hasNextPage || countedNextPage(page, perPage, result.items.length, total);
+        result.hasNextPage ||
+        (await this.#countedNextPage(page, perPage, result.items.length, total));
       return {
         ...result,
         totalCount: Number.isFinite(total) ? total : undefined,
@@ -1056,7 +1051,12 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const hasNextPage =
         result.hasNextPage ||
         (!headers.has("Link") &&
-          countedNextPage(page, perPage, result.items.length, totalCount ?? Number.NaN));
+          (await this.#countedNextPage(
+            page,
+            perPage,
+            result.items.length,
+            totalCount ?? Number.NaN,
+          )));
       return {
         ...result,
         totalCount,
@@ -1087,7 +1087,12 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const hasNextPage =
         result.hasNextPage ||
         (!headers.has("Link") &&
-          countedNextPage(page, perPage, result.items.length, totalCount ?? Number.NaN));
+          (await this.#countedNextPage(
+            page,
+            perPage,
+            result.items.length,
+            totalCount ?? Number.NaN,
+          )));
       return {
         ...result,
         totalCount,
@@ -1117,6 +1122,32 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
+  }
+
+  /** Gitea clamps `limit`, so a short page goes by the real page size, or keeps paging blind. */
+  async #countedNextPage(
+    page: number,
+    perPage: number,
+    served: number,
+    total: number,
+  ): Promise<boolean> {
+    if (served === 0 || !Number.isFinite(total)) return false;
+    if (served >= perPage) return page * perPage < total;
+    const pageSize = Math.min(perPage, (await this.#maxResponseItems()) ?? served);
+    return page * pageSize < total;
+  }
+
+  async #maxResponseItems(): Promise<number | null> {
+    if (this.#responseItemLimit !== undefined) return this.#responseItemLimit;
+    try {
+      const settings = await this.client<{ max_response_items?: number }>("/settings/api");
+      const limit = settings?.max_response_items;
+      this.#responseItemLimit =
+        Number.isSafeInteger(limit) && limit !== undefined && limit > 0 ? limit : null;
+    } catch {
+      this.#responseItemLimit = null;
+    }
+    return this.#responseItemLimit;
   }
 
   private async commitPathFilterIsPaged(): Promise<boolean> {
@@ -1672,7 +1703,7 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
       const hasNextPage =
         !!parseLinkHeader(headers.get("Link")).next ||
-        countedNextPage(page, perPage, rows.length, total);
+        (await this.#countedNextPage(page, perPage, rows.length, total));
       return {
         items: rows.map((raw) => this.mapPullRequestReview(raw)).filter(isPullRequestReview),
         hasNextPage,
@@ -2196,7 +2227,8 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
       const result = buildPageResult(data ?? [], headers, mapReaction);
       const hasNextPage =
-        result.hasNextPage || countedNextPage(page, perPage, result.items.length, total);
+        result.hasNextPage ||
+        (await this.#countedNextPage(page, perPage, result.items.length, total));
       return {
         ...result,
         totalCount: Number.isFinite(total) ? total : undefined,
