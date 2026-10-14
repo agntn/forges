@@ -838,6 +838,19 @@ function commitRowText<T extends CommitSummary>(commit: T): T | Omit<T, "committ
 
 const REPEATED_COMMITTER_NOTE = "A committer identical to the author is left out of the row.";
 
+type PullRequestRow = Omit<PullRequest, "body">;
+
+/** An unmerged row has blank merge fields, and a list seldom knows mergeability. */
+function pullRequestRowText(pullRequest: PullRequestRow): Partial<PullRequestRow> {
+  const { mergeCommitSha, mergedAt, mergedBy, mergeable, mergeStatus, ...row } = pullRequest;
+  return {
+    ...row,
+    ...(pullRequest.merged ? { mergeCommitSha, mergedAt, mergedBy } : {}),
+    ...(mergeable === null ? {} : { mergeable }),
+    ...(mergeStatus === "" ? {} : { mergeStatus }),
+  };
+}
+
 function listOptions(params: {
   page?: number;
   perPage?: number;
@@ -1307,10 +1320,12 @@ export async function listPullRequests(
     params.repo,
     listOptions(params),
   );
+  const page = summarizeIssuePage(pullRequests);
   return result(
     params.platform,
-    summarizeIssuePage(pullRequests),
-    "Pull-request bodies are omitted from list output; use forges_pull_requests_get to read one body.",
+    page,
+    "Pull-request bodies are omitted from list output; use forges_pull_requests_get to read one body. A row leaves out the merge commit, time and merger until it is merged, and mergeable or mergeStatus while the list does not report them.",
+    { ...page, items: page.items.map(pullRequestRowText) },
   );
 }
 
