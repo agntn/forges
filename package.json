@@ -133,7 +133,7 @@
   "engines": {
     "node": ">=26"
   },
-  "packageManager": "pnpm@10.12.1",
+  "packageManager": "pnpm@12.11.2",
   "omp": {
     "extensions": [
       "./packages/omp/extensions/forges.ts"

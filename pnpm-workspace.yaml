@@ -16,7 +16,9 @@ peerDependencyRules:
 allowBuilds:
   "@google/genai": false
   esbuild: true
+  onnxruntime-node: false
   protobufjs: false
+  sharp: false
 
 minimumReleaseAgeExclude:
   - "@agntn/*"
