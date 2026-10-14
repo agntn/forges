@@ -29,6 +29,8 @@ const mocks = vi.hoisted(() => {
    */
   const localLogin = { current: "aeitwoen" };
   const credentialToken = { current: "test-token" as string | null };
+  /** The step of the chain that found credentialToken. */
+  const credentialSource = { current: "env" as "env" | "cli" | "config" };
   const anonymousWrites = { current: 0 };
   const issueCreateGate = { current: undefined as Promise<void> | undefined };
   /** Logins `gh auth token --user` can answer for; the token names its owner. */
@@ -47,12 +49,14 @@ const mocks = vi.hoisted(() => {
         : null;
     }
     const token = credentialToken.current;
-    return token === null ? null : { token, source: "env" as const };
+    return token === null ? null : { token, source: credentialSource.current };
   });
 
   const createProvider = vi.fn(
-    (_platform: string, config?: { baseURL?: string; token?: string }) => {
+    (platform: string, config?: { baseURL?: string; token?: string }) => {
       const anonymous = config?.token === "";
+      /** A token the forge no longer accepts, as after an expired login. */
+      const revoked = config?.token === "revoked-token";
       const namedLogin = config?.token?.startsWith("account:") ? config.token.slice(8) : undefined;
       const login = anonymous ? "anonymous" : (namedLogin ?? localLogin.current);
 
@@ -105,6 +109,20 @@ const mocks = vi.hoisted(() => {
         repos: {
           list: vi.fn(),
           get: vi.fn(async (owner: string, repo: string) => {
+            if (revoked) {
+              throw new AuthenticationError(
+                "Authentication failed: 401: 401 Unauthorized",
+                platform,
+                new FetchError("401"),
+              );
+            }
+            if (repo === "expired-session") {
+              throw new AuthenticationError(
+                "Authentication failed: 401: Authentication error",
+                platform,
+                new FetchError("401"),
+              );
+            }
             if (repo === "missing" || (repo === "hidden" && anonymous)) {
               throw new NotFoundError("Resource not found: 404 ", "github", new FetchError("404"));
             }
@@ -180,6 +198,7 @@ const mocks = vi.hoisted(() => {
   return {
     localLogin,
     credentialToken,
+    credentialSource,
     anonymousWrites,
     issueCreateGate,
     ghLogins,
@@ -208,6 +227,7 @@ beforeEach(() => {
   resetPinnedProviders();
   mocks.localLogin.current = "aeitwoen";
   mocks.credentialToken.current = "test-token";
+  mocks.credentialSource.current = "env";
   mocks.anonymousWrites.current = 0;
   mocks.issueCreateGate.current = undefined;
   mocks.ghLogins.current = new Set(["aeitwoen", "oritwoen"]);
@@ -451,6 +471,14 @@ describe("configured provider", () => {
     expect(mocks.createProvider.mock.calls).toEqual([["artifacts", { token: "" }]]);
   });
 
+  it("points a rejected Cloudflare token at its variable and the cf session", async () => {
+    await expect(
+      getRepository({ platform: "artifacts", repo: "tools/expired-session" }),
+    ).rejects.toThrow(
+      "Authentication failed: 401: Authentication error. The Cloudflare token was rejected, so it has likely expired or been revoked. CLOUDFLARE_API_TOKEN wins over the `cf` session: replace or unset it, or log in again with `cf auth login` when it is not set, then retry.",
+    );
+  });
+
   it("explains a refusal shared by concurrent reads once", async () => {
     mocks.credentialToken.current = null;
 
@@ -465,6 +493,45 @@ describe("configured provider", () => {
         expect(String(refusal.reason.message).match(/Then retry\./g)).toHaveLength(1);
       }
     }
+  });
+
+  it("says where a rejected token came from and how to replace it", async () => {
+    mocks.credentialToken.current = "revoked-token";
+
+    const fromVariable = getRepository({ repo: "agntn/forges" });
+
+    await expect(fromVariable).rejects.toThrow(AuthenticationError);
+    await expect(fromVariable).rejects.toThrow(
+      "Authentication failed: 401: 401 Unauthorized. The github token from GH_TOKEN or GITHUB_TOKEN was rejected, so it has likely expired or been revoked. That variable wins over the `gh` login: replace or unset it, then call forges_auth_reload and retry.",
+    );
+
+    mocks.credentialSource.current = "cli";
+
+    await expect(
+      getRepository({ platform: "gitlab", repo: "gitlab-org/gitlab-runner" }),
+    ).rejects.toThrow(
+      "Authentication failed: 401: 401 Unauthorized. The gitlab token of the local `glab` login was rejected, so it has likely expired or been revoked. Log in again with `glab auth login`, then call forges_auth_reload and retry.",
+    );
+    /* tea hands out no token, so a tea login only ever comes from its config file. */
+    mocks.credentialSource.current = "config";
+
+    await expect(getRepository({ platform: "gitea", repo: "gitea/tea" })).rejects.toThrow(
+      "Authentication failed: 401: 401 Unauthorized. The gitea token saved in the `tea` config file was rejected, so it has likely expired or been revoked. Set GITEA_TOKEN, which wins over that file, or redo the login with `tea login add`, then call forges_auth_reload and retry.",
+    );
+  });
+
+  it("reads again after a fresh login once forges_auth_reload drops the rejected token", async () => {
+    mocks.credentialSource.current = "cli";
+    mocks.credentialToken.current = "revoked-token";
+    await expect(getRepository({ repo: "agntn/forges" })).rejects.toThrow("Log in again");
+
+    mocks.credentialToken.current = "test-token";
+    await expect(getRepository({ repo: "agntn/forges" })).rejects.toThrow("Log in again");
+
+    await reloadAuthentication({ platform: "github" });
+    const read = await getRepository({ repo: "agntn/forges" });
+
+    expect(read.details.result.owner.login).toBe("aeitwoen");
   });
 
   it("leaves a 404 alone when a token was sent or the provider found nothing", async () => {
