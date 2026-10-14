@@ -177,41 +177,46 @@ function trackProvider(
   return provider;
 }
 
-/** Per platform: the variable to suggest, all variables read before the login, and its CLI. */
-const credentialOrigins = {
-  github: {
-    variable: "GITHUB_TOKEN",
-    variables: "GH_TOKEN or GITHUB_TOKEN",
-    cli: "gh",
-    login: "gh auth login",
-  },
-  gitlab: {
-    variable: "GITLAB_TOKEN",
-    variables: "GITLAB_TOKEN, GL_TOKEN or GITLAB_PAT",
-    cli: "glab",
-    login: "glab auth login",
-  },
-  gitea: { variable: "GITEA_TOKEN", variables: "GITEA_TOKEN", cli: "tea", login: "tea login add" },
+/** The variable and the login a missing credential is told to set up. */
+const credentialSetup = {
+  github: { variable: "GITHUB_TOKEN", login: "gh auth login" },
+  gitlab: { variable: "GITLAB_TOKEN", login: "glab auth login" },
+  gitea: { variable: "GITEA_TOKEN", login: "tea login add" },
   artifacts: {
     variable: "CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID",
-    variables: "CLOUDFLARE_API_TOKEN",
-    cli: "cf",
     login: "cf auth login",
   },
-} satisfies Record<ForgesPlatform, Record<"variable" | "variables" | "cli" | "login", string>>;
+} satisfies Record<ForgesPlatform, Record<"variable" | "login", string>>;
+
+/** Where the chain finds a forge token: its variables, in order, and the CLI behind the login. */
+const tokenOrigins = {
+  github: { variables: "GH_TOKEN or GITHUB_TOKEN", cli: "gh" },
+  gitlab: { variables: "GITLAB_TOKEN, GL_TOKEN or GITLAB_PAT", cli: "glab" },
+  gitea: { variables: "GITEA_TOKEN", cli: "tea" },
+} satisfies Record<Exclude<ForgesPlatform, "artifacts">, Record<"variables" | "cli", string>>;
 
 function credentialSetupHint(platform: ForgesPlatform): string {
-  const { variable, login } = credentialOrigins[platform];
+  const { variable, login } = credentialSetup[platform];
   return `Set ${variable} or log in with \`${login}\`.`;
 }
 
 /** The way past a rejected token, which stays pinned until forges_auth_reload drops it. */
-function rejectedTokenHint(platform: ForgesPlatform, source: AuthResult["source"]): string {
-  const { variables, cli, login } = credentialOrigins[platform];
+function rejectedTokenHint(
+  platform: Exclude<ForgesPlatform, "artifacts">,
+  source: AuthResult["source"],
+): string {
+  const { variables, cli } = tokenOrigins[platform];
+  const { variable, login } = credentialSetup[platform];
+  const expired = "was rejected, so it has likely expired or been revoked.";
   const reload = "then call forges_auth_reload and retry.";
-  return source === "env"
-    ? `The ${platform} token from ${variables} was rejected, so it has likely expired or been revoked. That variable wins over the \`${cli}\` login: replace or unset it, ${reload}`
-    : `The ${platform} token of the local \`${cli}\` login was rejected, so it has likely expired or been revoked. Log in again with \`${login}\`, ${reload}`;
+  switch (source) {
+    case "env":
+      return `The ${platform} token from ${variables} ${expired} That variable wins over the \`${cli}\` login: replace or unset it, ${reload}`;
+    case "config":
+      return `The ${platform} token saved in the \`${cli}\` config file ${expired} Set ${variable}, which wins over that file, or redo the login with \`${login}\`, ${reload}`;
+    default:
+      return `The ${platform} token of the local \`${cli}\` login ${expired} Log in again with \`${login}\`, ${reload}`;
+  }
 }
 
 async function authenticatedProvider(
@@ -282,7 +287,7 @@ async function verifiedAccountProvider(
 
   const hint =
     credential.source === "env"
-      ? `${credentialOrigins.github.variables} is set and takes precedence; unset it to use the gh login.`
+      ? `${tokenOrigins.github.variables} is set and takes precedence; unset it to use the gh login.`
       : "Check `gh auth status`.";
   throw new AuthenticationError(
     `Refusing to act as "${account}": the ${platform} token found for it belongs to "${login}". ${hint}`,

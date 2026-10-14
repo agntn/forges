@@ -30,7 +30,7 @@ const mocks = vi.hoisted(() => {
   const localLogin = { current: "aeitwoen" };
   const credentialToken = { current: "test-token" as string | null };
   /** The step of the chain that found credentialToken. */
-  const credentialSource = { current: "env" as "env" | "cli" };
+  const credentialSource = { current: "env" as "env" | "cli" | "config" };
   const anonymousWrites = { current: 0 };
   const issueCreateGate = { current: undefined as Promise<void> | undefined };
   /** Logins `gh auth token --user` can answer for; the token names its owner. */
@@ -497,8 +497,11 @@ describe("configured provider", () => {
     ).rejects.toThrow(
       "Authentication failed: 401: 401 Unauthorized. The gitlab token of the local `glab` login was rejected, so it has likely expired or been revoked. Log in again with `glab auth login`, then call forges_auth_reload and retry.",
     );
+    /* tea hands out no token, so a tea login only ever comes from its config file. */
+    mocks.credentialSource.current = "config";
+
     await expect(getRepository({ platform: "gitea", repo: "gitea/tea" })).rejects.toThrow(
-      "Log in again with `tea login add`, then call forges_auth_reload and retry.",
+      "Authentication failed: 401: 401 Unauthorized. The gitea token saved in the `tea` config file was rejected, so it has likely expired or been revoked. Set GITEA_TOKEN, which wins over that file, or redo the login with `tea login add`, then call forges_auth_reload and retry.",
     );
   });
 
