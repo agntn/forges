@@ -199,10 +199,8 @@ const FORGEJO_JOB_OUTCOMES: Readonly<Record<string, string>> = {
   cancelled: "cancelled",
 };
 
-function forgejoJobName(log: Readonly<{ text: string; firstLine: string }>): string {
-  const match =
-    FORGEJO_TASK_LINE.exec(log.firstLine) ?? ACT_RUNNER_JOB_LINE.exec(log.text.slice(0, 4096));
-  return match?.[1] ?? "";
+function forgejoJobName(head: string): string {
+  return (FORGEJO_TASK_LINE.exec(head) ?? ACT_RUNNER_JOB_LINE.exec(head))?.[1] ?? "";
 }
 
 /** The banner ends the log, or sits just above the run error the runner writes last. */
@@ -214,15 +212,12 @@ function forgejoJobResult(log: string): string {
 }
 
 /** Forgejo 16 has no route for one job, so the log has to say which job it was and how it ended. */
-function jobFromForgejoLog(
-  jobId: string,
-  log: Readonly<{ text: string; firstLine: string }>,
-): CiJob {
+function jobFromForgejoLog(jobId: string, log: Readonly<{ text: string; head: string }>): CiJob {
   const result = forgejoJobResult(log.text);
   return {
     id: jobId,
     runId: "",
-    name: forgejoJobName(log),
+    name: forgejoJobName(log.head),
     ...normalizeCiRunState(FORGEJO_JOB_OUTCOMES[result] ?? "running"),
     startedAt: null,
     completedAt: null,

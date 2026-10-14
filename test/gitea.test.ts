@@ -1364,11 +1364,12 @@ describe("Gitea Provider", () => {
         expect(log).toMatchObject({ name: "publish", conclusion: "cancelled" });
       });
 
-      it("names the job from its first line when the log is too long to keep it", async () => {
+      /* The first line older act_runner wrote, and the lines newer act_runner writes instead. */
+      it.each([
+        "2026-10-06T22:42:01.0000000Z docker-runner(version:v0.2.6) received task 10189305 of job publish, be triggered by event: push",
+        "2026-10-06T22:42:01.0000000Z docker-runner(version:v0.6.1)\n2026-10-06T22:42:01.0000000Z Task: 10189305\n2026-10-06T22:42:01.0000000Z Job: publish",
+      ])("names the job from the header of a log too long to keep it", async (header) => {
         const [, ...rest] = codebergLog.split("\n");
-        /* The header older act_runner wrote, before it moved the job name into its own line. */
-        const header =
-          "2026-10-06T22:42:01.0000000Z docker-runner(version:v0.2.6) received task 10189305 of job publish, be triggered by event: push";
         const filler = `2026-10-06T22:42:03.0000000Z ${"x".repeat(70)}\n`;
         mockClient
           .mockRejectedValueOnce(makeFetchError(404))
