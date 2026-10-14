@@ -8,6 +8,7 @@ import { createMcpServer } from "../src/mcp.ts";
 import {
   listCommits,
   listPullRequestChecks,
+  listPullRequests,
   listRepositories,
   resetPinnedProviders,
 } from "../src/tool-operations.ts";
@@ -754,6 +755,68 @@ describe("forges MCP server", () => {
     expect(answer.result.items[1].fullName).toBe("Agntn/keys");
     expect(answer.result.items.some((item: object) => "merge" in item)).toBe(false);
     const listed = await listRepositories({ owner: "agntn" });
+    expect(listed.details.result.items).toEqual(items);
+  });
+
+  it("leaves merge fields a pull-request row cannot fill out of the model text", async () => {
+    const row = (number: number, fields: object) => ({
+      id: String(number),
+      number,
+      title: `fix: ${number}`,
+      state: "open",
+      labels: [],
+      author: { login: "oritwoen" },
+      assignees: [],
+      createdAt: "2026-10-14T10:00:00Z",
+      updatedAt: "2026-10-14T10:00:00Z",
+      url: `https://github.com/agntn/forges/pull/${number}`,
+      merged: false,
+      draft: false,
+      sourceBranch: "feature",
+      targetBranch: "main",
+      mergeCommitSha: "",
+      mergedAt: null,
+      mergedBy: null,
+      headSha: "c7ee5a1",
+      mergeable: null,
+      mergeStatus: "",
+      ...fields,
+    });
+    const items = [
+      row(1, {}),
+      row(2, {
+        state: "closed",
+        merged: true,
+        mergeCommitSha: "6f85814",
+        mergedAt: "2026-10-14T11:00:00Z",
+      }),
+      row(3, { mergeable: false, mergeStatus: "conflict" }),
+    ];
+    mocks.pullRequests.list.mockResolvedValue({ items, hasNextPage: false });
+    const client = await connectTestClient();
+
+    const answer = JSON.parse(
+      text(
+        (
+          await client.callTool({
+            name: "forges_pull_requests_list",
+            arguments: { repo: "agntn/forges" },
+          })
+        ).content,
+      ),
+    );
+
+    const merge = ["mergeCommitSha", "mergedAt", "mergedBy", "mergeable", "mergeStatus"];
+    const kept = answer.result.items.map((item: object) => merge.filter((key) => key in item));
+    expect(kept).toEqual([
+      [],
+      ["mergeCommitSha", "mergedAt", "mergedBy"],
+      ["mergeable", "mergeStatus"],
+    ]);
+    expect(answer.result.items[1].mergedBy).toBeNull();
+    expect(answer.result.items[0].headSha).toBe("c7ee5a1");
+    expect(answer.note).toContain("until it is merged");
+    const listed = await listPullRequests({ repo: "agntn/forges" });
     expect(listed.details.result.items).toEqual(items);
   });
 
