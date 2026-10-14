@@ -1054,7 +1054,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         this.mapCiRun(raw),
       );
       const hasNextPage =
-        result.hasNextPage || (totalCount !== undefined && page * perPage < totalCount);
+        result.hasNextPage ||
+        (!headers.has("Link") &&
+          countedNextPage(page, perPage, result.items.length, totalCount ?? Number.NaN));
       return {
         ...result,
         totalCount,
@@ -1083,7 +1085,9 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
       const totalCount = data?.total_count;
       const result = buildPageResult(data?.jobs ?? [], headers, mapActionsJob);
       const hasNextPage =
-        result.hasNextPage || (totalCount !== undefined && page * perPage < totalCount);
+        result.hasNextPage ||
+        (!headers.has("Link") &&
+          countedNextPage(page, perPage, result.items.length, totalCount ?? Number.NaN));
       return {
         ...result,
         totalCount,
@@ -1664,14 +1668,13 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews`,
         { query: { page: String(page), limit: String(perPage) } },
       );
+      const rows = data ?? [];
       const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
       const hasNextPage =
         !!parseLinkHeader(headers.get("Link")).next ||
-        (Number.isFinite(total) && page * perPage < total);
+        countedNextPage(page, perPage, rows.length, total);
       return {
-        items: (data ?? [])
-          .map((raw) => this.mapPullRequestReview(raw))
-          .filter(isPullRequestReview),
+        items: rows.map((raw) => this.mapPullRequestReview(raw)).filter(isPullRequestReview),
         hasNextPage,
         nextPage: hasNextPage ? page + 1 : undefined,
       };

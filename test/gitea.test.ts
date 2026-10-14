@@ -916,6 +916,31 @@ describe("Gitea Provider", () => {
       expect(result.totalCount).toBe(1);
     });
 
+    it("keeps paging when the server clamps limit and sends no Link", async () => {
+      const page = (count: number) => ({
+        data: { total_count: 123, jobs: Array.from({ length: count }, () => rawJob) },
+        headers: makeHeaders(),
+        status: 200,
+      });
+      mockedRawFetch
+        .mockResolvedValueOnce(page(50))
+        .mockResolvedValueOnce(page(50))
+        .mockResolvedValueOnce(page(23))
+        .mockResolvedValueOnce(page(0));
+
+      const pages = [];
+      for (let next: number | undefined = 1; next !== undefined;) {
+        const result = await provider.ciRuns.listJobs("testowner", "test-repo", "9876", {
+          page: next,
+          perPage: 100,
+        });
+        pages.push(result.items.length);
+        next = result.nextPage;
+      }
+
+      expect(pages).toEqual([50, 50, 23, 0]);
+    });
+
     it("reads a job log with the failing step first", async () => {
       mockClient.mockResolvedValueOnce(rawJob).mockResolvedValueOnce(new Response(jobLog).body);
 
@@ -1031,6 +1056,45 @@ describe("Gitea Provider", () => {
         hasNextPage: true,
         nextPage: 3,
       });
+    });
+
+    it("keeps paging when the server clamps limit and sends no Link", async () => {
+      const page = (count: number) => ({
+        data: { total_count: 123, workflow_runs: Array.from({ length: count }, giteaCiRun) },
+        headers: makeHeaders(),
+        status: 200,
+      });
+      mockedRawFetch
+        .mockResolvedValueOnce(page(50))
+        .mockResolvedValueOnce(page(50))
+        .mockResolvedValueOnce(page(23))
+        .mockResolvedValueOnce(page(0));
+
+      const pages = [];
+      for (let next: number | undefined = 1; next !== undefined;) {
+        const result = await provider.ciRuns.list("forgejo", "website", {
+          page: next,
+          perPage: 100,
+        });
+        pages.push(result.items.length);
+        next = result.nextPage;
+      }
+
+      expect(pages).toEqual([50, 50, 23, 0]);
+    });
+
+    it("trusts a Link header without next on the last clamped page", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: { total_count: 123, workflow_runs: Array.from({ length: 23 }, giteaCiRun) },
+        headers: makeHeaders({
+          Link: '<https://gitea.com/api/v1/repos/gitea/tea/actions/runs?limit=100&page=2>; rel="prev"',
+        }),
+        status: 200,
+      });
+
+      const result = await provider.ciRuns.list("gitea", "tea", { page: 3, perPage: 100 });
+
+      expect(result).toMatchObject({ totalCount: 123, hasNextPage: false, nextPage: undefined });
     });
   });
 
@@ -2039,6 +2103,46 @@ describe("Gitea Provider", () => {
       });
 
       expect(result).toMatchObject({ hasNextPage: false, nextPage: undefined });
+    });
+
+    it("stops on a short page that closes the count with a review request in it", async () => {
+      mockedRawFetch.mockResolvedValueOnce({
+        data: reviews.slice(1),
+        headers: makeHeaders({ "x-total-count": "5" }),
+        status: 200,
+      });
+
+      const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
+        page: 2,
+        perPage: 3,
+      });
+
+      expect(result).toMatchObject({ hasNextPage: false, nextPage: undefined });
+    });
+
+    it("keeps paging when the server clamps limit and sends no Link", async () => {
+      const page = (count: number) => ({
+        data: Array.from({ length: count }, (_, index) => reviews[index % reviews.length]),
+        headers: makeHeaders({ "x-total-count": "123" }),
+        status: 200,
+      });
+      mockedRawFetch
+        .mockResolvedValueOnce(page(50))
+        .mockResolvedValueOnce(page(50))
+        .mockResolvedValueOnce(page(23))
+        .mockResolvedValueOnce(page(0));
+
+      const pages = [];
+      for (let next: number | undefined = 1; next !== undefined;) {
+        const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
+          page: next,
+          perPage: 100,
+        });
+        pages.push(result.items.length);
+        next = result.nextPage;
+      }
+
+      expect(pages).toEqual([34, 34, 16, 0]);
     });
 
     it("trusts a Link header from a host that sends one", async () => {
