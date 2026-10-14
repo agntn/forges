@@ -219,6 +219,10 @@ function rejectedTokenHint(
   }
 }
 
+/** No reload here: the next request asks the Cloudflare chain again. */
+const REJECTED_CLOUDFLARE_TOKEN =
+  "The Cloudflare token was rejected, so it has likely expired or been revoked. CLOUDFLARE_API_TOKEN wins over the `cf` session: replace or unset it, or log in again with `cf auth login` when it is not set, then retry.";
+
 async function authenticatedProvider(
   platform: ForgesPlatform,
   account?: string,
@@ -336,8 +340,8 @@ function refusalHint(
   platform: ForgesPlatform,
   source: AuthResult["source"] | undefined,
 ): string | undefined {
-  /** artifacts finds its Cloudflare credential per request and never reads anonymously. */
-  if (platform === "artifacts") return undefined;
+  /** artifacts asks the Cloudflare chain on every request and never reads anonymously. */
+  if (platform === "artifacts") return status === 401 ? REJECTED_CLOUDFLARE_TOKEN : undefined;
   if (source !== undefined) return status === 401 ? rejectedTokenHint(platform, source) : undefined;
   if (!ANONYMOUS_REFUSALS.has(status)) return undefined;
 

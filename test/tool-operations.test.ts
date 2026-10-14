@@ -116,6 +116,13 @@ const mocks = vi.hoisted(() => {
                 new FetchError("401"),
               );
             }
+            if (repo === "expired-session") {
+              throw new AuthenticationError(
+                "Authentication failed: 401: Authentication error",
+                platform,
+                new FetchError("401"),
+              );
+            }
             if (repo === "missing" || (repo === "hidden" && anonymous)) {
               throw new NotFoundError("Resource not found: 404 ", "github", new FetchError("404"));
             }
@@ -462,6 +469,14 @@ describe("configured provider", () => {
     expect((refused as Error).message).not.toContain("carried no token");
     expect(mocks.resolveToken).not.toHaveBeenCalled();
     expect(mocks.createProvider.mock.calls).toEqual([["artifacts", { token: "" }]]);
+  });
+
+  it("points a rejected Cloudflare token at its variable and the cf session", async () => {
+    await expect(
+      getRepository({ platform: "artifacts", repo: "tools/expired-session" }),
+    ).rejects.toThrow(
+      "Authentication failed: 401: Authentication error. The Cloudflare token was rejected, so it has likely expired or been revoked. CLOUDFLARE_API_TOKEN wins over the `cf` session: replace or unset it, or log in again with `cf auth login` when it is not set, then retry.",
+    );
   });
 
   it("explains a refusal shared by concurrent reads once", async () => {
