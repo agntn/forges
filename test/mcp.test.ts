@@ -5,7 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { NotFoundError, RateLimitError } from "../src/errors.ts";
 import { createMcpServer } from "../src/mcp.ts";
-import { listCommits, listRepositories, resetPinnedProviders } from "../src/tool-operations.ts";
+import {
+  listCommits,
+  listPullRequestChecks,
+  listRepositories,
+  resetPinnedProviders,
+} from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn(), readContents: vi.fn(), listTags: vi.fn() };
@@ -1090,6 +1095,32 @@ describe("forges MCP server", () => {
     expect(mocks.pullRequests.get).toHaveBeenCalledWith("agntn", "forges", 53);
     const payload = JSON.parse(text(response.content));
     expect(payload.result.wait).toMatchObject({ settled: true, polls: 1, noChecks: "quiet" });
+  });
+
+  it("lists no checks while the pull request still points before the pushed head", async () => {
+    mocks.pullRequests.get.mockResolvedValue({ number: 53, headSha: "6784d37" });
+    mocks.pullRequests.listChecks.mockResolvedValue({
+      items: [{ id: "1", name: "PR Lens", status: "completed", conclusion: "success", url: "" }],
+      hasNextPage: false,
+    });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_checks",
+      arguments: { repo: "agntn/forges", number: 53, headSha: "a585fda" },
+    });
+
+    const payload = JSON.parse(text(response.content));
+    expect(payload.result).toEqual({ items: [], hasNextPage: false, staleHead: "6784d37" });
+    expect(payload.note).toContain("not at headSha a585fda");
+    expect(mocks.pullRequests.listChecks).not.toHaveBeenCalled();
+  });
+
+  it("refuses a blank headSha before reading the pull request", async () => {
+    await expect(
+      listPullRequestChecks({ repo: "agntn/forges", number: 53, headSha: "  " }),
+    ).rejects.toMatchObject({ status: 400, message: "Checks headSha must not be empty" });
+    expect(mocks.pullRequests.get).not.toHaveBeenCalled();
   });
 
   it("rejects a wait budget outside the accepted range", async () => {

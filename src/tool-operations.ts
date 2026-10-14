@@ -7,7 +7,13 @@ import type {
 } from "./local.ts";
 import { assertAssignees } from "./assignees.ts";
 import { assertIssueUpdate, assertMergeInput, assertPullRequestUpdate } from "./update-input.ts";
-import { waitForChecks, type WaitedCheckPage } from "./check-wait.ts";
+import {
+  readChecks,
+  waitForChecks,
+  type CheckPage,
+  type ExpectedHead,
+  type WaitedCheckPage,
+} from "./check-wait.ts";
 import { AuthenticationError, FetchError, ForgesError, RateLimitError } from "./errors.ts";
 import { redactEndpoint } from "./redact-endpoint.ts";
 import { lazy } from "../packages/shared/lazy.ts";
@@ -54,7 +60,6 @@ import type {
   MergePullRequestInput,
   PageResult,
   PullRequest,
-  PullRequestCheck,
   PullRequestFile,
   PullRequestReview,
   PullRequestSearchItem,
@@ -610,6 +615,8 @@ export type ListPullRequestReviewsParams = ListCommentsParams;
 export interface ListPullRequestChecksParams extends ListCommentsParams {
   /** Seconds to wait for every check to conclude; absent reads the current state once. */
   waitSeconds?: number;
+  /** The commit just pushed. Checks are listed only once the pull request points at it. */
+  headSha?: string;
 }
 
 export interface GetPullRequestParams extends GetRepositoryItemParams {
@@ -1270,22 +1277,36 @@ export async function listPullRequestFiles(
 
 export async function listPullRequestChecks(
   args: ListPullRequestChecksParams,
-): Promise<ForgesToolResult<PageResult<PullRequestCheck> | WaitedCheckPage>> {
+): Promise<ForgesToolResult<CheckPage | WaitedCheckPage>> {
   const params = repositoryTarget(args);
+  if (params.headSha?.trim() === "") {
+    throw new ForgesError("Checks headSha must not be empty", 400, params.platform);
+  }
   const provider = await readProvider(params.platform);
   const readPage = (page: number) => {
     const options: ListPullRequestChecksOptions = { page, perPage: params.perPage };
     return provider.pullRequests.listChecks(params.owner, params.repo, params.number, options);
   };
+  const readPullRequest = () => provider.pullRequests.get(params.owner, params.repo, params.number);
+  const expectedHead: ExpectedHead | undefined =
+    params.headSha === undefined
+      ? undefined
+      : { sha: params.headSha, read: async () => (await readPullRequest()).headSha };
   const requestedPage = params.page ?? 1;
 
   if (params.waitSeconds === undefined) {
-    return result(params.platform, await readPage(requestedPage));
+    const once = await readChecks(readPage, requestedPage, expectedHead);
+    return result(params.platform, once.page, once.note);
   }
 
-  const readLastChange = async () =>
-    (await provider.pullRequests.get(params.owner, params.repo, params.number)).updatedAt;
-  const waited = await waitForChecks(readPage, requestedPage, params.waitSeconds, readLastChange);
+  const readLastChange = async () => (await readPullRequest()).updatedAt;
+  const waited = await waitForChecks(
+    readPage,
+    requestedPage,
+    params.waitSeconds,
+    readLastChange,
+    expectedHead,
+  );
   return result(params.platform, waited.page, waited.note);
 }
 
