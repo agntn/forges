@@ -1077,6 +1077,17 @@ describe("Gitea Provider", () => {
         expect(second).toMatchObject({ totalCount: 2, hasNextPage: false });
       });
 
+      it.each([
+        [{ perPage: 0 }, "perPage must be an integer from 1 to 100"],
+        [{ perPage: 101 }, "perPage must be an integer from 1 to 100"],
+        [{ page: 0 }, "page must be a positive integer"],
+      ])("refuses %o before the local cut pages forever", async (options, message) => {
+        await expect(
+          provider.ciRuns.listJobs("forgejo", "website", "7529583", options),
+        ).rejects.toMatchObject({ status: 400, message });
+        expect(mockedRawFetch).not.toHaveBeenCalled();
+      });
+
       it("trusts Link when the host does page the route", async () => {
         mockedRawFetch.mockResolvedValueOnce({
           data: [forgejoJobs[1]],
