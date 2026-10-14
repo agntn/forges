@@ -2064,7 +2064,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
-  /** The status and check-runs routes take a branch or tag as readily as a SHA. */
+  /** A branch is pinned to one SHA first, so a push between reads can't mix two commits. */
   protected override async listCommitChecks(
     owner: string,
     repo: string,
@@ -2072,9 +2072,25 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     options?: ListCommitChecksOptions,
   ): Promise<PageResult<PullRequestCheck>> {
     try {
-      return await this.#readRevisionChecks(owner, repo, ref, options);
+      const sha = isCommitSha(ref) ? ref : await this.#commitOf(owner, repo, ref);
+      return await this.#readRevisionChecks(owner, repo, sha, options);
     } catch (error) {
       throw normalizeError(error, "github");
+    }
+  }
+
+  /** The sha media type answers an unknown ref with 422, the status route with 404. */
+  async #commitOf(owner: string, repo: string, ref: string): Promise<string> {
+    try {
+      return await this.resolveCommitSha(
+        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`,
+        ref,
+      );
+    } catch (error) {
+      if (error instanceof FetchError && error.status === 422) {
+        throw new NotFoundError(`Ref not found: ${ref}`, "github", error);
+      }
+      throw error;
     }
   }
 

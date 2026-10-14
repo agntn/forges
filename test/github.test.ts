@@ -2591,7 +2591,8 @@ describe("GitHubProvider", () => {
       },
     ];
 
-    it("lists a branch's statuses and check runs without reading a pull request", async () => {
+    it("pins a branch to one SHA before reading statuses and check runs", async () => {
+      mocks.client.mockResolvedValueOnce("cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38\n");
       mocks.rawFetch
         .mockResolvedValueOnce({
           data: { total_count: 2, statuses: ghStatuses },
@@ -2604,12 +2605,14 @@ describe("GitHubProvider", () => {
 
       const result = await gh.commits.listChecks("octocat", "hello-world", "feat/checks");
 
-      const branch = "/repos/octocat/hello-world/commits/feat%2Fchecks";
-      expect(mocks.client).not.toHaveBeenCalled();
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, `${branch}/status`, {
+      expect(mocks.client).toHaveBeenCalledExactlyOnceWith(
+        "/repos/octocat/hello-world/commits/feat%2Fchecks",
+        { headers: { Accept: "application/vnd.github.sha" }, responseType: "text" },
+      );
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, `${revision}/status`, {
         query: { page: "1", per_page: "31" },
       });
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${branch}/check-runs`, {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${revision}/check-runs`, {
         query: { page: "1", per_page: "29" },
       });
       expect(result).toEqual({
@@ -2618,6 +2621,35 @@ describe("GitHubProvider", () => {
         hasNextPage: false,
         nextPage: undefined,
       });
+    });
+
+    it("reads a full SHA without resolving it", async () => {
+      mocks.rawFetch
+        .mockResolvedValueOnce({ data: { total_count: 0, statuses: [] }, headers: makeHeaders() })
+        .mockResolvedValueOnce({
+          data: { total_count: 0, check_runs: [] },
+          headers: makeHeaders(),
+        });
+
+      await gh.commits.listChecks(
+        "octocat",
+        "hello-world",
+        "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+      );
+
+      expect(mocks.client).not.toHaveBeenCalled();
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, `${revision}/status`, {
+        query: { page: "1", per_page: "31" },
+      });
+    });
+
+    it("answers NotFoundError for a ref the sha lookup rejects with 422", async () => {
+      mocks.client.mockRejectedValueOnce(makeFetchError(422));
+
+      await expect(
+        gh.commits.listChecks("octocat", "hello-world", "no-such-branch"),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
 
     it("refuses an empty ref before any request", async () => {
