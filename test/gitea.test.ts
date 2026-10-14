@@ -3233,7 +3233,7 @@ describe("Gitea Provider", () => {
     it.each([
       ["issues", { perPage: 0 }, "perPage must be an integer from 1 to 100"],
       ["pullRequests", { page: 0 }, "page must be a positive integer"],
-    ] as const)("refuses %s %o before the local cut pages forever", async (kind, page, message) => {
+    ] as const)("refuses %s %o before the local cut sees it", async (kind, page, message) => {
       await expect(
         provider[kind].listComments("testowner", "test-repo", 1, page),
       ).rejects.toMatchObject({ status: 400, message });
@@ -3531,7 +3531,7 @@ describe("Gitea Provider", () => {
       ["issues", { perPage: 0 }, "perPage must be an integer from 1 to 100"],
       ["issues", { perPage: 101 }, "perPage must be an integer from 1 to 100"],
       ["pullRequests", { page: 0 }, "page must be a positive integer"],
-    ] as const)("refuses %s %o before the local cut pages forever", async (kind, page, message) => {
+    ] as const)("refuses %s %o before the local cut sees it", async (kind, page, message) => {
       await expect(
         provider[kind].listReactions("testowner", "test-repo", 1, { commentId: "21", ...page }),
       ).rejects.toMatchObject({ status: 400, message });
