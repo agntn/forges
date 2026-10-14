@@ -1144,12 +1144,166 @@ describe("Gitea Provider", () => {
       expect(mockClient).not.toHaveBeenCalled();
     });
 
-    it("maps a missing job to NotFoundError", async () => {
-      mockClient.mockRejectedValueOnce(makeFetchError(404));
+    it("maps a missing job to NotFoundError once its log is missing too", async () => {
+      mockClient
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockRejectedValueOnce(makeFetchError(404));
 
       await expect(
         provider.ciRuns.readJobLog("testowner", "test-repo", "105912189006"),
       ).rejects.toBeInstanceOf(NotFoundError);
+      expect(mockClient).toHaveBeenLastCalledWith(
+        "/repos/testowner/test-repo/actions/jobs/105912189006/logs",
+        { responseType: "stream" },
+      );
+    });
+
+    describe("on Forgejo", () => {
+      /* Job 404651 as code.forgejo.org served it on 17.0.0-dev: steps, no times of its own. */
+      const forgejoJob = {
+        id: 404651,
+        run_id: 195585,
+        attempt: 1,
+        handle: "1d54b6c0-c3f6-4051-9319-e453350bd015",
+        repo_id: 276,
+        owner_id: 3,
+        name: "test",
+        html_url:
+          "https://code.forgejo.org/forgejo/release-notes-assistant/actions/runs/797/jobs/0/attempt/1",
+        needs: null,
+        runs_on: ["docker"],
+        task_id: 328359,
+        status: "failure",
+        steps: [
+          ["Set up job", "success", "22:02:44", "22:02:45"],
+          [
+            "https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "success",
+            "22:02:45",
+            "22:02:46",
+          ],
+          [
+            "https://data.forgejo.org/actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16",
+            "success",
+            "22:02:46",
+            "22:02:58",
+          ],
+          ["make fmt", "success", "22:02:58", "22:02:59"],
+          ["make lint", "success", "22:02:59", "22:03:02"],
+          ["make spell", "success", "22:03:02", "22:03:03"],
+          ["make check", "failure", "22:03:03", "22:04:36"],
+          ["Complete job", "failure", "22:04:36", "22:04:39"],
+        ].map(([name, status, started, stopped], number) => ({
+          number,
+          name,
+          status,
+          started: `2026-10-03T${started}Z`,
+          stopped: `2026-10-03T${stopped}Z`,
+        })),
+      };
+      const forgejoLog = [
+        "2026-10-03T22:02:45.0362116Z Runner 5a43e12b-0d29-4802-a9b1-0d86f7f944d1 (version:v13.1.0) received task 328359 of job test, triggered by event: pull_request",
+        "2026-10-03T22:02:45.5689049Z ⭐ Run Main https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+        "2026-10-03T22:03:06.3050386Z Processing triggers for libc-bin (2.41-12+deb13u4) ...",
+        "2026-10-03T22:04:06.7193769Z curl: (22) The requested URL returned error: 504",
+        "2026-10-03T22:04:37.1322728Z 🏁  Job failed",
+        "",
+      ].join("\n");
+      /* Lines of forgejo/website job 13806279 as Codeberg served them on Forgejo 16. */
+      const codebergLog = [
+        "2026-10-06T22:42:01.1432808Z Runner 99799607-3c8d-4aec-b3b3-91b3219e1ef2 (version:v13.1.0) received task 10189305 of job publish, triggered by event: push",
+        "2026-10-06T22:42:02.7662203Z ⭐ Run Main https://data.forgejo.org/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "2026-10-06T22:43:39.8084439Z   ✅  Success - Post https://data.forgejo.org/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "2026-10-06T22:43:39.8245057Z 🏁  Job succeeded",
+        "",
+      ].join("\n");
+
+      it("splits the log by the steps of the job route", async () => {
+        mockClient
+          .mockResolvedValueOnce(forgejoJob)
+          .mockResolvedValueOnce(new Response(forgejoLog).body);
+
+        const log = await provider.ciRuns.readJobLog(
+          "forgejo",
+          "release-notes-assistant",
+          "404651",
+        );
+
+        expect(log).toMatchObject({
+          name: "test",
+          status: "completed",
+          conclusion: "failure",
+          started: true,
+        });
+        expect(log.content.split("\n").slice(0, 5)).toEqual([
+          "--- step 6 make check: failure",
+          "Processing triggers for libc-bin (2.41-12+deb13u4) ...",
+          "curl: (22) The requested URL returned error: 504",
+          "--- step 7 Complete job: failure",
+          "🏁  Job failed",
+        ]);
+      });
+
+      it("says a job no runner took has no log", async () => {
+        mockClient.mockResolvedValueOnce({
+          ...forgejoJob,
+          task_id: 0,
+          status: "waiting",
+          steps: [],
+        });
+
+        const log = await provider.ciRuns.readJobLog(
+          "forgejo",
+          "release-notes-assistant",
+          "404651",
+        );
+
+        expect(mockClient).toHaveBeenCalledTimes(1);
+        expect(log).toMatchObject({ started: false, status: "waiting", content: "" });
+      });
+
+      it("reads the log in order where the job route is missing", async () => {
+        mockClient
+          .mockRejectedValueOnce(makeFetchError(404))
+          .mockResolvedValueOnce(new Response(codebergLog).body);
+
+        const log = await provider.ciRuns.readJobLog("forgejo", "website", "13806279");
+
+        expect(mockClient).toHaveBeenLastCalledWith(
+          "/repos/forgejo/website/actions/jobs/13806279/logs",
+          { responseType: "stream" },
+        );
+        expect(log).toMatchObject({
+          jobId: "13806279",
+          name: "publish",
+          status: "completed",
+          conclusion: "success",
+          started: true,
+        });
+        expect(log.content).toBe(
+          [
+            "Runner 99799607-3c8d-4aec-b3b3-91b3219e1ef2 (version:v13.1.0) received task 10189305 of job publish, triggered by event: push",
+            "⭐ Run Main https://data.forgejo.org/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "  ✅  Success - Post https://data.forgejo.org/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "🏁  Job succeeded",
+            "",
+          ].join("\n"),
+        );
+      });
+
+      it("keeps a job without its own closing banner in progress", async () => {
+        const running = [
+          ...codebergLog.split("\n").slice(0, 2),
+          "2026-10-06T22:42:30.0000000Z [ci/test] \u{1F3C1}  Job succeeded",
+        ];
+        mockClient
+          .mockRejectedValueOnce(makeFetchError(404))
+          .mockResolvedValueOnce(new Response(running.join("\n")).body);
+
+        const log = await provider.ciRuns.readJobLog("forgejo", "website", "13806279");
+
+        expect(log).toMatchObject({ status: "in_progress", conclusion: null, started: true });
+      });
     });
   });
 

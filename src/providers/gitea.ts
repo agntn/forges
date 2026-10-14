@@ -144,20 +144,65 @@ interface GiteaCiJobsResponse {
   jobs?: ActionsJob[];
 }
 
-/** Forgejo serves a run's jobs as a bare array of these, with no steps, times or URL. */
+/** A Forgejo job; only the single-job route of Forgejo 17 lists its steps. */
 interface ForgejoActionsJob {
   id: number;
   run_id: number;
   name: string;
   status: string;
+  /** Zero until a runner takes the job; Gitea has no such field. */
+  task_id: number;
+  html_url?: string;
+  steps?: {
+    number: number;
+    name: string;
+    status: string;
+    started: string | null;
+    stopped: string | null;
+  }[];
 }
 
 function mapForgejoActionsJob(raw: ForgejoActionsJob): CiJob {
+  const state = normalizeCiRunState(raw.status);
+  const steps = (raw.steps ?? []).map((step) => ({
+    number: step.number,
+    name: step.name,
+    ...normalizeCiRunState(step.status),
+    startedAt: step.started ?? null,
+    completedAt: step.stopped ?? null,
+  }));
   return {
     id: String(raw.id),
     runId: String(raw.run_id),
     name: raw.name,
-    ...normalizeCiRunState(raw.status),
+    ...state,
+    startedAt: steps[0]?.startedAt ?? null,
+    completedAt: state.status === "completed" ? (steps.at(-1)?.completedAt ?? null) : null,
+    url: raw.html_url ?? "",
+    steps,
+  };
+}
+
+function isForgejoActionsJob(raw: ActionsJob | ForgejoActionsJob): raw is ForgejoActionsJob {
+  return "task_id" in raw;
+}
+
+/** The runner opens every log with the job it took and closes a finished one with this banner. */
+const FORGEJO_TASK_LINE = /^\S+Z Runner .* received task \d+ of job (.+), triggered by event: /u;
+const FORGEJO_JOB_RESULT = /^\S+Z \u{1F3C1} {2}Job (succeeded|failed)\r?$/gmu;
+const FORGEJO_JOB_OUTCOMES: Readonly<Record<string, string>> = {
+  succeeded: "success",
+  failed: "failure",
+};
+
+/** Forgejo 16 has no route for one job, so the log has to say which job it was and how it ended. */
+function jobFromForgejoLog(jobId: string, log: string): CiJob {
+  const result = [...log.matchAll(FORGEJO_JOB_RESULT)].at(-1)?.[1] ?? "";
+  return {
+    id: jobId,
+    runId: "",
+    name: FORGEJO_TASK_LINE.exec(log.split("\n", 1)[0] ?? "")?.[1] ?? "",
+    ...normalizeCiRunState(FORGEJO_JOB_OUTCOMES[result] ?? "running"),
     startedAt: null,
     completedAt: null,
     url: "",
@@ -1145,16 +1190,35 @@ export class GiteaProvider extends Provider<GiteaRawTypes> {
   ): Promise<CiJobLog> {
     try {
       const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/jobs/${jobId}`;
-      const job = mapActionsJob(await this.client<ActionsJob>(route));
+      const raw = await this.#tryActionsJob(route);
+      if (raw === null) {
+        const log = await this.#readActionsJobLog(route);
+        return buildCiJobLog(jobFromForgejoLog(jobId, log.text), log, options);
+      }
+      const job = isForgejoActionsJob(raw) ? mapForgejoActionsJob(raw) : mapActionsJob(raw);
       if (!jobStarted(job, true)) return buildCiJobLog(job, null, options);
-      const stream = await this.client<unknown, "stream">(`${route}/logs`, {
-        responseType: "stream",
-      });
-      const log = await readJobLogText(stream);
-      return buildCiJobLog(job, { ...log, timestamped: true }, options);
+      return buildCiJobLog(job, await this.#readActionsJobLog(route), options);
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
+  }
+
+  /** Forgejo 16 answers 404 for every job, so only a missing log proves the job is gone. */
+  async #tryActionsJob(route: string): Promise<ActionsJob | ForgejoActionsJob | null> {
+    try {
+      return await this.client<ActionsJob | ForgejoActionsJob>(route);
+    } catch (error) {
+      const normalized = normalizeError(error, PLATFORM);
+      if (normalized.status === 404) return null;
+      throw normalized;
+    }
+  }
+
+  async #readActionsJobLog(route: string) {
+    const stream = await this.client<unknown, "stream">(`${route}/logs`, {
+      responseType: "stream",
+    });
+    return { ...(await readJobLogText(stream)), timestamped: true };
   }
 
   /** Gitea clamps `limit`, so a short page goes by the real page size, or keeps paging blind. */
