@@ -133,22 +133,25 @@ function providerKey(platform: ForgesPlatform, account?: string): string {
   return account === undefined ? key : `${key} @${account.toLowerCase()}`;
 }
 
-function configuredToken(platform: Exclude<ForgesPlatform, "artifacts">): string {
+/** The local credential, or null when the chain found none or an empty token asks for none. */
+function configuredCredential(platform: Exclude<ForgesPlatform, "artifacts">): AuthResult | null {
   const baseURL = process.env[baseUrlEnvByPlatform[platform]];
-  return resolveToken(platform, { baseURL })?.token ?? "";
+  const credential = resolveToken(platform, { baseURL });
+  return credential === null || credential.token === "" ? null : credential;
 }
 
+/** A null credential reads anonymously, or means the Cloudflare chain on artifacts. */
 async function createConfiguredProvider(
   platform: ForgesPlatform,
-  token: string,
+  credential: AuthResult | null,
 ): Promise<Provider> {
+  const token = credential?.token ?? "";
   const baseURL = process.env[baseUrlEnvByPlatform[platform]];
   const provider = await createProvider(
     platform,
     baseURL === undefined ? { token } : { baseURL, token },
   );
-  /** An empty token sends artifacts to the Cloudflare chain, never to an anonymous read. */
-  return explainFailures(provider, platform, token === "" && platform !== "artifacts");
+  return explainFailures(provider, platform, credential?.source);
 }
 
 /** Cloudflare reads nothing without a token, so artifacts keeps one provider for every call. */
@@ -156,7 +159,7 @@ function artifactsProvider(): Promise<Provider> {
   const key = providerKey("artifacts");
   return (
     pinnedProviders.get(key) ??
-    trackProvider(pinnedProviders, key, () => createConfiguredProvider("artifacts", ""))
+    trackProvider(pinnedProviders, key, () => createConfiguredProvider("artifacts", null))
   );
 }
 
@@ -174,17 +177,41 @@ function trackProvider(
   return provider;
 }
 
+/** Per platform: the variable to suggest, all variables read before the login, and its CLI. */
+const credentialOrigins = {
+  github: {
+    variable: "GITHUB_TOKEN",
+    variables: "GH_TOKEN or GITHUB_TOKEN",
+    cli: "gh",
+    login: "gh auth login",
+  },
+  gitlab: {
+    variable: "GITLAB_TOKEN",
+    variables: "GITLAB_TOKEN, GL_TOKEN or GITLAB_PAT",
+    cli: "glab",
+    login: "glab auth login",
+  },
+  gitea: { variable: "GITEA_TOKEN", variables: "GITEA_TOKEN", cli: "tea", login: "tea login add" },
+  artifacts: {
+    variable: "CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID",
+    variables: "CLOUDFLARE_API_TOKEN",
+    cli: "cf",
+    login: "cf auth login",
+  },
+} satisfies Record<ForgesPlatform, Record<"variable" | "variables" | "cli" | "login", string>>;
+
 function credentialSetupHint(platform: ForgesPlatform): string {
-  switch (platform) {
-    case "github":
-      return "Set GITHUB_TOKEN or log in with `gh auth login`.";
-    case "gitlab":
-      return "Set GITLAB_TOKEN or log in with `glab auth login`.";
-    case "gitea":
-      return "Set GITEA_TOKEN or log in with `tea login add`.";
-    case "artifacts":
-      return "Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID or log in with `cf auth login`.";
-  }
+  const { variable, login } = credentialOrigins[platform];
+  return `Set ${variable} or log in with \`${login}\`.`;
+}
+
+/** The way past a rejected token, which stays pinned until forges_auth_reload drops it. */
+function rejectedTokenHint(platform: ForgesPlatform, source: AuthResult["source"]): string {
+  const { variables, cli, login } = credentialOrigins[platform];
+  const reload = "then call forges_auth_reload and retry.";
+  return source === "env"
+    ? `The ${platform} token from ${variables} was rejected, so it has likely expired or been revoked. That variable wins over the \`${cli}\` login: replace or unset it, ${reload}`
+    : `The ${platform} token of the local \`${cli}\` login was rejected, so it has likely expired or been revoked. Log in again with \`${login}\`, ${reload}`;
 }
 
 async function authenticatedProvider(
@@ -198,15 +225,15 @@ async function authenticatedProvider(
   const pinned = pinnedProviders.get(key);
   if (pinned) return pinned;
 
-  const token = configuredToken(platform);
-  if (token === "") {
+  const credential = configuredCredential(platform);
+  if (credential === null) {
     throw new AuthenticationError(
       `No auth token found for ${platform}. ${credentialSetupHint(platform)}`,
       platform,
     );
   }
 
-  return trackProvider(pinnedProviders, key, () => createConfiguredProvider(platform, token));
+  return trackProvider(pinnedProviders, key, () => createConfiguredProvider(platform, credential));
 }
 
 /**
@@ -249,13 +276,13 @@ async function verifiedAccountProvider(
   account: string,
   credential: AuthResult,
 ): Promise<Provider> {
-  const provider = await createConfiguredProvider(platform, credential.token);
+  const provider = await createConfiguredProvider(platform, credential);
   const { login } = await provider.users.authenticated();
   if (login.toLowerCase() === account.toLowerCase()) return provider;
 
   const hint =
     credential.source === "env"
-      ? "GH_TOKEN or GITHUB_TOKEN is set and takes precedence; unset it to use the gh login."
+      ? `${credentialOrigins.github.variables} is set and takes precedence; unset it to use the gh login.`
       : "Check `gh auth status`.";
   throw new AuthenticationError(
     `Refusing to act as "${account}": the ${platform} token found for it belongs to "${login}". ${hint}`,
@@ -269,15 +296,17 @@ function readProvider(platform: ForgesPlatform): Promise<Provider> {
   const authenticated = pinnedProviders.get(key);
   if (authenticated) return authenticated;
 
-  const token = configuredToken(platform);
-  if (token !== "") {
+  const credential = configuredCredential(platform);
+  if (credential !== null) {
     anonymousReadProviders.delete(key);
-    return trackProvider(pinnedProviders, key, () => createConfiguredProvider(platform, token));
+    return trackProvider(pinnedProviders, key, () =>
+      createConfiguredProvider(platform, credential),
+    );
   }
 
   return (
     anonymousReadProviders.get(key) ??
-    trackProvider(anonymousReadProviders, key, () => createConfiguredProvider(platform, token))
+    trackProvider(anonymousReadProviders, key, () => createConfiguredProvider(platform, null))
   );
 }
 
@@ -296,6 +325,26 @@ export function toolFailure(error: unknown): Error {
   return failure;
 }
 
+/** What a refusal the server sent needs next, by whether the request carried a token. */
+function refusalHint(
+  status: number,
+  platform: ForgesPlatform,
+  source: AuthResult["source"] | undefined,
+): string | undefined {
+  /** artifacts finds its Cloudflare credential per request and never reads anonymously. */
+  if (platform === "artifacts") return undefined;
+  if (source !== undefined) return status === 401 ? rejectedTokenHint(platform, source) : undefined;
+  if (!ANONYMOUS_REFUSALS.has(status)) return undefined;
+
+  const reason =
+    status === 404
+      ? `The request carried no token, and ${platform} answers 404 for a private repository as well as a missing one.`
+      : status === 429
+        ? "The request carried no token, and requests without one get a far lower rate limit."
+        : "The request carried no token.";
+  return `${reason} ${credentialSetupHint(platform)} Then retry.`;
+}
+
 /** Join a sentence to a message that may or may not end with a period. */
 function appendSentence(message: string, sentence: string): string {
   return `${message.trimEnd().replace(/\.?$/, ".")} ${sentence}`;
@@ -309,14 +358,15 @@ function appendSentence(message: string, sentence: string): string {
  * names its retry window, and a refusal of a tokenless read says that no token
  * was sent: a private repository answers 404 to such a request, exactly like one
  * that does not exist, so without it the agent concludes the repository is
- * missing. Only refusals the server sent get that sentence; a provider's own 404,
- * such as a template key missing from its list, means the item really is absent.
+ * missing. A rejected token names where it came from and how to replace it.
+ * Only refusals the server sent get those sentences; a provider's own 404, such
+ * as a template key missing from its list, means the item really is absent.
  * The original FetchError, URL included, stays on `originalError`.
  */
 function explainFailures(
   provider: Provider,
   platform: ForgesPlatform,
-  anonymous: boolean,
+  source: AuthResult["source"] | undefined,
 ): Provider {
   const explain = (error: unknown): unknown => {
     if (!(error instanceof ForgesError) || explainedFailures.has(error)) return error;
@@ -329,25 +379,9 @@ function explainFailures(
       error.message = appendSentence(error.message, `Retry after ${error.retryAfter}s.`);
     }
 
-    if (
-      !anonymous ||
-      !(error.originalError instanceof FetchError) ||
-      error.status === undefined ||
-      !ANONYMOUS_REFUSALS.has(error.status)
-    ) {
-      return error;
-    }
-
-    const reason =
-      error.status === 404
-        ? `The request carried no token, and ${platform} answers 404 for a private repository as well as a missing one.`
-        : error.status === 429
-          ? "The request carried no token, and requests without one get a far lower rate limit."
-          : "The request carried no token.";
-    error.message = appendSentence(
-      error.message,
-      `${reason} ${credentialSetupHint(platform)} Then retry.`,
-    );
+    if (!(error.originalError instanceof FetchError) || error.status === undefined) return error;
+    const hint = refusalHint(error.status, platform, source);
+    if (hint !== undefined) error.message = appendSentence(error.message, hint);
     return error;
   };
 
