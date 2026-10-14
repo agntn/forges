@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   MAX_CHECK_WAIT_SECONDS,
+  readChecks,
   waitForChecks,
+  type ExpectedHead,
   type ReadCheckPage,
   type ReadLastChange,
 } from "../src/check-wait.ts";
@@ -262,5 +264,86 @@ describe("check wait", () => {
     expect(bounded.wait.settled).toBe(false);
     expect(bounded.wait.polls).toBe(1);
     expect(note).toContain("pages of checks");
+  });
+});
+
+describe("check wait on an expected head", () => {
+  const before = "6784d37";
+  const pushed = "a585fda";
+
+  /* The pull request catches up with the push on the third read of its head. */
+  function laggingPullRequest(): { head: ExpectedHead; read: ReadCheckPage } {
+    let headReads = 0;
+    let pushedReads = 0;
+    const current = () => (headReads < 3 ? before : pushed);
+    const head: ExpectedHead = {
+      sha: pushed,
+      read: vi.fn(async () => {
+        headReads += 1;
+        return current();
+      }),
+    };
+    const read: ReadCheckPage = vi.fn(async () => {
+      if (current() === before) return page([check("PR Lens", false)]);
+      pushedReads += 1;
+      return page([check("test", pushedReads < 2)]);
+    });
+    return { head, read };
+  }
+
+  it("does not settle on the previous head's finished checks", async () => {
+    const { head, read } = laggingPullRequest();
+
+    const { page: settled, note } = await run(waitForChecks(read, 1, 120, changedAt(0), head));
+
+    expect(settled.items.map((item) => item.name)).toEqual(["test"]);
+    expect(settled.wait).toMatchObject({ settled: true, polls: 4, pending: [] });
+    expect(settled.staleHead).toBeUndefined();
+    expect(note).toBeUndefined();
+  });
+
+  it("names the head the pull request still points at when the budget runs out", async () => {
+    const head: ExpectedHead = { sha: pushed, read: vi.fn(async () => before) };
+    const read = polls([page([check("PR Lens", false)])]);
+
+    const { page: timedOut, note } = await run(waitForChecks(read, 1, 5, changedAt(0), head));
+
+    expect(timedOut.wait.settled).toBe(false);
+    expect(timedOut.wait.waitedMs).toBeGreaterThanOrEqual(5_000);
+    expect(timedOut.items).toEqual([]);
+    expect(timedOut.staleHead).toBe(before);
+    expect(note).toContain(`still points at ${before} after 5s, not at headSha ${pushed}`);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("leaves a single read empty while the pull request lags behind", async () => {
+    const head: ExpectedHead = { sha: pushed, read: vi.fn(async () => before) };
+    const read = polls([page([check("PR Lens", false)])]);
+
+    const { page: once, note } = await readChecks(read, 1, head);
+
+    expect(once).toEqual({ items: [], hasNextPage: false, staleHead: before });
+    expect(note).toContain(`still points at ${before}, not at headSha ${pushed}`);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("matches a pushed head written in capitals", async () => {
+    const head: ExpectedHead = { sha: pushed.toUpperCase(), read: vi.fn(async () => pushed) };
+    const read = polls([page([check("test", false)])]);
+
+    const { page: once } = await readChecks(read, 1, head);
+
+    expect(once.items.map((item) => item.name)).toEqual(["test"]);
+  });
+
+  it("reads the checks once the pull request points at the pushed head", async () => {
+    const head: ExpectedHead = { sha: pushed, read: vi.fn(async () => pushed) };
+    const read = polls([page([check("test", true)])]);
+
+    const { page: once, note } = await readChecks(read, 1, head);
+
+    expect(once.items.map((item) => item.name)).toEqual(["test"]);
+    expect(once.staleHead).toBeUndefined();
+    expect(note).toBeUndefined();
   });
 });

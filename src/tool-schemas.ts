@@ -449,6 +449,13 @@ export function forgesToolSchemas() {
     page,
     perPage,
     waitSeconds,
+    headSha: Type.Optional(
+      Type.String({
+        description:
+          "The full SHA you just pushed: checks are listed only once the pull request points at it, so a read right after a push never reports the previous head's checks",
+        minLength: 1,
+      }),
+    ),
   });
   const listPullRequestReviewsParameters = listCommentsParameters;
   const pullRequestReviewParameters = closed({

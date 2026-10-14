@@ -33,13 +33,28 @@ export interface CheckWait {
   noChecks?: "quiet" | "waited";
 }
 
-export type WaitedCheckPage = PageResult<PullRequestCheck> & { wait: CheckWait };
+/** A page of checks, or an empty one naming the commit the pull request still points at. */
+export type CheckPage = PageResult<PullRequestCheck> & { staleHead?: string };
+
+export type WaitedCheckPage = CheckPage & { wait: CheckWait };
 
 /** Reads one page of checks; the wait calls it repeatedly with the same page size. */
 export type ReadCheckPage = (page: number) => Promise<PageResult<PullRequestCheck>>;
 
 /** Reads when the pull request last changed; a push moves it on GitHub, GitLab and Gitea. */
 export type ReadLastChange = () => Promise<string>;
+
+/** The commit the caller just pushed, and a read of the one the pull request points at now. */
+export interface ExpectedHead {
+  sha: string;
+  read: () => Promise<string>;
+}
+
+/** A pull request that hasn't caught up with a push: where it points, and what was pushed. */
+interface StaleHead {
+  current: string;
+  expected: string;
+}
 
 export interface CheckWaitResult {
   page: WaitedCheckPage;
@@ -153,12 +168,45 @@ function waitNote(
   return `Checks were still running when the ${waitSeconds}s budget ran out: ${pendingText(wait.pending)}. Call again with waitSeconds to keep waiting; do not treat the pull request as finished.`;
 }
 
+function nextPollDelay(polls: number, remainingMs: number): number {
+  return Math.min(polls * POLL_STEP_MS, MAX_POLL_INTERVAL_MS, remainingMs);
+}
+
+/** Forges answer with lowercase hex, while a caller may pass the same SHA in capitals. */
+async function findStaleHead(expected: ExpectedHead | undefined): Promise<StaleHead | undefined> {
+  if (expected === undefined) return undefined;
+  const current = await expected.read();
+  const same = current.toLowerCase() === expected.sha.toLowerCase();
+  return same ? undefined : { current, expected: expected.sha };
+}
+
+/** Reads the checks once, or none while the pull request still lags behind the push. */
+export async function readChecks(
+  read: ReadCheckPage,
+  requestedPage: number,
+  expectedHead?: ExpectedHead,
+): Promise<{ page: CheckPage; note: string | undefined }> {
+  const stale = await findStaleHead(expectedHead);
+  if (stale) return { page: staleHeadPage(stale), note: staleHeadNote(stale) };
+  return { page: await read(requestedPage), note: undefined };
+}
+
+function staleHeadPage(stale: Readonly<StaleHead>): CheckPage {
+  return { items: [], hasNextPage: false, staleHead: stale.current };
+}
+
+function staleHeadNote(stale: Readonly<StaleHead>, waitSeconds?: number): string {
+  const when = waitSeconds === undefined ? "" : ` after ${waitSeconds}s`;
+  return `The pull request still points at ${stale.current}${when}, not at headSha ${stale.expected}, so that commit's checks are left out. The forge may not have caught up with the push yet: call again with waitSeconds. If ${stale.expected} isn't the latest push, pass the head the pull request reports instead.`;
+}
+
 /**
  * Polls one pull request's checks until every one concludes or the budget ends.
  *
  * An empty list right after a push looks just like a pull request without CI, so it
  * settles at once only when the pull request was already quiet, and otherwise once it
  * stays empty for the grace window, which any change to the pull request starts over.
+ * With an expected head, a pull request still pointing at the previous push never settles.
  * A timeout is an ordinary result carrying the names that were still running,
  * because an error would cost the caller the state it asked for.
  */
@@ -167,6 +215,7 @@ export async function waitForChecks(
   requestedPage: number,
   waitSeconds: number,
   readLastChange: ReadLastChange,
+  expectedHead?: ExpectedHead,
 ): Promise<CheckWaitResult> {
   const budgetMs = Math.min(waitSeconds, MAX_CHECK_WAIT_SECONDS) * 1_000;
   const startedAt = performance.now();
@@ -175,6 +224,17 @@ export async function waitForChecks(
 
   while (true) {
     polls += 1;
+    const stale = await findStaleHead(expectedHead);
+    if (stale) {
+      emptyRun = undefined;
+      const waitedMs = Math.round(performance.now() - startedAt);
+      if (waitedMs >= budgetMs) {
+        const wait: CheckWait = { settled: false, waitedMs, polls, pending: [] };
+        return { page: { ...staleHeadPage(stale), wait }, note: staleHeadNote(stale, waitSeconds) };
+      }
+      await delay(nextPollDelay(polls, budgetMs - waitedMs));
+      continue;
+    }
     const scan = await scanChecks(read, requestedPage);
     const waitedMs = Math.round(performance.now() - startedAt);
     const empty = scan.examinedEveryPage && scan.checks === 0;
@@ -201,6 +261,6 @@ export async function waitForChecks(
       };
     }
 
-    await delay(Math.min(polls * POLL_STEP_MS, MAX_POLL_INTERVAL_MS, remainingMs));
+    await delay(nextPollDelay(polls, remainingMs));
   }
 }
