@@ -550,7 +550,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   private readonly projectIdCacheTtl: number;
 
   constructor(config: ProviderConfig) {
-    super();
+    super("gitlab");
     this.apiBaseURL = normalizeApiBaseURL(config.baseURL, "https://gitlab.com/api/v4", "/api/v4");
 
     this.client = createHttpClient({

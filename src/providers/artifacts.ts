@@ -150,7 +150,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
    * and `CLOUDFLARE_ACCOUNT_ID`, then the cf CLI session.
    */
   constructor(config: ProviderConfig) {
-    super();
+    super(PLATFORM);
     this.apiBaseURL = normalizeApiBaseURL(config.baseURL, DEFAULT_BASE_URL, "/client/v4");
     this.token = config.token === "" ? undefined : config.token;
     this.accountId = config.accountId;

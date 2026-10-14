@@ -662,7 +662,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   private gitHubHost: boolean | undefined;
 
   constructor(config: ProviderConfig) {
-    super();
+    super("github");
     this.restBaseURL = config.baseURL || "https://api.github.com";
     const token = config.token ?? "";
     this.authenticated = token !== "";
