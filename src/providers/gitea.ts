@@ -189,18 +189,27 @@ function isForgejoActionsJob(raw: ActionsJob | ForgejoActionsJob): raw is Forgej
 
 /** The runner opens every log with the job it took and closes a finished one with this banner. */
 const FORGEJO_TASK_LINE = /^\S+Z Runner .* received task \d+ of job (.+), triggered by event: /u;
-const FORGEJO_JOB_RESULT = /^\S+Z \u{1F3C1} {2}Job (succeeded|failed)\r?$/gmu;
+const FORGEJO_JOB_RESULT = /^\S+Z \u{1F3C1} {2}Job (succeeded|failed)$/u;
+const FORGEJO_RUN_ERROR = /^\S+Z Job '.+' failed$/u;
 const FORGEJO_JOB_OUTCOMES: Readonly<Record<string, string>> = {
   succeeded: "success",
   failed: "failure",
 };
+
+/** The banner ends the log, or sits just above the run error the runner writes last. */
+function forgejoJobResult(log: string): string {
+  const lines = log.slice(-2000).trimEnd().split(/\r?\n/u);
+  const last = lines.at(-1) ?? "";
+  const banner = FORGEJO_RUN_ERROR.test(last) ? (lines.at(-2) ?? "") : last;
+  return FORGEJO_JOB_RESULT.exec(banner)?.[1] ?? "";
+}
 
 /** Forgejo 16 has no route for one job, so the log has to say which job it was and how it ended. */
 function jobFromForgejoLog(
   jobId: string,
   log: Readonly<{ text: string; firstLine: string }>,
 ): CiJob {
-  const result = [...log.text.matchAll(FORGEJO_JOB_RESULT)].at(-1)?.[1] ?? "";
+  const result = forgejoJobResult(log.text);
   return {
     id: jobId,
     runId: "",

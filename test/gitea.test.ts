@@ -1329,6 +1329,22 @@ describe("Gitea Provider", () => {
         );
       });
 
+      it("reads a failure from the banner above the runner's last words", async () => {
+        /* The tail of forgejo/website job 14053326 on Codeberg. */
+        const failed = [
+          "2026-10-12T04:34:40.1179651Z \u{1F3C1}  Job failed",
+          "2026-10-12T04:34:42.9383058Z Job 'preview' failed",
+          "",
+        ].join("\n");
+        mockClient
+          .mockRejectedValueOnce(makeFetchError(404))
+          .mockResolvedValueOnce(new Response(failed).body);
+
+        const log = await provider.ciRuns.readJobLog("forgejo", "website", "14053326");
+
+        expect(log).toMatchObject({ status: "completed", conclusion: "failure" });
+      });
+
       it("names the job from its first line when the log is too long to keep it", async () => {
         const [header, ...rest] = codebergLog.split("\n");
         const filler = `2026-10-06T22:42:03.0000000Z ${"x".repeat(70)}\n`;
@@ -1346,7 +1362,8 @@ describe("Gitea Provider", () => {
       it("keeps a job without its own closing banner in progress", async () => {
         const running = [
           ...codebergLog.split("\n").slice(0, 2),
-          "2026-10-06T22:42:30.0000000Z [ci/test] \u{1F3C1}  Job succeeded",
+          "2026-10-06T22:42:30.0000000Z \u{1F3C1}  Job succeeded",
+          "2026-10-06T22:42:31.0000000Z a step that echoed the banner keeps going",
         ];
         mockClient
           .mockRejectedValueOnce(makeFetchError(404))
