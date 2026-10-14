@@ -327,6 +327,37 @@ describe("check wait on an expected head", () => {
     expect(read).not.toHaveBeenCalled();
   });
 
+  it("drops checks read while another push moved the head", async () => {
+    const later = "c0ffee1";
+    let headReads = 0;
+    const head: ExpectedHead = {
+      sha: pushed,
+      read: vi.fn(async () => (headReads++ === 0 ? pushed : later)),
+    };
+    const read = polls([page([check("test", false)])]);
+
+    const { page: once, note } = await readChecks(read, 1, head);
+
+    expect(once).toEqual({ items: [], hasNextPage: false, staleHead: later });
+    expect(note).toContain(`still points at ${later}`);
+  });
+
+  it("keeps waiting when a push lands during the scan", async () => {
+    const later = "c0ffee1";
+    let headReads = 0;
+    const head: ExpectedHead = {
+      sha: pushed,
+      read: vi.fn(async () => (headReads++ === 0 ? pushed : later)),
+    };
+    const read = polls([page([check("test", false)])]);
+
+    const { page: timedOut } = await run(waitForChecks(read, 1, 5, changedAt(0), head));
+
+    expect(timedOut.wait.settled).toBe(false);
+    expect(timedOut.staleHead).toBe(later);
+    expect(timedOut.items).toEqual([]);
+  });
+
   it("matches a pushed head written in capitals", async () => {
     const head: ExpectedHead = { sha: pushed.toUpperCase(), read: vi.fn(async () => pushed) };
     const read = polls([page([check("test", false)])]);

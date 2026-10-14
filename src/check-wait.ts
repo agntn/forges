@@ -180,15 +180,29 @@ async function findStaleHead(expected: ExpectedHead | undefined): Promise<StaleH
   return same ? undefined : { current, expected: expected.sha };
 }
 
+/** Providers reread the head for every check list, so a push landing mid read must void it. */
+async function readAtHead<T>(
+  expectedHead: ExpectedHead | undefined,
+  read: () => Promise<T>,
+): Promise<{ stale: StaleHead } | { stale: undefined; value: T }> {
+  const before = await findStaleHead(expectedHead);
+  if (before) return { stale: before };
+  const value = await read();
+  const after = await findStaleHead(expectedHead);
+  return after ? { stale: after } : { stale: undefined, value };
+}
+
 /** Reads the checks once, or none while the pull request still lags behind the push. */
 export async function readChecks(
   read: ReadCheckPage,
   requestedPage: number,
   expectedHead?: ExpectedHead,
 ): Promise<{ page: CheckPage; note: string | undefined }> {
-  const stale = await findStaleHead(expectedHead);
-  if (stale) return { page: staleHeadPage(stale), note: staleHeadNote(stale) };
-  return { page: await read(requestedPage), note: undefined };
+  const outcome = await readAtHead(expectedHead, () => read(requestedPage));
+  if (outcome.stale) {
+    return { page: staleHeadPage(outcome.stale), note: staleHeadNote(outcome.stale) };
+  }
+  return { page: outcome.value, note: undefined };
 }
 
 function staleHeadPage(stale: Readonly<StaleHead>): CheckPage {
@@ -224,7 +238,8 @@ export async function waitForChecks(
 
   while (true) {
     polls += 1;
-    const stale = await findStaleHead(expectedHead);
+    const outcome = await readAtHead(expectedHead, () => scanChecks(read, requestedPage));
+    const stale = outcome.stale;
     if (stale) {
       emptyRun = undefined;
       const waitedMs = Math.round(performance.now() - startedAt);
@@ -235,7 +250,7 @@ export async function waitForChecks(
       await delay(nextPollDelay(polls, budgetMs - waitedMs));
       continue;
     }
-    const scan = await scanChecks(read, requestedPage);
+    const scan = outcome.value;
     const waitedMs = Math.round(performance.now() - startedAt);
     const empty = scan.examinedEveryPage && scan.checks === 0;
     let noChecks: CheckWait["noChecks"];
