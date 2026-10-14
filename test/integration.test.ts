@@ -68,7 +68,7 @@ describe("createProvider factory", () => {
     const fallback: unknown = Reflect.get(Provider.prototype, method);
     if (typeof fallback !== "function") throw new Error(`${method} fallback is missing`);
 
-    const provider: unknown = Object.create(Provider.prototype);
+    const provider: unknown = Reflect.construct(Provider, []);
 
     await expect(Reflect.apply(fallback, provider, [])).rejects.toThrow(message);
   });

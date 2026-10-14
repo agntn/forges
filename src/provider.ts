@@ -105,6 +105,7 @@ function paginationPageValue(
   value: number | undefined,
   fallback: number,
   label: string,
+  platform: string | undefined,
   maximum?: number,
 ): number {
   const resolved = value ?? fallback;
@@ -114,7 +115,7 @@ function paginationPageValue(
     (maximum !== undefined && resolved > maximum)
   ) {
     const range = maximum === undefined ? "a positive integer" : `an integer from 1 to ${maximum}`;
-    throw new ForgesError(`${label} must be ${range}`, 400);
+    throw new ForgesError(`${label} must be ${range}`, 400, platform);
   }
   return resolved;
 }
@@ -125,11 +126,12 @@ interface ContributionTemplatePagination {
 }
 
 function contributionTemplatePagination(
-  options?: ListContributionTemplatesOptions,
+  options: ListContributionTemplatesOptions | undefined,
+  platform: string | undefined,
 ): ContributionTemplatePagination {
   return {
-    page: paginationPageValue(options?.page, 1, "page"),
-    perPage: paginationPageValue(options?.perPage, 30, "perPage", 100),
+    page: paginationPageValue(options?.page, 1, "page", platform),
+    perPage: paginationPageValue(options?.perPage, 30, "perPage", platform, 100),
   };
 }
 
@@ -149,9 +151,9 @@ function paginateContributionTemplates(
   };
 }
 
-function assertReleaseTag(tag: string): void {
+function assertReleaseTag(tag: string, platform?: string): void {
   if (tag.trim() === "") {
-    throw new ForgesError("Release tag must not be empty", 400);
+    throw new ForgesError("Release tag must not be empty", 400, platform);
   }
 }
 
@@ -160,12 +162,13 @@ function assertGlobalSearch(
   noun: "Pull-request" | "Issue",
   query: string,
   options: GlobalIssueSearchOptions | undefined,
+  platform?: string,
 ): void {
   if (options?.author !== undefined && !/^[^\s:'"]+$/u.test(options.author)) {
-    throw new ForgesError(`${noun} search author must be a single login`, 400);
+    throw new ForgesError(`${noun} search author must be a single login`, 400, platform);
   }
   if (options?.owner !== undefined && !/^\S+$/u.test(options.owner)) {
-    throw new ForgesError(`${noun} search owner must be one name without spaces`, 400);
+    throw new ForgesError(`${noun} search owner must be one name without spaces`, 400, platform);
   }
   const labelled = noun === "Issue" && (options?.labels?.length ?? 0) > 0;
   const scoped = options?.author !== undefined || options?.owner !== undefined || labelled;
@@ -175,35 +178,40 @@ function assertGlobalSearch(
         ? "Issue search needs a query, an author, a label or an owner"
         : `${noun} search needs a query, an author or an owner`,
       400,
+      platform,
     );
   }
   if (options?.repo !== undefined && options.owner === undefined) {
-    throw new ForgesError(`${noun} search repository scope requires an owner`, 400);
+    throw new ForgesError(`${noun} search repository scope requires an owner`, 400, platform);
   }
 }
 
 /** Gitea and GitLab split labels on commas and GitHub quotes each one. */
-function assertGlobalIssueFilters(options: GlobalIssueSearchOptions | undefined): void {
+function assertGlobalIssueFilters(
+  options: GlobalIssueSearchOptions | undefined,
+  platform?: string,
+): void {
   if (options?.state !== undefined && !["open", "closed", "all"].includes(options.state)) {
-    throw new ForgesError("Issue search state must be open, closed or all", 400);
+    throw new ForgesError("Issue search state must be open, closed or all", 400, platform);
   }
   if ((options?.labels?.length ?? 0) > 10) {
-    throw new ForgesError("Issue search takes at most 10 labels", 400);
+    throw new ForgesError("Issue search takes at most 10 labels", 400, platform);
   }
   for (const [index, label] of (options?.labels ?? []).entries()) {
     if (label.trim() === "" || /[,"\p{Cc}]/u.test(label)) {
       throw new ForgesError(
         `Issue search label ${index + 1} must be a name without commas or double quotes`,
         400,
+        platform,
       );
     }
   }
 }
 
 /** A blank comment is never what the caller meant, so it fails here without a request. */
-function assertCommentBody(body: string): void {
+function assertCommentBody(body: string, platform?: string): void {
   if (body.trim() === "") {
-    throw new ForgesError("Comment body must not be empty", 400);
+    throw new ForgesError("Comment body must not be empty", 400, platform);
   }
 }
 
@@ -225,27 +233,23 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   public readonly users: UserResource;
   public readonly threads: ThreadResource;
   /** Named on every refusal from the base class, which runs before any platform code. */
-  protected readonly platform: string | undefined;
+  readonly #platform: string | undefined;
 
   protected constructor(platform?: string) {
-    this.platform = platform;
+    this.#platform = platform;
     this.repos = {
       list: (owner, options) => this.listRepos(owner, options),
       get: (owner, repo) => this.getRepo(owner, repo),
       readContents: async (owner, repo, path, options) => {
-        this.check(() => assertRepositoryContentsOptions(options));
-        return this.readRepositoryContents(
-          owner,
-          repo,
-          this.check(() => normalizeRepositoryPath(path)),
-          options,
-        );
+        assertRepositoryContentsOptions(options, this.#platform);
+        const normalizedPath = normalizeRepositoryPath(path, this.#platform);
+        return this.readRepositoryContents(owner, repo, normalizedPath, options);
       },
       listTags: (owner, repo, options) => this.listTags(owner, repo, options),
     };
     this.contributionTemplates = {
       list: async (owner, repo, kind, options) => {
-        const pagination = this.check(() => contributionTemplatePagination(options));
+        const pagination = contributionTemplatePagination(options, this.#platform);
         const templates = await this.listContributionTemplates(owner, repo, kind);
         return paginateContributionTemplates(templates, pagination);
       },
@@ -256,7 +260,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         const templates = await this.listContributionTemplates(owner, repo, kind);
         const template = templates.find((candidate) => candidate.key === key);
         if (!template) {
-          throw new NotFoundError(`Contribution template not found: ${kind}/${key}`, this.platform);
+          throw new NotFoundError(
+            `Contribution template not found: ${kind}/${key}`,
+            this.#platform,
+          );
         }
         const content = await this.readContributionTemplate(owner, repo, template);
         return { ...template, content };
@@ -276,12 +283,12 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     this.ciRuns = {
       list: (owner, repo, options) => this.listCiRuns(owner, repo, options),
       listJobs: async (owner, repo, runId, options) => {
-        this.check(() => assertCiId(runId, "run"));
+        assertCiId(runId, "run", this.#platform);
         return this.listCiJobs(owner, repo, runId, options);
       },
       readJobLog: async (owner, repo, jobId, options) => {
-        this.check(() => assertCiId(jobId, "job"));
-        this.check(() => assertCiJobLogOptions(options));
+        assertCiId(jobId, "job", this.#platform);
+        assertCiJobLogOptions(options, this.#platform);
         return this.readCiJobLog(owner, repo, jobId, options);
       },
     };
@@ -302,27 +309,27 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           throw this.refusal("Commit comparison needs a base and a head ref");
         }
         return this.compareCommits(owner, repo, base, head, {
-          page: this.check(() => paginationPageValue(options?.page, 1, "page")),
-          perPage: this.check(() => paginationPageValue(options?.perPage, 30, "perPage", 100)),
+          page: paginationPageValue(options?.page, 1, "page", this.#platform),
+          perPage: paginationPageValue(options?.perPage, 30, "perPage", this.#platform, 100),
         });
       },
       readPatch: async (owner, repo, sha, options) => {
-        this.check(() => assertCommitPatchOptions(options));
+        assertCommitPatchOptions(options, this.#platform);
         return this.readCommitPatch(owner, repo, sha, options);
       },
     };
     this.releases = {
       list: (owner, repo, options) => this.listReleases(owner, repo, options),
       get: async (owner, repo, tag) => {
-        this.check(() => assertReleaseTag(tag));
+        assertReleaseTag(tag, this.#platform);
         return this.getRelease(owner, repo, tag);
       },
       create: async (owner, repo, input) => {
-        this.check(() => assertReleaseTag(input.tag));
+        assertReleaseTag(input.tag, this.#platform);
         return this.createRelease(owner, repo, input);
       },
       update: async (owner, repo, tag, input) => {
-        this.check(() => assertReleaseTag(tag));
+        assertReleaseTag(tag, this.#platform);
         if (Object.values(input).every((value) => value === undefined)) {
           throw this.refusal("Release update needs at least one field");
         }
@@ -331,8 +338,8 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.issues = {
       searchGlobal: async (query, options) => {
-        this.check(() => assertGlobalSearch("Issue", query, options));
-        this.check(() => assertGlobalIssueFilters(options));
+        assertGlobalSearch("Issue", query, options, this.#platform);
+        assertGlobalIssueFilters(options, this.#platform);
         return this.searchIssuesGlobal(query, options);
       },
       list: (owner, repo, options) => this.listIssues(owner, repo, options),
@@ -344,11 +351,11 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       },
       get: (owner, repo, number) => this.getIssue(owner, repo, number),
       create: async (owner, repo, input) => {
-        this.check(() => assertAssignees(input.assignees));
+        assertAssignees(input.assignees, this.#platform);
         return this.createIssue(owner, repo, input);
       },
       update: async (owner, repo, number, input) => {
-        this.check(() => assertIssueUpdate(input));
+        assertIssueUpdate(input, this.#platform);
         return this.updateIssue(owner, repo, number, input);
       },
       listComments: (owner, repo, number, options) =>
@@ -356,7 +363,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       getComment: (owner, repo, number, commentId) =>
         this.getIssueComment(owner, repo, number, commentId),
       createComment: async (owner, repo, number, input) => {
-        this.check(() => assertCommentBody(input.body));
+        assertCommentBody(input.body, this.#platform);
         return this.createIssueComment(owner, repo, number, input);
       },
       listReactions: (owner, repo, number, options) =>
@@ -364,15 +371,15 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.pullRequests = {
       searchGlobal: async (query, options) => {
-        this.check(() => assertGlobalSearch("Pull-request", query, options));
+        assertGlobalSearch("Pull-request", query, options, this.#platform);
         return this.searchPullRequestsGlobal(query, options);
       },
       list: (owner, repo, options) => this.listPullRequests(owner, repo, options),
       listFiles: (owner, repo, number, options) =>
         this.listPullRequestFiles(owner, repo, number, options),
       listChecks: async (owner, repo, number, options) => {
-        const page = this.check(() => paginationPageValue(options?.page, 1, "page"));
-        const perPage = this.check(() => paginationPageValue(options?.perPage, 30, "perPage", 100));
+        const page = paginationPageValue(options?.page, 1, "page", this.#platform);
+        const perPage = paginationPageValue(options?.perPage, 30, "perPage", this.#platform, 100);
         if (!Number.isSafeInteger(page * perPage + 1)) {
           throw this.refusal("Check pagination exceeds the safe integer range");
         }
@@ -397,15 +404,15 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         return { ...pullRequest, closingIssues };
       },
       create: async (owner, repo, input) => {
-        this.check(() => assertAssignees(input.assignees));
+        assertAssignees(input.assignees, this.#platform);
         return this.createPullRequest(owner, repo, input);
       },
       update: async (owner, repo, number, input) => {
-        this.check(() => assertPullRequestUpdate(input));
+        assertPullRequestUpdate(input, this.#platform);
         return this.updatePullRequest(owner, repo, number, input);
       },
       merge: async (owner, repo, number, input = {}) => {
-        this.check(() => assertMergeInput(input));
+        assertMergeInput(input, this.#platform);
         return this.mergePullRequest(owner, repo, number, input);
       },
       listComments: (owner, repo, number, options) =>
@@ -413,7 +420,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       getComment: (owner, repo, number, commentId) =>
         this.getPullRequestComment(owner, repo, number, commentId),
       createComment: async (owner, repo, number, input) => {
-        this.check(() => assertCommentBody(input.body));
+        assertCommentBody(input.body, this.#platform);
         return this.createPullRequestComment(owner, repo, number, input);
       },
       listReactions: (owner, repo, number, options) =>
@@ -435,21 +442,11 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   }
 
   private refusal(message: string): ForgesError {
-    return new ForgesError(message, 400, this.platform);
+    return new ForgesError(message, 400, this.#platform);
   }
 
   private unsupported(message: string): Promise<never> {
-    return Promise.reject(new ForgesError(message, 501, this.platform));
-  }
-
-  /** Signs a refusal from a check that lives outside the class and can't know the platform. */
-  private check<T>(run: () => T): T {
-    try {
-      return run();
-    } catch (error) {
-      if (error instanceof ForgesError) error.platform ??= this.platform;
-      throw error;
-    }
+    return Promise.reject(new ForgesError(message, 501, this.#platform));
   }
 
   protected abstract mapOwner(raw: Raw["owner"]): Owner;

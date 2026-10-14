@@ -66,27 +66,28 @@ export function mapActionsJob(raw: ActionsJob): CiJob {
 }
 
 /** Validate job ids before provider I/O; every platform numbers its runs and jobs. */
-export function assertCiId(id: string, kind: "run" | "job"): void {
+export function assertCiId(id: string, kind: "run" | "job", platform?: string): void {
   if (!/^[1-9]\d*$/u.test(id)) {
-    throw new ForgesError(`CI ${kind} id must be a positive integer`, 400);
+    throw new ForgesError(`CI ${kind} id must be a positive integer`, 400, platform);
   }
 }
 
 /** Validate log continuation and output bounds before provider I/O. */
-export function assertCiJobLogOptions(options: CiJobLogOptions = {}): void {
+export function assertCiJobLogOptions(options: CiJobLogOptions = {}, platform?: string): void {
   const offset = options.offset ?? 0;
   const maxChars = options.maxChars ?? DEFAULT_JOB_LOG_MAX_CHARS;
   if (!Number.isSafeInteger(offset) || offset < 0) {
-    throw new ForgesError("Job log offset must be a non-negative integer", 400);
+    throw new ForgesError("Job log offset must be a non-negative integer", 400, platform);
   }
   if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > MAX_JOB_LOG_CHARS) {
     throw new ForgesError(
       `Job log maxChars must be an integer from 1 to ${MAX_JOB_LOG_CHARS}`,
       400,
+      platform,
     );
   }
   if (!Number.isSafeInteger(offset + maxChars)) {
-    throw new ForgesError("Job log range exceeds the safe integer limit", 400);
+    throw new ForgesError("Job log range exceeds the safe integer limit", 400, platform);
   }
 }
 

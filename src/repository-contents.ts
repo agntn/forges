@@ -17,31 +17,38 @@ const BINARY_PROBE_BYTES = 8000;
 const COMMIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
 /** Validate slice bounds before provider I/O. */
-export function assertRepositoryContentsOptions(options: RepositoryContentsOptions = {}): void {
+export function assertRepositoryContentsOptions(
+  options: RepositoryContentsOptions = {},
+  platform?: string,
+): void {
   const offset = options.offset ?? 0;
   const maxChars = options.maxChars ?? DEFAULT_FILE_MAX_CHARS;
   if (!Number.isSafeInteger(offset) || offset < 0) {
-    throw new ForgesError("File offset must be a non-negative integer", 400);
+    throw new ForgesError("File offset must be a non-negative integer", 400, platform);
   }
   if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > MAX_FILE_CHARS) {
-    throw new ForgesError(`File maxChars must be an integer from 1 to ${MAX_FILE_CHARS}`, 400);
+    throw new ForgesError(
+      `File maxChars must be an integer from 1 to ${MAX_FILE_CHARS}`,
+      400,
+      platform,
+    );
   }
   if (!Number.isSafeInteger(offset + maxChars)) {
-    throw new ForgesError("File range exceeds the safe integer limit", 400);
+    throw new ForgesError("File range exceeds the safe integer limit", 400, platform);
   }
   if (options.ref !== undefined && options.ref.length === 0) {
-    throw new ForgesError("File ref must not be empty", 400);
+    throw new ForgesError("File ref must not be empty", 400, platform);
   }
 }
 
 /** Trim outer slashes and refuse segments like `..`; an empty result is the root. */
-export function normalizeRepositoryPath(path: string): string {
+export function normalizeRepositoryPath(path: string, platform?: string): string {
   const trimmed = path.replace(/^\/+|\/+$/gu, "");
   if (trimmed === "") return "";
   try {
     for (const segment of trimmed.split("/")) encodeApiResponsePathSegment(segment);
   } catch {
-    throw new ForgesError(`Invalid repository path: ${path}`, 400);
+    throw new ForgesError(`Invalid repository path: ${path}`, 400, platform);
   }
   return trimmed;
 }
