@@ -187,14 +187,23 @@ function isForgejoActionsJob(raw: ActionsJob | ForgejoActionsJob): raw is Forgej
   return "task_id" in raw;
 }
 
-/** The runner opens every log with the job it took and closes a finished one with this banner. */
-const FORGEJO_TASK_LINE = /^\S+Z Runner .* received task \d+ of job (.+), triggered by event: /u;
-const FORGEJO_JOB_RESULT = /^\S+Z \u{1F3C1} {2}Job (succeeded|failed)$/u;
+/** Forgejo runners and old act_runner name the job up front, newer act_runner a few lines in. */
+const FORGEJO_TASK_LINE = /^\S+Z .* received task \d+ of job (.+), (?:be )?triggered by event: /u;
+const ACT_RUNNER_JOB_LINE = /^\S+Z Job: (.+)$/mu;
+/** act_runner drops the flag from the banner and also reports a cancelled job. */
+const FORGEJO_JOB_RESULT = /^\S+Z (?:\u{1F3C1} {2})?Job (succeeded|failed|cancelled)$/u;
 const FORGEJO_RUN_ERROR = /^\S+Z Job '.+' failed$/u;
 const FORGEJO_JOB_OUTCOMES: Readonly<Record<string, string>> = {
   succeeded: "success",
   failed: "failure",
+  cancelled: "cancelled",
 };
+
+function forgejoJobName(log: Readonly<{ text: string; firstLine: string }>): string {
+  const match =
+    FORGEJO_TASK_LINE.exec(log.firstLine) ?? ACT_RUNNER_JOB_LINE.exec(log.text.slice(0, 4096));
+  return match?.[1] ?? "";
+}
 
 /** The banner ends the log, or sits just above the run error the runner writes last. */
 function forgejoJobResult(log: string): string {
@@ -213,7 +222,7 @@ function jobFromForgejoLog(
   return {
     id: jobId,
     runId: "",
-    name: FORGEJO_TASK_LINE.exec(log.firstLine)?.[1] ?? "",
+    name: forgejoJobName(log),
     ...normalizeCiRunState(FORGEJO_JOB_OUTCOMES[result] ?? "running"),
     startedAt: null,
     completedAt: null,

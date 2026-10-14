@@ -1345,8 +1345,30 @@ describe("Gitea Provider", () => {
         expect(log).toMatchObject({ status: "completed", conclusion: "failure" });
       });
 
+      it("reads the header and banner Gitea act_runner writes", async () => {
+        /* Lines as act_runner's setupLines and job executor print them. */
+        const actRunner = [
+          "2026-10-06T22:42:01.0000000Z docker-runner(version:v0.6.1)",
+          "2026-10-06T22:42:01.0000000Z ::group::Runner Information",
+          "2026-10-06T22:42:01.0000000Z Task: 10189305",
+          "2026-10-06T22:42:01.0000000Z Job: publish",
+          "2026-10-06T22:43:39.0000000Z Job cancelled",
+          "",
+        ].join("\n");
+        mockClient
+          .mockRejectedValueOnce(makeFetchError(404))
+          .mockResolvedValueOnce(new Response(actRunner).body);
+
+        const log = await provider.ciRuns.readJobLog("forgejo", "website", "13806279");
+
+        expect(log).toMatchObject({ name: "publish", conclusion: "cancelled" });
+      });
+
       it("names the job from its first line when the log is too long to keep it", async () => {
-        const [header, ...rest] = codebergLog.split("\n");
+        const [, ...rest] = codebergLog.split("\n");
+        /* The header older act_runner wrote, before it moved the job name into its own line. */
+        const header =
+          "2026-10-06T22:42:01.0000000Z docker-runner(version:v0.2.6) received task 10189305 of job publish, be triggered by event: push";
         const filler = `2026-10-06T22:42:03.0000000Z ${"x".repeat(70)}\n`;
         mockClient
           .mockRejectedValueOnce(makeFetchError(404))
