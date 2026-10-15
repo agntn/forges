@@ -6,16 +6,16 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { registerPiTools, type PiConfirm, type PiRenderers } from "@agntn/tools/pi";
 
-import type * as ForgesTools from "../../../dist/tool-operations.d.mts";
-import type * as ForgesToolList from "../../../dist/tools.d.mts";
+import type * as ForgesTools from "../../dist/tool-operations.d.mts";
+import type * as ForgesToolList from "../../dist/tools.d.mts";
 import {
   type RenderedToolResult,
   type RenderOptions,
   renderToolCall,
   renderToolResult,
   type StatusTheme,
-} from "../../shared/tui.ts";
-import { lazy } from "../../shared/lazy.ts";
+} from "../shared/tui.ts";
+import { lazy } from "../shared/lazy.ts";
 
 const platformLabels: Record<ForgesTools.ForgesPlatform, string> = {
   github: "GitHub",
@@ -142,10 +142,10 @@ function mergeApprovalMessage(params: Resolved<ForgesTools.MergePullRequestParam
 
 /** Current source in development, the built package in distributions. */
 function fromCheckout(module: string): string {
-  const source = new URL(`../../../src/${module}.ts`, import.meta.url);
+  const source = new URL(`../../src/${module}.ts`, import.meta.url);
   return existsSync(fileURLToPath(source))
     ? source.href
-    : new URL(`../../../dist/${module}.mjs`, import.meta.url).href;
+    : new URL(`../../dist/${module}.mjs`, import.meta.url).href;
 }
 
 /** Only the approval dialogs need it: the target they name is the one the write goes to. */

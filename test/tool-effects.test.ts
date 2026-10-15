@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { getToolEffect, toolApproval, toolEffects } from "../packages/shared/tool-effects.ts";
-import { renderToolCall, renderToolResult } from "../packages/shared/tui.ts";
+import { getToolEffect, toolApproval, toolEffects } from "../extensions/shared/tool-effects.ts";
+import { renderToolCall, renderToolResult } from "../extensions/shared/tui.ts";
 
 const writes = [
   "forges_releases_create",

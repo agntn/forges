@@ -1,12 +1,12 @@
 import { defineTool, type ToolDefinition } from "@agntn/tools";
 
-import { lazy } from "../packages/shared/lazy.ts";
+import { lazy } from "../extensions/shared/lazy.ts";
 import {
   toolEffects,
   type ForgesToolName,
   type ToolEffect,
-} from "../packages/shared/tool-effects.ts";
-import { forgeToolTitle } from "../packages/shared/tui.ts";
+} from "../extensions/shared/tool-effects.ts";
+import { forgeToolTitle } from "../extensions/shared/tui.ts";
 import { EMPTY_CHECK_GRACE_SECONDS } from "./check-wait.ts";
 import { forgesToolSchemas } from "./tool-schemas.ts";
 

@@ -8,7 +8,7 @@ import type { ProviderConfig } from "./types.ts";
 import { resolveCloudflareCredential, resolveToken } from "./auth.ts";
 import type { Platform } from "./auth.ts";
 import { AuthenticationError, ForgesError } from "./errors.ts";
-import { lazy } from "../packages/shared/lazy.ts";
+import { lazy } from "../extensions/shared/lazy.ts";
 
 // --- Type exports ---
 export type {

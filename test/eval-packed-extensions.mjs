@@ -351,7 +351,7 @@ async function assertCheckoutBin() {
   await mkdir(cache, { recursive: true });
   const copy = await mkdtemp(join(cache, "forges-bin-"));
   try {
-    for (const entry of ["dist", "src", "packages", "package.json"]) {
+    for (const entry of ["dist", "src", "extensions", "package.json"]) {
       await cp(join(root, entry), join(copy, entry), { recursive: true });
     }
     const installed = await mcpLoads(join(copy, "dist/cli.mjs"));
@@ -656,18 +656,20 @@ try {
     await git(["add", "file.txt"]);
     await git(["commit", "-qm", value]);
   }
-  const piExtensionDirectory = join(packageRoot, "packages/pi/extensions");
-  const ompExtensionDirectory = join(packageRoot, "packages/omp/extensions");
+  const piExtensionDirectory = join(packageRoot, "extensions/pi");
+  const ompExtensionDirectory = join(packageRoot, "extensions/omp");
   await Promise.all([
     mkdir(piExtensionDirectory, { recursive: true }),
     mkdir(ompExtensionDirectory, { recursive: true }),
     cp(join(root, "dist"), join(packageRoot, "dist"), { recursive: true }),
-    /* The published layout has no src/, so tui.ts and lazy.ts come from packages/shared. */
-    cp(join(root, "packages/shared"), join(packageRoot, "packages/shared"), { recursive: true }),
+    /* The published layout has no src/, so tui.ts and lazy.ts come from extensions/shared. */
+    cp(join(root, "extensions/shared"), join(packageRoot, "extensions/shared"), {
+      recursive: true,
+    }),
   ]);
   await Promise.all([
-    cp(join(root, "packages/pi/extensions/forges.ts"), join(piExtensionDirectory, "forges.ts")),
-    cp(join(root, "packages/omp/extensions/forges.ts"), join(ompExtensionDirectory, "forges.ts")),
+    cp(join(root, "extensions/pi/forges.ts"), join(piExtensionDirectory, "forges.ts")),
+    cp(join(root, "extensions/omp/forges.ts"), join(ompExtensionDirectory, "forges.ts")),
   ]);
 
   await assertNoTypebox(packageRoot);

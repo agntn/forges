@@ -16,7 +16,7 @@ import {
 } from "./check-wait.ts";
 import { AuthenticationError, FetchError, ForgesError, RateLimitError } from "./errors.ts";
 import { redactEndpoint } from "./redact-endpoint.ts";
-import { lazy } from "../packages/shared/lazy.ts";
+import { lazy } from "../extensions/shared/lazy.ts";
 import type { ForgesPlatform } from "./tool-schemas.ts";
 import type { Provider } from "./provider.ts";
 import type {

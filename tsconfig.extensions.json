@@ -6,6 +6,6 @@
     "declarationMap": false,
     "noEmit": true
   },
-  "include": ["packages/pi/extensions", "packages/omp/extensions"],
+  "include": ["extensions/pi", "extensions/omp"],
   "exclude": ["node_modules", "dist"]
 }
