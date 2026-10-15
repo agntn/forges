@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { ForgesError } from "../src/errors.ts";
 import { createProvider } from "../src/index.ts";
-import { lazy } from "../packages/shared/lazy.ts";
+import { lazy } from "../extensions/shared/lazy.ts";
 
 /**
  * Each provider module records its own evaluation. vitest runs a mock factory

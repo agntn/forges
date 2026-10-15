@@ -5,7 +5,7 @@ import {
   renderToolCall,
   renderToolResult,
   sanitizeTerminalText,
-} from "../packages/shared/tui.ts";
+} from "../extensions/shared/tui.ts";
 
 const plain = {};
 const escape = String.fromCodePoint(27);

@@ -1,4 +1,4 @@
-import { toolEffects } from "../../../packages/shared/tool-effects";
+import { toolEffects } from "../../../extensions/shared/tool-effects";
 
 const effects = Object.values(toolEffects);
 

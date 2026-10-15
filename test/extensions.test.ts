@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { toolEffects } from "../packages/shared/tool-effects.ts";
+import { toolEffects } from "../extensions/shared/tool-effects.ts";
 import type {
   ExtensionAPI as OmpExtensionAPI,
   ExtensionContext as OmpExtensionContext,
@@ -14,8 +14,8 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { Value } from "typebox/value";
 
-import forgesOmpExtension from "../packages/omp/extensions/forges.ts";
-import forgesPiExtension from "../packages/pi/extensions/forges.ts";
+import forgesOmpExtension from "../extensions/omp/forges.ts";
+import forgesPiExtension from "../extensions/pi/forges.ts";
 import { ForgesError, NotFoundError, RateLimitError } from "../src/errors.ts";
 import { resetPinnedProviders } from "../src/tool-operations.ts";
 

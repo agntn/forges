@@ -4,21 +4,21 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { registerOmpTools, type OmpRenderers } from "@agntn/tools/omp";
 
-import type * as ForgesToolList from "../../../dist/tools.d.mts";
+import type * as ForgesToolList from "../../dist/tools.d.mts";
 import {
   type RenderedToolResult,
   type RenderOptions,
   renderToolCall,
   renderToolResult,
   type StatusTheme,
-} from "../../shared/tui.ts";
+} from "../shared/tui.ts";
 
 /** Source in a checkout, the build in the package; both imports stay literal for OMP to see. */
 async function loadTools(): Promise<typeof ForgesToolList> {
-  const sourceModulePath = fileURLToPath(new URL("../../../src/tools.ts", import.meta.url));
+  const sourceModulePath = fileURLToPath(new URL("../../src/tools.ts", import.meta.url));
   return existsSync(sourceModulePath)
-    ? ((await import("../../../src/tools.ts")) as unknown as typeof ForgesToolList)
-    : ((await import("../../../dist/tools.mjs")) as typeof ForgesToolList);
+    ? ((await import("../../src/tools.ts")) as unknown as typeof ForgesToolList)
+    : ((await import("../../dist/tools.mjs")) as typeof ForgesToolList);
 }
 
 /** Registers the forges tools; the host validates the same schemas MCP and Pi do. */

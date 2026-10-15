@@ -1,4 +1,4 @@
-import { toolEffects } from "../packages/shared/tool-effects.ts";
+import { toolEffects } from "../extensions/shared/tool-effects.ts";
 import { readFile } from "node:fs/promises";
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
