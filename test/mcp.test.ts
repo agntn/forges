@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { NotFoundError, RateLimitError } from "../src/errors.ts";
 import { createMcpServer } from "../src/mcp.ts";
+import { hashReleaseNotes } from "../src/release-notes.ts";
 import {
   listCommits,
   listPullRequestChecks,
@@ -1649,7 +1650,14 @@ describe("forges MCP server", () => {
     expect(mocks.releases.get).toHaveBeenCalledWith("gitlab-org", "cli", "v1.118.0");
     expect(JSON.parse(text(response.content))).toEqual({
       platform: "gitlab",
-      result: { ...release, offset: 0, nextOffset: null, truncated: false, length: 12 },
+      result: {
+        ...release,
+        offset: 0,
+        nextOffset: null,
+        truncated: false,
+        length: 12,
+        notesHash: hashReleaseNotes("## Changelog"),
+      },
     });
   });
 
@@ -1672,11 +1680,19 @@ describe("forges MCP server", () => {
 
     const first = await client.callTool({ name: "forges_releases_get", arguments: target });
     const firstResult = JSON.parse(text(first.content)).result;
-    const rest = await client.callTool({
-      name: "forges_releases_get",
-      arguments: { ...target, offset: firstResult.nextOffset, maxChars: 200_000 },
-    });
+    const continuation = {
+      ...target,
+      offset: firstResult.nextOffset,
+      notesHash: firstResult.notesHash,
+      maxChars: 200_000,
+    };
+    const rest = await client.callTool({ name: "forges_releases_get", arguments: continuation });
     const restResult = JSON.parse(text(rest.content)).result;
+    mocks.releases.get.mockResolvedValue({
+      ...(await mocks.releases.get.mock.results[0]!.value),
+      body: `## Highlights\n${body}`,
+    });
+    const edited = await client.callTool({ name: "forges_releases_get", arguments: continuation });
 
     expect(body.length).toBe(80_500);
     expect(text(first.content).length).toBeLessThan(22_000);
@@ -1684,6 +1700,8 @@ describe("forges MCP server", () => {
     expect(firstResult.length).toBe(80_500);
     expect(restResult).toMatchObject({ offset: 20_000, nextOffset: null, truncated: false });
     expect(firstResult.body + restResult.body).toBe(body);
+    expect(edited.isError).toBe(true);
+    expect(text(edited.content)).toContain("Release notes changed since the read");
   });
 
   it("refuses a release notes window outside the accepted range before reaching a provider", async () => {

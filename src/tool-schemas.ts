@@ -394,6 +394,12 @@ export function forgesToolSchemas() {
         maximum: 200000,
       }),
     ),
+    notesHash: Type.Optional(
+      Type.String({
+        description: "notesHash from the previous read; required whenever offset is above 0",
+        pattern: "^[0-9a-f]{16}$",
+      }),
+    ),
   });
   const createReleaseParameters = closed({
     platform,

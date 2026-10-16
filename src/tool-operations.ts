@@ -1136,7 +1136,7 @@ export async function getRelease(
   args: GetReleaseParams,
 ): Promise<ForgesToolResult<ReleaseNotesSlice>> {
   const params = repositoryTarget(args);
-  const notes = { offset: params.offset, maxChars: params.maxChars };
+  const notes = { offset: params.offset, maxChars: params.maxChars, notesHash: params.notesHash };
   assertReleaseNotesOptions(notes, params.platform);
   const provider = await readProvider(params.platform);
   const release = await provider.releases.get(params.owner, params.repo, params.tag);

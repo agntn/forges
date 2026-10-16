@@ -18,6 +18,7 @@ import forgesOmpExtension from "../extensions/omp/forges.ts";
 import forgesPiExtension from "../extensions/pi/forges.ts";
 import { ForgesError, NotFoundError, RateLimitError } from "../src/errors.ts";
 import { resetPinnedProviders } from "../src/tool-operations.ts";
+import { hashReleaseNotes } from "../src/release-notes.ts";
 
 const mocks = vi.hoisted(() => {
   const repos = { list: vi.fn(), get: vi.fn(), readContents: vi.fn() };
@@ -922,6 +923,7 @@ describe("Forges Pi extension", () => {
       nextOffset: null,
       truncated: false,
       length: release.body.length,
+      notesHash: hashReleaseNotes(release.body),
     });
     expect(mocks.releases.update).toHaveBeenCalledWith("agntn", "forges", "v0.3.1", {
       name: undefined,

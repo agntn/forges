@@ -859,6 +859,9 @@ describe("repository target", () => {
     await expect(
       getRelease({ repo: "nuxt/nuxt", tag: "v4.6.0", maxChars: 200_001 }),
     ).rejects.toThrow("Release notes maxChars must be an integer from 1 to 200000");
+    await expect(getRelease({ repo: "nuxt/nuxt", tag: "v4.6.0", offset: 20_000 })).rejects.toThrow(
+      "Release notes offset needs the notesHash of the read it continues",
+    );
     expect(mocks.createProvider).not.toHaveBeenCalled();
   });
 });
