@@ -1,4 +1,5 @@
 import { Type, type TObject, type TProperties } from "@agntn/tools";
+import { DEFAULT_WINDOW_CHARS, MAX_WINDOW_CHARS } from "./text-window.ts";
 
 /** The platforms every tool surface accepts, re-exported from `src/tool-operations.ts`. */
 export type ForgesPlatform = "github" | "gitlab" | "gitea" | "artifacts";
@@ -79,6 +80,15 @@ export function forgesToolSchemas() {
   const until = Type.Optional(
     Type.String({ description: "Only commits at or before this ISO-8601 date", minLength: 1 }),
   );
+  /** Every sliced read (file, patch, log, notes) takes the same size bounds as `readTextWindow`. */
+  const maxChars = (what: string) =>
+    Type.Optional(
+      Type.Integer({
+        description: `Maximum ${what} UTF-16 code units to return; defaults to ${DEFAULT_WINDOW_CHARS}`,
+        minimum: 1,
+        maximum: MAX_WINDOW_CHARS,
+      }),
+    );
   const page = Type.Optional(Type.Integer({ description: "Page number", minimum: 1 }));
   const perPage = Type.Optional(
     Type.Integer({ description: "Results per page", minimum: 1, maximum: 100 }),
@@ -149,13 +159,7 @@ export function forgesToolSchemas() {
         minimum: 0,
       }),
     ),
-    maxChars: Type.Optional(
-      Type.Integer({
-        description: "Maximum file UTF-16 code units to return; defaults to 20000",
-        minimum: 1,
-        maximum: 200000,
-      }),
-    ),
+    maxChars: maxChars("file"),
   });
   const listContributionTemplatesParameters = closed({
     platform,
@@ -298,13 +302,7 @@ export function forgesToolSchemas() {
         minimum: 0,
       }),
     ),
-    maxChars: Type.Optional(
-      Type.Integer({
-        description: "Maximum patch UTF-16 code units to return; defaults to 20000",
-        minimum: 1,
-        maximum: 200000,
-      }),
-    ),
+    maxChars: maxChars("patch"),
   });
   const listCommitsParameters = closed({
     platform: gitPlatform,
@@ -366,13 +364,7 @@ export function forgesToolSchemas() {
         minimum: 0,
       }),
     ),
-    maxChars: Type.Optional(
-      Type.Integer({
-        description: "Maximum log UTF-16 code units to return; defaults to 20000",
-        minimum: 1,
-        maximum: 200000,
-      }),
-    ),
+    maxChars: maxChars("log"),
   });
   const listTagsParameters = closed({ platform, owner, repo, page, perPage });
   const listReleasesParameters = closed({ platform, owner, repo, page, perPage });
@@ -387,13 +379,7 @@ export function forgesToolSchemas() {
         minimum: 0,
       }),
     ),
-    maxChars: Type.Optional(
-      Type.Integer({
-        description: "Maximum notes UTF-16 code units to return; defaults to 20000",
-        minimum: 1,
-        maximum: 200000,
-      }),
-    ),
+    maxChars: maxChars("notes"),
     notesHash: Type.Optional(
       Type.String({
         description: "notesHash from the previous read; required whenever offset is above 0",
