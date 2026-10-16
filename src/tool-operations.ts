@@ -16,6 +16,12 @@ import {
 } from "./check-wait.ts";
 import { AuthenticationError, FetchError, ForgesError, RateLimitError } from "./errors.ts";
 import { redactEndpoint } from "./redact-endpoint.ts";
+import {
+  assertReleaseNotesOptions,
+  sliceReleaseNotes,
+  type ReleaseNotesOptions,
+  type ReleaseNotesSlice,
+} from "./release-notes.ts";
 import { lazy } from "../extensions/shared/lazy.ts";
 import type { ForgesPlatform } from "./tool-schemas.ts";
 import type { Provider } from "./provider.ts";
@@ -611,13 +617,14 @@ export interface ListTagsParams extends RepositoryParams {
   perPage?: number;
 }
 
-export interface GetReleaseParams extends RepositoryParams {
+export interface GetReleaseParams extends RepositoryParams, ReleaseNotesOptions {
   tag: string;
 }
 
 export type CreateReleaseParams = RepositoryParams & AccountParams & CreateReleaseInput;
 
-export type UpdateReleaseParams = GetReleaseParams & AccountParams & UpdateReleaseInput;
+export type UpdateReleaseParams = RepositoryParams & { tag: string } & AccountParams &
+  UpdateReleaseInput;
 
 export interface ListRepositoryItemsParams extends RepositoryParams {
   page?: number;
@@ -1121,15 +1128,19 @@ export async function listReleases(
   return result(
     params.platform,
     summarizeReleasePage(releases),
-    "Release notes are omitted from list output; use forges_releases_get with the tag to read one in full.",
+    "Release notes are omitted from list output; use forges_releases_get with the tag to read its notes.",
   );
 }
 
-export async function getRelease(args: GetReleaseParams): Promise<ForgesToolResult<Release>> {
+export async function getRelease(
+  args: GetReleaseParams,
+): Promise<ForgesToolResult<ReleaseNotesSlice>> {
   const params = repositoryTarget(args);
+  const notes = { offset: params.offset, maxChars: params.maxChars };
+  assertReleaseNotesOptions(notes, params.platform);
   const provider = await readProvider(params.platform);
   const release = await provider.releases.get(params.owner, params.repo, params.tag);
-  return result(params.platform, release);
+  return result(params.platform, sliceReleaseNotes(release, notes, params.platform));
 }
 
 export async function createRelease(args: CreateReleaseParams): Promise<ForgesToolResult<Release>> {

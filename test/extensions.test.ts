@@ -916,7 +916,13 @@ describe("Forges Pi extension", () => {
     });
     expect(listed.details.result.items[0]).not.toHaveProperty("body");
     expect(mocks.releases.get).toHaveBeenCalledWith("agntn", "forges", "v0.3.1");
-    expect(read.details.result).toEqual(release);
+    expect(read.details.result).toEqual({
+      ...release,
+      offset: 0,
+      nextOffset: null,
+      truncated: false,
+      length: release.body.length,
+    });
     expect(mocks.releases.update).toHaveBeenCalledWith("agntn", "forges", "v0.3.1", {
       name: undefined,
       body: "edited",
