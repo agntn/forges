@@ -7,7 +7,7 @@ export default defineConfig({
    */
   tsconfig: "tsconfig.json",
   fmt: {
-    ignorePatterns: ["dist", "CHANGELOG.md"],
+    ignorePatterns: ["dist"],
   },
   lint: {
     plugins: ["unicorn", "typescript", "oxc"],
