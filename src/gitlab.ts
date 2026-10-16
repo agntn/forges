@@ -4,45 +4,6 @@
  */
 
 export { GitLabProvider } from "./providers/gitlab.ts";
-export type {
-  User,
-  Owner,
-  RepositoryParent,
-  RepositoryPermission,
-  Repository,
-  ContributionTemplateKind,
-  ContributionTemplateScope,
-  ContributionTemplateSummary,
-  ContributionTemplate,
-  IssueState,
-  Issue,
-  PullRequestSearchItem,
-  PullRequest,
-  Comment,
-  ThreadState,
-  ThreadComment,
-  Thread,
-  PageResult,
-  SearchPageResult,
-  ListOptions,
-  ListCommentOptions,
-  ListContributionTemplatesOptions,
-  ListThreadOptions,
-  CreateCommentInput,
-  CreateIssueInput,
-  CreatePullRequestInput,
-  UpdateIssueInput,
-  UpdatePullRequestInput,
-  MergeMethod,
-  MergePullRequestInput,
-  ReplyThreadInput,
-  ProviderConfig,
-  RepositoryResource,
-  ContributionTemplateResource,
-  IssueResource,
-  PullRequestResource,
-  UserResource,
-  ThreadResource,
-} from "./types.ts";
+export type * from "./types.ts";
 export { Provider } from "./provider.ts";
 export type { ProviderRawTypes } from "./provider.ts";

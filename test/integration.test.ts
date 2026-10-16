@@ -1,6 +1,8 @@
 /** What createProvider builds, what each entry exports, what a custom provider inherits. */
 
-import { describe, it, expect, vi } from "vite-plus/test";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
+import { beforeAll, describe, it, expect, vi } from "vite-plus/test";
 
 import { createProvider, Provider } from "../src/index.ts";
 import { ArtifactsProvider } from "../src/providers/artifacts.ts";
@@ -113,5 +115,42 @@ describe("entry points", () => {
     ["artifacts", () => import("../src/artifacts.ts"), { ArtifactsProvider, Provider }],
   ])("the %s sub-path exports its classes and nothing else", async (_, load, classes) => {
     expect({ ...(await load()) }).toEqual(classes);
+  });
+});
+
+describe("entry point types", () => {
+  const entries = ["index", "github", "gitlab", "gitea", "artifacts"] as const;
+  const exported = new Map<string, string[]>();
+
+  /** Ask the compiler, not a regex: it follows star exports the way a consumer's tsc does. */
+  beforeAll(() => {
+    const files = new Map(
+      ["types", ...entries].map((name) => [
+        name,
+        fileURLToPath(new URL(`../src/${name}.ts`, import.meta.url)),
+      ]),
+    );
+    const program = ts.createProgram([...files.values()], {
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      target: ts.ScriptTarget.ESNext,
+      allowImportingTsExtensions: true,
+      noEmit: true,
+    });
+    const checker = program.getTypeChecker();
+
+    for (const [name, file] of files) {
+      const source = program.getSourceFile(file);
+      const module = source && checker.getSymbolAtLocation(source);
+      exported.set(name, module ? checker.getExportsOfModule(module).map(({ name }) => name) : []);
+    }
+  });
+
+  it.each(entries)("the %s entry exports every type from types.ts", (entry) => {
+    const types = exported.get("types") ?? [];
+    const names = exported.get(entry) ?? [];
+
+    expect(types.length).toBeGreaterThan(0);
+    expect(types.filter((name) => !names.includes(name))).toEqual([]);
   });
 });
