@@ -287,7 +287,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_releases_get",
       title: forgeToolTitle("forges_releases_get", "Get Release"),
       description:
-        "Get one release by its tag name with the full release notes. The tag is the key on every platform, because GitLab releases have no id of their own; the id field is the platform id on GitHub and Gitea and the tag on GitLab. A GitHub draft is found among the 500 newest releases when the token may see drafts.",
+        "Get one release by its tag name with its notes in body, one bounded slice at a time. offset and nextOffset are UTF-16 positions in the notes, length is their full size, and truncated is true while more is left: while nextOffset is not null, call again with the same tag, offset set to nextOffset and the returned notesHash, or raise maxChars to read long notes in fewer calls. A continuation fails with 409 when the notes were edited in between, so start again from offset 0. The tag is the key on every platform, because GitLab releases have no id of their own; the id field is the platform id on GitHub and Gitea and the tag on GitLab. A GitHub draft is found among the 500 newest releases when the token may see drafts.",
       snippet: "Read one release by tag from GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_releases_get with the tag name; releases are keyed by tag on every platform.",

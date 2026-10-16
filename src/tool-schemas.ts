@@ -376,7 +376,31 @@ export function forgesToolSchemas() {
   });
   const listTagsParameters = closed({ platform, owner, repo, page, perPage });
   const listReleasesParameters = closed({ platform, owner, repo, page, perPage });
-  const releaseParameters = closed({ platform, owner, repo, tag });
+  const releaseParameters = closed({
+    platform,
+    owner,
+    repo,
+    tag,
+    offset: Type.Optional(
+      Type.Integer({
+        description: "UTF-16 code-unit offset into the notes; pass the previous read's nextOffset",
+        minimum: 0,
+      }),
+    ),
+    maxChars: Type.Optional(
+      Type.Integer({
+        description: "Maximum notes UTF-16 code units to return; defaults to 20000",
+        minimum: 1,
+        maximum: 200000,
+      }),
+    ),
+    notesHash: Type.Optional(
+      Type.String({
+        description: "notesHash from the previous read; required whenever offset is above 0",
+        pattern: "^[0-9a-f]{16}$",
+      }),
+    ),
+  });
   const createReleaseParameters = closed({
     platform,
     owner,
