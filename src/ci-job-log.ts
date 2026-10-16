@@ -1,10 +1,9 @@
 import { stripVTControlCharacters } from "node:util";
 import { normalizeCiRunState } from "./ci-run.ts";
 import { ForgesError } from "./errors.ts";
+import { readTextWindow, textWindowEnd, type TextWindow } from "./text-window.ts";
 import type { CiJob, CiJobLog, CiJobLogOptions, CiJobStep, CiRunConclusion } from "./types.ts";
 
-export const DEFAULT_JOB_LOG_MAX_CHARS = 20_000;
-export const MAX_JOB_LOG_CHARS = 200_000;
 /** The most of one downloaded log a read keeps; a longer log keeps its end. */
 export const MAX_JOB_LOG_INPUT_CHARS = 8_000_000;
 
@@ -73,22 +72,11 @@ export function assertCiId(id: string, kind: "run" | "job", platform?: string): 
 }
 
 /** Validate log continuation and output bounds before provider I/O. */
-export function assertCiJobLogOptions(options: CiJobLogOptions = {}, platform?: string): void {
-  const offset = options.offset ?? 0;
-  const maxChars = options.maxChars ?? DEFAULT_JOB_LOG_MAX_CHARS;
-  if (!Number.isSafeInteger(offset) || offset < 0) {
-    throw new ForgesError("Job log offset must be a non-negative integer", 400, platform);
-  }
-  if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > MAX_JOB_LOG_CHARS) {
-    throw new ForgesError(
-      `Job log maxChars must be an integer from 1 to ${MAX_JOB_LOG_CHARS}`,
-      400,
-      platform,
-    );
-  }
-  if (!Number.isSafeInteger(offset + maxChars)) {
-    throw new ForgesError("Job log range exceeds the safe integer limit", 400, platform);
-  }
+export function assertCiJobLogOptions(
+  options: CiJobLogOptions = {},
+  platform?: string,
+): TextWindow {
+  return readTextWindow("Job log", options, platform);
 }
 
 /** A job that no runner picked up has no log to read. */
@@ -277,9 +265,7 @@ export function buildCiJobLog(
   log: { text: string; complete: boolean; timestamped: boolean } | null,
   options: CiJobLogOptions = {},
 ): CiJobLog {
-  assertCiJobLogOptions(options);
-  const offset = options.offset ?? 0;
-  const maxChars = options.maxChars ?? DEFAULT_JOB_LOG_MAX_CHARS;
+  const window = assertCiJobLogOptions(options);
 
   let stream = "";
   if (log !== null && log.timestamped) {
@@ -300,11 +286,11 @@ export function buildCiJobLog(
   } else if (log !== null) {
     stream = log.text.length === 0 || log.text.endsWith("\n") ? log.text : `${log.text}\n`;
   }
-  if (offset > stream.length) {
-    throw new ForgesError("Job log offset is past the end of the log", 400);
-  }
-
-  const end = Math.min(offset + maxChars, stream.length);
+  const { end, nextOffset, truncated } = textWindowEnd(
+    stream.length,
+    window,
+    "Job log offset is past the end of the log",
+  );
   return {
     jobId: job.id,
     name: job.name,
@@ -312,10 +298,10 @@ export function buildCiJobLog(
     conclusion: job.conclusion,
     started: log !== null,
     logComplete: log?.complete ?? true,
-    content: stream.slice(offset, end),
-    offset,
-    nextOffset: end < stream.length ? end : null,
-    truncated: end < stream.length,
+    content: stream.slice(window.offset, end),
+    offset: window.offset,
+    nextOffset,
+    truncated,
     length: stream.length,
   };
 }

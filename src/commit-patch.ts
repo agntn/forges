@@ -1,4 +1,5 @@
 import { ForgesError } from "./errors.ts";
+import { readTextWindow, textWindowEnd, type TextWindow } from "./text-window.ts";
 import type {
   CommitPatch,
   CommitPatchFile,
@@ -6,32 +7,16 @@ import type {
   CommitPatchState,
 } from "./types.ts";
 
-export const DEFAULT_PATCH_MAX_CHARS = 20_000;
-export const MAX_PATCH_CHARS = 200_000;
-
 /** Validate patch selection and output bounds before provider I/O. */
 export function assertCommitPatchOptions(
   options: CommitPatchOptions = {},
   platform?: string,
-): void {
-  const offset = options.offset ?? 0;
-  const maxChars = options.maxChars ?? DEFAULT_PATCH_MAX_CHARS;
-  if (!Number.isSafeInteger(offset) || offset < 0) {
-    throw new ForgesError("Commit patch offset must be a non-negative integer", 400, platform);
-  }
-  if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > MAX_PATCH_CHARS) {
-    throw new ForgesError(
-      `Commit patch maxChars must be an integer from 1 to ${MAX_PATCH_CHARS}`,
-      400,
-      platform,
-    );
-  }
-  if (!Number.isSafeInteger(offset + maxChars)) {
-    throw new ForgesError("Commit patch range exceeds the safe integer limit", 400, platform);
-  }
+): TextWindow {
+  const window = readTextWindow("Commit patch", options, platform);
   if (options.path !== undefined && options.path.length === 0) {
     throw new ForgesError("Commit patch path must not be empty", 400, platform);
   }
+  return window;
 }
 
 function fileHeader(file: CommitPatchFile): string {
@@ -52,13 +37,12 @@ export function buildCommitPatch(
   filesComplete: boolean | null,
   options: CommitPatchOptions = {},
 ): CommitPatch {
-  assertCommitPatchOptions(options);
-  const offset = options.offset ?? 0;
-  const maxChars = options.maxChars ?? DEFAULT_PATCH_MAX_CHARS;
+  const window = assertCommitPatchOptions(options);
+  const { offset } = window;
 
   const states: Record<CommitPatchState, number> = { included: 0, binary: 0, unavailable: 0 };
   const chunks: string[] = [];
-  const requestedEnd = offset + maxChars;
+  const requestedEnd = offset + window.maxChars;
   let streamLength = 0;
   for (const file of files) {
     if (options.path !== undefined && file.path !== options.path) continue;
@@ -71,18 +55,18 @@ export function buildCommitPatch(
     }
     streamLength = segmentEnd;
   }
-  if (offset > streamLength) {
-    throw new ForgesError("Commit patch offset is past the end of the resolved patch", 400);
-  }
-
-  const end = Math.min(requestedEnd, streamLength);
+  const { nextOffset, truncated } = textWindowEnd(
+    streamLength,
+    window,
+    "Commit patch offset is past the end of the resolved patch",
+  );
   return {
     sha,
     path: options.path ?? null,
     content: chunks.join(""),
     offset,
-    nextOffset: end < streamLength ? end : null,
-    truncated: end < streamLength,
+    nextOffset,
+    truncated,
     filesComplete,
     states,
   };

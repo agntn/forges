@@ -1,14 +1,13 @@
 import { Buffer } from "node:buffer";
 import { ForgesError } from "./errors.ts";
 import { encodeApiResponsePathSegment } from "./providers/base-url.ts";
+import { readTextWindow, textWindowEnd, type TextWindow } from "./text-window.ts";
 import type {
   RepositoryContentsOptions,
   RepositoryEntryType,
   RepositoryFileContents,
 } from "./types.ts";
 
-export const DEFAULT_FILE_MAX_CHARS = 20_000;
-export const MAX_FILE_CHARS = 200_000;
 /** Largest file a read decodes. GitHub's contents API stops returning content above it. */
 export const MAX_FILE_BYTES = 1_048_576;
 
@@ -20,25 +19,12 @@ const COMMIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 export function assertRepositoryContentsOptions(
   options: RepositoryContentsOptions = {},
   platform?: string,
-): void {
-  const offset = options.offset ?? 0;
-  const maxChars = options.maxChars ?? DEFAULT_FILE_MAX_CHARS;
-  if (!Number.isSafeInteger(offset) || offset < 0) {
-    throw new ForgesError("File offset must be a non-negative integer", 400, platform);
-  }
-  if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > MAX_FILE_CHARS) {
-    throw new ForgesError(
-      `File maxChars must be an integer from 1 to ${MAX_FILE_CHARS}`,
-      400,
-      platform,
-    );
-  }
-  if (!Number.isSafeInteger(offset + maxChars)) {
-    throw new ForgesError("File range exceeds the safe integer limit", 400, platform);
-  }
+): TextWindow {
+  const window = readTextWindow("File", options, platform);
   if (options.ref !== undefined && options.ref.length === 0) {
     throw new ForgesError("File ref must not be empty", 400, platform);
   }
+  return window;
 }
 
 /** Trim outer slashes and refuse segments like `..`; an empty result is the root. */
@@ -129,25 +115,23 @@ export function buildRepositoryFileFromBytes(
   bytes: Uint8Array,
   options: RepositoryContentsOptions = {},
 ): RepositoryFileContents {
-  assertRepositoryContentsOptions(options);
+  const window = assertRepositoryContentsOptions(options);
   assertFileSize(path, bytes.length);
-  const offset = options.offset ?? 0;
   const text = decodeText(bytes);
-  const binary = text === null;
-  const length = text?.length ?? 0;
-  if (offset > length) {
-    throw new ForgesError("File offset is past the end of the file", 400);
-  }
-  const end = Math.min(offset + (options.maxChars ?? DEFAULT_FILE_MAX_CHARS), length);
+  const { end, nextOffset, truncated } = textWindowEnd(
+    text?.length ?? 0,
+    window,
+    "File offset is past the end of the file",
+  );
   return {
     type: "file",
     path,
     sha,
     size: bytes.length,
-    binary,
-    content: text === null ? "" : text.slice(offset, end),
-    offset,
-    nextOffset: end < length ? end : null,
-    truncated: end < length,
+    binary: text === null,
+    content: text === null ? "" : text.slice(window.offset, end),
+    offset: window.offset,
+    nextOffset,
+    truncated,
   };
 }
