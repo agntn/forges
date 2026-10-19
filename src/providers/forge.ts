@@ -91,6 +91,7 @@ export abstract class ForgeBackedProvider<
   readonly #cursorKey: Uint8Array;
   #forge: Promise<Forge> | undefined;
   #refreshed: Promise<unknown> | undefined;
+  #refreshDone = false;
 
   protected constructor(platform: string, apiBaseURL: string, token: string) {
     super(platform);
@@ -137,11 +138,17 @@ export abstract class ForgeBackedProvider<
   /** One `forges` call; a refusal gated on an unknown version reads it once and retries. */
   protected async forgeCall<T>(run: (forge: Forge) => Promise<T>): Promise<T> {
     const forge = await this.#open();
+    const known = this.#refreshDone;
     try {
       return await run(forge);
     } catch (error) {
-      if (!isUnsupported(error) || this.#refreshed !== undefined) throw this.#failure(error);
-      this.#refreshed = forge.refreshCapabilities().catch(() => undefined);
+      if (!isUnsupported(error) || known) throw this.#failure(error);
+      this.#refreshed ??= forge
+        .refreshCapabilities()
+        .catch(() => undefined)
+        .finally(() => {
+          this.#refreshDone = true;
+        });
       await this.#refreshed;
       try {
         return await run(forge);

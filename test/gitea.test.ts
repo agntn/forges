@@ -551,6 +551,46 @@ describe("Gitea Provider", () => {
   });
 
   describe("repos.get", () => {
+    const unsupported = () =>
+      Object.assign(new Error("repos.get needs a newer Gitea"), {
+        name: "UnsupportedOperationError",
+      });
+
+    it("lets calls that hit an unknown version share one refresh, then retries each", async () => {
+      let finish = () => {};
+      forge.refreshCapabilities.mockImplementationOnce(
+        () => new Promise((resolve) => (finish = () => resolve({}))),
+      );
+      forge.repos.get
+        .mockRejectedValueOnce(unsupported())
+        .mockRejectedValueOnce(unsupported())
+        .mockResolvedValueOnce({ raw: giteaRepo() })
+        .mockResolvedValueOnce({ raw: giteaRepo() });
+
+      const both = Promise.all([
+        provider.repos.get("testowner", "test-repo"),
+        provider.repos.get("testowner", "test-repo"),
+      ]);
+      await vi.waitFor(() => expect(forge.repos.get).toHaveBeenCalledTimes(2));
+      finish();
+
+      expect((await both).map((repo) => repo.name)).toEqual(["test-repo", "test-repo"]);
+      expect(forge.refreshCapabilities).toHaveBeenCalledTimes(1);
+    });
+
+    it("takes a refusal at its word once the version is known", async () => {
+      forge.repos.get
+        .mockRejectedValueOnce(unsupported())
+        .mockResolvedValueOnce({ raw: giteaRepo() });
+      await provider.repos.get("testowner", "test-repo");
+      forge.repos.get.mockRejectedValueOnce(unsupported());
+
+      await expect(provider.repos.get("testowner", "test-repo")).rejects.toMatchObject({
+        status: 501,
+      });
+      expect(forge.refreshCapabilities).toHaveBeenCalledTimes(1);
+    });
+
     it("returns a mapped repository", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo() });
 
