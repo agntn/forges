@@ -674,7 +674,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
 
   /** Codeberg runs Forgejo; any other host starts as Gitea until its version says otherwise. */
   protected override openForge(): Promise<Forge> {
-    const baseUrl = this.apiBaseURL.replace(/\/api\/v1$/u, "");
+    const baseUrl = this.apiBaseURL.replace(/\/+$/u, "").replace(/\/api\/v1$/u, "");
     const options = {
       baseUrl,
       auth:

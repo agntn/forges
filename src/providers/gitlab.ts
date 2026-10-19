@@ -604,7 +604,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   protected override openForge(): Promise<Forge> {
     return Promise.resolve(
       gitlab({
-        baseUrl: this.apiBaseURL.replace(/\/api\/v4$/u, ""),
+        baseUrl: this.apiBaseURL.replace(/\/+$/u, "").replace(/\/api\/v4$/u, ""),
         auth:
           this.#token === ""
             ? { type: "anonymous" as const }

@@ -592,6 +592,7 @@ describe("GitLabProvider", () => {
       ["https://gitlab.example.com", "https://gitlab.example.com"],
       ["https://gitlab.example.com/gitlab/", "https://gitlab.example.com/gitlab"],
       ["https://gitlab.example.com/api/v4", "https://gitlab.example.com"],
+      ["https://gitlab.example.com/api/v4/", "https://gitlab.example.com"],
       ["https://gitlab.example.com/gitlab/api/v4", "https://gitlab.example.com/gitlab"],
       ["https://gitlab.example.com/custom-api/v40", "https://gitlab.example.com/custom-api/v40"],
       [

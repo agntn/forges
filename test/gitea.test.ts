@@ -273,6 +273,7 @@ describe("Gitea Provider", () => {
       ["https://gitea.example.com", "https://gitea.example.com"],
       ["https://gitea.example.com/forgejo/", "https://gitea.example.com/forgejo"],
       ["https://gitea.example.com/api/v1", "https://gitea.example.com"],
+      ["https://gitea.example.com/api/v1/", "https://gitea.example.com"],
       ["https://gitea.example.com/forgejo/api/v1", "https://gitea.example.com/forgejo"],
       [
         "https://gitea.example.com/custom/api/v1/proxy",
