@@ -280,7 +280,7 @@ export function toFetchError(
   return result;
 }
 
-/** A {@link FetchError} in the `[METHOD] "<url>": <detail>` shape endpoint redaction strips. */
+/** A {@link FetchError} worded `[METHOD] "<url>": <detail>`, the shape redaction knows to strip. */
 function fetchError(
   detail: string,
   cause: unknown,

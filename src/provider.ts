@@ -580,7 +580,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     return { ...result, nextCursor } as unknown as R;
   }
 
-  /** The key that signs this provider's cursors, or none to leave them unsigned. */
+  /** The key that signs URL cursors; none leaves them unsigned, fine when no token rides along. */
   protected cursorKey(): Uint8Array | undefined {
     return undefined;
   }

@@ -25,7 +25,7 @@ interface CursorBody {
   k: string;
   /** Digest of the request it continues: who, where and which filters. */
   s: string;
-  /** MAC over the rest under the provider's key, so a URL can't be written by hand. */
+  /** A URL cursor's MAC under the provider's key, so nobody writes one by hand. */
   m?: string;
   p?: number;
   u?: string;

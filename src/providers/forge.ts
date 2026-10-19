@@ -116,7 +116,7 @@ export abstract class ForgeBackedProvider<
   /** Maps the forge's own CI job payload. */
   protected abstract mapCiJob(raw: never): CiJob;
 
-  /** Keyed by endpoint and token; without a token there is no credential to aim, so no secret. */
+  /** Keyed by endpoint and token. No token, no credential to aim, so the key needn't be secret. */
   protected override cursorKey(): Uint8Array {
     return this.#cursorKey;
   }
