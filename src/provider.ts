@@ -543,7 +543,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   }
 
   /** Reads the page a cursor names and writes the next; URLs stay on {@link cursorOrigin}. */
-  async #paged<O extends { cursor?: string; perPage?: number }, R extends PageResult<unknown>>(
+  async #paged<O extends { cursor?: string }, R extends PageResult<unknown>>(
     listing: string,
     subject: readonly unknown[],
     options: O | undefined,
@@ -553,8 +553,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       throw this.#refusal("page is gone: pass the nextCursor of the previous page as cursor");
     }
     const { cursor, ...rest } = options ?? ({} as O);
-    const { perPage: _perPage, ...filters } = rest;
-    const scope = cursorScope([...subject, filters]);
+    const scope = cursorScope([...subject, rest]);
     const at =
       cursor === undefined
         ? undefined

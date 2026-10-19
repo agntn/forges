@@ -63,12 +63,16 @@ describe.each(["github", "gitlab", "gitea"] as const)("%s check pagination", (pl
     undefined,
     {},
     { perPage: 1 },
-    { cursor: cursorFor("pullRequests.listChecks", 2, CHECKS_SUBJECT), perPage: 100 },
+    {
+      cursor: cursorFor("pullRequests.listChecks", 2, CHECKS_SUBJECT, { perPage: 100 }),
+      perPage: 100,
+    },
     {
       cursor: cursorFor(
         "pullRequests.listChecks",
         Math.floor((Number.MAX_SAFE_INTEGER - 1) / 100),
         CHECKS_SUBJECT,
+        { perPage: 100 },
       ),
       perPage: 100,
     },

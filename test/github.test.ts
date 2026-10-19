@@ -619,6 +619,19 @@ describe("GitHubProvider", () => {
   });
 
   describe("code.search", () => {
+    it("refuses a page cursor once the page size changes, instead of skipping rows", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: { total_count: 30, incomplete_results: false, items: [] },
+        headers: makeHeaders('<https://api.github.com/search/code?q=Provider&page=2>; rel="next"'),
+      });
+      const { nextCursor } = await gh.code.search("Provider", { perPage: 10 });
+
+      await expect(
+        gh.code.search("Provider", { cursor: nextCursor, perPage: 50 }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(mocks.rawFetch).toHaveBeenCalledOnce();
+    });
+
     it("maps scoped code results and pagination metadata", async () => {
       mocks.rawFetch.mockResolvedValueOnce({
         data: {
@@ -632,7 +645,11 @@ describe("GitHubProvider", () => {
       const result = await gh.code.search("Provider", {
         owner: "agntn",
         repo: "forges",
-        cursor: cursorFor("code.search", 2, ["Provider"], { owner: "agntn", repo: "forges" }),
+        cursor: cursorFor("code.search", 2, ["Provider"], {
+          owner: "agntn",
+          repo: "forges",
+          perPage: 1,
+        }),
         perPage: 1,
       });
 
@@ -653,7 +670,11 @@ describe("GitHubProvider", () => {
         ],
         totalCount: 12,
         incomplete: true,
-        nextCursor: cursorFor("code.search", 3, ["Provider"], { owner: "agntn", repo: "forges" }),
+        nextCursor: cursorFor("code.search", 3, ["Provider"], {
+          owner: "agntn",
+          repo: "forges",
+          perPage: 1,
+        }),
       });
     });
 
@@ -1490,7 +1511,7 @@ describe("GitHubProvider", () => {
           "commits.compare",
           2,
           ["agntn", "forges", "v0.3.4", "renovate/deps"],
-          {},
+          { perPage: 1 },
         ),
         status: "diverged",
         aheadBy: 16,
@@ -1855,6 +1876,7 @@ describe("GitHubProvider", () => {
         state: "closed",
         cursor: cursorFor("issues.search", 2, ["octocat", "hello-world", 'label:"help wanted"'], {
           state: "closed",
+          perPage: 1,
         }),
         perPage: 1,
       });
@@ -1879,7 +1901,7 @@ describe("GitHubProvider", () => {
           "issues.search",
           3,
           ["octocat", "hello-world", 'label:"help wanted"'],
-          { state: "closed" },
+          { state: "closed", perPage: 1 },
         ),
       });
     });
@@ -2227,7 +2249,9 @@ describe("GitHubProvider", () => {
           },
           { content: "eyes", user: { login: "" }, createdAt: "2026-10-12T17:20:01Z" },
         ],
-        nextCursor: cursorFor("issues.listReactions", 2, ["octocat", "hello-world", 42], {}),
+        nextCursor: cursorFor("issues.listReactions", 2, ["octocat", "hello-world", 42], {
+          perPage: 2,
+        }),
       });
     });
 
@@ -2635,7 +2659,9 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [...statuses, checkRun(6001)],
         totalCount: 5,
-        nextCursor: cursorFor("pullRequests.listChecks", 2, ["octocat", "hello-world", 99], {}),
+        nextCursor: cursorFor("pullRequests.listChecks", 2, ["octocat", "hello-world", 99], {
+          perPage: 3,
+        }),
       });
     });
 
@@ -2654,7 +2680,9 @@ describe("GitHubProvider", () => {
         });
 
       const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
-        cursor: cursorFor("pullRequests.listChecks", 2, ["octocat", "hello-world", 99], {}),
+        cursor: cursorFor("pullRequests.listChecks", 2, ["octocat", "hello-world", 99], {
+          perPage: 2,
+        }),
         perPage: 2,
       });
 
@@ -2665,7 +2693,9 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [checkRun(6001), checkRun(6002)],
         totalCount: 7,
-        nextCursor: cursorFor("pullRequests.listChecks", 3, ["octocat", "hello-world", 99], {}),
+        nextCursor: cursorFor("pullRequests.listChecks", 3, ["octocat", "hello-world", 99], {
+          perPage: 2,
+        }),
       });
     });
 
@@ -2689,7 +2719,9 @@ describe("GitHubProvider", () => {
         });
 
       const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
-        cursor: cursorFor("pullRequests.listChecks", 60, ["octocat", "hello-world", 99], {}),
+        cursor: cursorFor("pullRequests.listChecks", 60, ["octocat", "hello-world", 99], {
+          perPage: 2,
+        }),
         perPage: 2,
       });
 
@@ -2705,7 +2737,9 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [checkRun(7117), checkRun(7118)],
         totalCount: 122,
-        nextCursor: cursorFor("pullRequests.listChecks", 61, ["octocat", "hello-world", 99], {}),
+        nextCursor: cursorFor("pullRequests.listChecks", 61, ["octocat", "hello-world", 99], {
+          perPage: 2,
+        }),
       });
     });
 
@@ -2733,7 +2767,9 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [statuses[0]],
         totalCount: 5,
-        nextCursor: cursorFor("pullRequests.listChecks", 2, ["octocat", "hello-world", 99], {}),
+        nextCursor: cursorFor("pullRequests.listChecks", 2, ["octocat", "hello-world", 99], {
+          perPage: 1,
+        }),
       });
     });
 
@@ -2855,7 +2891,9 @@ describe("GitHubProvider", () => {
       });
 
       const result = await gh.pullRequests.listReviews("octocat", "hello-world", 99, {
-        cursor: cursorFor("pullRequests.listReviews", 2, ["octocat", "hello-world", 99], {}),
+        cursor: cursorFor("pullRequests.listReviews", 2, ["octocat", "hello-world", 99], {
+          perPage: 2,
+        }),
         perPage: 2,
       });
 
@@ -2885,7 +2923,9 @@ describe("GitHubProvider", () => {
             url: "https://github.com/octocat/hello-world/pull/99#pullrequestreview-5234330202",
           },
         ],
-        nextCursor: cursorFor("pullRequests.listReviews", 3, ["octocat", "hello-world", 99], {}),
+        nextCursor: cursorFor("pullRequests.listReviews", 3, ["octocat", "hello-world", 99], {
+          perPage: 2,
+        }),
       });
     });
 
@@ -3238,7 +3278,7 @@ describe("GitHubProvider", () => {
             "pullRequests.search",
             2,
             ["octocat", "hello-world", "repo:octocat/other-repo OR is:issue OR search"],
-            { state: "closed" },
+            { state: "closed", perPage: 1 },
           ),
           perPage: 1,
         },
@@ -3267,7 +3307,7 @@ describe("GitHubProvider", () => {
           "pullRequests.search",
           3,
           ["octocat", "hello-world", "repo:octocat/other-repo OR is:issue OR search"],
-          { state: "closed" },
+          { state: "closed", perPage: 1 },
         ),
       });
       expect(result.items[0]).not.toHaveProperty("sourceBranch");
@@ -4250,7 +4290,7 @@ describe("GitHubProvider", () => {
         .mockResolvedValueOnce(graphqlThreadList([second]));
 
       const result = await gh.threads.list("octocat", "hello-world", 99, {
-        cursor: cursorFor("threads.list", 2, ["octocat", "hello-world", 99], {}),
+        cursor: cursorFor("threads.list", 2, ["octocat", "hello-world", 99], { perPage: 1 }),
         perPage: 1,
       });
 
@@ -4318,7 +4358,10 @@ describe("GitHubProvider", () => {
       expect(result.items.map((thread) => thread.id)).toEqual(["PRRT_kwDOA"]);
       expect(result.nextCursor).toBeDefined();
       expect(result.nextCursor).toBe(
-        cursorFor("threads.list", 2, ["octocat", "hello-world", 99], { state: "unresolved" }),
+        cursorFor("threads.list", 2, ["octocat", "hello-world", 99], {
+          state: "unresolved",
+          perPage: 1,
+        }),
       );
     });
 

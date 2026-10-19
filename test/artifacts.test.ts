@@ -473,7 +473,7 @@ describe("commits", () => {
 
     const page = await provider().commits.list("tools", "notes", {
       ref: "main",
-      cursor: cursorFor("commits.list", 2, ["tools", "notes"], { ref: "main" }),
+      cursor: cursorFor("commits.list", 2, ["tools", "notes"], { ref: "main", perPage: 2 }),
       perPage: 2,
     });
 

@@ -51,7 +51,7 @@ describe("commit search", () => {
           url: hit.html_url,
         },
       ],
-      nextCursor: cursorFor("commits.search", 2, [query], {}),
+      nextCursor: cursorFor("commits.search", 2, [query], { perPage: 1 }),
       totalCount: 2,
       incomplete: false,
       resultLimit: 1000,
@@ -121,6 +121,7 @@ describe("commit search", () => {
         cursor: cursorFor("commits.search", 2, ["snapshot repo:other/project"], {
           owner: "other",
           repo: "chosen",
+          perPage: 10,
         }),
         perPage: 10,
       },
@@ -271,6 +272,7 @@ describe("GitLab commit search", () => {
       cursor: cursorFor("commits.search", 2, ["snapshot"], {
         owner: "gitlab-org",
         repo: "gitlab-runner",
+        perPage: 1,
       }),
       perPage: 1,
     });
@@ -286,6 +288,7 @@ describe("GitLab commit search", () => {
       nextCursor: cursorFor("commits.search", 3, ["snapshot"], {
         owner: "gitlab-org",
         repo: "gitlab-runner",
+        perPage: 1,
       }),
       incomplete: false,
       resultLimit: null,
@@ -305,6 +308,7 @@ describe("GitLab commit search", () => {
       cursor: cursorFor("commits.search", 2, ["snapshot"], {
         owner: "gitlab-org",
         repo: "gitlab-runner",
+        perPage: 100,
       }),
       perPage: 100,
     });
@@ -313,6 +317,7 @@ describe("GitLab commit search", () => {
       nextCursor: cursorFor("commits.search", 3, ["snapshot"], {
         owner: "gitlab-org",
         repo: "gitlab-runner",
+        perPage: 100,
       }),
     });
   });
@@ -330,6 +335,7 @@ describe("GitLab commit search", () => {
       cursor: cursorFor("commits.search", 2, ["snapshot"], {
         owner: "gitlab-org",
         repo: "gitlab-runner",
+        perPage: 100,
       }),
       perPage: 100,
     });

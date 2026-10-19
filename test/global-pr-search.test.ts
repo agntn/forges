@@ -67,6 +67,7 @@ describe("global pull-request search", () => {
       nextCursor: cursorFor("pullRequests.searchGlobal", 2, [query], {
         sort: "created",
         order: "desc",
+        perPage: 2,
       }),
       totalCount: 3,
       incomplete: false,
@@ -242,7 +243,7 @@ describe("Gitea global pull-request search", () => {
       ["someone/project", false, true],
     ]);
     expect(result).toMatchObject({
-      nextCursor: cursorFor("pullRequests.searchGlobal", 2, ["fix"], {}),
+      nextCursor: cursorFor("pullRequests.searchGlobal", 2, ["fix"], { perPage: 2 }),
       totalCount: 10236,
       incomplete: false,
       resultLimit: null,
@@ -373,7 +374,7 @@ describe("GitLab global pull-request search", () => {
       ["group/sub/project", 3, false, true],
     ]);
     expect(result).toMatchObject({
-      nextCursor: cursorFor("pullRequests.searchGlobal", 2, ["fix"], {}),
+      nextCursor: cursorFor("pullRequests.searchGlobal", 2, ["fix"], { perPage: 2 }),
       totalCount: 74,
       incomplete: false,
       resultLimit: null,
