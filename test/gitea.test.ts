@@ -405,6 +405,22 @@ describe("Gitea Provider", () => {
         cursor: { nextUrl: url },
       });
     });
+    it("won't take a cursor from another instance on the same host", async () => {
+      const url = "https://git.example.com/a/api/v1/users/testowner/repos?page=2";
+      forge.repos.byOwner
+        .mockReturnValueOnce(listing({ items: raws(giteaRepo()), cursor: { nextUrl: url } }))
+        .mockReturnValueOnce(listing({ items: [] }));
+      const token = "test-token";
+      const first = new GiteaProvider({ baseURL: "https://git.example.com/a", token });
+      const { nextCursor } = await first.repos.list("testowner");
+      const other = new GiteaProvider({ baseURL: "https://git.example.com/b", token });
+
+      await expect(other.repos.list("testowner", { cursor: nextCursor })).rejects.toMatchObject({
+        status: 400,
+      });
+      await first.repos.list("testowner", { cursor: nextCursor });
+      expect(forge.repos.byOwner).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("contributionTemplates", () => {
