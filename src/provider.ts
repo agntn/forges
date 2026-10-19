@@ -557,7 +557,14 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     const at =
       cursor === undefined
         ? undefined
-        : decodeCursor(cursor, listing, this.cursorOrigin(), this.#platform, scope);
+        : decodeCursor(
+            cursor,
+            listing,
+            this.cursorOrigin(),
+            this.#platform,
+            scope,
+            this.cursorKey(),
+          );
     const page = at !== undefined && "page" in at ? at.page : undefined;
     const positioned = {
       ...rest,
@@ -569,7 +576,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     const position: PagePosition | undefined =
       next ?? (hasNextPage ? { page: nextPage ?? (page ?? 1) + 1 } : undefined);
     if (position === undefined) return result as unknown as R;
-    return { ...result, nextCursor: encodeCursor(listing, position, scope) } as unknown as R;
+    const nextCursor = encodeCursor(listing, position, scope, this.cursorKey());
+    return { ...result, nextCursor } as unknown as R;
+  }
+
+  /** The key that signs this provider's cursors, or none to leave them unsigned. */
+  protected cursorKey(): Uint8Array | undefined {
+    return undefined;
   }
 
   /** The origin a next-page URL in a cursor must keep; none refuses URL cursors. */

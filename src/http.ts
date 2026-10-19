@@ -12,7 +12,7 @@ import { sha256 } from "@agntn/hashes/sha2";
 import type { FetchLike, ForgeProvider as Forge, RawResponse } from "forges";
 
 import { CACHE_SCOPE } from "./cache.ts";
-import { FetchError } from "./errors.ts";
+import { FetchError, ForgesError } from "./errors.ts";
 
 /** How a response body is read: parsed JSON (the default), text, binary, or the stream itself. */
 export type ResponseType = "json" | "text" | "blob" | "arrayBuffer" | "stream";
@@ -250,7 +250,9 @@ export function toFetchError(
   url?: string,
   options?: object,
 ): unknown {
-  if (!(error instanceof Error) || error instanceof FetchError) return error;
+  if (!(error instanceof Error) || error instanceof FetchError || error instanceof ForgesError) {
+    return error;
+  }
   const failure = error as ForgeFailure;
   method ??= failure.method ?? "GET";
   url = failure.url ?? url ?? "";

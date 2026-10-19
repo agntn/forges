@@ -32,6 +32,27 @@ describe("page cursors", () => {
     }
   });
 
+  it("takes back only a cursor signed with its own key", () => {
+    const key = new Uint8Array(32).fill(7);
+    const url = `${origin}/api/v1/repos/a/one/issues?page=2`;
+    const signed = encodeCursor("issues.list", { url }, "s", key);
+    const forged = encodeCursor("issues.list", { url: `${origin}/api/v1/user/emails` }, "s");
+    const tampered = Buffer.from(
+      Buffer.from(signed, "base64url").toString().replace("page=2", "page=3"),
+    ).toString("base64url");
+
+    expect(decodeCursor(signed, "issues.list", origin, "gitea", "s", key)).toEqual({ url });
+    for (const cursor of [
+      forged,
+      tampered,
+      encodeCursor("issues.list", { url }, "s", new Uint8Array(32)),
+    ]) {
+      expect(() => decodeCursor(cursor, "issues.list", origin, "gitea", "s", key)).toThrow(
+        expect.objectContaining({ status: 400 }),
+      );
+    }
+  });
+
   it("gives the same scope whatever order the filters came in", () => {
     expect(cursorScope(["o", "r", { state: "all", labels: ["bug"] }])).toBe(
       cursorScope(["o", "r", { labels: ["bug"], state: "all" }]),

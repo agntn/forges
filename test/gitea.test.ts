@@ -366,6 +366,25 @@ describe("Gitea Provider", () => {
 
       expect(result.nextCursor).toEqual(expect.any(String));
     });
+
+    it("refuses a next page URL rewritten by hand, before the token goes anywhere", async () => {
+      forge.repos.byOwner.mockReturnValueOnce(
+        listing({
+          items: raws(giteaRepo()),
+          cursor: { nextUrl: "https://gitea.com/api/v1/users/testowner/repos?page=2" },
+        }),
+      );
+      const { nextCursor } = await provider.repos.list("testowner");
+      const { m: _m, ...body } = JSON.parse(Buffer.from(nextCursor!, "base64url").toString());
+      const forged = Buffer.from(
+        JSON.stringify({ ...body, u: "https://gitea.com/api/v1/user/emails" }),
+      ).toString("base64url");
+
+      await expect(provider.repos.list("testowner", { cursor: forged })).rejects.toMatchObject({
+        status: 400,
+      });
+      expect(forge.repos.byOwner).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("contributionTemplates", () => {

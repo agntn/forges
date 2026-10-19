@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { CACHE_SCOPE } from "../src/cache.ts";
-import { FetchError } from "../src/errors.ts";
+import { FetchError, NotFoundError } from "../src/errors.ts";
 import { createForgeClient, rawFetch, toFetchError } from "../src/http.ts";
 
 /** A `forges` provider whose `request` is the mock a test drives. */
@@ -147,6 +147,12 @@ describe("createForgeClient", () => {
     expect(error.status).toBeUndefined();
     expect(error.cause).toBe(failure);
     expect(error.options).toMatchObject({ method: "POST" });
+  });
+
+  it("keeps an error this library already classified, status and platform included", () => {
+    const failure = new NotFoundError("Repository not found", "github");
+
+    expect(toFetchError(failure)).toBe(failure);
   });
 
   it("leaves a failure that is not a request failure alone", () => {

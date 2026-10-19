@@ -6,6 +6,7 @@
  * maps the forge's own payload, which `forges` keeps as `raw`.
  */
 
+import { sha256 } from "@agntn/hashes/sha2";
 import type {
   Cursor,
   ForgeListing,
@@ -84,6 +85,7 @@ export abstract class ForgeBackedProvider<
   readonly #platform: string;
   readonly #apiBaseURL: string;
   readonly #token: string;
+  readonly #cursorKey: Uint8Array | undefined;
   #forge: Promise<Forge> | undefined;
   #refreshed: Promise<unknown> | undefined;
 
@@ -92,6 +94,7 @@ export abstract class ForgeBackedProvider<
     this.#platform = platform;
     this.#apiBaseURL = apiBaseURL;
     this.#token = token;
+    this.#cursorKey = token === "" ? undefined : sha256(Buffer.from(`cursor:${token}`));
     this.client = createForgeClient(() => this.#open(), {
       scope: credentialScope(apiBaseURL, token),
     });
@@ -111,6 +114,11 @@ export abstract class ForgeBackedProvider<
 
   /** Maps the forge's own CI job payload. */
   protected abstract mapCiJob(raw: never): CiJob;
+
+  /** Signs cursors with the token: without it nobody can aim this credential at a URL. */
+  protected override cursorKey(): Uint8Array | undefined {
+    return this.#cursorKey;
+  }
 
   /** A base URL that does not parse fails on the first request, where forges opens it. */
   protected override cursorOrigin(): string | undefined {
