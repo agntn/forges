@@ -11,19 +11,25 @@ import type {
   ForgeListing,
   ForgeProvider as Forge,
   Page,
+  ReleaseRef,
   RepoRef,
   ThreadKind,
   ThreadRef,
 } from "forges";
 
 import type { PagePosition } from "../cursor.ts";
-import { Buffer } from "node:buffer";
-import { sha256 } from "@agntn/hashes/sha2";
 
 import { encodePathSegment, encodeRefPathSegment } from "./base-url.ts";
 import { normalizeChangedFileStatus } from "../changed-file.ts";
 import { ForgesError, normalizeError } from "../errors.ts";
-import { createForgeClient, toFetchError, type HttpClient } from "../http.ts";
+import {
+  createForgeClient,
+  credentialScope,
+  forgeFetch,
+  toFetchError,
+  type HttpClient,
+} from "../http.ts";
+import { version } from "../version.ts";
 import {
   Provider,
   type ContinuedPage,
@@ -56,6 +62,14 @@ import type {
 /** The rows a page holds when the caller names no size; GitLab alone would send 20. */
 const DEFAULT_PER_PAGE = 30;
 
+/** What every `forges` factory here is opened with. */
+export interface ForgeOptions {
+  baseUrl: string;
+  auth: { type: "anonymous" } | { type: "token"; token: string };
+  userAgent: string;
+  fetch: typeof forgeFetch;
+}
+
 /** Page options as `forges` reads them. */
 interface ForgePageOptions {
   perPage?: number;
@@ -69,22 +83,22 @@ export abstract class ForgeBackedProvider<
   protected readonly client: HttpClient;
   readonly #platform: string;
   readonly #apiBaseURL: string;
-  readonly #anonymous: boolean;
+  readonly #token: string;
   #forge: Promise<Forge> | undefined;
   #refreshed: Promise<unknown> | undefined;
 
-  /** The cache scope hashes the token: a key can reach external storage, a credential must not. */
   protected constructor(platform: string, apiBaseURL: string, token: string) {
     super(platform);
     this.#platform = platform;
     this.#apiBaseURL = apiBaseURL;
-    this.#anonymous = token === "";
-    const credential = Buffer.from(sha256(Buffer.from(token))).toString("hex", 0, 8);
-    this.client = createForgeClient(() => this.#open(), { scope: `${apiBaseURL}#${credential}` });
+    this.#token = token;
+    this.client = createForgeClient(() => this.#open(), {
+      scope: credentialScope(apiBaseURL, token),
+    });
   }
 
-  /** Creates the `forges` provider; called once, on the first request. */
-  protected abstract openForge(): Promise<Forge>;
+  /** The `forges` factory for this platform; called once, on the first request. */
+  protected abstract createForge(options: ForgeOptions): Forge;
 
   /** Maps the forge's own release payload. */
   protected abstract mapRelease(raw: never): Release;
@@ -123,9 +137,10 @@ export abstract class ForgeBackedProvider<
   /** A verb the forge lacks is a 501, and without a token that may be the reason. */
   #failure(error: unknown): ForgesError {
     if (isUnsupported(error)) {
-      const reason = this.#anonymous
-        ? `${(error as Error).message} without a token; pass one if this forge serves it to signed-in accounts only`
-        : (error as Error).message;
+      const reason =
+        this.#token === ""
+          ? `${(error as Error).message} without a token; pass one if this forge serves it to signed-in accounts only`
+          : (error as Error).message;
       return new ForgesError(reason, 501, this.#platform, error as Error);
     }
     return normalizeError(toFetchError(error), this.#platform);
@@ -133,7 +148,14 @@ export abstract class ForgeBackedProvider<
 
   #open(): Promise<Forge> {
     this.#forge ??= Promise.resolve()
-      .then(() => this.openForge())
+      .then(() =>
+        this.createForge({
+          baseUrl: this.#apiBaseURL,
+          auth: this.#token === "" ? { type: "anonymous" } : { type: "token", token: this.#token },
+          userAgent: `forges/${version}`,
+          fetch: forgeFetch,
+        }),
+      )
       .catch((error: unknown) => {
         this.#forge = undefined;
         throw this.#failure(error);
@@ -233,7 +255,6 @@ export abstract class ForgeBackedProvider<
     );
   }
 
-  /** Forges that edit a release by id need it read by its tag first. */
   protected override updateRelease(
     owner: string,
     repo: string,
@@ -242,11 +263,19 @@ export abstract class ForgeBackedProvider<
   ): Promise<Release> {
     encodeRefPathSegment(tag, "Tag");
     return this.forgeCall(async (forge) => {
-      const release = await forge.releases.getByTag(this.repoRef(forge, owner, repo), tag);
-      return this.mapRelease(
-        (await forge.releases.update(release.ref, releaseUpdate(input))).raw as never,
-      );
+      const ref = await this.releaseRef(forge, owner, repo, tag);
+      return this.mapRelease((await forge.releases.update(ref, releaseUpdate(input))).raw as never);
     });
+  }
+
+  /** The release behind a tag; forges that edit a release by id need it read first. */
+  protected async releaseRef(
+    forge: Forge,
+    owner: string,
+    repo: string,
+    tag: string,
+  ): Promise<ReleaseRef> {
+    return (await forge.releases.getByTag(this.repoRef(forge, owner, repo), tag)).ref;
   }
 
   /** GitHub and Gitea name the peeled commit on each tag; a tag on a tree or blob names none. */

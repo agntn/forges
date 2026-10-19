@@ -10,11 +10,9 @@
 
 import type { CloudflareCredential } from "@agntn/credentials/cloudflare";
 import { resolveCloudflareCredential } from "../auth.ts";
-import { Buffer } from "node:buffer";
-import { sha256 } from "@agntn/hashes/sha2";
 import { cloudflareArtifacts } from "forges/cloudflare-artifacts";
 
-import { createForgeClient, forgeFetch, type HttpClient } from "../http.ts";
+import { createForgeClient, credentialScope, forgeFetch, type HttpClient } from "../http.ts";
 import { version } from "../version.ts";
 import { FetchError, ForgesError, NotFoundError, normalizeError } from "../errors.ts";
 import {
@@ -589,9 +587,8 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
         userAgent: `forges/${version}`,
         fetch: forgeFetch,
       });
-      const hash = Buffer.from(sha256(Buffer.from(credential.token))).toString("hex", 0, 8);
       this.client = createForgeClient(() => Promise.resolve(forge), {
-        scope: `${baseURL}#${hash}`,
+        scope: credentialScope(baseURL, credential.token),
         prefix: new URL(baseURL).pathname.slice(
           new URL(this.apiBaseURL).pathname.replace(/\/+$/u, "").length,
         ),

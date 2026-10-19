@@ -7,6 +7,8 @@
  * {@link FetchError}, so `normalizeError` reads it the way it always did.
  */
 
+import { Buffer } from "node:buffer";
+import { sha256 } from "@agntn/hashes/sha2";
 import type { FetchLike, ForgeProvider as Forge, RawResponse } from "forges";
 
 import { CACHE_SCOPE } from "./cache.ts";
@@ -70,9 +72,6 @@ const PAYLOAD_METHODS = new Set(["PATCH", "POST", "PUT", "DELETE"]);
 
 const RETRY_STATUS_CODES: readonly number[] = [408, 409, 425, 429, 500, 502, 503, 504];
 
-/** Past this, waiting inside one call costs more than telling the caller when to come back. */
-const MAX_SERVER_WAIT_MS = 10_000;
-
 const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
 
 const JSON_TYPE = /^application\/(?:[\w!#$%&*.^`~-]*\+)?json$/i;
@@ -107,6 +106,11 @@ const STATUS_TEXT: Readonly<Record<number, string>> = {
   503: "Service Unavailable",
   504: "Gateway Timeout",
 };
+
+/** A cache scope for one API base and credential; the token is hashed so no key carries it. */
+export function credentialScope(baseURL: string, token: string): string {
+  return `${baseURL}#${Buffer.from(sha256(Buffer.from(token))).toString("hex", 0, 8)}`;
+}
 
 /** Where a client sends its requests, and what keeps its cached responses apart. */
 export interface ForgeClientOptions {
@@ -160,15 +164,15 @@ export function createForgeClient(
           await delay(retryDelay, options.signal);
           continue;
         }
-        const failure = new FetchError(
-          `[${method}] ${JSON.stringify(target)}: ${response.status} ${cause instanceof Error ? cause.message : String(cause)}`,
-          { cause },
+        const reason = cause instanceof Error ? cause.message : String(cause);
+        throw fetchError(
+          `${response.status} ${reason}`,
+          cause,
+          method,
+          target,
+          options,
+          response.status,
         );
-        failure.request = target;
-        failure.options = { ...options, method };
-        failure.status = response.status;
-        failure.statusCode = response.status;
-        throw failure;
       }
       return { data, headers: response.headers, status: response.status };
     }
@@ -179,17 +183,15 @@ export function createForgeClient(
   return Object.assign(send, { raw: raw as HttpClient["raw"], [CACHE_SCOPE]: client.scope });
 }
 
-/** Milliseconds before another try, or none for an abort, a final status or too long a wait. */
+/** Milliseconds before another try, or none for an abort, a final status or a rate limit. */
 function retryWait(
   failure: unknown,
   signal: AbortSignal | undefined,
   retryStatusCodes: readonly number[],
 ): number | undefined {
   if (signal?.aborted || !(failure instanceof FetchError)) return undefined;
-  if (!retryStatusCodes.includes(failure.status ?? 500)) return undefined;
-  const header = failure.response?.headers.get("Retry-After");
-  const wait = header === null || header === undefined ? 0 : Number(header) * 1000;
-  return wait <= MAX_SERVER_WAIT_MS ? wait : undefined;
+  if ((failure.cause as Error | undefined)?.name === "RateLimitedError") return undefined;
+  return retryStatusCodes.includes(failure.status ?? 500) ? 0 : undefined;
 }
 
 /** Ends early on abort, so the next attempt fails on the signal instead of sleeping through it. */
@@ -254,34 +256,43 @@ export function toFetchError(
   url = failure.url ?? url ?? "";
   if (typeof failure.status !== "number") {
     if (failure.name !== "ForgeNetworkError" && failure.name !== "ForgeTimeoutError") return error;
-    const fetchError = new FetchError(
-      `[${method}] ${JSON.stringify(url)}: <no response> ${error.message}`,
-      {
-        cause: error,
-      },
-    );
-    fetchError.request = url;
-    fetchError.options = { ...options, method };
-    return fetchError;
+    return fetchError(`<no response> ${error.message}`, error, method, url, options);
   }
   const status = failure.status;
   const statusText = STATUS_TEXT[status] ?? "";
   const headers = new Headers();
   const wait = secondsUntil(failure.resetAt);
   if (wait !== undefined) headers.set("Retry-After", String(wait));
-  const fetchError = new FetchError(
-    `[${method}] ${JSON.stringify(url)}: ${status} ${statusText}`.trimEnd(),
-    { cause: error },
+  const result = fetchError(
+    `${status} ${statusText}`.trimEnd(),
+    error,
+    method,
+    url,
+    options,
+    status,
   );
-  fetchError.request = url;
-  fetchError.options = { ...options, method };
-  fetchError.response = { status, statusText, headers } as Response;
-  fetchError.data = parseBody(failure.body);
-  fetchError.status = status;
-  fetchError.statusCode = status;
-  fetchError.statusText = statusText;
-  fetchError.statusMessage = statusText;
-  return fetchError;
+  result.response = { status, statusText, headers } as Response;
+  result.data = parseBody(failure.body);
+  result.statusText = statusText;
+  result.statusMessage = statusText;
+  return result;
+}
+
+/** A {@link FetchError} in the `[METHOD] "<url>": <detail>` shape endpoint redaction strips. */
+function fetchError(
+  detail: string,
+  cause: unknown,
+  method: string,
+  url: string,
+  options: object | undefined,
+  status?: number,
+): FetchError {
+  const error = new FetchError(`[${method}] ${JSON.stringify(url)}: ${detail}`, { cause });
+  error.request = url;
+  error.options = { ...options, method };
+  error.status = status;
+  error.statusCode = status;
+  return error;
 }
 
 /** `forges` keeps the first 512 characters of a failed body; a cut JSON body stays text. */

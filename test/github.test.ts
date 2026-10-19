@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
     client,
     toFetchError: (error: unknown) => error,
     forgeFetch: vi.fn(),
+    credentialScope: () => "test-scope",
     createForgeClient: vi.fn(() => client),
     rawFetch: vi.fn(),
     cachedFetch: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock("../src/http.ts", () => ({
   toFetchError: (error: unknown) => error,
   createForgeClient: mocks.createForgeClient,
   forgeFetch: mocks.forgeFetch,
+  credentialScope: () => "test-scope",
   rawFetch: mocks.rawFetch,
   FetchError,
 }));

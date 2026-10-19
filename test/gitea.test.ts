@@ -31,6 +31,7 @@ function textStream(...chunks: string[]): ReadableStream<Uint8Array> {
 vi.mock("../src/http.ts", () => ({
   toFetchError: (error: unknown) => error,
   forgeFetch: vi.fn(),
+  credentialScope: () => "test-scope",
   createForgeClient: vi.fn(() => mockClient),
   rawFetch: vi.fn(async (_client: unknown, _url: string, _opts?: unknown) => ({
     ...mockRawResponse,
@@ -263,24 +264,23 @@ describe("Gitea Provider", () => {
 
     it("opens Gitea on gitea.com with the token on the first request", async () => {
       expect(await openedWith(undefined)).toMatchObject({
-        baseUrl: "https://gitea.com",
+        baseUrl: "https://gitea.com/api/v1",
         auth: { type: "token", token: "test-token" },
       });
     });
 
     it.each([
-      ["", "https://gitea.com"],
-      ["https://gitea.example.com", "https://gitea.example.com"],
-      ["https://gitea.example.com/forgejo/", "https://gitea.example.com/forgejo"],
-      ["https://gitea.example.com/api/v1", "https://gitea.example.com"],
-      ["https://gitea.example.com/api/v1/", "https://gitea.example.com"],
-      ["https://gitea.example.com/forgejo/api/v1", "https://gitea.example.com/forgejo"],
+      ["", "https://gitea.com/api/v1"],
+      ["https://gitea.example.com", "https://gitea.example.com/api/v1"],
+      ["https://gitea.example.com/forgejo/", "https://gitea.example.com/forgejo/api/v1"],
+      ["https://gitea.example.com/api/v1", "https://gitea.example.com/api/v1"],
+      ["https://gitea.example.com/forgejo/api/v1", "https://gitea.example.com/forgejo/api/v1"],
       [
         "https://gitea.example.com/custom/api/v1/proxy",
-        "https://gitea.example.com/custom/api/v1/proxy",
+        "https://gitea.example.com/custom/api/v1/proxy/api/v1",
       ],
-    ])("reads %j as the instance root %j", async (baseURL, root) => {
-      expect(await openedWith(baseURL)).toMatchObject({ baseUrl: root });
+    ])("hands %j to forges as the API base %j", async (baseURL, api) => {
+      expect(await openedWith(baseURL)).toMatchObject({ baseUrl: api });
     });
 
     it("opens Forgejo for Codeberg", async () => {
@@ -291,7 +291,7 @@ describe("Gitea Provider", () => {
 
       expect(codeberg.repos.get).toHaveBeenCalledOnce();
       expect(forgeOptions.at(-1)).toMatchObject({
-        baseUrl: "https://codeberg.org",
+        baseUrl: "https://codeberg.org/api/v1",
         auth: { type: "anonymous" },
       });
     });

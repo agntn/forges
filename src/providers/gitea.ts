@@ -11,9 +11,8 @@ import type { ForgeProvider as Forge } from "forges";
 import { forgejo } from "forges/forgejo";
 import { gitea } from "forges/gitea";
 
-import { ForgeBackedProvider } from "./forge.ts";
-import { version } from "../version.ts";
-import { forgeFetch, rawFetch } from "../http.ts";
+import { ForgeBackedProvider, type ForgeOptions } from "./forge.ts";
+import { rawFetch } from "../http.ts";
 import { buildPageResult, parseLinkHeader, slicePage } from "../pagination.ts";
 import {
   ForgesError,
@@ -663,30 +662,18 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
    *
    * @param config Provider configuration. `baseURL` defaults to `https://gitea.com/api/v1`.
    */
-  readonly #token: string;
 
   constructor(config: ProviderConfig) {
     const baseURL = normalizeApiBaseURL(config.baseURL, "https://gitea.com/api/v1", "/api/v1");
     super(PLATFORM, baseURL, config.token ?? "");
     this.apiBaseURL = baseURL;
-    this.#token = config.token ?? "";
   }
 
   /** Codeberg runs Forgejo; any other host starts as Gitea until its version says otherwise. */
-  protected override openForge(): Promise<Forge> {
-    const baseUrl = this.apiBaseURL.replace(/\/+$/u, "").replace(/\/api\/v1$/u, "");
-    const options = {
-      baseUrl,
-      auth:
-        this.#token === ""
-          ? { type: "anonymous" as const }
-          : { type: "token" as const, token: this.#token },
-      userAgent: `forges/${version}`,
-      fetch: forgeFetch,
-    };
-    return Promise.resolve(
-      (new URL(baseUrl).hostname === "codeberg.org" ? forgejo(options) : gitea(options)) as Forge,
-    );
+  protected override createForge(options: ForgeOptions): Forge {
+    return (
+      new URL(options.baseUrl).hostname === "codeberg.org" ? forgejo(options) : gitea(options)
+    ) as Forge;
   }
 
   protected override listRepos(

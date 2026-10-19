@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
     invalidateCache: vi.fn(),
     toFetchError: (error: unknown) => error,
     forgeFetch: vi.fn(),
+    credentialScope: () => "test-scope",
     createForgeClient: vi.fn(() => client),
     rawFetch: vi.fn(),
   };
@@ -24,6 +25,7 @@ vi.mock("../src/http.ts", () => ({
   toFetchError: (error: unknown) => error,
   createForgeClient: mocks.createForgeClient,
   forgeFetch: mocks.forgeFetch,
+  credentialScope: () => "test-scope",
   rawFetch: mocks.rawFetch,
   FetchError,
 }));
@@ -576,31 +578,34 @@ describe("GitLabProvider", () => {
       return forgeOptions.at(-1);
     }
 
-    it("opens forges on the first request with the token and instance root", async () => {
+    it("opens forges on the first request with the token and API base", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: glProject });
 
       await gl.repos.get("gitlab-org", "gitlab-foss");
 
       expect(forgeOptions.at(-1)).toMatchObject({
-        baseUrl: "https://gitlab.com",
+        baseUrl: "https://gitlab.com/api/v4",
         auth: { type: "token", token: "glpat-test" },
       });
     });
 
     it.each([
-      ["", "https://gitlab.com"],
-      ["https://gitlab.example.com", "https://gitlab.example.com"],
-      ["https://gitlab.example.com/gitlab/", "https://gitlab.example.com/gitlab"],
-      ["https://gitlab.example.com/api/v4", "https://gitlab.example.com"],
-      ["https://gitlab.example.com/api/v4/", "https://gitlab.example.com"],
-      ["https://gitlab.example.com/gitlab/api/v4", "https://gitlab.example.com/gitlab"],
-      ["https://gitlab.example.com/custom-api/v40", "https://gitlab.example.com/custom-api/v40"],
+      ["", "https://gitlab.com/api/v4"],
+      ["https://gitlab.example.com", "https://gitlab.example.com/api/v4"],
+      ["https://gitlab.example.com/gitlab/", "https://gitlab.example.com/gitlab/api/v4"],
+      ["https://gitlab.example.com/api/v4", "https://gitlab.example.com/api/v4"],
+      ["https://gitlab.example.com/api/v4/", "https://gitlab.example.com/api/v4/"],
+      ["https://gitlab.example.com/gitlab/api/v4", "https://gitlab.example.com/gitlab/api/v4"],
+      [
+        "https://gitlab.example.com/custom-api/v40",
+        "https://gitlab.example.com/custom-api/v40/api/v4",
+      ],
       [
         "https://gitlab.example.com/custom/api/v4/proxy",
-        "https://gitlab.example.com/custom/api/v4/proxy",
+        "https://gitlab.example.com/custom/api/v4/proxy/api/v4",
       ],
-    ])("reads %j as the instance root %j", async (baseURL, root) => {
-      expect(await openedWith(baseURL)).toMatchObject({ baseUrl: root });
+    ])("hands %j to forges as the API base %j", async (baseURL, api) => {
+      expect(await openedWith(baseURL)).toMatchObject({ baseUrl: api });
     });
   });
 
@@ -2464,8 +2469,13 @@ describe("GitLabProvider", () => {
     });
 
     it("updates a release by tag with PUT, slash encoded", async () => {
-      const ref = { forge: "gitlab", instance: "gitlab.com", id: "release/1.118" };
-      forge.releases.getByTag.mockResolvedValueOnce({ ref, raw: glRelease });
+      const ref = {
+        forge: "gitlab",
+        instance: "gitlab.com",
+        repo: repoRef(forge, "gitlab-org", "cli"),
+        id: "release/1.118",
+        tag: "release/1.118",
+      };
       forge.releases.update.mockResolvedValueOnce({
         raw: { ...glRelease, tag_name: "release/1.118", description: "edited" },
       });
@@ -2474,6 +2484,7 @@ describe("GitLabProvider", () => {
         body: "edited",
       });
 
+      expect(forge.releases.getByTag).not.toHaveBeenCalled();
       expect(forge.releases.update).toHaveBeenCalledWith(ref, { body: "edited" });
       expect(result).toEqual({
         ...release,

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({ client: vi.fn(), rawFetch: vi.fn() }));
 vi.mock("../src/http.ts", () => ({
   toFetchError: (error: unknown) => error,
   forgeFetch: vi.fn(),
+  credentialScope: () => "test-scope",
   createForgeClient: () => mocks.client,
   rawFetch: mocks.rawFetch,
 }));

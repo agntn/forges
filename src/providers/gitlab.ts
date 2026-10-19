@@ -11,11 +11,10 @@
  * - Most endpoints require numeric project ID
  */
 
-import type { ForgeProvider as Forge } from "forges";
+import type { ForgeProvider as Forge, ReleaseRef } from "forges";
 import { gitlab } from "forges/gitlab";
 
-import { ForgeBackedProvider } from "./forge.ts";
-import { version } from "../version.ts";
+import { ForgeBackedProvider, type ForgeOptions } from "./forge.ts";
 import {
   type ContinuedPage,
   type Positioned,
@@ -91,7 +90,7 @@ import type {
   MergePullRequestInput,
   UpdateReleaseInput,
 } from "../types.ts";
-import { forgeFetch, rawFetch } from "../http.ts";
+import { rawFetch } from "../http.ts";
 import { cachedFetch, invalidateCache } from "../cache.ts";
 import {
   FetchError,
@@ -583,13 +582,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   private readonly projectIdCacheMax: number;
   private readonly projectIdCacheTtl: number;
 
-  readonly #token: string;
-
   constructor(config: ProviderConfig) {
     const apiBaseURL = normalizeApiBaseURL(config.baseURL, "https://gitlab.com/api/v4", "/api/v4");
     super("gitlab", apiBaseURL, config.token ?? "");
     this.apiBaseURL = apiBaseURL;
-    this.#token = config.token ?? "";
 
     this.projectIdCacheMax = normalizePositiveInteger(
       config.gitlab?.projectIdCacheMax,
@@ -598,20 +594,6 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     this.projectIdCacheTtl = normalizePositiveInteger(
       config.gitlab?.projectIdCacheTtl,
       DEFAULT_PROJECT_ID_CACHE_TTL,
-    );
-  }
-
-  protected override openForge(): Promise<Forge> {
-    return Promise.resolve(
-      gitlab({
-        baseUrl: this.apiBaseURL.replace(/\/+$/u, "").replace(/\/api\/v4$/u, ""),
-        auth:
-          this.#token === ""
-            ? { type: "anonymous" as const }
-            : { type: "token" as const, token: this.#token },
-        userAgent: `forges/${version}`,
-        fetch: forgeFetch,
-      }) as Forge,
     );
   }
 
@@ -624,6 +606,27 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     const repository = await super.getRepo(owner, repo);
     this.setCachedProjectId(`${owner}/${repo}`, Number(repository.id));
     return repository;
+  }
+
+  protected override createForge(options: ForgeOptions): Forge {
+    return gitlab(options) as Forge;
+  }
+
+  /** GitLab keys a release by its tag, so the update needs no read first. */
+  protected override releaseRef(
+    forge: Forge,
+    owner: string,
+    repo: string,
+    tag: string,
+  ): Promise<ReleaseRef> {
+    const ref = this.repoRef(forge, owner, repo);
+    return Promise.resolve({
+      forge: forge.forge,
+      instance: forge.instance,
+      repo: ref,
+      id: tag,
+      tag,
+    });
   }
 
   /** GitLab answered every state when none was named, and keeps doing so. */

@@ -4,11 +4,10 @@
  */
 
 import { Buffer } from "node:buffer";
-import type { ForgeProvider as Forge } from "forges";
+import type { ForgeProvider as Forge, ReleaseRef } from "forges";
 import { github } from "forges/github";
 
-import { ForgeBackedProvider, releaseUpdate } from "./forge.ts";
-import { version } from "../version.ts";
+import { ForgeBackedProvider, type ForgeOptions } from "./forge.ts";
 import {
   type ContinuedPage,
   type Positioned,
@@ -76,7 +75,6 @@ import type {
   UpdateIssueInput,
   UpdatePullRequestInput,
   MergePullRequestInput,
-  UpdateReleaseInput,
 } from "../types.ts";
 import {
   FetchError,
@@ -86,7 +84,7 @@ import {
   normalizeMergeError,
   normalizeMergedReadError,
 } from "../errors.ts";
-import { forgeFetch, rawFetch } from "../http.ts";
+import { rawFetch } from "../http.ts";
 import { buildPageResult, paginationFromLink } from "../pagination.ts";
 import {
   encodeApiResponsePathSegment,
@@ -649,14 +647,11 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   private readonly authenticated: boolean;
   private gitHubHost: boolean | undefined;
 
-  readonly #token: string;
-
   constructor(config: ProviderConfig) {
     const restBaseURL = config.baseURL || "https://api.github.com";
     super("github", restBaseURL, config.token ?? "");
     this.restBaseURL = restBaseURL;
     const token = config.token ?? "";
-    this.#token = token;
     this.authenticated = token !== "";
   }
 
@@ -914,18 +909,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     }
   }
 
-  protected override openForge(): Promise<Forge> {
-    return Promise.resolve(
-      github({
-        baseUrl: this.restBaseURL,
-        auth:
-          this.#token === ""
-            ? { type: "anonymous" as const }
-            : { type: "token" as const, token: this.#token },
-        userAgent: `forges/${version}`,
-        fetch: forgeFetch,
-      }) as Forge,
-    );
+  protected override createForge(options: ForgeOptions): Forge {
+    return github(options) as Forge;
   }
 
   protected override listRepos(
@@ -1659,22 +1644,16 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     }
   }
 
-  /** The tag names the release, but GitHub edits by id, so the read comes first. */
-  protected override async updateRelease(
+  /** GitHub edits by id, and a draft's id comes from the draft walk the tag route can't do. */
+  protected override async releaseRef(
+    forge: Forge,
     owner: string,
     repo: string,
     tag: string,
-    input: UpdateReleaseInput,
-  ): Promise<Release> {
+  ): Promise<ReleaseRef> {
     const release = await this.readRelease(owner, repo, tag);
-    return this.forgeCall(async (forge) => {
-      const ref = this.repoRef(forge, owner, repo);
-      const updated = await forge.releases.update(
-        { forge: forge.forge, instance: forge.instance, repo: ref, id: String(release.id), tag },
-        releaseUpdate(input),
-      );
-      return this.mapRelease(updated.raw as GitHubRelease);
-    });
+    const ref = this.repoRef(forge, owner, repo);
+    return { forge: forge.forge, instance: forge.instance, repo: ref, id: String(release.id), tag };
   }
 
   // --- Issues ---
