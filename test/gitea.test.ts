@@ -335,6 +335,25 @@ describe("Gitea Provider", () => {
       expect(result.totalCount).toBe(2);
     });
 
+    it("resolves a relative next link on the API origin, so its cursor works", async () => {
+      forge.repos.byOwner
+        .mockReturnValueOnce(
+          listing({
+            items: raws(giteaRepo()),
+            cursor: { nextUrl: "/api/v1/users/testowner/repos?page=2" },
+          }),
+        )
+        .mockReturnValueOnce(listing({ items: [] }));
+
+      const first = await provider.repos.list("testowner");
+      await provider.repos.list("testowner", { cursor: first.nextCursor });
+
+      expect(forge.repos.byOwner).toHaveBeenLastCalledWith(repoRef(forge, "testowner", ""), {
+        perPage: 30,
+        cursor: { nextUrl: "https://gitea.com/api/v1/users/testowner/repos?page=2" },
+      });
+    });
+
     it("hands the next page URL back as a cursor", async () => {
       forge.repos.byOwner.mockReturnValueOnce(
         listing({

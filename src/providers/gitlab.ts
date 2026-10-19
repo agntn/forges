@@ -626,6 +626,15 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     return repository;
   }
 
+  /** GitLab answered every state when none was named, and keeps doing so. */
+  protected override listIssues(
+    owner: string,
+    repo: string,
+    options?: Positioned<ListOptions>,
+  ): Promise<ContinuedPage<Issue>> {
+    return super.listIssues(owner, repo, { ...options, state: options?.state ?? "all" });
+  }
+
   protected override listRepos(
     owner: string,
     options?: Positioned<ListOptions>,

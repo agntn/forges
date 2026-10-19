@@ -53,6 +53,9 @@ import type {
   User,
 } from "../types.ts";
 
+/** The rows a page holds when the caller names no size; GitLab alone would send 20. */
+const DEFAULT_PER_PAGE = 30;
+
 /** Page options as `forges` reads them. */
 interface ForgePageOptions {
   perPage?: number;
@@ -154,11 +157,10 @@ export abstract class ForgeBackedProvider<
     encodePathSegment(owner, "Owner");
   }
 
-  /** The page options `forges` takes for a position this provider handed out. */
+  /** Page options `forges` takes for a position this provider handed out, 30 rows by default. */
   protected forgePageOptions(options: { perPage?: number; at?: PagePosition } | undefined) {
     const at = options?.at;
-    const page: ForgePageOptions = {};
-    if (options?.perPage !== undefined) page.perPage = options.perPage;
+    const page: ForgePageOptions = { perPage: options?.perPage ?? DEFAULT_PER_PAGE };
     if (at === undefined) return page;
     if ("url" in at) page.cursor = { nextUrl: at.url };
     else if ("token" in at) page.cursor = { token: at.token };
@@ -171,7 +173,7 @@ export abstract class ForgeBackedProvider<
     listing: ForgeListing<T>,
     map: (item: T) => U,
   ): Promise<ContinuedPage<U>> {
-    return continuedPage(await listing.page(), map);
+    return continuedPage(await listing.page(), map, this.cursorOrigin());
   }
 
   protected override async getRepo(owner: string, repo: string): Promise<Repository> {
@@ -273,10 +275,10 @@ export abstract class ForgeBackedProvider<
       this.forgePage(
         forge.commits.list(this.repoRef(forge, owner, repo), {
           ...this.forgePageOptions(options),
-          ...(options?.ref === undefined ? {} : { ref: options.ref }),
-          ...(options?.path === undefined ? {} : { path: options.path }),
-          ...(options?.since === undefined ? {} : { since: this.#date(options.since, "since") }),
-          ...(options?.until === undefined ? {} : { until: this.#date(options.until, "until") }),
+          ...(options?.ref ? { ref: options.ref } : {}),
+          ...(options?.path ? { path: options.path } : {}),
+          ...(options?.since ? { since: this.#date(options.since, "since") } : {}),
+          ...(options?.until ? { until: this.#date(options.until, "until") } : {}),
         }),
         (commit) => this.mapCommitSummary(commit.raw as never),
       ),
@@ -292,7 +294,7 @@ export abstract class ForgeBackedProvider<
       this.forgePage(
         forge.ci.runs(this.repoRef(forge, owner, repo), {
           ...this.forgePageOptions(options),
-          ...(options?.branch === undefined ? {} : { branch: options.branch }),
+          ...(options?.branch ? { branch: options.branch } : {}),
         }),
         (run) => this.mapCiRun(run.raw as never),
       ),
@@ -446,8 +448,12 @@ export function releaseUpdate(input: UpdateReleaseInput) {
 }
 
 /** Maps a `forges` page and carries its continuation as a position. */
-export function continuedPage<T, U>(page: Page<T>, map: (item: T) => U): ContinuedPage<U> {
-  const next = positionOf(page.cursor);
+export function continuedPage<T, U>(
+  page: Page<T>,
+  map: (item: T) => U,
+  origin?: string,
+): ContinuedPage<U> {
+  const next = positionOf(page.cursor, origin);
   return {
     items: page.items.map(map),
     ...(page.total === undefined ? {} : { totalCount: page.total }),
@@ -455,8 +461,15 @@ export function continuedPage<T, U>(page: Page<T>, map: (item: T) => U): Continu
   };
 }
 
-function positionOf(cursor: Cursor | undefined): PagePosition | undefined {
-  if (cursor?.nextUrl) return { url: cursor.nextUrl };
+/** A relative next link, which Gitea sends as a path, resolves on the API origin. */
+function positionOf(cursor: Cursor | undefined, origin?: string): PagePosition | undefined {
+  if (cursor?.nextUrl) {
+    const url =
+      URL.canParse(cursor.nextUrl) || origin === undefined
+        ? cursor.nextUrl
+        : new URL(cursor.nextUrl, origin).toString();
+    return { url };
+  }
   if (cursor?.token) return { token: cursor.token };
   return undefined;
 }

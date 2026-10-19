@@ -1593,22 +1593,24 @@ describe("GitLabProvider", () => {
       const result = await gl.issues.list("gitlab-org", "gitlab-foss");
 
       expect(forge.threads.list).toHaveBeenCalledWith(repoRef(forge, "gitlab-org", "gitlab-foss"), {
+        perPage: 30,
         kind: "issue",
-        state: "open",
+        state: "all",
       });
       expect(result.items).toHaveLength(1);
       expect(result.items[0]?.assignees).toEqual([{ login: "triager" }]);
       expect(result.items[0]?.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/issues/15");
     });
 
-    it("passes every state on for forges to name the GitLab way", async () => {
+    it("passes a named state on for forges to spell the GitLab way", async () => {
       forge.threads.list.mockReturnValueOnce(listing({ items: [] }));
 
-      await gl.issues.list("o", "r", { state: "all" });
+      await gl.issues.list("o", "r", { state: "open" });
 
       expect(forge.threads.list).toHaveBeenCalledWith(repoRef(forge, "o", "r"), {
+        perPage: 30,
         kind: "issue",
-        state: "all",
+        state: "open",
       });
     });
   });

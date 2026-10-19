@@ -1358,6 +1358,16 @@ describe("GitHubProvider", () => {
   });
 
   describe("ciRuns.list", () => {
+    it("leaves an empty branch out instead of filtering every run away", async () => {
+      forge.ci.runs.mockReturnValueOnce(listing({ items: [] }));
+
+      await gh.ciRuns.list("octocat", "hello-world", { branch: "" });
+
+      expect(forge.ci.runs).toHaveBeenCalledWith(repoRef(forge, "octocat", "hello-world"), {
+        perPage: 30,
+      });
+    });
+
     it("returns normalized paged workflow runs and filters by branch", async () => {
       forge.ci.runs.mockReturnValueOnce(
         listing({
@@ -1845,7 +1855,11 @@ describe("GitHubProvider", () => {
       await gh.issues.list("octocat", "hello-world", { state: "closed", perPage: 5 });
 
       const ref = repoRef(forge, "octocat", "hello-world");
-      expect(forge.threads.list).toHaveBeenNthCalledWith(1, ref, { kind: "issue", state: "open" });
+      expect(forge.threads.list).toHaveBeenNthCalledWith(1, ref, {
+        perPage: 30,
+        kind: "issue",
+        state: "open",
+      });
       expect(forge.threads.list).toHaveBeenNthCalledWith(2, ref, {
         perPage: 5,
         kind: "issue",
@@ -3936,7 +3950,7 @@ describe("GitHubProvider", () => {
 
       expect(forge.threads.comments).toHaveBeenCalledWith(
         expect.objectContaining({ kind: "pull_request", number: "99" }),
-        {},
+        { perPage: 30 },
       );
       expect(result.items).toHaveLength(1);
       expect(result.items[0].id).toBe("3001");
@@ -4166,6 +4180,7 @@ describe("GitHubProvider", () => {
       const second = await gh.repos.list("octocat", { cursor: first.nextCursor });
 
       expect(forge.repos.byOwner).toHaveBeenLastCalledWith(repoRef(forge, "octocat", ""), {
+        perPage: 30,
         cursor: { nextUrl: next },
       });
       expect(second.nextCursor).toBeUndefined();
