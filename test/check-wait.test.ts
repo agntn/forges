@@ -55,7 +55,9 @@ describe("check wait", () => {
   it("returns at once when every check has concluded", async () => {
     const read = polls([page([check("build", false)])]);
 
-    const { page: settled, note } = await run(waitForChecks(read, undefined, 60, changedAt(0)));
+    const { page: settled, note } = await run(
+      waitForChecks(read, { waitSeconds: 60, readLastChange: changedAt(0) }),
+    );
 
     expect(settled.wait).toMatchObject({ settled: true, polls: 1, pending: [] });
     expect(settled.wait.waitedMs).toBe(0);
@@ -71,7 +73,9 @@ describe("check wait", () => {
       page([check("build", false)]),
     ]);
 
-    const { page: settled } = await run(waitForChecks(read, undefined, 300, changedAt(0)));
+    const { page: settled } = await run(
+      waitForChecks(read, { waitSeconds: 300, readLastChange: changedAt(0) }),
+    );
 
     expect(settled.wait).toMatchObject({ settled: true, polls: 4, pending: [] });
     expect(settled.wait.noChecks).toBeUndefined();
@@ -82,7 +86,7 @@ describe("check wait", () => {
     const read = polls([page([])]);
 
     const { page: settled, note } = await run(
-      waitForChecks(read, undefined, 300, changedAt(3_600)),
+      waitForChecks(read, { waitSeconds: 300, readLastChange: changedAt(3_600) }),
     );
 
     expect(settled.wait).toMatchObject({ settled: true, polls: 1, noChecks: "quiet" });
@@ -95,7 +99,9 @@ describe("check wait", () => {
     const read = polls([page([])]);
     const lastChange = changedAt(0);
 
-    const { page: settled, note } = await run(waitForChecks(read, undefined, 300, lastChange));
+    const { page: settled, note } = await run(
+      waitForChecks(read, { waitSeconds: 300, readLastChange: lastChange }),
+    );
 
     expect(settled.wait).toMatchObject({ settled: true, noChecks: "waited" });
     expect(settled.wait.waitedMs).toBeGreaterThanOrEqual(30_000);
@@ -110,7 +116,9 @@ describe("check wait", () => {
     let call = 0;
     const lastChange: ReadLastChange = vi.fn(async () => (call++ < 3 ? before : after));
 
-    const { page: settled } = await run(waitForChecks(read, undefined, 300, lastChange));
+    const { page: settled } = await run(
+      waitForChecks(read, { waitSeconds: 300, readLastChange: lastChange }),
+    );
 
     expect(settled.wait).toMatchObject({ settled: true, noChecks: "waited" });
     expect(settled.wait.waitedMs).toBeGreaterThanOrEqual(12_000 + 30_000);
@@ -126,12 +134,7 @@ describe("check wait", () => {
     const pushedAt = new Date(Date.now() + 10_000).toISOString();
 
     const { page: settled } = await run(
-      waitForChecks(
-        read,
-        undefined,
-        300,
-        vi.fn(async () => pushedAt),
-      ),
+      waitForChecks(read, { waitSeconds: 300, readLastChange: vi.fn(async () => pushedAt) }),
     );
 
     expect(settled.wait).toMatchObject({ settled: true, noChecks: "waited" });
@@ -147,7 +150,9 @@ describe("check wait", () => {
       return at;
     });
 
-    const { page: settled } = await run(waitForChecks(read, undefined, 300, lastChange));
+    const { page: settled } = await run(
+      waitForChecks(read, { waitSeconds: 300, readLastChange: lastChange }),
+    );
 
     expect(settled.wait).toMatchObject({ settled: true, noChecks: "waited" });
     expect(settled.wait.waitedMs).toBeGreaterThanOrEqual(12_000 + 30_000);
@@ -156,7 +161,9 @@ describe("check wait", () => {
   it("does not call an empty list final when the budget ends inside the grace window", async () => {
     const read = polls([page([])]);
 
-    const { page: timedOut, note } = await run(waitForChecks(read, undefined, 5, changedAt(0)));
+    const { page: timedOut, note } = await run(
+      waitForChecks(read, { waitSeconds: 5, readLastChange: changedAt(0) }),
+    );
 
     expect(timedOut.wait.settled).toBe(false);
     expect(timedOut.wait.noChecks).toBeUndefined();
@@ -171,7 +178,9 @@ describe("check wait", () => {
       page([check("build", false), check("lint", false)]),
     ]);
 
-    const { page: settled, note } = await run(waitForChecks(read, undefined, 60, changedAt(0)));
+    const { page: settled, note } = await run(
+      waitForChecks(read, { waitSeconds: 60, readLastChange: changedAt(0) }),
+    );
 
     expect(settled.wait.settled).toBe(true);
     expect(settled.wait.polls).toBe(3);
@@ -183,7 +192,9 @@ describe("check wait", () => {
   it("names what was still pending when the budget runs out", async () => {
     const read = polls([page([check("build", true), check("e2e", true), check("lint", false)])]);
 
-    const { page: timedOut, note } = await run(waitForChecks(read, undefined, 5, changedAt(0)));
+    const { page: timedOut, note } = await run(
+      waitForChecks(read, { waitSeconds: 5, readLastChange: changedAt(0) }),
+    );
 
     expect(timedOut.wait.settled).toBe(false);
     expect(timedOut.wait.pending).toEqual(["build", "e2e"]);
@@ -196,7 +207,9 @@ describe("check wait", () => {
     const running = Array.from({ length: 12 }, (_, index) => check(`job-${index + 1}`, true));
     const read = polls([page(running)]);
 
-    const { page: timedOut, note } = await run(waitForChecks(read, undefined, 5, changedAt(0)));
+    const { page: timedOut, note } = await run(
+      waitForChecks(read, { waitSeconds: 5, readLastChange: changedAt(0) }),
+    );
 
     expect(timedOut.wait.pending).toHaveLength(12);
     expect(note).toContain("job-10");
@@ -207,7 +220,9 @@ describe("check wait", () => {
   it("never waits past the budget", async () => {
     const read = polls([page([check("build", true)])]);
 
-    const { page: timedOut } = await run(waitForChecks(read, undefined, 3, changedAt(0)));
+    const { page: timedOut } = await run(
+      waitForChecks(read, { waitSeconds: 3, readLastChange: changedAt(0) }),
+    );
 
     expect(timedOut.wait.waitedMs).toBeLessThan(4_000);
   });
@@ -216,7 +231,10 @@ describe("check wait", () => {
     const read = polls([page([check("build", true)])]);
 
     const { page: timedOut } = await run(
-      waitForChecks(read, undefined, MAX_CHECK_WAIT_SECONDS * 10, changedAt(0)),
+      waitForChecks(read, {
+        waitSeconds: MAX_CHECK_WAIT_SECONDS * 10,
+        readLastChange: changedAt(0),
+      }),
     );
 
     expect(timedOut.wait.waitedMs).toBeLessThan((MAX_CHECK_WAIT_SECONDS + 10) * 1_000);
@@ -232,7 +250,9 @@ describe("check wait", () => {
         : page([check(`e2e-${requested}`, running)]);
     });
 
-    const { page: settled } = await run(waitForChecks(read, undefined, 60, changedAt(0)));
+    const { page: settled } = await run(
+      waitForChecks(read, { waitSeconds: 60, readLastChange: changedAt(0) }),
+    );
 
     expect(settled.wait.settled).toBe(true);
     expect(settled.wait.polls).toBeGreaterThan(1);
@@ -246,7 +266,9 @@ describe("check wait", () => {
         : page([check("e2e", false)]),
     );
 
-    const { page: settled } = await run(waitForChecks(read, "second", 60, changedAt(0)));
+    const { page: settled } = await run(
+      waitForChecks(read, { cursor: "second", waitSeconds: 60, readLastChange: changedAt(0) }),
+    );
 
     expect(settled.items.map((item) => item.name)).toEqual(["e2e"]);
     expect(settled.wait.settled).toBe(true);
@@ -261,7 +283,9 @@ describe("check wait", () => {
       return page([check(`job-${served}`, false)], `page-${served + 1}`);
     });
 
-    const { page: bounded, note } = await run(waitForChecks(read, undefined, 60, changedAt(0)));
+    const { page: bounded, note } = await run(
+      waitForChecks(read, { waitSeconds: 60, readLastChange: changedAt(0) }),
+    );
 
     expect(bounded.wait.settled).toBe(false);
     expect(bounded.wait.polls).toBe(1);
@@ -297,7 +321,7 @@ describe("check wait on an expected head", () => {
     const { head, read } = laggingPullRequest();
 
     const { page: settled, note } = await run(
-      waitForChecks(read, undefined, 120, changedAt(0), head),
+      waitForChecks(read, { waitSeconds: 120, readLastChange: changedAt(0), expectedHead: head }),
     );
 
     expect(settled.items.map((item) => item.name)).toEqual(["test"]);
@@ -311,7 +335,7 @@ describe("check wait on an expected head", () => {
     const read = polls([page([check("PR Lens", false)])]);
 
     const { page: timedOut, note } = await run(
-      waitForChecks(read, undefined, 5, changedAt(0), head),
+      waitForChecks(read, { waitSeconds: 5, readLastChange: changedAt(0), expectedHead: head }),
     );
 
     expect(timedOut.wait.settled).toBe(false);
@@ -326,7 +350,7 @@ describe("check wait on an expected head", () => {
     const head: ExpectedHead = { sha: pushed, read: vi.fn(async () => before) };
     const read = polls([page([check("PR Lens", false)])]);
 
-    const { page: once, note } = await readChecks(read, undefined, head);
+    const { page: once, note } = await readChecks(read, { expectedHead: head });
 
     expect(once).toEqual({ items: [], staleHead: before });
     expect(note).toContain(`still points at ${before}, not at headSha ${pushed}`);
@@ -342,7 +366,7 @@ describe("check wait on an expected head", () => {
     };
     const read = polls([page([check("test", false)])]);
 
-    const { page: once, note } = await readChecks(read, undefined, head);
+    const { page: once, note } = await readChecks(read, { expectedHead: head });
 
     expect(once).toEqual({ items: [], staleHead: later });
     expect(note).toContain(`still points at ${later}`);
@@ -357,7 +381,9 @@ describe("check wait on an expected head", () => {
     };
     const read = polls([page([check("test", false)])]);
 
-    const { page: timedOut } = await run(waitForChecks(read, undefined, 5, changedAt(0), head));
+    const { page: timedOut } = await run(
+      waitForChecks(read, { waitSeconds: 5, readLastChange: changedAt(0), expectedHead: head }),
+    );
 
     expect(timedOut.wait.settled).toBe(false);
     expect(timedOut.staleHead).toBe(later);
@@ -368,7 +394,7 @@ describe("check wait on an expected head", () => {
     const head: ExpectedHead = { sha: pushed.toUpperCase(), read: vi.fn(async () => pushed) };
     const read = polls([page([check("test", false)])]);
 
-    const { page: once } = await readChecks(read, undefined, head);
+    const { page: once } = await readChecks(read, { expectedHead: head });
 
     expect(once.items.map((item) => item.name)).toEqual(["test"]);
   });
@@ -377,7 +403,7 @@ describe("check wait on an expected head", () => {
     const head: ExpectedHead = { sha: pushed, read: vi.fn(async () => pushed) };
     const read = polls([page([check("test", true)])]);
 
-    const { page: once, note } = await readChecks(read, undefined, head);
+    const { page: once, note } = await readChecks(read, { expectedHead: head });
 
     expect(once.items.map((item) => item.name)).toEqual(["test"]);
     expect(once.staleHead).toBeUndefined();

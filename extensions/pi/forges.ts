@@ -76,7 +76,7 @@ function releaseApprovalMessage(
   params: Resolved<ForgesTools.CreateReleaseParams> | Resolved<ForgesTools.UpdateReleaseParams>,
   creating: boolean,
 ): string {
-  const flag = (value: boolean | undefined, on: string, off: string) =>
+  const flag = (value: boolean | undefined, [on, off]: readonly [string, string]) =>
     value === undefined && !creating ? "Unchanged" : value === true ? on : off;
   const text = (value: string | undefined, clean: (value: string) => string) =>
     value === undefined ? (creating ? "(none)" : "(unchanged)") : clean(value) || "(none)";
@@ -86,8 +86,8 @@ function releaseApprovalMessage(
     `Repository  ${approvalField(params.owner)}/${approvalField(params.repo)} on ${platformLabels[params.platform]}`,
     ...accountLine(params.account),
     `Tag         ${approvalField(params.tag)}${target}`,
-    `Draft       ${flag(params.draft, "Yes", "No, public at once")}`,
-    `Pre-release ${flag(params.prerelease, "Yes", "No")}`,
+    `Draft       ${flag(params.draft, ["Yes", "No, public at once"])}`,
+    `Pre-release ${flag(params.prerelease, ["Yes", "No"])}`,
     "",
     "Title",
     text(params.name, approvalField),
@@ -191,7 +191,7 @@ const confirm: Record<string, PiConfirm> = {
 function statusRenderers(name: string, title: string): PiRenderers {
   return {
     renderCall(args: unknown, theme: StatusTheme, context: RenderOptions) {
-      return new Text(renderToolCall(name, title, args, context, theme), 0, 0);
+      return new Text(renderToolCall({ name, label: title, args, options: context }, theme), 0, 0);
     },
     renderResult(
       result: RenderedToolResult,
@@ -200,7 +200,7 @@ function statusRenderers(name: string, title: string): PiRenderers {
       context?: Readonly<{ isError?: boolean }>,
     ) {
       return new Text(
-        renderToolResult(name, result, context?.isError === true, options, theme),
+        renderToolResult({ name, result, isError: context?.isError === true, options }, theme),
         0,
         0,
       );

@@ -148,9 +148,9 @@ function classifyError(error: unknown, platform?: string): ForgesError {
  */
 export function normalizeMergeError(
   error: unknown,
-  platform: string,
-  pinnedHead: boolean,
+  merge: Readonly<{ platform: string; pinnedHead: boolean }>,
 ): ForgesError {
+  const { platform, pinnedHead } = merge;
   const normalized = classifyError(error, platform);
   const hint =
     normalized.originalError instanceof FetchError && unsettledWrite(normalized.originalError)

@@ -1079,7 +1079,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
           if (file.encoding !== "base64") {
             throw new ForgesError(`GitLab returned no content for ${path}`, 502, "gitlab");
           }
-          return buildRepositoryFile(path, file.commit_id, file.content, options);
+          return buildRepositoryFile({ path, sha: file.commit_id, base64: file.content }, options);
         }
       }
 
@@ -1284,14 +1284,16 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       const projectId = await this.resolveProjectId(owner, repo);
       const route = `/projects/${projectId}/jobs/${jobId}`;
       const job = this.mapCiJob(await this.client<GitLabJob>(route));
-      if (!jobStarted(job, false)) return buildCiJobLog(job, null, options);
+      if (!jobStarted(job, false)) return buildCiJobLog({ job, log: null }, options);
       const stream = await this.client<unknown, "stream">(`${route}/trace`, {
         responseType: "stream",
       });
       const log = await readJobLogText(stream);
       return buildCiJobLog(
-        job,
-        { text: cleanGitLabTrace(log.text), complete: log.complete, timestamped: false },
+        {
+          job,
+          log: { text: cleanGitLabTrace(log.text), complete: log.complete, timestamped: false },
+        },
         options,
       );
     } catch (error: unknown) {
@@ -1356,7 +1358,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       const page = options?.page ?? 1;
       const commits = comparison.commits.map((raw) => this.mapCommitSummary(raw));
       return {
-        ...slicePage(commits, page, options?.perPage),
+        ...slicePage(commits, { page, perPage: options?.perPage }),
         totalCount: commits.length,
         status: null,
         aheadBy: commits.length,
@@ -1420,7 +1422,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
         }
         page = nextPage;
       }
-      return buildCommitPatch(commit.id, files, null, options);
+      return buildCommitPatch({ sha: commit.id, files, filesComplete: null }, options);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }
@@ -2269,7 +2271,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       );
       return this.mapPullRequest(mr);
     } catch (error: unknown) {
-      throw normalizeMergeError(error, "gitlab", input.headSha !== undefined);
+      throw normalizeMergeError(error, {
+        platform: "gitlab",
+        pinnedHead: input.headSha !== undefined,
+      });
     }
   }
 

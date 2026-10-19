@@ -4,7 +4,14 @@ import type { MergePullRequestInput, UpdateIssueInput } from "./types.ts";
 
 const MAX_LABELS = 100;
 
-function assertLabels(labels: unknown, field: string, platform?: string): void {
+/** The input field a refusal names, and the platform it came from. */
+interface Field {
+  field: string;
+  platform?: string;
+}
+
+function assertLabels(labels: unknown, about: Field): void {
+  const { field, platform } = about;
   if (labels === undefined) return;
   if (
     !Array.isArray(labels) ||
@@ -20,10 +27,13 @@ function assertLabels(labels: unknown, field: string, platform?: string): void {
 }
 
 function overlap(
-  added: readonly string[] | undefined,
-  removed: readonly string[] | undefined,
+  change: Readonly<{
+    added: readonly string[] | undefined;
+    removed: readonly string[] | undefined;
+  }>,
   key: (value: string) => string,
 ): string[] {
+  const { added, removed } = change;
   if (!added?.length || !removed?.length) return [];
   const removedKeys = new Set(removed.map(key));
   return added.filter((value) => removedKeys.has(key(value)));
@@ -34,11 +44,15 @@ function overlap(
  * before any request goes out. Logins compare case-insensitively, as every
  * platform treats them; label names compare exactly.
  */
-function assertUpdate(input: UpdateIssueInput, subject: string, platform?: string): void {
+function assertUpdate(
+  input: UpdateIssueInput,
+  about: Readonly<{ subject: string; platform?: string }>,
+): void {
+  const { subject, platform } = about;
   assertAssignees(input.addAssignees, platform);
   assertAssignees(input.removeAssignees, platform);
-  assertLabels(input.addLabels, "addLabels", platform);
-  assertLabels(input.removeLabels, "removeLabels", platform);
+  assertLabels(input.addLabels, { field: "addLabels", platform });
+  assertLabels(input.removeLabels, { field: "removeLabels", platform });
   if (input.title !== undefined && input.title.trim() === "") {
     throw new ForgesError(`${subject} title must not be empty`, 400, platform);
   }
@@ -46,10 +60,11 @@ function assertUpdate(input: UpdateIssueInput, subject: string, platform?: strin
     throw new ForgesError(`${subject} state must be "open" or "closed"`, 400, platform);
   }
 
-  const assignees = overlap(input.addAssignees, input.removeAssignees, (login) =>
-    login.toLowerCase(),
+  const assignees = overlap(
+    { added: input.addAssignees, removed: input.removeAssignees },
+    (login) => login.toLowerCase(),
   );
-  const labels = overlap(input.addLabels, input.removeLabels, (name) => name);
+  const labels = overlap({ added: input.addLabels, removed: input.removeLabels }, (name) => name);
   const conflicts = [...assignees, ...labels];
   if (conflicts.length > 0) {
     throw new ForgesError(`Cannot both add and remove: ${conflicts.join(", ")}`, 400, platform);
@@ -68,11 +83,11 @@ function assertUpdate(input: UpdateIssueInput, subject: string, platform?: strin
 }
 
 export function assertIssueUpdate(input: UpdateIssueInput, platform?: string): void {
-  assertUpdate(input, "Issue", platform);
+  assertUpdate(input, { subject: "Issue", platform });
 }
 
 export function assertPullRequestUpdate(input: UpdateIssueInput, platform?: string): void {
-  assertUpdate(input, "Pull request", platform);
+  assertUpdate(input, { subject: "Pull request", platform });
 }
 
 const MERGE_METHODS: ReadonlySet<unknown> = new Set(["merge", "squash", "rebase"]);

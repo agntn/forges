@@ -1154,7 +1154,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (contents.encoding !== "base64" || contents.content === undefined) {
         throw new ForgesError(`GitHub returned no content for ${path}`, 502, "github");
       }
-      return buildRepositoryFile(path, sha, contents.content, options);
+      return buildRepositoryFile({ path, sha, base64: contents.content }, options);
     } catch (error) {
       throw normalizeError(error, "github");
     }
@@ -1192,13 +1192,13 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     try {
       const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/jobs/${jobId}`;
       const job = mapActionsJob(await this.client<ActionsJob>(route));
-      if (!jobStarted(job, true)) return buildCiJobLog(job, null, options);
+      if (!jobStarted(job, true)) return buildCiJobLog({ job, log: null }, options);
       // The route redirects to blob storage; fetch drops the token on that cross-origin hop.
       const stream = await this.client<unknown, "stream">(`${route}/logs`, {
         responseType: "stream",
       });
       const log = await readJobLogText(stream);
-      return buildCiJobLog(job, { ...log, timestamped: true }, options);
+      return buildCiJobLog({ job, log: { ...log, timestamped: true } }, options);
     } catch (error) {
       throw normalizeError(error, "github");
     }
@@ -1249,7 +1249,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         if (expectedRepository !== undefined) return repository === expectedRepository;
         return expectedOwner === undefined || repository.startsWith(`${expectedOwner}/`);
       });
-      const result = buildPageResult(scopedItems, headers, (raw) => ({
+      const result = buildPageResult({ items: scopedItems, headers }, (raw) => ({
         ...this.mapCommitSummary(raw),
         repository: raw.repository.full_name,
       }));
@@ -1417,9 +1417,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         );
       }
       return buildCommitPatch(
-        resolvedSha,
-        files,
-        files.length < 3000 ? filesComplete : null,
+        { sha: resolvedSha, files, filesComplete: files.length < 3000 ? filesComplete : null },
         options,
       );
     } catch (error) {
@@ -1467,7 +1465,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         return true;
       });
       return {
-        ...buildPageResult(scopedItems, headers, (raw) => ({
+        ...buildPageResult({ items: scopedItems, headers }, (raw) => ({
           repository: raw.repository.full_name,
           path: raw.path,
           url: raw.html_url,
@@ -1543,7 +1541,9 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews`,
         { query },
       );
-      const page = buildPageResult(data ?? [], headers, (raw) => this.mapPullRequestReview(raw));
+      const page = buildPageResult({ items: data ?? [], headers }, (raw) =>
+        this.mapPullRequestReview(raw),
+      );
       return { ...page, items: page.items.filter(isPullRequestReview) };
     } catch (error) {
       if (
@@ -1698,7 +1698,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       });
 
       return {
-        ...buildPageResult(scopedIssues, headers, (raw) => this.mapIssue(raw)),
+        ...buildPageResult({ items: scopedIssues, headers }, (raw) => this.mapIssue(raw)),
         incomplete: (data?.incomplete_results ?? false) || scopedIssues.length !== rawIssues.length,
       };
     } catch (error) {
@@ -1767,7 +1767,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         { query },
       );
 
-      return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequest(raw));
+      return buildPageResult({ items: data ?? [], headers }, (raw) => this.mapPullRequest(raw));
     } catch (error) {
       throw normalizeError(error, "github");
     }
@@ -2018,7 +2018,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
           continue;
         items.push({ ...map(raw), repository });
       }
-      const result = buildPageResult(items, headers, (item) => item);
+      const result = buildPageResult({ items, headers }, (item) => item);
       if (page * perPage >= GITHUB_SEARCH_RESULT_LIMIT) {
         result.hasNextPage = false;
         delete result.nextPage;
@@ -2085,7 +2085,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       });
 
       return {
-        ...buildPageResult(scopedPullRequests, headers, (raw) =>
+        ...buildPageResult({ items: scopedPullRequests, headers }, (raw) =>
           this.mapPullRequestSearchItem(raw),
         ),
         incomplete:
@@ -2254,7 +2254,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         },
       });
     } catch (error) {
-      throw normalizeMergeError(error, "github", input.headSha !== undefined);
+      throw normalizeMergeError(error, {
+        platform: "github",
+        pinnedHead: input.headSha !== undefined,
+      });
     }
     try {
       return this.mapPullRequest(await this.client<GitHubPullRequest>(pullPath));
@@ -2465,7 +2468,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (failed) throw failed.reason;
       if (read.status === "rejected") throw read.reason;
       const { data, headers } = read.value;
-      return buildPageResult(data ?? [], headers, (raw) => ({
+      return buildPageResult({ items: data ?? [], headers }, (raw) => ({
         content: raw.content,
         user: { login: raw.user?.login ?? "" },
         createdAt: raw.created_at,

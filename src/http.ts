@@ -148,8 +148,8 @@ export function createForgeClient(
           signal: options.signal,
         });
       } catch (error) {
-        const failure = toFetchError(error, method, target, options);
-        const wait = retryWait(failure, options.signal, retryStatusCodes);
+        const failure = toFetchError(error, { method, url: target, options });
+        const wait = retryWait(failure, { signal: options.signal, retryStatusCodes });
         if (attempt < retries && wait !== undefined) {
           await delay(Math.max(retryDelay, wait), options.signal);
           continue;
@@ -158,21 +158,20 @@ export function createForgeClient(
       }
       let data: unknown;
       try {
-        data = await readBody(response, method, options.responseType);
+        data = await readBody(response, { method, responseType: options.responseType });
       } catch (cause) {
         if (attempt < retries && !options.signal?.aborted && retryStatusCodes.includes(500)) {
           await delay(retryDelay, options.signal);
           continue;
         }
         const reason = cause instanceof Error ? cause.message : String(cause);
-        throw fetchError(
-          `${response.status} ${reason}`,
+        throw fetchError(`${response.status} ${reason}`, {
           cause,
           method,
-          target,
+          url: target,
           options,
-          response.status,
-        );
+          status: response.status,
+        });
       }
       return { data, headers: response.headers, status: response.status };
     }
@@ -186,9 +185,9 @@ export function createForgeClient(
 /** Milliseconds before another try, or none for an abort, a final status or a rate limit. */
 function retryWait(
   failure: unknown,
-  signal: AbortSignal | undefined,
-  retryStatusCodes: readonly number[],
+  retry: Readonly<{ signal: AbortSignal | undefined; retryStatusCodes: readonly number[] }>,
 ): number | undefined {
+  const { signal, retryStatusCodes } = retry;
   if (signal?.aborted || !(failure instanceof FetchError)) return undefined;
   if ((failure.cause as Error | undefined)?.name === "RateLimitedError") return undefined;
   return retryStatusCodes.includes(failure.status ?? 500) ? 0 : undefined;
@@ -243,36 +242,38 @@ interface ForgeFailure extends Error {
   resetAt?: Date;
 }
 
+/** The request a failure answered, when the caller knows it better than the failure does. */
+export interface FailedRequest {
+  method?: string;
+  url?: string;
+  options?: object;
+}
+
 /** A `forges` failure as the {@link FetchError} that `normalizeError` and redaction read. */
-export function toFetchError(
-  error: unknown,
-  method?: string,
-  url?: string,
-  options?: object,
-): unknown {
+export function toFetchError(error: unknown, request: FailedRequest = {}): unknown {
   if (!(error instanceof Error) || error instanceof FetchError || error instanceof ForgesError) {
     return error;
   }
   const failure = error as ForgeFailure;
-  method ??= failure.method ?? "GET";
-  url = failure.url ?? url ?? "";
+  const method = request.method ?? failure.method ?? "GET";
+  const url = failure.url ?? request.url ?? "";
+  const { options } = request;
   if (typeof failure.status !== "number") {
     if (failure.name !== "ForgeNetworkError" && failure.name !== "ForgeTimeoutError") return error;
-    return fetchError(`<no response> ${error.message}`, error, method, url, options);
+    return fetchError(`<no response> ${error.message}`, { cause: error, method, url, options });
   }
   const status = failure.status;
   const statusText = STATUS_TEXT[status] ?? "";
   const headers = new Headers();
   const wait = secondsUntil(failure.resetAt);
   if (wait !== undefined) headers.set("Retry-After", String(wait));
-  const result = fetchError(
-    `${status} ${statusText}`.trimEnd(),
-    error,
+  const result = fetchError(`${status} ${statusText}`.trimEnd(), {
+    cause: error,
     method,
     url,
     options,
     status,
-  );
+  });
   result.response = { status, statusText, headers } as Response;
   result.data = parseBody(failure.body);
   result.statusText = statusText;
@@ -280,15 +281,17 @@ export function toFetchError(
   return result;
 }
 
+/** A failed request with what went wrong underneath it and the status, when one came back. */
+interface Failure extends FailedRequest {
+  cause: unknown;
+  method: string;
+  url: string;
+  status?: number;
+}
+
 /** A {@link FetchError} worded `[METHOD] "<url>": <detail>`, the shape redaction knows to strip. */
-function fetchError(
-  detail: string,
-  cause: unknown,
-  method: string,
-  url: string,
-  options: object | undefined,
-  status?: number,
-): FetchError {
+function fetchError(detail: string, failure: Failure): FetchError {
+  const { cause, method, url, options, status } = failure;
   const error = new FetchError(`[${method}] ${JSON.stringify(url)}: ${detail}`, { cause });
   error.request = url;
   error.options = { ...options, method };
@@ -341,9 +344,9 @@ function queryValue(value: unknown): string {
 /** Only a success gets here, read the way the call asked; `forges` threw any failure. */
 async function readBody(
   response: RawResponse,
-  method: string,
-  responseType: ResponseType | undefined,
+  request: Readonly<{ method: string; responseType: ResponseType | undefined }>,
 ): Promise<unknown> {
+  const { method, responseType } = request;
   if (!response.body || NULL_BODY_STATUSES.has(response.status) || method === "HEAD") {
     await response.body?.cancel();
     return undefined;

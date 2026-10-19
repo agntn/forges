@@ -17,12 +17,15 @@ export interface TextWindow {
   maxChars: number;
 }
 
+/** What a window refusal names: the text it slices and the platform it came from. */
+export interface TextWindowSubject {
+  subject: string;
+  platform?: string;
+}
+
 /** Check a window before provider I/O and fill in its defaults; `subject` opens every refusal. */
-export function readTextWindow(
-  subject: string,
-  options: TextWindowOptions,
-  platform?: string,
-): TextWindow {
+export function readTextWindow(options: TextWindowOptions, about: TextWindowSubject): TextWindow {
+  const { subject, platform } = about;
   const offset = options.offset ?? 0;
   const maxChars = options.maxChars ?? DEFAULT_WINDOW_CHARS;
   if (!Number.isSafeInteger(offset) || offset < 0) {
@@ -41,13 +44,19 @@ export function readTextWindow(
   return { offset, maxChars };
 }
 
+/** How long the text is, and the refusal an offset past its end gets. */
+export interface TextLength {
+  length: number;
+  pastEnd: string;
+  platform?: string;
+}
+
 /** Where a window over `length` code units stops; an offset past the end gets `pastEnd`. */
 export function textWindowEnd(
-  length: number,
   window: TextWindow,
-  pastEnd: string,
-  platform?: string,
+  text: TextLength,
 ): { end: number; nextOffset: number | null; truncated: boolean } {
+  const { length, pastEnd, platform } = text;
   if (window.offset > length) throw new ForgesError(pastEnd, 400, platform);
   const end = Math.min(window.offset + window.maxChars, length);
   return { end, nextOffset: end < length ? end : null, truncated: end < length };

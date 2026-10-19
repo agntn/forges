@@ -11,13 +11,16 @@ import {
 
 const ESC = "\u001b";
 
-function step(
-  number: number,
-  name: string,
-  conclusion: string,
-  started: string | null,
-  completed: string | null,
-) {
+/** A step's name and how it ended, with the seconds past 14:27 it started and finished at. */
+interface StepRun {
+  name: string;
+  conclusion: string;
+  started: string | null;
+  completed: string | null;
+}
+
+function step(number: number, run: StepRun) {
+  const { name, conclusion, started, completed } = run;
   return {
     number,
     name,
@@ -38,12 +41,22 @@ const rawJob: ActionsJob = {
   completed_at: "2026-09-19T14:27:16Z",
   html_url: "https://github.com/agntn/forges/actions/runs/35448775016/job/105912189006",
   steps: [
-    step(1, "Set up job", "success", "10", "12"),
-    step(2, "Run npm ci", "success", "12", "15"),
-    step(3, "Test", "failure", "15", "16"),
-    step(4, "Post Run actions/setup-node", "skipped", "16", "16"),
-    step(5, "Post Run actions/checkout", "success", "16", "16"),
-    step(6, "Complete job", "success", "16", "16"),
+    step(1, { name: "Set up job", conclusion: "success", started: "10", completed: "12" }),
+    step(2, { name: "Run npm ci", conclusion: "success", started: "12", completed: "15" }),
+    step(3, { name: "Test", conclusion: "failure", started: "15", completed: "16" }),
+    step(4, {
+      name: "Post Run actions/setup-node",
+      conclusion: "skipped",
+      started: "16",
+      completed: "16",
+    }),
+    step(5, {
+      name: "Post Run actions/checkout",
+      conclusion: "success",
+      started: "16",
+      completed: "16",
+    }),
+    step(6, { name: "Complete job", conclusion: "success", started: "16", completed: "16" }),
   ],
 };
 
@@ -123,8 +136,7 @@ describe("buildCiJobLog", () => {
 
   it("puts the failing step first and every other step after it in order", () => {
     const log = buildCiJobLog(
-      job,
-      { text: githubLog, complete: true, timestamped: true },
+      { job, log: { text: githubLog, complete: true, timestamped: true } },
       { maxChars: 200_000 },
     );
 
@@ -145,7 +157,7 @@ describe("buildCiJobLog", () => {
     let offset: number | null = 0;
     let joined = "";
     while (offset !== null) {
-      const slice = buildCiJobLog(job, source, { offset, maxChars: 40 });
+      const slice = buildCiJobLog({ job, log: source }, { offset, maxChars: 40 });
       expect(slice.content.length).toBeLessThanOrEqual(40);
       joined += slice.content;
       offset = slice.nextOffset;
@@ -163,19 +175,19 @@ describe("buildCiJobLog", () => {
       startedAt: "0001-01-01T00:00:00Z",
       completedAt: "0001-01-01T00:00:00Z",
     };
-    const log = buildCiJobLog(
-      { ...job, steps: [...job.steps, pending] },
-      { text: githubLog, complete: true, timestamped: true },
-    );
+    const log = buildCiJobLog({
+      job: { ...job, steps: [...job.steps, pending] },
+      log: { text: githubLog, complete: true, timestamped: true },
+    });
 
     expect(log.content).toBe(expectedStream);
   });
 
   it("keeps a log without steps in its own order", () => {
-    const log = buildCiJobLog(
-      { ...job, steps: [] },
-      { text: githubLog, complete: true, timestamped: true },
-    );
+    const log = buildCiJobLog({
+      job: { ...job, steps: [] },
+      log: { text: githubLog, complete: true, timestamped: true },
+    });
 
     expect(log.content.startsWith("Current runner version: '2.337.0'\n##[group]Run npm ci\n")).toBe(
       true,
@@ -184,7 +196,7 @@ describe("buildCiJobLog", () => {
   });
 
   it("says a job without a log never started", () => {
-    const log = buildCiJobLog({ ...job, status: "queued", conclusion: null }, null);
+    const log = buildCiJobLog({ job: { ...job, status: "queued", conclusion: null }, log: null });
 
     expect(log).toMatchObject({ started: false, content: "", length: 0, nextOffset: null });
   });
@@ -192,17 +204,17 @@ describe("buildCiJobLog", () => {
   it("rejects an offset past the end and an out-of-range maxChars", () => {
     const source = { text: githubLog, complete: true, timestamped: true };
 
-    expect(() => buildCiJobLog(job, source, { offset: 100_000 })).toThrow(/past the end/u);
-    expect(() => buildCiJobLog(job, source, { maxChars: 0 })).toThrow(/maxChars/u);
-    expect(() => buildCiJobLog(job, source, { maxChars: 200_001 })).toThrow(/maxChars/u);
+    expect(() => buildCiJobLog({ job, log: source }, { offset: 100_000 })).toThrow(/past the end/u);
+    expect(() => buildCiJobLog({ job, log: source }, { maxChars: 0 })).toThrow(/maxChars/u);
+    expect(() => buildCiJobLog({ job, log: source }, { maxChars: 200_001 })).toThrow(/maxChars/u);
   });
 });
 
 describe("assertCiId", () => {
   it("accepts positive integers and rejects anything that could leave the path", () => {
-    expect(() => assertCiId("105912189006", "job")).not.toThrow();
+    expect(() => assertCiId("105912189006", { kind: "job" })).not.toThrow();
     for (const id of ["", "0", "-1", "1.5", "12/logs", "..", "0x10"]) {
-      expect(() => assertCiId(id, "job"), id).toThrow(/positive integer/u);
+      expect(() => assertCiId(id, { kind: "job" }), id).toThrow(/positive integer/u);
     }
   });
 });

@@ -21,24 +21,28 @@ describe("Forges tool TUI", () => {
 
   it("renders the repository target, call state, and write boundary", () => {
     const read = renderToolCall(
-      "forges_issues_get",
-      "◈ Forges Issue",
-      { platform: "github", owner: "agntn", repo: "forges", number: 42 },
-      { executionStarted: true, isPartial: true },
+      {
+        name: "forges_issues_get",
+        label: "◈ Forges Issue",
+        args: { platform: "github", owner: "agntn", repo: "forges", number: 42 },
+        options: { executionStarted: true, isPartial: true },
+      },
       plain,
     );
     const write = renderToolCall(
-      "forges_pull_requests_create",
-      "↗ Create Forges Pull Request",
       {
-        platform: "github",
-        owner: "agntn",
-        repo: "forges",
-        title: "Improve tool UI",
-        sourceBranch: "feat/tui",
-        targetBranch: "main",
+        name: "forges_pull_requests_create",
+        label: "↗ Create Forges Pull Request",
+        args: {
+          platform: "github",
+          owner: "agntn",
+          repo: "forges",
+          title: "Improve tool UI",
+          sourceBranch: "feat/tui",
+          targetBranch: "main",
+        },
+        options: { isPartial: true, spinnerFrame: 1 },
       },
-      { isPartial: true, spinnerFrame: 1 },
       plain,
     );
 
@@ -50,10 +54,12 @@ describe("Forges tool TUI", () => {
 
   it("renders a repository the caller wrote as one owner/name slug", () => {
     const read = renderToolCall(
-      "forges_issues_get",
-      "◈ Forges Issue",
-      { repo: "agntn/forges", number: 42 },
-      { executionStarted: true, isPartial: true },
+      {
+        name: "forges_issues_get",
+        label: "◈ Forges Issue",
+        args: { repo: "agntn/forges", number: 42 },
+        options: { executionStarted: true, isPartial: true },
+      },
       plain,
     );
 
@@ -69,9 +75,9 @@ describe("Forges tool TUI", () => {
       },
     };
 
-    expect(renderToolResult("forges_issues_list", result, false, {}, plain)).toBe(
-      "✓ (read) 2 items · more pages",
-    );
+    expect(
+      renderToolResult({ name: "forges_issues_list", result, isError: false, options: {} }, plain),
+    ).toBe("✓ (read) 2 items · more pages");
   });
 
   it("keeps the complete sanitized JSON available on expansion", () => {
@@ -85,10 +91,7 @@ describe("Forges tool TUI", () => {
       details: { platform: "github", result: { number: 42, state: "open" } },
     };
     const expanded = renderToolResult(
-      "forges_issues_get",
-      result,
-      false,
-      { expanded: true },
+      { name: "forges_issues_get", result, isError: false, options: { expanded: true } },
       plain,
     );
 
@@ -106,10 +109,7 @@ describe("Forges tool TUI", () => {
       details,
     };
     const expanded = renderToolResult(
-      "forges_pull_requests_files",
-      result,
-      false,
-      { expanded: true },
+      { name: "forges_pull_requests_files", result, isError: false, options: { expanded: true } },
       plain,
     );
     const lines = expanded.split("\n");
@@ -133,19 +133,19 @@ describe("Forges tool TUI", () => {
     };
     const result = { content: [{ type: "text", text: JSON.stringify(details) }], details };
 
-    expect(renderToolResult("forges_repos_contents", result, false, {}, plain)).toBe(
-      "✓ (read) src · 2 entries",
-    );
+    expect(
+      renderToolResult(
+        { name: "forges_repos_contents", result, isError: false, options: {} },
+        plain,
+      ),
+    ).toBe("✓ (read) src · 2 entries");
   });
 
   it("prints a payload that is not a JSON object exactly as it arrived", () => {
     for (const text of ["not json at all", '"just a string"', "42"]) {
       const result = { content: [{ type: "text", text }], details: {} };
       const expanded = renderToolResult(
-        "forges_repos_get",
-        result,
-        false,
-        { expanded: true },
+        { name: "forges_repos_get", result, isError: false, options: { expanded: true } },
         plain,
       );
 
@@ -158,21 +158,31 @@ describe("Forges tool TUI", () => {
       content: [{ type: "text", text: "Repository not found\nCheck the owner and name" }],
     };
 
-    expect(renderToolResult("forges_repos_get", result, true, {}, plain)).toBe(
-      "✗ Repository not found (failed)\n  Check the owner and name",
-    );
     expect(
-      renderToolResult("forges_repos_get", { ...result, isError: true }, false, {}, plain),
+      renderToolResult({ name: "forges_repos_get", result, isError: true, options: {} }, plain),
+    ).toBe("✗ Repository not found (failed)\n  Check the owner and name");
+    expect(
+      renderToolResult(
+        {
+          name: "forges_repos_get",
+          result: { ...result, isError: true },
+          isError: false,
+          options: {},
+        },
+        plain,
+      ),
     ).toBe("✗ Repository not found (failed)\n  Check the owner and name");
   });
 
   it("keeps a long failure line that the header had to shorten", () => {
     const reason = `Failure: ${"x".repeat(120)}`;
     const rendered = renderToolResult(
-      "forges_repos_get",
-      { content: [{ type: "text", text: reason }] },
-      true,
-      {},
+      {
+        name: "forges_repos_get",
+        result: { content: [{ type: "text", text: reason }] },
+        isError: true,
+        options: {},
+      },
       plain,
     );
 
@@ -189,10 +199,12 @@ describe("Forges tool TUI", () => {
     }
     expect(
       renderToolCall(
-        "forges_repos_get",
-        "◆ Forges Repository",
-        { owner: `${escape}]0;evil${bell}agntn`, repo: "forges" },
-        {},
+        {
+          name: "forges_repos_get",
+          label: "◆ Forges Repository",
+          args: { owner: `${escape}]0;evil${bell}agntn`, repo: "forges" },
+          options: {},
+        },
         plain,
       ),
     ).toBe("· ◆ Forges Repository agntn/forges");

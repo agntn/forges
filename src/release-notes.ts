@@ -29,7 +29,7 @@ export function assertReleaseNotesOptions(
   options: ReleaseNotesOptions = {},
   platform?: string,
 ): TextWindow {
-  const window = readTextWindow("Release notes", options, platform);
+  const window = readTextWindow(options, { subject: "Release notes", platform });
   if (options.notesHash !== undefined && !NOTES_HASH.test(options.notesHash)) {
     throw new ForgesError(
       "Release notes notesHash must be the 16 hex digits a previous read returned",
@@ -55,9 +55,9 @@ export function hashReleaseNotes(body: string): string {
 /** Cut one slice of the notes. Everything else about the release rides along untouched. */
 export function sliceReleaseNotes(
   release: Release,
-  options: ReleaseNotesOptions = {},
-  platform?: string,
+  options: ReleaseNotesOptions & { platform?: string } = {},
 ): ReleaseNotesSlice {
+  const { platform } = options;
   const window = assertReleaseNotesOptions(options, platform);
   const notesHash = hashReleaseNotes(release.body);
   if (options.notesHash !== undefined && options.notesHash !== notesHash) {
@@ -68,12 +68,11 @@ export function sliceReleaseNotes(
     );
   }
   const { length } = release.body;
-  const { end, nextOffset, truncated } = textWindowEnd(
+  const { end, nextOffset, truncated } = textWindowEnd(window, {
     length,
-    window,
-    "Release notes offset is past the end of the notes",
+    pastEnd: "Release notes offset is past the end of the notes",
     platform,
-  );
+  });
   return {
     ...release,
     body: release.body.slice(window.offset, end),

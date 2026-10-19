@@ -15,9 +15,9 @@ import {
 
 function createFetchError(
   message: string,
-  status: number,
-  responseHeaders?: Record<string, string>,
+  response: { status: number; headers?: Record<string, string> },
 ): FetchError {
+  const { status, headers: responseHeaders } = response;
   const error = new FetchError(message);
   error.status = status;
   error.statusCode = status;
@@ -29,7 +29,7 @@ function createFetchError(
 
 describe("normalizeError", () => {
   it("maps 401 FetchError to AuthenticationError", () => {
-    const err = createFetchError("Unauthorized", 401);
+    const err = createFetchError("Unauthorized", { status: 401 });
     const result = normalizeError(err, "github");
 
     expect(result).toBeInstanceOf(AuthenticationError);
@@ -40,7 +40,7 @@ describe("normalizeError", () => {
   });
 
   it("maps 403 FetchError to PermissionError", () => {
-    const err = createFetchError("Forbidden", 403);
+    const err = createFetchError("Forbidden", { status: 403 });
     const result = normalizeError(err, "github");
 
     expect(result).toBeInstanceOf(PermissionError);
@@ -51,8 +51,11 @@ describe("normalizeError", () => {
   });
 
   it("maps 403 with x-ratelimit-remaining 0 to RateLimitError", () => {
-    const err = createFetchError("Forbidden", 403, {
-      "x-ratelimit-remaining": "0",
+    const err = createFetchError("Forbidden", {
+      status: 403,
+      headers: {
+        "x-ratelimit-remaining": "0",
+      },
     });
     const result = normalizeError(err, "github");
 
@@ -62,8 +65,11 @@ describe("normalizeError", () => {
   });
 
   it("maps 403 with Retry-After header to RateLimitError", () => {
-    const err = createFetchError("Forbidden", 403, {
-      "Retry-After": "120",
+    const err = createFetchError("Forbidden", {
+      status: 403,
+      headers: {
+        "Retry-After": "120",
+      },
     });
     const result = normalizeError(err, "github");
 
@@ -72,7 +78,7 @@ describe("normalizeError", () => {
   });
 
   it("maps 403 with rate limit message to RateLimitError", () => {
-    const err = createFetchError("API rate limit exceeded", 403);
+    const err = createFetchError("API rate limit exceeded", { status: 403 });
     const result = normalizeError(err, "github");
 
     expect(result).toBeInstanceOf(RateLimitError);
@@ -80,7 +86,7 @@ describe("normalizeError", () => {
   });
 
   it("maps 404 FetchError to NotFoundError", () => {
-    const err = createFetchError("Not Found", 404);
+    const err = createFetchError("Not Found", { status: 404 });
     const result = normalizeError(err, "gitea");
 
     expect(result).toBeInstanceOf(NotFoundError);
@@ -90,7 +96,10 @@ describe("normalizeError", () => {
   });
 
   it("maps 429 FetchError to RateLimitError with retryAfter", () => {
-    const err = createFetchError("Too Many Requests", 429, { "Retry-After": "60" });
+    const err = createFetchError("Too Many Requests", {
+      status: 429,
+      headers: { "Retry-After": "60" },
+    });
     const result = normalizeError(err, "github");
 
     expect(result).toBeInstanceOf(RateLimitError);
@@ -100,8 +109,11 @@ describe("normalizeError", () => {
   });
 
   it("maps 429 with whitespace-wrapped numeric Retry-After", () => {
-    const err = createFetchError("Too Many Requests", 429, {
-      "Retry-After": " 60 ",
+    const err = createFetchError("Too Many Requests", {
+      status: 429,
+      headers: {
+        "Retry-After": " 60 ",
+      },
     });
     const result = normalizeError(err, "github") as RateLimitError;
 
@@ -114,9 +126,12 @@ describe("normalizeError", () => {
     ["gitlab", "RateLimit"],
   ])("takes retryAfter on %s from the reset of a spent limit", (platform, prefix) => {
     const reset = Math.floor(Date.now() / 1000) + 3600;
-    const err = createFetchError("Too Many Requests", 429, {
-      [`${prefix}-Remaining`]: "0",
-      [`${prefix}-Reset`]: String(reset),
+    const err = createFetchError("Too Many Requests", {
+      status: 429,
+      headers: {
+        [`${prefix}-Remaining`]: "0",
+        [`${prefix}-Reset`]: String(reset),
+      },
     });
     const result = normalizeError(err, platform) as RateLimitError;
 
@@ -125,7 +140,7 @@ describe("normalizeError", () => {
   });
 
   it("maps 429 FetchError without Retry-After header", () => {
-    const err = createFetchError("Too Many Requests", 429);
+    const err = createFetchError("Too Many Requests", { status: 429 });
     const result = normalizeError(err, "gitlab");
 
     expect(result).toBeInstanceOf(RateLimitError);
@@ -134,8 +149,11 @@ describe("normalizeError", () => {
 
   it("maps 429 with HTTP-date Retry-After to delay seconds", () => {
     const futureDate = new Date(Date.now() + 120_000).toUTCString();
-    const err = createFetchError("Too Many Requests", 429, {
-      "Retry-After": futureDate,
+    const err = createFetchError("Too Many Requests", {
+      status: 429,
+      headers: {
+        "Retry-After": futureDate,
+      },
     });
     const result = normalizeError(err, "github") as RateLimitError;
 
@@ -147,8 +165,11 @@ describe("normalizeError", () => {
 
   it("maps 429 with past HTTP-date Retry-After to zero", () => {
     const pastDate = new Date(Date.now() - 60_000).toUTCString();
-    const err = createFetchError("Too Many Requests", 429, {
-      "Retry-After": pastDate,
+    const err = createFetchError("Too Many Requests", {
+      status: 429,
+      headers: {
+        "Retry-After": pastDate,
+      },
     });
     const result = normalizeError(err, "github") as RateLimitError;
 
@@ -158,8 +179,11 @@ describe("normalizeError", () => {
 
   it("maps 429 with whitespace-wrapped HTTP-date Retry-After", () => {
     const futureDate = new Date(Date.now() + 120_000).toUTCString();
-    const err = createFetchError("Too Many Requests", 429, {
-      "Retry-After": ` ${futureDate} `,
+    const err = createFetchError("Too Many Requests", {
+      status: 429,
+      headers: {
+        "Retry-After": ` ${futureDate} `,
+      },
     });
     const result = normalizeError(err, "github") as RateLimitError;
 
@@ -170,8 +194,11 @@ describe("normalizeError", () => {
   });
 
   it("maps 429 with non-numeric Retry-After to undefined", () => {
-    const err = createFetchError("Too Many Requests", 429, {
-      "Retry-After": "not-a-number",
+    const err = createFetchError("Too Many Requests", {
+      status: 429,
+      headers: {
+        "Retry-After": "not-a-number",
+      },
     });
     const result = normalizeError(err, "github") as RateLimitError;
 
@@ -180,8 +207,11 @@ describe("normalizeError", () => {
   });
 
   it("maps 429 with partially numeric Retry-After to undefined", () => {
-    const err = createFetchError("Too Many Requests", 429, {
-      "Retry-After": "60s",
+    const err = createFetchError("Too Many Requests", {
+      status: 429,
+      headers: {
+        "Retry-After": "60s",
+      },
     });
     const result = normalizeError(err, "github") as RateLimitError;
 
@@ -190,8 +220,11 @@ describe("normalizeError", () => {
   });
 
   it("maps 429 with exponent-like Retry-After to undefined", () => {
-    const err = createFetchError("Too Many Requests", 429, {
-      "Retry-After": "1e3",
+    const err = createFetchError("Too Many Requests", {
+      status: 429,
+      headers: {
+        "Retry-After": "1e3",
+      },
     });
     const result = normalizeError(err, "github") as RateLimitError;
 
@@ -200,8 +233,11 @@ describe("normalizeError", () => {
   });
 
   it("maps 429 with comma-formatted Retry-After to undefined", () => {
-    const err = createFetchError("Too Many Requests", 429, {
-      "Retry-After": "10,000",
+    const err = createFetchError("Too Many Requests", {
+      status: 429,
+      headers: {
+        "Retry-After": "10,000",
+      },
     });
     const result = normalizeError(err, "github") as RateLimitError;
 
@@ -210,8 +246,11 @@ describe("normalizeError", () => {
   });
 
   it("maps 429 with negative Retry-After to undefined", () => {
-    const err = createFetchError("Too Many Requests", 429, {
-      "Retry-After": "-5",
+    const err = createFetchError("Too Many Requests", {
+      status: 429,
+      headers: {
+        "Retry-After": "-5",
+      },
     });
     const result = normalizeError(err, "github") as RateLimitError;
 
@@ -220,7 +259,7 @@ describe("normalizeError", () => {
   });
 
   it("maps other HTTP status to generic ForgesError", () => {
-    const err = createFetchError("Internal Server Error", 500);
+    const err = createFetchError("Internal Server Error", { status: 500 });
     const result = normalizeError(err, "github");
 
     expect(result).toBeInstanceOf(ForgesError);
@@ -264,10 +303,11 @@ describe("normalizeError", () => {
 });
 
 describe("normalizeError provider reasons", () => {
-  function rejected(status: number, statusText: string, data: unknown): FetchError {
+  function rejected(status: number, body: { statusText: string; data: unknown }): FetchError {
+    const { statusText, data } = body;
     const err = createFetchError(
       `[GET] "https://forge.example/api/resource": ${status} ${statusText}`,
-      status,
+      { status },
     );
     err.statusText = statusText;
     err.data = data;
@@ -276,9 +316,12 @@ describe("normalizeError provider reasons", () => {
 
   it("keeps the reason Gitea gives for an unknown owner", () => {
     const result = normalizeError(
-      rejected(400, "Bad Request", {
-        message: "user does not exist [uid: 0, name: nonexistent-owner-zq9]",
-        url: "https://gitea.com/api/swagger",
+      rejected(400, {
+        statusText: "Bad Request",
+        data: {
+          message: "user does not exist [uid: 0, name: nonexistent-owner-zq9]",
+          url: "https://gitea.com/api/swagger",
+        },
       }),
       "gitea",
     );
@@ -291,11 +334,14 @@ describe("normalizeError provider reasons", () => {
 
   it("names the fields behind GitHub's Validation Failed", () => {
     const result = normalizeError(
-      rejected(422, "", {
-        message: "Validation Failed",
-        errors: [{ value: "bogus", resource: "Issue", field: "state", code: "invalid" }],
-        documentation_url: "https://docs.github.com/v3/issues/#list-issues",
-        status: "422",
+      rejected(422, {
+        statusText: "",
+        data: {
+          message: "Validation Failed",
+          errors: [{ value: "bogus", resource: "Issue", field: "state", code: "invalid" }],
+          documentation_url: "https://docs.github.com/v3/issues/#list-issues",
+          status: "422",
+        },
       }),
       "github",
     );
@@ -307,12 +353,15 @@ describe("normalizeError provider reasons", () => {
 
   it("prefers the message of a custom GitHub validation error", () => {
     const result = normalizeError(
-      rejected(422, "Unprocessable Entity", {
-        message: "Validation Failed",
-        errors: [
-          { resource: "PullRequest", code: "custom", message: "A pull request already exists" },
-          "base is invalid",
-        ],
+      rejected(422, {
+        statusText: "Unprocessable Entity",
+        data: {
+          message: "Validation Failed",
+          errors: [
+            { resource: "PullRequest", code: "custom", message: "A pull request already exists" },
+            "base is invalid",
+          ],
+        },
       }),
       "github",
     );
@@ -325,15 +374,21 @@ describe("normalizeError provider reasons", () => {
   it("reads GitLab's error field and its field map", () => {
     expect(
       normalizeError(
-        rejected(400, "Bad Request", { error: "state does not have a valid value" }),
+        rejected(400, {
+          statusText: "Bad Request",
+          data: { error: "state does not have a valid value" },
+        }),
         "gitlab",
       ).message,
     ).toMatch(/400 Bad Request: state does not have a valid value$/);
 
     expect(
       normalizeError(
-        rejected(400, "Bad Request", {
-          message: { title: ["can't be blank"], labels: ["is invalid", "is too long"] },
+        rejected(400, {
+          statusText: "Bad Request",
+          data: {
+            message: { title: ["can't be blank"], labels: ["is invalid", "is too long"] },
+          },
         }),
         "gitlab",
       ).message,
@@ -342,7 +397,7 @@ describe("normalizeError provider reasons", () => {
 
   it("keeps the reason after the class prefix", () => {
     const result = normalizeError(
-      rejected(404, "Not Found", { message: "404 Project Not Found" }),
+      rejected(404, { statusText: "Not Found", data: { message: "404 Project Not Found" } }),
       "gitlab",
     );
 
@@ -354,7 +409,10 @@ describe("normalizeError provider reasons", () => {
 
   it("leaves out a reason the status already says", () => {
     const result = normalizeError(
-      rejected(404, "Not Found", { message: "Not Found", documentation_url: "https://docs" }),
+      rejected(404, {
+        statusText: "Not Found",
+        data: { message: "Not Found", documentation_url: "https://docs" },
+      }),
       "github",
     );
 
@@ -362,7 +420,10 @@ describe("normalizeError provider reasons", () => {
       'Resource not found: [GET] "https://forge.example/api/resource": 404 Not Found',
     );
     expect(
-      normalizeError(rejected(404, "Not Found", { message: "404 not found" }), "gitea").message,
+      normalizeError(
+        rejected(404, { statusText: "Not Found", data: { message: "404 not found" } }),
+        "gitea",
+      ).message,
     ).toMatch(/: 404 Not Found$/);
   });
 
@@ -375,15 +436,18 @@ describe("normalizeError provider reasons", () => {
       { message: "" },
       [{ message: "array bodies are not error objects" }],
     ]) {
-      expect(normalizeError(rejected(502, "Bad Gateway", data), "gitea").message).toBe(
-        '[GET] "https://forge.example/api/resource": 502 Bad Gateway',
-      );
+      expect(
+        normalizeError(rejected(502, { statusText: "Bad Gateway", data }), "gitea").message,
+      ).toBe('[GET] "https://forge.example/api/resource": 502 Bad Gateway');
     }
   });
 
   it("cuts a long reason to one bounded line", () => {
     const result = normalizeError(
-      rejected(500, "Internal Server Error", { message: `first\n\tline ${"x".repeat(500)}` }),
+      rejected(500, {
+        statusText: "Internal Server Error",
+        data: { message: `first\n\tline ${"x".repeat(500)}` },
+      }),
       "gitea",
     );
     const reason = result.message.split("500 Internal Server Error: ")[1] ?? "";
@@ -395,9 +459,12 @@ describe("normalizeError provider reasons", () => {
 
   it("masks the caller's address in GitHub's rate limit text", () => {
     const result = normalizeError(
-      rejected(403, "Forbidden", {
-        message:
-          "API rate limit exceeded for 104.28.193.185. (But here's the good news: Authenticated requests get a higher rate limit.)",
+      rejected(403, {
+        statusText: "Forbidden",
+        data: {
+          message:
+            "API rate limit exceeded for 104.28.193.185. (But here's the good news: Authenticated requests get a higher rate limit.)",
+        },
       }),
       "github",
     );
@@ -407,7 +474,10 @@ describe("normalizeError provider reasons", () => {
     expect(result.message).toContain("API rate limit exceeded for <address>.");
 
     const v6 = normalizeError(
-      rejected(403, "Forbidden", { message: "API rate limit exceeded for 2001:db8::1." }),
+      rejected(403, {
+        statusText: "Forbidden",
+        data: { message: "API rate limit exceeded for 2001:db8::1." },
+      }),
       "github",
     );
     expect(v6.message).toContain("exceeded for <address>.");
@@ -415,8 +485,11 @@ describe("normalizeError provider reasons", () => {
 
   it("keeps times and Ruby constants that look like addresses", () => {
     const result = normalizeError(
-      rejected(500, "Internal Server Error", {
-        message: "Gitlab::Git::CommandError at 12:30:45",
+      rejected(500, {
+        statusText: "Internal Server Error",
+        data: {
+          message: "Gitlab::Git::CommandError at 12:30:45",
+        },
       }),
       "gitlab",
     );
@@ -425,14 +498,20 @@ describe("normalizeError provider reasons", () => {
   });
 
   it("keeps a reason that happens to appear in the URL", () => {
-    const result = normalizeError(rejected(410, "Gone", { message: "resource" }), "gitea");
+    const result = normalizeError(
+      rejected(410, { statusText: "Gone", data: { message: "resource" } }),
+      "gitea",
+    );
 
     expect(result.message).toMatch(/410 Gone: resource$/);
   });
 
   it("turns controls and directional marks into spaces", () => {
     const result = normalizeError(
-      rejected(400, "Bad Request", { message: "bad\u001b]0;title\u0007 input\u202eflip" }),
+      rejected(400, {
+        statusText: "Bad Request",
+        data: { message: "bad\u001b]0;title\u0007 input\u202eflip" },
+      }),
       "gitea",
     );
 
@@ -447,8 +526,11 @@ describe("normalizeError provider reasons", () => {
       level = level.inner as Record<string, unknown>;
     }
     const result = normalizeError(
-      rejected(400, "Bad Request", {
-        message: { ...nested, title: Array.from({ length: 100_000 }, () => "is invalid") },
+      rejected(400, {
+        statusText: "Bad Request",
+        data: {
+          message: { ...nested, title: Array.from({ length: 100_000 }, () => "is invalid") },
+        },
       }),
       "gitlab",
     );
@@ -459,15 +541,21 @@ describe("normalizeError provider reasons", () => {
 
     const fields = Object.fromEntries(Array.from({ length: 1000 }, (_, i) => [`f${i}`, ["x"]]));
     expect(
-      normalizeError(rejected(400, "Bad Request", { message: fields }), "gitlab").message,
+      normalizeError(
+        rejected(400, { statusText: "Bad Request", data: { message: fields } }),
+        "gitlab",
+      ).message,
     ).toMatch(/400 Bad Request: f0 x; f1 x; f2 x; f3 x; f4 x$/);
   });
 
   it("joins GitLab's OAuth error with its description", () => {
     const result = normalizeError(
-      rejected(401, "Unauthorized", {
-        error: "invalid_token",
-        error_description: "Token was revoked. You have to re-authorize from the user.",
+      rejected(401, {
+        statusText: "Unauthorized",
+        data: {
+          error: "invalid_token",
+          error_description: "Token was revoked. You have to re-authorize from the user.",
+        },
       }),
       "gitlab",
     );
@@ -477,7 +565,10 @@ describe("normalizeError provider reasons", () => {
     );
     expect(
       normalizeError(
-        rejected(400, "Bad Request", { message: "Validation Failed", error: "Validation Failed" }),
+        rejected(400, {
+          statusText: "Bad Request",
+          data: { message: "Validation Failed", error: "Validation Failed" },
+        }),
         "gitlab",
       ).message,
     ).toMatch(/400 Bad Request: Validation Failed$/);
@@ -485,24 +576,33 @@ describe("normalizeError provider reasons", () => {
 
   it("never keeps half of an address or credential the cut split", () => {
     const shifted = normalizeError(
-      rejected(403, "Forbidden", {
-        message: `${"\t".repeat(700)}${"x".repeat(93)} 104.28.193.185`,
+      rejected(403, {
+        statusText: "Forbidden",
+        data: {
+          message: `${"\t".repeat(700)}${"x".repeat(93)} 104.28.193.185`,
+        },
       }),
       "github",
     );
     expect(shifted.message).not.toMatch(/\b104\b/);
 
     const behindCredentials = normalizeError(
-      rejected(403, "Forbidden", {
-        message: `https://${"a".repeat(1500)}@h ${"x".repeat(85)} 104.28.193.185`,
+      rejected(403, {
+        statusText: "Forbidden",
+        data: {
+          message: `https://${"a".repeat(1500)}@h ${"x".repeat(85)} 104.28.193.185`,
+        },
       }),
       "github",
     );
     expect(behindCredentials.message).toMatch(/: https:\/\/h x+$/);
 
     const longSecret = normalizeError(
-      rejected(502, "Bad Gateway", {
-        message: `mirror https://ci:${"s".repeat(2000)}@host failed`,
+      rejected(502, {
+        statusText: "Bad Gateway",
+        data: {
+          message: `mirror https://ci:${"s".repeat(2000)}@host failed`,
+        },
       }),
       "gitea",
     );
@@ -511,7 +611,10 @@ describe("normalizeError provider reasons", () => {
 
   it("reads a bounded start of a huge field", () => {
     const result = normalizeError(
-      rejected(400, "Bad Request", { message: `${" ".repeat(5_000_000)}hidden reason` }),
+      rejected(400, {
+        statusText: "Bad Request",
+        data: { message: `${" ".repeat(5_000_000)}hidden reason` },
+      }),
       "gitea",
     );
 
@@ -520,7 +623,10 @@ describe("normalizeError provider reasons", () => {
 
   it("never cuts an emoji in half", () => {
     const result = normalizeError(
-      rejected(400, "Bad Request", { message: `${"x".repeat(198)}😀${"y".repeat(10)}` }),
+      rejected(400, {
+        statusText: "Bad Request",
+        data: { message: `${"x".repeat(198)}😀${"y".repeat(10)}` },
+      }),
       "gitea",
     );
 
@@ -530,8 +636,11 @@ describe("normalizeError provider reasons", () => {
 
   it("drops credentials from a URL in the reason", () => {
     const result = normalizeError(
-      rejected(502, "Bad Gateway", {
-        message: "mirror https://ci:s3cret@git.example.com/repo.git failed",
+      rejected(502, {
+        statusText: "Bad Gateway",
+        data: {
+          message: "mirror https://ci:s3cret@git.example.com/repo.git failed",
+        },
       }),
       "gitea",
     );
@@ -542,8 +651,11 @@ describe("normalizeError provider reasons", () => {
 
   it("detects a secondary rate limit from the body alone", () => {
     const result = normalizeError(
-      rejected(403, "Forbidden", {
-        message: "You have exceeded a secondary rate limit. Please wait a few minutes.",
+      rejected(403, {
+        statusText: "Forbidden",
+        data: {
+          message: "You have exceeded a secondary rate limit. Please wait a few minutes.",
+        },
       }),
       "github",
     );
@@ -566,9 +678,9 @@ describe("writes whose outcome is unknown", () => {
   /** The FetchError the client throws through `forges` once fetch answers as given. */
   async function failure(
     url: string,
-    options: RequestOptions,
-    answer: () => Response | Promise<never>,
+    request: { options: RequestOptions; answer: () => Response | Promise<never> },
   ): Promise<unknown> {
+    const { options, answer } = request;
     vi.stubGlobal("fetch", vi.fn(answer));
     return client(url, { retry: false, ...options }).then(
       () => expect.unreachable("the request should fail"),
@@ -587,9 +699,10 @@ describe("writes whose outcome is unknown", () => {
   }
 
   it("says a create that hit a 5xx may still have landed", async () => {
-    const error = await failure("/repos/o/r/issues", { method: "POST", body: { title: "t" } }, () =>
-      serverError(502),
-    );
+    const error = await failure("/repos/o/r/issues", {
+      options: { method: "POST", body: { title: "t" } },
+      answer: () => serverError(502),
+    });
 
     const result = normalizeError(error, "github");
     expect(result.status).toBe(502);
@@ -599,9 +712,10 @@ describe("writes whose outcome is unknown", () => {
   });
 
   it("says the same of a write that lost its answer after it left", async () => {
-    const error = await failure("/repos/o/r/issues/1", { method: "PATCH", body: {} }, () =>
-      dropped("ETIMEDOUT"),
-    );
+    const error = await failure("/repos/o/r/issues/1", {
+      options: { method: "PATCH", body: {} },
+      answer: () => dropped("ETIMEDOUT"),
+    });
 
     expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
   });
@@ -613,11 +727,11 @@ describe("writes whose outcome is unknown", () => {
         controller.error(new TypeError("terminated"));
       },
     });
-    const error = await failure(
-      "/repos/o/r/issues",
-      { method: "POST", body: {} },
-      () => new Response(cut, { status: 201, headers: { "content-type": "application/json" } }),
-    );
+    const error = await failure("/repos/o/r/issues", {
+      options: { method: "POST", body: {} },
+      answer: () =>
+        new Response(cut, { status: 201, headers: { "content-type": "application/json" } }),
+    });
 
     expect(error).toBeInstanceOf(FetchError);
     expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
@@ -629,11 +743,11 @@ describe("writes whose outcome is unknown", () => {
         controller.error(new TypeError("terminated"));
       },
     });
-    const error = await failure(
-      "/repos/o/r/issues",
-      { method: "POST", body: {} },
-      () => new Response(cut, { status: 401, headers: { "content-type": "application/json" } }),
-    );
+    const error = await failure("/repos/o/r/issues", {
+      options: { method: "POST", body: {} },
+      answer: () =>
+        new Response(cut, { status: 401, headers: { "content-type": "application/json" } }),
+    });
 
     const result = normalizeError(error, "github");
     expect(result).toBeInstanceOf(AuthenticationError);
@@ -642,16 +756,18 @@ describe("writes whose outcome is unknown", () => {
 
   it("stays quiet when the connection never opened", async () => {
     for (const code of ["ECONNREFUSED", "ENOTFOUND", "UND_ERR_CONNECT_TIMEOUT"]) {
-      const error = await failure("/repos/o/r/issues", { method: "POST", body: {} }, () =>
-        dropped(code),
-      );
+      const error = await failure("/repos/o/r/issues", {
+        options: { method: "POST", body: {} },
+        answer: () => dropped(code),
+      });
       expect(normalizeError(error, "github").message).not.toContain(WRITE_NOTE);
     }
 
     const refused = Object.assign(new AggregateError([], ""), { code: "ECONNREFUSED" });
-    const error = await failure("/repos/o/r/issues", { method: "POST", body: {} }, () =>
-      Promise.reject(new TypeError("fetch failed", { cause: refused })),
-    );
+    const error = await failure("/repos/o/r/issues", {
+      options: { method: "POST", body: {} },
+      answer: () => Promise.reject(new TypeError("fetch failed", { cause: refused })),
+    });
     expect(normalizeError(error, "github").message).not.toContain(WRITE_NOTE);
   });
 
@@ -666,23 +782,22 @@ describe("writes whose outcome is unknown", () => {
       ],
     ];
     for (const [url, options, status] of cases) {
-      const error = await failure(url, options, () => serverError(status));
+      const error = await failure(url, { options, answer: () => serverError(status) });
       expect(normalizeError(error, "github").message).not.toContain(WRITE_NOTE);
     }
   });
 
   it("counts a GraphQL mutation as a write", async () => {
-    const error = await failure(
-      "/graphql",
-      {
+    const error = await failure("/graphql", {
+      options: {
         method: "POST",
         body: {
           query:
             "\n  mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id } } }",
         },
       },
-      () => serverError(502),
-    );
+      answer: () => serverError(502),
+    });
 
     expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
   });
@@ -694,9 +809,10 @@ describe("writes whose outcome is unknown", () => {
       'query Read { search(query: "#tag } mutation", type: ISSUE) { issueCount } } mutation Write { addStar(input: {}) { clientMutationId } }',
       '# a "quoted" note\nmutation { addStar(input: {}) { clientMutationId } }',
     ]) {
-      const error = await failure("/graphql", { method: "POST", body: { query } }, () =>
-        serverError(502),
-      );
+      const error = await failure("/graphql", {
+        options: { method: "POST", body: { query } },
+        answer: () => serverError(502),
+      });
       expect(normalizeError(error, "github").message).toContain(WRITE_NOTE);
     }
   });
@@ -705,11 +821,10 @@ describe("writes whose outcome is unknown", () => {
     const query =
       "query Read { viewer { login } }\nmutation Write { addStar(input: {}) { clientMutationId } }";
     const outcome = async (operationName: string): Promise<string> => {
-      const error = await failure(
-        "/graphql",
-        { method: "POST", body: { query, operationName } },
-        () => serverError(502),
-      );
+      const error = await failure("/graphql", {
+        options: { method: "POST", body: { query, operationName } },
+        answer: () => serverError(502),
+      });
       return normalizeError(error, "github").message;
     };
 
@@ -718,52 +833,73 @@ describe("writes whose outcome is unknown", () => {
   });
 
   it("reads past commas, nested fields named mutation and a query string on the URL", async () => {
-    const run = async (url: string, query: string, operationName?: string): Promise<string> => {
-      const error = await failure(url, { method: "POST", body: { query, operationName } }, () =>
-        serverError(502),
-      );
+    const run = async (
+      url: string,
+      document: { query: string; operationName?: string },
+    ): Promise<string> => {
+      const { query, operationName } = document;
+      const error = await failure(url, {
+        options: { method: "POST", body: { query, operationName } },
+        answer: () => serverError(502),
+      });
       return normalizeError(error, "github").message;
     };
 
-    expect(await run("/graphql", "query Read { a },mutation,Write { b }", "Write")).toContain(
+    expect(
+      await run("/graphql", {
+        query: "query Read { a },mutation,Write { b }",
+        operationName: "Write",
+      }),
+    ).toContain(WRITE_NOTE);
+    expect(await run("/graphql", { query: "query Read { a { b } mutation }" })).not.toContain(
       WRITE_NOTE,
     );
-    expect(await run("/graphql", "query Read { a { b } mutation }")).not.toContain(WRITE_NOTE);
     expect(
-      await run("/graphql", "query($mutation: ID) { node(id: $mutation) { id } }"),
+      await run("/graphql", { query: "query($mutation: ID) { node(id: $mutation) { id } }" }),
     ).not.toContain(WRITE_NOTE);
-    expect(await run("/graphql?trace=1", "query { viewer { login } }")).not.toContain(WRITE_NOTE);
+    expect(await run("/graphql?trace=1", { query: "query { viewer { login } }" })).not.toContain(
+      WRITE_NOTE,
+    );
     expect(
-      await run("/graphql", 'query Read { a(b: """ \\""" { """) }\nmutation Write { c }', "Write"),
+      await run("/graphql", {
+        query: 'query Read { a(b: """ \\""" { """) }\nmutation Write { c }',
+        operationName: "Write",
+      }),
     ).toContain(WRITE_NOTE);
     expect(
-      await run("/graphql", 'query Read { a(b: "{") }} mutation Write { c }', "Read"),
+      await run("/graphql", {
+        query: 'query Read { a(b: "{") }} mutation Write { c }',
+        operationName: "Read",
+      }),
     ).toContain(WRITE_NOTE);
   });
 
   it("puts the note on the first line of the stack too", async () => {
-    const error = await failure("/repos/o/r/issues", { method: "POST", body: {} }, () =>
-      serverError(),
-    );
+    const error = await failure("/repos/o/r/issues", {
+      options: { method: "POST", body: {} },
+      answer: () => serverError(),
+    });
 
     expect(normalizeError(error, "github").stack?.split("\n")[0]).toContain(WRITE_NOTE);
   });
 
   it("adds the note once when an error is normalized again", async () => {
-    const error = await failure("/repos/o/r/releases", { method: "POST", body: {} }, () =>
-      serverError(),
-    );
+    const error = await failure("/repos/o/r/releases", {
+      options: { method: "POST", body: {} },
+      answer: () => serverError(),
+    });
 
     const once = normalizeError(error, "github");
     expect(normalizeError(once, "github")).toBe(once);
   });
 
   it("points a merge that hit a 5xx at merged and mergeCommitSha", async () => {
-    const error = await failure("/repos/o/r/pulls/1/merge", { method: "PUT", body: {} }, () =>
-      serverError(),
-    );
+    const error = await failure("/repos/o/r/pulls/1/merge", {
+      options: { method: "PUT", body: {} },
+      answer: () => serverError(),
+    });
 
-    const result = normalizeMergeError(error, "github", true);
+    const result = normalizeMergeError(error, { platform: "github", pinnedHead: true });
     expect(result.status).toBe(500);
     expect(result.message).toMatch(
       /500 Internal Server Error\. The merge may have landed before this failure, so read the pull request's merged and mergeCommitSha before trying again\.$/,
@@ -772,14 +908,16 @@ describe("writes whose outcome is unknown", () => {
   });
 
   it("keeps the merge note off a read that failed before the merge went out", async () => {
-    const error = await failure("/projects/o%2Fr", {}, () => serverError(503));
+    const error = await failure("/projects/o%2Fr", { options: {}, answer: () => serverError(503) });
 
-    expect(normalizeMergeError(error, "gitlab", false).message).not.toContain("may have landed");
+    expect(
+      normalizeMergeError(error, { platform: "gitlab", pinnedHead: false }).message,
+    ).not.toContain("may have landed");
   });
 
   it("says nothing of the sort for an error the provider raised itself", () => {
     const refused = new ForgesError("GitLab merges by merge commit or rebase", 501, "gitlab");
 
-    expect(normalizeMergeError(refused, "gitlab", false)).toBe(refused);
+    expect(normalizeMergeError(refused, { platform: "gitlab", pinnedHead: false })).toBe(refused);
   });
 });

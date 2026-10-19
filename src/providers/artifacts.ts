@@ -276,7 +276,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
       if (path !== "") {
         const file = await this.readFile(route, commit.hash, path);
         if (file !== null) {
-          return buildRepositoryFileFromBytes(path, commit.hash, file, options);
+          return buildRepositoryFileFromBytes({ path, sha: commit.hash, bytes: file }, options);
         }
       }
       const tree = await this.walkTree(route, commit.treeHash, path);

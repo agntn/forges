@@ -114,10 +114,10 @@ export function paginationFromLink(headers: Headers): {
  * Map one Link-paginated page of raw rows, as GitHub and Gitea both serve them.
  */
 export function buildPageResult<TRaw, TMapped>(
-  items: TRaw[],
-  headers: Headers,
+  response: Readonly<{ items: TRaw[]; headers: Headers }>,
   mapper: (raw: TRaw) => TMapped,
 ): NumberedPage<TMapped> {
+  const { items, headers } = response;
   return { items: items.map(mapper), ...paginationFromLink(headers) };
 }
 
@@ -228,7 +228,11 @@ export async function fetchAllPages<T>(
 }
 
 /** One page of a list the platform returned whole. */
-export function slicePage<T>(items: readonly T[], page = 1, perPage = 30): NumberedPage<T> {
+export function slicePage<T>(
+  items: readonly T[],
+  window: Readonly<{ page?: number; perPage?: number }> = {},
+): NumberedPage<T> {
+  const { page = 1, perPage = 30 } = window;
   const start = (page - 1) * perPage;
   const hasNextPage = start + perPage < items.length;
   return {

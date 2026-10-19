@@ -56,6 +56,18 @@ interface StaleHead {
   expected: string;
 }
 
+/** The page to read, and the push the pull request has to point at first. */
+export interface CheckReadOptions {
+  cursor?: string;
+  expectedHead?: ExpectedHead;
+}
+
+/** How long to wait, and what tells a quiet pull request from a fresh push. */
+export interface CheckWaitOptions extends CheckReadOptions {
+  waitSeconds: number;
+  readLastChange: ReadLastChange;
+}
+
 export interface CheckWaitResult {
   page: WaitedCheckPage;
   /** The one thing a caller has to act on, or nothing when the run concluded. */
@@ -136,9 +148,9 @@ function quietForGrace(changedAt: string | undefined): boolean {
 /** Keeps the run while the last change holds; a move or an unknown read starts it over. */
 function continueEmptyRun(
   run: EmptyRun | undefined,
-  changedAt: string | undefined,
-  waitedMs: number,
+  seen: { changedAt: string | undefined; waitedMs: number },
 ): EmptyRun {
+  const { changedAt, waitedMs } = seen;
   if (run && changedAt !== undefined && changedAt === run.changedAt) return run;
   return {
     sinceMs: waitedMs,
@@ -155,9 +167,9 @@ function pendingText(pending: string[]): string {
 
 function waitNote(
   wait: CheckWait,
-  examinedEveryPage: boolean,
-  waitSeconds: number,
+  scan: { examinedEveryPage: boolean; waitSeconds: number },
 ): string | undefined {
+  const { examinedEveryPage, waitSeconds } = scan;
   if (wait.settled) return undefined;
   if (!examinedEveryPage) {
     return `The wait stopped after ${MAX_SCAN_PAGES} pages of checks without reaching the end of the set; read the remaining pages before treating this pull request as finished.`;
@@ -195,9 +207,9 @@ async function readAtHead<T>(
 /** Reads the checks once, or none while the pull request still lags behind the push. */
 export async function readChecks(
   read: ReadCheckPage,
-  requestedCursor: string | undefined,
-  expectedHead?: ExpectedHead,
+  options: CheckReadOptions = {},
 ): Promise<{ page: CheckPage; note: string | undefined }> {
+  const { cursor: requestedCursor, expectedHead } = options;
   const outcome = await readAtHead(expectedHead, () => read(requestedCursor));
   if (outcome.stale) {
     return { page: staleHeadPage(outcome.stale), note: staleHeadNote(outcome.stale) };
@@ -226,11 +238,9 @@ function staleHeadNote(stale: Readonly<StaleHead>, waitSeconds?: number): string
  */
 export async function waitForChecks(
   read: ReadCheckPage,
-  requestedCursor: string | undefined,
-  waitSeconds: number,
-  readLastChange: ReadLastChange,
-  expectedHead?: ExpectedHead,
+  options: CheckWaitOptions,
 ): Promise<CheckWaitResult> {
+  const { cursor: requestedCursor, waitSeconds, readLastChange, expectedHead } = options;
   const budgetMs = Math.min(waitSeconds, MAX_CHECK_WAIT_SECONDS) * 1_000;
   const startedAt = performance.now();
   let polls = 0;
@@ -256,7 +266,7 @@ export async function waitForChecks(
     let noChecks: CheckWait["noChecks"];
     if (empty) {
       const changedAt = await lastChangeOrNothing(readLastChange);
-      emptyRun = continueEmptyRun(emptyRun, changedAt, waitedMs);
+      emptyRun = continueEmptyRun(emptyRun, { changedAt, waitedMs });
       if (emptyRun.quiet) noChecks = "quiet";
       else if (waitedMs - emptyRun.sinceMs >= EMPTY_GRACE_MS) noChecks = "waited";
     } else {
@@ -272,7 +282,7 @@ export async function waitForChecks(
       if (noChecks) wait.noChecks = noChecks;
       return {
         page: { ...scan.requested, wait },
-        note: waitNote(wait, scan.examinedEveryPage, waitSeconds),
+        note: waitNote(wait, { examinedEveryPage: scan.examinedEveryPage, waitSeconds }),
       };
     }
 

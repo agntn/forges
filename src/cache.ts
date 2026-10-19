@@ -79,11 +79,15 @@ function getStorage(): Storage {
 
 /**
  * Generate cache key from URL and query parameters
- * @param url Request URL
- * @param options Request options
+ * @param scope Client the response belongs to
+ * @param request Request URL and options
  * @returns Cache key
  */
-function generateCacheKey(scope: string, url: string, options?: CachedFetchOptions): string {
+function generateCacheKey(
+  scope: string,
+  request: { url: string; options?: CachedFetchOptions },
+): string {
+  const { url, options } = request;
   let key = `cache:${scope}:${url}`;
 
   // Include query parameters in cache key if present
@@ -166,10 +170,11 @@ export async function cachedFetch<T>(
   }
 
   const storage = getStorage();
-  const cacheKey = generateCacheKey(clientCacheScope(client), url, options);
+  const cacheKey = generateCacheKey(clientCacheScope(client), { url, options });
 
   // Check cache first
-  const cached = await readCached<T>(storage, cacheKey, url);
+  const slot = { key: cacheKey, url };
+  const cached = await readCached<T>(storage, slot);
   if (cached !== null && cached !== undefined) {
     return cached;
   }
@@ -178,15 +183,22 @@ export async function cachedFetch<T>(
   const result = options ? await client<T>(url, options) : await client<T>(url);
 
   // Store in cache
-  await writeCached(storage, cacheKey, url, result);
+  await writeCached(storage, { ...slot, value: result });
 
   return result;
 }
 
+/** Where one response lives in storage, and the URL a warning about it names. */
+interface CacheSlot {
+  key: string;
+  url: string;
+}
+
 /** A storage read that rejects is a miss with a warning, so an outage costs one fetch. */
-async function readCached<T>(storage: Storage, cacheKey: string, url: string): Promise<T | null> {
+async function readCached<T>(storage: Storage, slot: CacheSlot): Promise<T | null> {
+  const { key, url } = slot;
   try {
-    return await storage.getItem<T>(cacheKey);
+    return await storage.getItem<T>(key);
   } catch (error) {
     console.warn(`[forges] Could not read the cache for ${url}: ${String(error)}`);
     return null;
@@ -194,14 +206,10 @@ async function readCached<T>(storage: Storage, cacheKey: string, url: string): P
 }
 
 /** A storage write that rejects is dropped with a warning; the response is already in hand. */
-async function writeCached(
-  storage: Storage,
-  cacheKey: string,
-  url: string,
-  value: unknown,
-): Promise<void> {
+async function writeCached(storage: Storage, entry: CacheSlot & { value: unknown }): Promise<void> {
+  const { key, url, value } = entry;
   try {
-    await storage.setItem(cacheKey, value as Record<string, unknown>);
+    await storage.setItem(key, value as Record<string, unknown>);
   } catch (error) {
     console.warn(`[forges] Could not cache ${url}: ${String(error)}`);
   }
@@ -230,6 +238,6 @@ export async function invalidateCache(
   options?: CachedFetchOptions,
 ): Promise<void> {
   const storage = getStorage();
-  const cacheKey = generateCacheKey(clientCacheScope(client), url, options);
+  const cacheKey = generateCacheKey(clientCacheScope(client), { url, options });
   await storage.removeItem(cacheKey);
 }

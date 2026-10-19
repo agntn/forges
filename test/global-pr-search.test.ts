@@ -65,10 +65,14 @@ describe("global pull-request search", () => {
       draft: false,
     });
     expect(result).toMatchObject({
-      nextCursor: cursorFor("pullRequests.searchGlobal", 2, [query], {
-        sort: "created",
-        order: "desc",
-        perPage: 2,
+      nextCursor: cursorFor("pullRequests.searchGlobal", {
+        page: 2,
+        subject: [query],
+        filters: {
+          sort: "created",
+          order: "desc",
+          perPage: 2,
+        },
       }),
       totalCount: 3,
       incomplete: false,
@@ -140,7 +144,13 @@ describe("global pull-request search", () => {
     });
     const result = await new GitHubProvider({ token: "" }).pullRequests.searchGlobal(
       "author:contributor",
-      { cursor: cursorFor("pullRequests.searchGlobal", 34, ["author:contributor"], {}) },
+      {
+        cursor: cursorFor("pullRequests.searchGlobal", {
+          page: 34,
+          subject: ["author:contributor"],
+          filters: {},
+        }),
+      },
     );
     expect(result.items).toHaveLength(9);
     expect(result).toMatchObject({
@@ -244,7 +254,11 @@ describe("Gitea global pull-request search", () => {
       ["someone/project", false, true],
     ]);
     expect(result).toMatchObject({
-      nextCursor: cursorFor("pullRequests.searchGlobal", 2, ["fix"], { perPage: 2 }),
+      nextCursor: cursorFor("pullRequests.searchGlobal", {
+        page: 2,
+        subject: ["fix"],
+        filters: { perPage: 2 },
+      }),
       totalCount: 10236,
       incomplete: false,
       resultLimit: null,
@@ -375,7 +389,11 @@ describe("GitLab global pull-request search", () => {
       ["group/sub/project", 3, false, true],
     ]);
     expect(result).toMatchObject({
-      nextCursor: cursorFor("pullRequests.searchGlobal", 2, ["fix"], { perPage: 2 }),
+      nextCursor: cursorFor("pullRequests.searchGlobal", {
+        page: 2,
+        subject: ["fix"],
+        filters: { perPage: 2 },
+      }),
       totalCount: 74,
       incomplete: false,
       resultLimit: null,

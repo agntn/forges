@@ -221,11 +221,8 @@ function makeFetchError(status: number): FetchError {
   return error;
 }
 
-function linkHeader(
-  page: number,
-  limit: number,
-  base = "https://gitea.com/api/v1/users/testowner/repos",
-): string {
+function linkHeader(page: number, link: { limit: number; base?: string }): string {
+  const { limit, base = "https://gitea.com/api/v1/users/testowner/repos" } = link;
   return `<${base}?page=${page}&limit=${limit}>; rel="next"`;
 }
 
@@ -313,9 +310,12 @@ describe("Gitea Provider", () => {
 
       const result = await provider.repos.list("testowner", { perPage: 50 });
 
-      expect(forge.repos.byOwner).toHaveBeenCalledWith(repoRef(forge, "testowner", ""), {
-        perPage: 50,
-      });
+      expect(forge.repos.byOwner).toHaveBeenCalledWith(
+        repoRef(forge, { owner: "testowner", name: "" }),
+        {
+          perPage: 50,
+        },
+      );
       expect(result.items[0]).toEqual({
         id: "100",
         name: "test-repo",
@@ -348,10 +348,13 @@ describe("Gitea Provider", () => {
       const first = await provider.repos.list("testowner");
       await provider.repos.list("testowner", { cursor: first.nextCursor });
 
-      expect(forge.repos.byOwner).toHaveBeenLastCalledWith(repoRef(forge, "testowner", ""), {
-        perPage: 30,
-        cursor: { nextUrl: "https://gitea.com/api/v1/users/testowner/repos?page=2" },
-      });
+      expect(forge.repos.byOwner).toHaveBeenLastCalledWith(
+        repoRef(forge, { owner: "testowner", name: "" }),
+        {
+          perPage: 30,
+          cursor: { nextUrl: "https://gitea.com/api/v1/users/testowner/repos?page=2" },
+        },
+      );
     });
 
     it("hands the next page URL back as a cursor", async () => {
@@ -602,7 +605,9 @@ describe("Gitea Provider", () => {
       expect(result.isFork).toBe(false);
       expect(result.parent).toBeNull();
       expect(result.viewerPermission).toBe("read");
-      expect(forge.repos.get).toHaveBeenCalledWith(repoRef(forge, "testowner", "test-repo"));
+      expect(forge.repos.get).toHaveBeenCalledWith(
+        repoRef(forge, { owner: "testowner", name: "test-repo" }),
+      );
     });
 
     it("maps a fork parent and write permission", async () => {
@@ -740,7 +745,9 @@ describe("Gitea Provider", () => {
 
       await provider.repos.get("test owner", "test#repo");
 
-      expect(forge.repos.get).toHaveBeenCalledWith(repoRef(forge, "test owner", "test#repo"));
+      expect(forge.repos.get).toHaveBeenCalledWith(
+        repoRef(forge, { owner: "test owner", name: "test#repo" }),
+      );
     });
 
     it.each(["", ".", "..", "../admin", "team/admin", "team\\admin", "%2e%2e", "%2Fadmin"])(
@@ -786,9 +793,12 @@ describe("Gitea Provider", () => {
 
       const result = await provider.repos.listTags("Codeberg", "pages-server", { perPage: 1 });
 
-      expect(forge.contents.tags).toHaveBeenCalledWith(repoRef(forge, "Codeberg", "pages-server"), {
-        perPage: 1,
-      });
+      expect(forge.contents.tags).toHaveBeenCalledWith(
+        repoRef(forge, { owner: "Codeberg", name: "pages-server" }),
+        {
+          perPage: 1,
+        },
+      );
       expect(result).toEqual({
         items: [{ name: "v6.3", sha: "838a5bda92846725034218500ea1f498eb2e5d6f" }],
         totalCount: 36,
@@ -906,8 +916,12 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.ciRuns.listJobs("testowner", "test-repo", "9876", {
-        cursor: cursorFor("ciRuns.listJobs", 2, ["testowner", "test-repo", "9876"], {
-          perPage: 10,
+        cursor: cursorFor("ciRuns.listJobs", {
+          page: 2,
+          subject: ["testowner", "test-repo", "9876"],
+          filters: {
+            perPage: 10,
+          },
         }),
         perPage: 10,
       });
@@ -1043,8 +1057,12 @@ describe("Gitea Provider", () => {
           perPage: 1,
         });
         const second = await provider.ciRuns.listJobs("forgejo", "website", "7529583", {
-          cursor: cursorFor("ciRuns.listJobs", 2, ["forgejo", "website", "7529583"], {
-            perPage: 1,
+          cursor: cursorFor("ciRuns.listJobs", {
+            page: 2,
+            subject: ["forgejo", "website", "7529583"],
+            filters: {
+              perPage: 1,
+            },
           }),
           perPage: 1,
         });
@@ -1052,8 +1070,12 @@ describe("Gitea Provider", () => {
         expect(first.items.map((job) => job.name)).toEqual(["publish"]);
         expect(first).toMatchObject({
           totalCount: 2,
-          nextCursor: cursorFor("ciRuns.listJobs", 2, ["forgejo", "website", "7529583"], {
-            perPage: 1,
+          nextCursor: cursorFor("ciRuns.listJobs", {
+            page: 2,
+            subject: ["forgejo", "website", "7529583"],
+            filters: {
+              perPage: 1,
+            },
           }),
         });
         expect(second.items.map((job) => job.name)).toEqual(["sync"]);
@@ -1065,7 +1087,7 @@ describe("Gitea Provider", () => {
         [{ perPage: 101 }, "perPage must be an integer from 1 to 100"],
         [
           {
-            cursor: cursorFor("ciRuns.listJobs", 0),
+            cursor: cursorFor("ciRuns.listJobs", { page: 0 }),
           },
           expect.stringContaining("cursor is not one"),
         ],
@@ -1086,8 +1108,12 @@ describe("Gitea Provider", () => {
         });
 
         const result = await provider.ciRuns.listJobs("forgejo", "website", "7529583", {
-          cursor: cursorFor("ciRuns.listJobs", 2, ["forgejo", "website", "7529583"], {
-            perPage: 1,
+          cursor: cursorFor("ciRuns.listJobs", {
+            page: 2,
+            subject: ["forgejo", "website", "7529583"],
+            filters: {
+              perPage: 1,
+            },
           }),
           perPage: 1,
         });
@@ -1430,10 +1456,13 @@ describe("Gitea Provider", () => {
         perPage: 10,
       });
 
-      expect(forge.ci.runs).toHaveBeenCalledWith(repoRef(forge, "testowner", "test-repo"), {
-        perPage: 10,
-        branch: "main",
-      });
+      expect(forge.ci.runs).toHaveBeenCalledWith(
+        repoRef(forge, { owner: "testowner", name: "test-repo" }),
+        {
+          perPage: 10,
+          branch: "main",
+        },
+      );
       expect(result).toEqual({
         items: [
           {
@@ -1466,9 +1495,13 @@ describe("Gitea Provider", () => {
       await expect(
         provider.commits.list("testowner", "test-repo", {
           path: "src/provider.ts",
-          cursor: cursorFor("commits.list", 2, ["testowner", "test-repo"], {
-            path: "src/provider.ts",
-            perPage: 1,
+          cursor: cursorFor("commits.list", {
+            page: 2,
+            subject: ["testowner", "test-repo"],
+            filters: {
+              path: "src/provider.ts",
+              perPage: 1,
+            },
           }),
           perPage: 1,
         }),
@@ -1542,9 +1575,13 @@ describe("Gitea Provider", () => {
       );
       expect(result).toMatchObject({
         totalCount: 546,
-        nextCursor: cursorFor("commits.list", 2, ["forgejo", "forgejo"], {
-          path: "README.md",
-          perPage: 2,
+        nextCursor: cursorFor("commits.list", {
+          page: 2,
+          subject: ["forgejo", "forgejo"],
+          filters: {
+            path: "README.md",
+            perPage: 2,
+          },
         }),
         items: [{ sha, message: "docs: refresh readme" }],
       });
@@ -1572,11 +1609,15 @@ describe("Gitea Provider", () => {
         ref: "main",
         since: "2026-08-01T00:00:00Z",
         until: "2026-08-29T23:59:59Z",
-        cursor: cursorFor("commits.list", 2, ["testowner", "test-repo"], {
-          ref: "main",
-          since: "2026-08-01T00:00:00Z",
-          until: "2026-08-29T23:59:59Z",
-          perPage: 10,
+        cursor: cursorFor("commits.list", {
+          page: 2,
+          subject: ["testowner", "test-repo"],
+          filters: {
+            ref: "main",
+            since: "2026-08-01T00:00:00Z",
+            until: "2026-08-29T23:59:59Z",
+            perPage: 10,
+          },
         }),
         perPage: 10,
       });
@@ -1599,11 +1640,15 @@ describe("Gitea Provider", () => {
       );
       expect(result).toMatchObject({
         totalCount: 31,
-        nextCursor: cursorFor("commits.list", 3, ["testowner", "test-repo"], {
-          ref: "main",
-          since: "2026-08-01T00:00:00Z",
-          until: "2026-08-29T23:59:59Z",
-          perPage: 10,
+        nextCursor: cursorFor("commits.list", {
+          page: 3,
+          subject: ["testowner", "test-repo"],
+          filters: {
+            ref: "main",
+            since: "2026-08-01T00:00:00Z",
+            until: "2026-08-29T23:59:59Z",
+            perPage: 10,
+          },
         }),
       });
       expect(mockClient).not.toHaveBeenCalled();
@@ -1643,8 +1688,12 @@ describe("Gitea Provider", () => {
       expect(result.items.map(({ sha }) => sha)).toEqual(["ffff540", "d536242"]);
       expect(result).toMatchObject({
         totalCount: 3,
-        nextCursor: cursorFor("commits.compare", 2, ["gitea", "tea", "v0.10.0", "release/v0.10"], {
-          perPage: 2,
+        nextCursor: cursorFor("commits.compare", {
+          page: 2,
+          subject: ["gitea", "tea", "v0.10.0", "release/v0.10"],
+          filters: {
+            perPage: 2,
+          },
         }),
         status: null,
         aheadBy: 3,
@@ -1869,11 +1918,14 @@ describe("Gitea Provider", () => {
 
       await provider.issues.list("testowner", "test-repo", { state: "closed", perPage: 25 });
 
-      expect(forge.threads.list).toHaveBeenCalledWith(repoRef(forge, "testowner", "test-repo"), {
-        perPage: 25,
-        kind: "issue",
-        state: "closed",
-      });
+      expect(forge.threads.list).toHaveBeenCalledWith(
+        repoRef(forge, { owner: "testowner", name: "test-repo" }),
+        {
+          perPage: 25,
+          kind: "issue",
+          state: "closed",
+        },
+      );
     });
   });
 
@@ -1889,9 +1941,13 @@ describe("Gitea Provider", () => {
 
       const result = await provider.issues.search("testowner", "test-repo", "runner timeout", {
         state: "closed",
-        cursor: cursorFor("issues.search", 2, ["testowner", "test-repo", "runner timeout"], {
-          state: "closed",
-          perPage: 1,
+        cursor: cursorFor("issues.search", {
+          page: 2,
+          subject: ["testowner", "test-repo", "runner timeout"],
+          filters: {
+            state: "closed",
+            perPage: 1,
+          },
         }),
         perPage: 1,
       });
@@ -1912,9 +1968,13 @@ describe("Gitea Provider", () => {
       expect(result).toMatchObject({
         items: [expect.objectContaining({ number: 1 })],
         incomplete: false,
-        nextCursor: cursorFor("issues.search", 3, ["testowner", "test-repo", "runner timeout"], {
-          state: "closed",
-          perPage: 1,
+        nextCursor: cursorFor("issues.search", {
+          page: 3,
+          subject: ["testowner", "test-repo", "runner timeout"],
+          filters: {
+            state: "closed",
+            perPage: 1,
+          },
         }),
       });
     });
@@ -2300,8 +2360,12 @@ describe("Gitea Provider", () => {
         });
 
       const result = await provider.pullRequests.listChecks("testowner", "test-repo", 5, {
-        cursor: cursorFor("pullRequests.listChecks", 2, ["testowner", "test-repo", 5], {
-          perPage: 1,
+        cursor: cursorFor("pullRequests.listChecks", {
+          page: 2,
+          subject: ["testowner", "test-repo", 5],
+          filters: {
+            perPage: 1,
+          },
         }),
         perPage: 1,
       });
@@ -2328,8 +2392,12 @@ describe("Gitea Provider", () => {
             url: "https://gitea.com/testowner/test-repo/status/501",
           },
         ],
-        nextCursor: cursorFor("pullRequests.listChecks", 3, ["testowner", "test-repo", 5], {
-          perPage: 1,
+        nextCursor: cursorFor("pullRequests.listChecks", {
+          page: 3,
+          subject: ["testowner", "test-repo", 5],
+          filters: {
+            perPage: 1,
+          },
         }),
       });
     });
@@ -2433,8 +2501,12 @@ describe("Gitea Provider", () => {
             url: "https://gitea.com/testowner/test-repo/pulls/5#pullrequestreview-381752",
           },
         ],
-        nextCursor: cursorFor("pullRequests.listReviews", 2, ["testowner", "test-repo", 5], {
-          perPage: 3,
+        nextCursor: cursorFor("pullRequests.listReviews", {
+          page: 2,
+          subject: ["testowner", "test-repo", 5],
+          filters: {
+            perPage: 3,
+          },
         }),
       });
     });
@@ -2448,8 +2520,12 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
-        cursor: cursorFor("pullRequests.listReviews", 2, ["testowner", "test-repo", 5], {
-          perPage: 2,
+        cursor: cursorFor("pullRequests.listReviews", {
+          page: 2,
+          subject: ["testowner", "test-repo", 5],
+          filters: {
+            perPage: 2,
+          },
         }),
         perPage: 2,
       });
@@ -2466,8 +2542,12 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
-        cursor: cursorFor("pullRequests.listReviews", 2, ["testowner", "test-repo", 5], {
-          perPage: 3,
+        cursor: cursorFor("pullRequests.listReviews", {
+          page: 2,
+          subject: ["testowner", "test-repo", 5],
+          filters: {
+            perPage: 3,
+          },
         }),
         perPage: 3,
       });
@@ -2518,8 +2598,12 @@ describe("Gitea Provider", () => {
       });
 
       expect(result).toMatchObject({
-        nextCursor: cursorFor("pullRequests.listReviews", 2, ["testowner", "test-repo", 5], {
-          perPage: 1,
+        nextCursor: cursorFor("pullRequests.listReviews", {
+          page: 2,
+          subject: ["testowner", "test-repo", 5],
+          filters: {
+            perPage: 1,
+          },
         }),
       });
     });
@@ -2552,7 +2636,7 @@ describe("Gitea Provider", () => {
       publishedAt: "2026-09-10T11:34:12Z",
       url: "https://gitea.com/testowner/test-repo/releases/tag/v0.16.0",
     };
-    const ref = repoRef(forge, "testowner", "test-repo");
+    const ref = repoRef(forge, { owner: "testowner", name: "test-repo" });
 
     it("lists releases through forges with the total", async () => {
       forge.releases.list.mockReturnValueOnce(
@@ -2665,12 +2749,11 @@ describe("Gitea Provider", () => {
         "runner timeout",
         {
           state: "closed",
-          cursor: cursorFor(
-            "pullRequests.search",
-            2,
-            ["testowner", "test-repo", "runner timeout"],
-            { state: "closed", perPage: 1 },
-          ),
+          cursor: cursorFor("pullRequests.search", {
+            page: 2,
+            subject: ["testowner", "test-repo", "runner timeout"],
+            filters: { state: "closed", perPage: 1 },
+          }),
           perPage: 1,
         },
       );
@@ -2693,12 +2776,11 @@ describe("Gitea Provider", () => {
       expect(result).toMatchObject({
         items: [{ number: 1, merged: true, draft: true }],
         incomplete: false,
-        nextCursor: cursorFor(
-          "pullRequests.search",
-          3,
-          ["testowner", "test-repo", "runner timeout"],
-          { state: "closed", perPage: 1 },
-        ),
+        nextCursor: cursorFor("pullRequests.search", {
+          page: 3,
+          subject: ["testowner", "test-repo", "runner timeout"],
+          filters: { state: "closed", perPage: 1 },
+        }),
       });
       expect(result.items[0]).not.toHaveProperty("sourceBranch");
       expect(result.items[0]).not.toHaveProperty("headSha");
@@ -2708,12 +2790,11 @@ describe("Gitea Provider", () => {
       mockedRawFetch.mockResolvedValueOnce({ data: [], headers: makeHeaders(), status: 200 });
 
       await provider.pullRequests.search("testowner", "test-repo", "runner timeout", {
-        cursor: cursorFor(
-          "pullRequests.search",
-          2,
-          ["testowner", "test-repo", "runner timeout"],
-          {},
-        ),
+        cursor: cursorFor("pullRequests.search", {
+          page: 2,
+          subject: ["testowner", "test-repo", "runner timeout"],
+          filters: {},
+        }),
       });
 
       expect(mockedRawFetch).toHaveBeenCalledWith(
@@ -3175,7 +3256,11 @@ describe("Gitea Provider", () => {
       });
       expect(result.nextCursor).toBeDefined();
       expect(result.nextCursor).toBe(
-        cursorFor("issues.listComments", 2, ["testowner", "test-repo", 1], { perPage: 2 }),
+        cursorFor("issues.listComments", {
+          page: 2,
+          subject: ["testowner", "test-repo", 1],
+          filters: { perPage: 2 },
+        }),
       );
     });
 
@@ -3201,7 +3286,11 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.issues.listComments("testowner", "test-repo", 1, {
-        cursor: cursorFor("issues.listComments", 2, ["testowner", "test-repo", 1], { perPage: 2 }),
+        cursor: cursorFor("issues.listComments", {
+          page: 2,
+          subject: ["testowner", "test-repo", 1],
+          filters: { perPage: 2 },
+        }),
         perPage: 2,
       });
 
@@ -3215,11 +3304,10 @@ describe("Gitea Provider", () => {
         .mockResolvedValueOnce({
           data: [giteaComment()],
           headers: makeHeaders({
-            Link: linkHeader(
-              2,
-              50,
-              "https://gitea.com/api/v1/repos/testowner/test-repo/issues/1/comments",
-            ),
+            Link: linkHeader(2, {
+              limit: 50,
+              base: "https://gitea.com/api/v1/repos/testowner/test-repo/issues/1/comments",
+            }),
           }),
           status: 200,
         })
@@ -3240,12 +3328,12 @@ describe("Gitea Provider", () => {
       mockedRawFetch
         .mockResolvedValueOnce({
           data: [giteaComment()],
-          headers: makeHeaders({ Link: linkHeader(2, 50, commentsBase) }),
+          headers: makeHeaders({ Link: linkHeader(2, { limit: 50, base: commentsBase }) }),
           status: 200,
         })
         .mockResolvedValueOnce({
           data: [giteaComment({ id: 22 })],
-          headers: makeHeaders({ Link: linkHeader(3, 50, commentsBase) }),
+          headers: makeHeaders({ Link: linkHeader(3, { limit: 50, base: commentsBase }) }),
           status: 200,
         });
 
@@ -3257,7 +3345,11 @@ describe("Gitea Provider", () => {
       expect(result.items.map((comment) => comment.id)).toEqual(["21"]);
       expect(result.nextCursor).toBeDefined();
       expect(result.nextCursor).toBe(
-        cursorFor("issues.listComments", 2, ["testowner", "test-repo", 1], { perPage: 1 }),
+        cursorFor("issues.listComments", {
+          page: 2,
+          subject: ["testowner", "test-repo", 1],
+          filters: { perPage: 1 },
+        }),
       );
     });
   });
@@ -3370,18 +3462,21 @@ describe("Gitea Provider", () => {
   });
 
   describe("reactions", () => {
-    const giteaReaction = (content: string, login: string, created_at: string) => ({
+    const giteaReaction = (
+      content: string,
+      { login, created_at }: { login: string; created_at: string },
+    ) => ({
       user: { id: 1, login, full_name: "", html_url: `https://gitea.com/${login}` },
       content,
       created_at,
     });
     const tea37 = [
-      giteaReaction("hooray", "mrsdizzie", "2019-07-17T16:31:58Z"),
-      giteaReaction("+1", "6543", "2019-11-08T03:40:04Z"),
-      giteaReaction("+1", "strk", "2019-11-11T11:36:42Z"),
-      giteaReaction("+1", "lunny", "2020-03-05T15:47:58Z"),
-      giteaReaction("gitea", "lunny", "2020-03-05T15:48:00Z"),
-      giteaReaction("hooray", "lunny", "2020-03-05T15:48:01Z"),
+      giteaReaction("hooray", { login: "mrsdizzie", created_at: "2019-07-17T16:31:58Z" }),
+      giteaReaction("+1", { login: "6543", created_at: "2019-11-08T03:40:04Z" }),
+      giteaReaction("+1", { login: "strk", created_at: "2019-11-11T11:36:42Z" }),
+      giteaReaction("+1", { login: "lunny", created_at: "2020-03-05T15:47:58Z" }),
+      giteaReaction("gitea", { login: "lunny", created_at: "2020-03-05T15:48:00Z" }),
+      giteaReaction("hooray", { login: "lunny", created_at: "2020-03-05T15:48:01Z" }),
     ];
 
     it("lists an issue's reactions by limit and keeps a custom emoji's name", async () => {
@@ -3392,7 +3487,11 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.issues.listReactions("gitea", "tea", 37, {
-        cursor: cursorFor("issues.listReactions", 3, ["gitea", "tea", 37], { perPage: 2 }),
+        cursor: cursorFor("issues.listReactions", {
+          page: 3,
+          subject: ["gitea", "tea", 37],
+          filters: { perPage: 2 },
+        }),
         perPage: 2,
       });
 
@@ -3423,8 +3522,12 @@ describe("Gitea Provider", () => {
 
       expect(result).toMatchObject({
         totalCount: 6,
-        nextCursor: cursorFor("pullRequests.listReactions", 2, ["gitea", "tea", 37], {
-          perPage: 5,
+        nextCursor: cursorFor("pullRequests.listReactions", {
+          page: 2,
+          subject: ["gitea", "tea", 37],
+          filters: {
+            perPage: 5,
+          },
         }),
       });
     });
@@ -3465,9 +3568,13 @@ describe("Gitea Provider", () => {
 
       const result = await provider.issues.listReactions("testowner", "test-repo", 1, {
         commentId: "21",
-        cursor: cursorFor("issues.listReactions", 2, ["testowner", "test-repo", 1], {
-          commentId: "21",
-          perPage: 4,
+        cursor: cursorFor("issues.listReactions", {
+          page: 2,
+          subject: ["testowner", "test-repo", 1],
+          filters: {
+            commentId: "21",
+            perPage: 4,
+          },
         }),
         perPage: 4,
       });

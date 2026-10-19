@@ -65,7 +65,11 @@ export function mapActionsJob(raw: ActionsJob): CiJob {
 }
 
 /** Validate job ids before provider I/O; every platform numbers its runs and jobs. */
-export function assertCiId(id: string, kind: "run" | "job", platform?: string): void {
+export function assertCiId(
+  id: string,
+  about: Readonly<{ kind: "run" | "job"; platform?: string }>,
+): void {
+  const { kind, platform } = about;
   if (!/^[1-9]\d*$/u.test(id)) {
     throw new ForgesError(`CI ${kind} id must be a positive integer`, 400, platform);
   }
@@ -76,7 +80,7 @@ export function assertCiJobLogOptions(
   options: CiJobLogOptions = {},
   platform?: string,
 ): TextWindow {
-  return readTextWindow("Job log", options, platform);
+  return readTextWindow(options, { subject: "Job log", platform });
 }
 
 /** A job that no runner picked up has no log to read. */
@@ -261,10 +265,13 @@ function stepHeader(step: CiJobStep): string {
  * first, so the first slice holds the output that explains the failure.
  */
 export function buildCiJobLog(
-  job: CiJob,
-  log: { text: string; complete: boolean; timestamped: boolean } | null,
+  source: Readonly<{
+    job: CiJob;
+    log: { text: string; complete: boolean; timestamped: boolean } | null;
+  }>,
   options: CiJobLogOptions = {},
 ): CiJobLog {
+  const { job, log } = source;
   const window = assertCiJobLogOptions(options);
 
   let stream = "";
@@ -286,11 +293,10 @@ export function buildCiJobLog(
   } else if (log !== null) {
     stream = log.text.length === 0 || log.text.endsWith("\n") ? log.text : `${log.text}\n`;
   }
-  const { end, nextOffset, truncated } = textWindowEnd(
-    stream.length,
-    window,
-    "Job log offset is past the end of the log",
-  );
+  const { end, nextOffset, truncated } = textWindowEnd(window, {
+    length: stream.length,
+    pastEnd: "Job log offset is past the end of the log",
+  });
   return {
     jobId: job.id,
     name: job.name,

@@ -52,6 +52,14 @@ function gitOptions(cwd: string) {
   };
 }
 
+/** Which records of a NUL-terminated stream to keep, and how to group and read them. */
+interface GitPage<T> {
+  offset: number;
+  limit: number;
+  span: (first: Buffer) => number;
+  read: (fields: Buffer[]) => T;
+}
+
 /**
  * Streams NUL-terminated Git output and keeps one page of records.
  *
@@ -60,13 +68,11 @@ function gitOptions(cwd: string) {
  * rename pair past the budget cannot stall the continuation.
  */
 function gitPage<T>(
-  cwd: string,
-  args: string[],
-  offset: number,
-  limit: number,
-  span: (first: Buffer) => number,
-  read: (fields: Buffer[]) => T,
+  run: Readonly<{ cwd: string; args: string[] }>,
+  page: GitPage<T>,
 ): Promise<{ items: T[]; next: number | null }> {
+  const { cwd, args } = run;
+  const { offset, limit, span, read } = page;
   const command = args[0];
   return new Promise((resolve, reject) => {
     const child = spawn("git", gitArgs(args, "git"), {
@@ -133,12 +139,16 @@ function gitPage<T>(
   });
 }
 
-function git(
-  cwd: string,
-  args: string[],
-  predicate = false,
-  pathspecs: "literal" | "git" = "literal",
-): Promise<{ output: string; ok: boolean }> {
+/** One Git command; a predicate answers no with exit code 1, `git` pathspecs keep their magic. */
+interface GitCommand {
+  cwd: string;
+  args: string[];
+  predicate?: boolean;
+  pathspecs?: "literal" | "git";
+}
+
+function git(command: GitCommand): Promise<{ output: string; ok: boolean }> {
+  const { cwd, args, predicate = false, pathspecs = "literal" } = command;
   return new Promise((resolve, reject) => {
     execFile(
       "git",
@@ -188,22 +198,33 @@ export async function verifyLocalMerge(
       throw new TypeError("paths must be relative to the repository root without dot segments");
     }
   }
-  const root = (await git(cwd, ["rev-parse", "--show-toplevel"])).output.replace(/\n$/, "");
+  const root = (await git({ cwd, args: ["rev-parse", "--show-toplevel"] })).output.replace(
+    /\n$/,
+    "",
+  );
   const resolveCommit = async (ref: string) =>
     (
-      await git(root, ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`])
+      await git({
+        cwd: root,
+        args: ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`],
+      })
     ).output.trim();
   const headSha = await resolveCommit(head);
   const mergeSha = await resolveCommit(mergeCommit);
   const targetSha = await resolveCommit(target);
-  const mergeParent = (await git(root, ["rev-list", "--parents", "-n", "1", mergeSha])).output
+  const mergeParent = (
+    await git({ cwd: root, args: ["rev-list", "--parents", "-n", "1", mergeSha] })
+  ).output
     .trim()
     .split(" ")
     .slice(1, 2);
   for (const path of paths) {
     let exists = false;
     for (const sha of [headSha, mergeSha, ...mergeParent]) {
-      const { output } = await git(root, ["ls-tree", "--name-only", "-z", sha, "--", path]);
+      const { output } = await git({
+        cwd: root,
+        args: ["ls-tree", "--name-only", "-z", sha, "--", path],
+      });
       if (output.split("\0").includes(path)) {
         exists = true;
         break;
@@ -213,12 +234,16 @@ export async function verifyLocalMerge(
       throw new TypeError("Every selected path must exist in the head, merge or first-parent tree");
   }
   const mergeReachable = (
-    await git(root, ["merge-base", "--is-ancestor", mergeSha, targetSha], true)
+    await git({
+      cwd: root,
+      args: ["merge-base", "--is-ancestor", mergeSha, targetSha],
+      predicate: true,
+    })
   ).ok;
   const pathsMatch = (
-    await git(
-      root,
-      [
+    await git({
+      cwd: root,
+      args: [
         "diff",
         "--quiet",
         "--no-ext-diff",
@@ -229,8 +254,8 @@ export async function verifyLocalMerge(
         "--",
         ...paths,
       ],
-      true,
-    )
+      predicate: true,
+    })
   ).ok;
   return { headSha, mergeSha, targetSha, mergeReachable, pathsMatch, paths };
 }
@@ -315,46 +340,63 @@ export async function inspectLocal(options: InspectLocalOptions): Promise<LocalI
   const filesLimit = pageLimit(options.filesLimit, "filesLimit");
   const statusOffset = pageOffset(options.statusOffset, "statusOffset");
   const statusLimit = pageLimit(options.statusLimit, "statusLimit");
-  const root = (await git(options.cwd, ["rev-parse", "--show-toplevel"])).output.replace(/\n$/, "");
-  const head = await git(root, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], true);
+  const root = (
+    await git({ cwd: options.cwd, args: ["rev-parse", "--show-toplevel"] })
+  ).output.replace(/\n$/, "");
+  const head = await git({
+    cwd: root,
+    args: ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+    predicate: true,
+  });
   if (!head.ok) {
-    const branch = (await git(root, ["symbolic-ref", "HEAD"])).output.replace(/\n$/, "");
-    if ((await git(root, ["show-ref", "--verify", "--quiet", branch], true)).ok) {
+    const branch = (await git({ cwd: root, args: ["symbolic-ref", "HEAD"] })).output.replace(
+      /\n$/,
+      "",
+    );
+    if (
+      (await git({ cwd: root, args: ["show-ref", "--verify", "--quiet", branch], predicate: true }))
+        .ok
+    ) {
       throw new LocalGitError("HEAD does not resolve to a commit");
     }
   }
   const headSha = head.ok ? head.output.trim() : null;
   const [status, files, history] = await Promise.all([
     gitPage(
-      root,
-      [
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--untracked-files=all",
-        "--ignore-submodules=none",
-        "--renames",
-        "--",
-        ...paths,
-      ],
-      statusOffset,
-      statusLimit,
-      (first) => (isRenameOrCopy(first) ? 2 : 1),
-      statusEntry,
+      {
+        cwd: root,
+        args: [
+          "status",
+          "--porcelain=v1",
+          "-z",
+          "--untracked-files=all",
+          "--ignore-submodules=none",
+          "--renames",
+          "--",
+          ...paths,
+        ],
+      },
+      {
+        offset: statusOffset,
+        limit: statusLimit,
+        span: (first) => (isRenameOrCopy(first) ? 2 : 1),
+        read: statusEntry,
+      },
     ),
     gitPage(
-      root,
-      ["ls-files", "--cached", "--deduplicate", "-z", "--", ...paths],
-      filesOffset,
-      filesLimit,
-      () => 1,
-      ([path]) => path!.toString("utf8"),
+      { cwd: root, args: ["ls-files", "--cached", "--deduplicate", "-z", "--", ...paths] },
+      {
+        offset: filesOffset,
+        limit: filesLimit,
+        span: () => 1,
+        read: ([path]) => path!.toString("utf8"),
+      },
     ),
     headSha === null
       ? Promise.resolve({ output: "" })
-      : git(
-          root,
-          [
+      : git({
+          cwd: root,
+          args: [
             "log",
             "--no-show-signature",
             "--no-notes",
@@ -366,9 +408,8 @@ export async function inspectLocal(options: InspectLocalOptions): Promise<LocalI
             "--",
             ...paths,
           ],
-          false,
-          "git",
-        ),
+          pathspecs: "git",
+        }),
   ]);
   const fields = history.output.split("\0");
   const commits: LocalInspection["commits"] = [];

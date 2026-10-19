@@ -51,17 +51,16 @@ function repository(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function commit(hash: string, parents: string[], overrides: Record<string, unknown> = {}) {
+function commit(hash: string, fields: { parents: string[]; [field: string]: unknown }) {
   return {
     hash,
     treeHash: ROOT_TREE,
     message: "Write the notes down",
     author: { name: "Ada", email: "ada@example.com" },
     committer: { name: "Ada", email: "ada@example.com" },
-    parents,
     authoredAt: 1_790_000_000,
     committedAt: 1_790_000_060,
-    ...overrides,
+    ...fields,
   };
 }
 
@@ -78,11 +77,8 @@ function envelope(result: unknown, extra: Record<string, unknown> = {}): Respons
   return Response.json({ result, success: true, errors: [], messages: [], ...extra });
 }
 
-function failure(status: number, code: number, message: string): Response {
-  return Response.json(
-    { result: null, success: false, errors: [{ code, message }], messages: [] },
-    { status },
-  );
+function failure(status: number, error: { code: number; message: string }): Response {
+  return Response.json({ result: null, success: false, errors: [error], messages: [] }, { status });
 }
 
 function bytes(text: string): Response {
@@ -101,7 +97,7 @@ function serve(...routes: Route[]) {
       const response = route(url, init);
       if (response) return response;
     }
-    return failure(404, 10200, `No fixture for ${url.pathname}`);
+    return failure(404, { code: 10200, message: `No fixture for ${url.pathname}` });
   });
   vi.stubGlobal("fetch", fetch);
   return fetch;
@@ -183,7 +179,7 @@ describe("credentials", () => {
       url.pathname === new URL(REPO_URL).pathname
         ? new Headers(init.headers).get("authorization") === "Bearer fresh"
           ? envelope(repository())
-          : failure(401, 10000, "Authentication error")
+          : failure(401, { code: 10000, message: "Authentication error" })
         : undefined,
     );
 
@@ -199,7 +195,9 @@ describe("credentials", () => {
   });
 
   it("does not retry a refused token the caller handed over", async () => {
-    const fetch = serve(at(REPO_URL, () => failure(401, 10000, "Authentication error")));
+    const fetch = serve(
+      at(REPO_URL, () => failure(401, { code: 10000, message: "Authentication error" })),
+    );
 
     const error = await provider()
       .repos.get("tools", "notes")
@@ -245,7 +243,7 @@ describe("repos", () => {
   });
 
   it("keeps the envelope reason on a missing repository", async () => {
-    serve(at(REPO_URL, () => failure(404, 10200, "Repository not found")));
+    serve(at(REPO_URL, () => failure(404, { code: 10200, message: "Repository not found" })));
 
     const error = await provider()
       .repos.get("tools", "notes")
@@ -325,7 +323,7 @@ describe("repos", () => {
 });
 
 describe("repos.readContents", () => {
-  const atHead = at(`${REPO_URL}/log`, () => envelope([commit(HEAD, [PARENT])]));
+  const atHead = at(`${REPO_URL}/log`, () => envelope([commit(HEAD, { parents: [PARENT] })]));
   const trees: Route = (url) => {
     if (url.pathname.endsWith(`/tree/${ROOT_TREE}`)) return envelope(rootTree);
     if (url.pathname.endsWith(`/tree/${DOCS_TREE}`)) return envelope(docsTree);
@@ -335,7 +333,7 @@ describe("repos.readContents", () => {
     if (!url.pathname.endsWith("/file")) return undefined;
     return url.searchParams.get("path") === "README.md"
       ? bytes("# Notes\n")
-      : failure(404, 10200, "File not found");
+      : failure(404, { code: 10200, message: "File not found" });
   };
 
   it("reads a file at the commit HEAD resolves to", async () => {
@@ -416,7 +414,9 @@ describe("repos.readContents", () => {
   it("keeps the envelope reason when the file route refuses a read", async () => {
     serve(
       atHead,
-      at(`${REPO_URL}/file`, () => failure(400, 10100, "Invalid input: path too long")),
+      at(`${REPO_URL}/file`, () =>
+        failure(400, { code: 10100, message: "Invalid input: path too long" }),
+      ),
     );
 
     const error = await provider()
@@ -445,7 +445,7 @@ describe("repos.readContents", () => {
 
   it("reads a full SHA as a commit without the log", async () => {
     const fetch = serve(
-      at(`${REPO_URL}/commit/${HEAD}`, () => envelope(commit(HEAD, [PARENT]))),
+      at(`${REPO_URL}/commit/${HEAD}`, () => envelope(commit(HEAD, { parents: [PARENT] }))),
       files,
     );
 
@@ -467,13 +467,21 @@ describe("commits", () => {
   it("lists one page by offset and reads one row past it", async () => {
     const fetch = serve(
       at(`${REPO_URL}/log`, () =>
-        envelope([commit(HEAD, [PARENT]), commit(PARENT, []), commit("9".repeat(40), [])]),
+        envelope([
+          commit(HEAD, { parents: [PARENT] }),
+          commit(PARENT, { parents: [] }),
+          commit("9".repeat(40), { parents: [] }),
+        ]),
       ),
     );
 
     const page = await provider().commits.list("tools", "notes", {
       ref: "main",
-      cursor: cursorFor("commits.list", 2, ["tools", "notes"], { ref: "main", perPage: 2 }),
+      cursor: cursorFor("commits.list", {
+        page: 2,
+        subject: ["tools", "notes"],
+        filters: { ref: "main", perPage: 2 },
+      }),
       perPage: 2,
     });
 
@@ -523,7 +531,7 @@ describe("commits", () => {
   it("leaves a date empty instead of failing on a time the API left out", async () => {
     serve(
       at(`${REPO_URL}/commit/${HEAD}`, () =>
-        envelope(commit(HEAD, [PARENT], { authoredAt: undefined })),
+        envelope(commit(HEAD, { parents: [PARENT], authoredAt: undefined })),
       ),
     );
 
@@ -534,7 +542,7 @@ describe("commits", () => {
   });
 
   it("reads a commit by SHA and leaves its files unknown", async () => {
-    serve(at(`${REPO_URL}/commit/${HEAD}`, () => envelope(commit(HEAD, [PARENT]))));
+    serve(at(`${REPO_URL}/commit/${HEAD}`, () => envelope(commit(HEAD, { parents: [PARENT] }))));
 
     const read = await provider().commits.get("tools", "notes", HEAD);
 
@@ -544,7 +552,9 @@ describe("commits", () => {
   });
 
   it("resolves a branch through the log", async () => {
-    const fetch = serve(at(`${REPO_URL}/log`, () => envelope([commit(HEAD, [PARENT])])));
+    const fetch = serve(
+      at(`${REPO_URL}/log`, () => envelope([commit(HEAD, { parents: [PARENT] })])),
+    );
 
     const read = await provider().commits.get("tools", "notes", "main");
 
