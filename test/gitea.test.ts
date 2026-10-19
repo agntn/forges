@@ -386,7 +386,7 @@ describe("Gitea Provider", () => {
       expect(forge.repos.byOwner).toHaveBeenCalledTimes(1);
     });
 
-    it("signs anonymous cursors too, for any provider in the same process", async () => {
+    it("reads an anonymous cursor back in a fresh provider, never one stripped of its MAC", async () => {
       const url = "https://gitea.com/api/v1/users/testowner/repos?page=2";
       forge.repos.byOwner
         .mockReturnValueOnce(listing({ items: raws(giteaRepo()), cursor: { nextUrl: url } }))

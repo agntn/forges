@@ -63,9 +63,6 @@ import type {
 /** The rows a page holds when the caller names no size; GitLab alone would send 20. */
 const DEFAULT_PER_PAGE = 30;
 
-/** Stands in for a token in the cursor key: good while this process runs, unknown outside it. */
-let processSecret: string | undefined;
-
 /** What every `forges` factory here is opened with. */
 export interface ForgeOptions {
   baseUrl: string;
@@ -98,13 +95,7 @@ export abstract class ForgeBackedProvider<
     this.#platform = platform;
     this.#apiBaseURL = apiBaseURL;
     this.#token = token;
-    const secret =
-      token === ""
-        ? (processSecret ??= Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString(
-            "hex",
-          ))
-        : token;
-    this.#cursorKey = sha256(Buffer.from(JSON.stringify(["cursor", platform, apiBaseURL, secret])));
+    this.#cursorKey = sha256(Buffer.from(JSON.stringify(["cursor", platform, apiBaseURL, token])));
     this.client = createForgeClient(() => this.#open(), {
       scope: credentialScope(apiBaseURL, token),
     });
@@ -125,7 +116,7 @@ export abstract class ForgeBackedProvider<
   /** Maps the forge's own CI job payload. */
   protected abstract mapCiJob(raw: never): CiJob;
 
-  /** Signs cursors for this endpoint and token: nobody else can aim this credential at a URL. */
+  /** Keyed by endpoint and token; without a token there is no credential to aim, so no secret. */
   protected override cursorKey(): Uint8Array {
     return this.#cursorKey;
   }
