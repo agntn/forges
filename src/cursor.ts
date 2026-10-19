@@ -48,13 +48,23 @@ function canonical(value: unknown): string {
   return JSON.stringify(value) ?? "null";
 }
 
-/** Turns a position in `listing` into the string a caller passes back as `cursor`. */
-export function encodeCursor(
-  listing: string,
-  position: PagePosition,
-  scope = "",
-  key?: Uint8Array,
-): string {
+/** The listing a cursor belongs to, the request digest it fits and the key that signs URLs. */
+export interface CursorSeal {
+  listing: string;
+  scope?: string;
+  key?: Uint8Array;
+}
+
+/** What reading a cursor back needs on top of its seal. */
+export interface CursorCheck extends CursorSeal {
+  /** The origin a URL cursor must keep; none refuses URL cursors. */
+  origin: string | undefined;
+  platform?: string;
+}
+
+/** Turns a position in a listing into the string a caller passes back as `cursor`. */
+export function encodeCursor(position: PagePosition, seal: CursorSeal): string {
+  const { listing, scope = "", key } = seal;
   const body: CursorBody =
     "page" in position
       ? { k: listing, s: scope, p: position.page }
@@ -83,14 +93,8 @@ function sameMac(left: string, right: string): boolean {
 }
 
 /** Reads a cursor back; a URL must keep `origin`, and anything else is a 400 naming the listing. */
-export function decodeCursor(
-  cursor: string,
-  listing: string,
-  origin: string | undefined,
-  platform?: string,
-  scope = "",
-  key?: Uint8Array,
-): PagePosition {
+export function decodeCursor(cursor: string, check: CursorCheck): PagePosition {
+  const { listing, origin, platform, scope = "", key } = check;
   const refuse = (): never => {
     throw new ForgesError(
       `cursor is not one that ${listing} returned; pass back nextCursor unchanged`,

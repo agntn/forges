@@ -12,7 +12,7 @@ export function assertCommitPatchOptions(
   options: CommitPatchOptions = {},
   platform?: string,
 ): TextWindow {
-  const window = readTextWindow("Commit patch", options, platform);
+  const window = readTextWindow(options, { subject: "Commit patch", platform });
   if (options.path !== undefined && options.path.length === 0) {
     throw new ForgesError("Commit patch path must not be empty", 400, platform);
   }
@@ -30,13 +30,19 @@ function fileBody(file: CommitPatchFile): string {
   return file.patch.endsWith("\n") ? file.patch : `${file.patch}\n`;
 }
 
+/** A resolved commit's patch rows, and whether the provider served every file it touched. */
+export interface CommitPatchRows {
+  sha: string;
+  files: readonly CommitPatchFile[];
+  filesComplete: boolean | null;
+}
+
 /** Render provider patch rows into one stable, bounded continuation stream. */
 export function buildCommitPatch(
-  sha: string,
-  files: readonly CommitPatchFile[],
-  filesComplete: boolean | null,
+  rows: CommitPatchRows,
   options: CommitPatchOptions = {},
 ): CommitPatch {
+  const { sha, files, filesComplete } = rows;
   const window = assertCommitPatchOptions(options);
   const { offset } = window;
 
@@ -55,11 +61,10 @@ export function buildCommitPatch(
     }
     streamLength = segmentEnd;
   }
-  const { nextOffset, truncated } = textWindowEnd(
-    streamLength,
-    window,
-    "Commit patch offset is past the end of the resolved patch",
-  );
+  const { nextOffset, truncated } = textWindowEnd(window, {
+    length: streamLength,
+    pastEnd: "Commit patch offset is past the end of the resolved patch",
+  });
   return {
     sha,
     path: options.path ?? null,

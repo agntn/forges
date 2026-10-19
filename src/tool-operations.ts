@@ -157,7 +157,7 @@ async function createConfiguredProvider(
     platform,
     baseURL === undefined ? { token } : { baseURL, token },
   );
-  return explainFailures(provider, platform, credential?.source);
+  return explainFailures(provider, { platform, source: credential?.source });
 }
 
 /** Cloudflare reads nothing without a token, so artifacts keeps one provider for every call. */
@@ -165,16 +165,16 @@ function artifactsProvider(): Promise<Provider> {
   const key = providerKey("artifacts");
   return (
     pinnedProviders.get(key) ??
-    trackProvider(pinnedProviders, key, () => createConfiguredProvider("artifacts", null))
+    trackProvider(pinnedProviders, { key, load: () => createConfiguredProvider("artifacts", null) })
   );
 }
 
 /** Start one provider load under a key and forget it again if the load fails. */
 function trackProvider(
   providers: Map<string, Promise<Provider>>,
-  key: string,
-  load: () => Promise<Provider>,
+  entry: Readonly<{ key: string; load: () => Promise<Provider> }>,
 ): Promise<Provider> {
+  const { key, load } = entry;
   const provider = load();
   providers.set(key, provider);
   provider.catch(() => {
@@ -248,7 +248,10 @@ async function authenticatedProvider(
     );
   }
 
-  return trackProvider(pinnedProviders, key, () => createConfiguredProvider(platform, credential));
+  return trackProvider(pinnedProviders, {
+    key,
+    load: () => createConfiguredProvider(platform, credential),
+  });
 }
 
 /**
@@ -281,26 +284,27 @@ function accountProvider(platform: ForgesPlatform, account: string): Promise<Pro
     );
   }
 
-  return trackProvider(pinnedProviders, key, () =>
-    verifiedAccountProvider(platform, account, credential),
-  );
+  return trackProvider(pinnedProviders, {
+    key,
+    load: () => verifiedAccountProvider(platform, { account, credential }),
+  });
 }
 
 async function verifiedAccountProvider(
   platform: ForgesPlatform,
-  account: string,
-  credential: AuthResult,
+  login: Readonly<{ account: string; credential: AuthResult }>,
 ): Promise<Provider> {
+  const { account, credential } = login;
   const provider = await createConfiguredProvider(platform, credential);
-  const { login } = await provider.users.authenticated();
-  if (login.toLowerCase() === account.toLowerCase()) return provider;
+  const actual = (await provider.users.authenticated()).login;
+  if (actual.toLowerCase() === account.toLowerCase()) return provider;
 
   const hint =
     credential.source === "env"
       ? `${tokenOrigins.github.variables} is set and takes precedence; unset it to use the gh login.`
       : "Check `gh auth status`.";
   throw new AuthenticationError(
-    `Refusing to act as "${account}": the ${platform} token found for it belongs to "${login}". ${hint}`,
+    `Refusing to act as "${account}": the ${platform} token found for it belongs to "${actual}". ${hint}`,
     platform,
   );
 }
@@ -314,14 +318,18 @@ function readProvider(platform: ForgesPlatform): Promise<Provider> {
   const credential = configuredCredential(platform);
   if (credential !== null) {
     anonymousReadProviders.delete(key);
-    return trackProvider(pinnedProviders, key, () =>
-      createConfiguredProvider(platform, credential),
-    );
+    return trackProvider(pinnedProviders, {
+      key,
+      load: () => createConfiguredProvider(platform, credential),
+    });
   }
 
   return (
     anonymousReadProviders.get(key) ??
-    trackProvider(anonymousReadProviders, key, () => createConfiguredProvider(platform, null))
+    trackProvider(anonymousReadProviders, {
+      key,
+      load: () => createConfiguredProvider(platform, null),
+    })
   );
 }
 
@@ -340,12 +348,15 @@ export function toolFailure(error: unknown): Error {
   return failure;
 }
 
+/** The platform a request went to, and where its token came from when it carried one. */
+interface RequestOrigin {
+  platform: ForgesPlatform;
+  source: AuthResult["source"] | undefined;
+}
+
 /** What a refusal the server sent needs next, by whether the request carried a token. */
-function refusalHint(
-  status: number,
-  platform: ForgesPlatform,
-  source: AuthResult["source"] | undefined,
-): string | undefined {
+function refusalHint(status: number, origin: RequestOrigin): string | undefined {
+  const { platform, source } = origin;
   /** artifacts asks the Cloudflare chain on every request and never reads anonymously. */
   if (platform === "artifacts") return status === 401 ? REJECTED_CLOUDFLARE_TOKEN : undefined;
   if (source !== undefined) return status === 401 ? rejectedTokenHint(platform, source) : undefined;
@@ -378,11 +389,7 @@ function appendSentence(message: string, sentence: string): string {
  * as a template key missing from its list, means the item really is absent.
  * The original FetchError, URL included, stays on `originalError`.
  */
-function explainFailures(
-  provider: Provider,
-  platform: ForgesPlatform,
-  source: AuthResult["source"] | undefined,
-): Provider {
+function explainFailures(provider: Provider, origin: RequestOrigin): Provider {
   const explain = (error: unknown): unknown => {
     if (!(error instanceof ForgesError) || explainedFailures.has(error)) return error;
     explainedFailures.add(error);
@@ -395,7 +402,7 @@ function explainFailures(
     }
 
     if (!(error.originalError instanceof FetchError) || error.status === undefined) return error;
-    const hint = refusalHint(error.status, platform, source);
+    const hint = refusalHint(error.status, origin);
     if (hint !== undefined) error.message = appendSentence(error.message, hint);
     return error;
   };
@@ -477,10 +484,10 @@ function targetError(message: string, platform: ForgesPlatform): ForgesError {
  * picked silently. Logins compare without case, as all three forges treat them.
  */
 function splitRepository(
-  repo: string,
-  owner: string | undefined,
+  target: Readonly<{ repo: string; owner?: string }>,
   platform: ForgesPlatform,
 ): { owner: string | undefined; repo: string } {
+  const { repo, owner } = target;
   if (!repo.includes("/")) return { owner, repo };
 
   const segments = repo.split("/");
@@ -522,7 +529,7 @@ function ownerTarget<P extends OwnerParams>(
 /** Resolve one repository, accepting the owner either on its own field or inside `repo`. */
 export function repositoryTarget<P extends RepositoryParams>(params: P): P & RepositoryTarget {
   const platform = params.platform ?? defaultPlatform;
-  const { owner, repo } = splitRepository(params.repo, params.owner, platform);
+  const { owner, repo } = splitRepository(params, platform);
   if (owner === undefined || owner === "") {
     throw targetError(
       `Missing owner for repository "${repo}": pass owner, or write repo as "owner/${repo}".`,
@@ -538,7 +545,7 @@ function searchTarget<P extends PlatformParams & { owner?: string; repo?: string
 ): P & { platform: ForgesPlatform } {
   const platform = params.platform ?? defaultPlatform;
   if (params.repo === undefined) return { ...params, platform };
-  const { owner, repo } = splitRepository(params.repo, params.owner, platform);
+  const { owner, repo } = splitRepository({ repo: params.repo, owner: params.owner }, platform);
   return { ...params, platform, owner, repo };
 }
 
@@ -707,13 +714,15 @@ export interface ForgesToolResult<T> {
   details: ForgesToolDetails<T>;
 }
 
-/** `modelValue` replaces `value` in the model text only; details keep the whole value. */
-function result<T>(
-  platform: ForgesPlatform | "local",
-  value: T,
-  note?: string,
-  modelValue: unknown = value,
-): ForgesToolResult<T> {
+/** Where the value came from, a note for the model, and a `modelValue` for its text only. */
+interface ResultMeta {
+  platform: ForgesPlatform | "local";
+  note?: string;
+  modelValue?: unknown;
+}
+
+function result<T>(value: T, meta: ResultMeta): ForgesToolResult<T> {
+  const { platform, note, modelValue = value } = meta;
   const details = { platform, result: value };
   const modelDetails = note
     ? { platform, result: modelValue, note }
@@ -877,9 +886,12 @@ export async function listRepositories(
   const provider = await readProvider(params.platform);
   const repositories = await provider.repos.list(params.owner, listOptions(params));
   const owner = params.owner.toLowerCase();
-  return result(params.platform, repositories, undefined, {
-    ...repositories,
-    items: repositories.items.map((repository) => repositoryRowText(repository, owner)),
+  return result(repositories, {
+    platform: params.platform,
+    modelValue: {
+      ...repositories,
+      items: repositories.items.map((repository) => repositoryRowText(repository, owner)),
+    },
   });
 }
 
@@ -903,7 +915,7 @@ export async function getRepository(
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const repository = await provider.repos.get(params.owner, params.repo);
-  return result(params.platform, repository);
+  return result(repository, { platform: params.platform });
 }
 
 export async function listContributionTemplates(
@@ -921,11 +933,10 @@ export async function listContributionTemplates(
     params.kind,
     options,
   );
-  return result(
-    params.platform,
-    templates,
-    "Template bodies are omitted from list output; use forges_contribution_templates_get with the returned kind and key.",
-  );
+  return result(templates, {
+    platform: params.platform,
+    note: "Template bodies are omitted from list output; use forges_contribution_templates_get with the returned kind and key.",
+  });
 }
 
 export async function getContributionTemplate(
@@ -939,7 +950,7 @@ export async function getContributionTemplate(
     params.kind,
     params.key,
   );
-  return result(params.platform, template);
+  return result(template, { platform: params.platform });
 }
 
 export async function searchCode(
@@ -953,7 +964,7 @@ export async function searchCode(
     cursor: params.cursor,
     perPage: params.perPage,
   });
-  return result(params.platform, search);
+  return result(search, { platform: params.platform });
 }
 
 export async function listCiRuns(
@@ -967,7 +978,7 @@ export async function listCiRuns(
   };
   const provider = await readProvider(params.platform);
   const runs = await provider.ciRuns.list(params.owner, params.repo, options);
-  return result(params.platform, runs);
+  return result(runs, { platform: params.platform });
 }
 
 export async function listCiJobs(
@@ -979,7 +990,7 @@ export async function listCiJobs(
     cursor: params.cursor,
     perPage: params.perPage,
   });
-  return result(params.platform, jobs);
+  return result(jobs, { platform: params.platform });
 }
 
 export async function readCiJobLog(args: ReadCiJobLogParams): Promise<ForgesToolResult<CiJobLog>> {
@@ -989,7 +1000,7 @@ export async function readCiJobLog(args: ReadCiJobLogParams): Promise<ForgesTool
     offset: params.offset,
     maxChars: params.maxChars,
   });
-  return result(params.platform, log);
+  return result(log, { platform: params.platform });
 }
 
 export async function searchCommits(
@@ -1005,10 +1016,12 @@ export async function searchCommits(
   });
   const items = search.items.map(summarizeCommit);
   return result(
-    params.platform,
     { ...search, items },
-    `Commit messages are cut to their subject line in search output, and messageTruncated marks each one that lost text; use forges_commits_get with the item's repository and sha to read one in full. ${REPEATED_COMMITTER_NOTE}`,
-    { ...search, items: items.map(commitRowText) },
+    {
+      platform: params.platform,
+      note: `Commit messages are cut to their subject line in search output, and messageTruncated marks each one that lost text; use forges_commits_get with the item's repository and sha to read one in full. ${REPEATED_COMMITTER_NOTE}`,
+      modelValue: { ...search, items: items.map(commitRowText) },
+    },
   );
 }
 
@@ -1027,10 +1040,12 @@ export async function listCommits(
   });
   const items = commits.items.map(summarizeCommit);
   return result(
-    params.platform,
     { ...commits, items },
-    `Commit messages are cut to their subject line in list output, and messageTruncated marks each one that lost text; use forges_commits_get to read one in full. ${REPEATED_COMMITTER_NOTE}`,
-    { ...commits, items: items.map(commitRowText) },
+    {
+      platform: params.platform,
+      note: `Commit messages are cut to their subject line in list output, and messageTruncated marks each one that lost text; use forges_commits_get to read one in full. ${REPEATED_COMMITTER_NOTE}`,
+      modelValue: { ...commits, items: items.map(commitRowText) },
+    },
   );
 }
 
@@ -1049,12 +1064,11 @@ export async function compareCommits(
   const { files, filesComplete, ...rest } = comparison;
   const items = comparison.items.map(summarizeCommit);
   const range = { ...rest, items, ...(params.files ? { files, filesComplete } : {}) };
-  return result(
-    params.platform,
-    range,
-    `Commit messages are cut to their subject line in comparison output, and messageTruncated marks each one that lost text; use forges_commits_get to read one in full. ${REPEATED_COMMITTER_NOTE}`,
-    { ...range, items: items.map(commitRowText) },
-  );
+  return result(range, {
+    platform: params.platform,
+    note: `Commit messages are cut to their subject line in comparison output, and messageTruncated marks each one that lost text; use forges_commits_get to read one in full. ${REPEATED_COMMITTER_NOTE}`,
+    modelValue: { ...range, items: items.map(commitRowText) },
+  });
 }
 
 export async function readRepositoryContents(
@@ -1067,7 +1081,7 @@ export async function readRepositoryContents(
     offset: params.offset,
     maxChars: params.maxChars,
   });
-  return result(params.platform, contents);
+  return result(contents, { platform: params.platform });
 }
 
 export async function listTags(args: ListTagsParams): Promise<ForgesToolResult<PageResult<Tag>>> {
@@ -1075,14 +1089,14 @@ export async function listTags(args: ListTagsParams): Promise<ForgesToolResult<P
   const options: ListTagsOptions = { cursor: params.cursor, perPage: params.perPage };
   const provider = await readProvider(params.platform);
   const tags = await provider.repos.listTags(params.owner, params.repo, options);
-  return result(params.platform, tags);
+  return result(tags, { platform: params.platform });
 }
 
 export async function getCommit(args: GetCommitParams): Promise<ForgesToolResult<Commit>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const commit = await provider.commits.get(params.owner, params.repo, params.sha);
-  return result(params.platform, commit);
+  return result(commit, { platform: params.platform });
 }
 
 export async function listCommitChecks(
@@ -1092,7 +1106,7 @@ export async function listCommitChecks(
   const options: ListCommitChecksOptions = { cursor: params.cursor, perPage: params.perPage };
   const provider = await readProvider(params.platform);
   const checks = await provider.commits.listChecks(params.owner, params.repo, params.ref, options);
-  return result(params.platform, checks);
+  return result(checks, { platform: params.platform });
 }
 
 export async function readCommitPatch(
@@ -1105,7 +1119,7 @@ export async function readCommitPatch(
     offset: params.offset,
     maxChars: params.maxChars,
   });
-  return result(params.platform, patch);
+  return result(patch, { platform: params.platform });
 }
 
 function summarizeReleasePage(page: PageResult<Release>): PageResult<Omit<Release, "body">> {
@@ -1125,11 +1139,10 @@ export async function listReleases(
   };
   const provider = await readProvider(params.platform);
   const releases = await provider.releases.list(params.owner, params.repo, options);
-  return result(
-    params.platform,
-    summarizeReleasePage(releases),
-    "Release notes are omitted from list output; use forges_releases_get with the tag to read its notes.",
-  );
+  return result(summarizeReleasePage(releases), {
+    platform: params.platform,
+    note: "Release notes are omitted from list output; use forges_releases_get with the tag to read its notes.",
+  });
 }
 
 export async function getRelease(
@@ -1140,7 +1153,9 @@ export async function getRelease(
   assertReleaseNotesOptions(notes, params.platform);
   const provider = await readProvider(params.platform);
   const release = await provider.releases.get(params.owner, params.repo, params.tag);
-  return result(params.platform, sliceReleaseNotes(release, notes, params.platform));
+  return result(sliceReleaseNotes(release, { ...notes, platform: params.platform }), {
+    platform: params.platform,
+  });
 }
 
 export async function createRelease(args: CreateReleaseParams): Promise<ForgesToolResult<Release>> {
@@ -1155,7 +1170,7 @@ export async function createRelease(args: CreateReleaseParams): Promise<ForgesTo
       draft: params.draft,
       prerelease: params.prerelease,
     });
-    return result(params.platform, release);
+    return result(release, { platform: params.platform });
   });
 }
 
@@ -1169,7 +1184,7 @@ export async function updateRelease(args: UpdateReleaseParams): Promise<ForgesTo
       draft: params.draft,
       prerelease: params.prerelease,
     });
-    return result(params.platform, release);
+    return result(release, { platform: params.platform });
   });
 }
 
@@ -1179,11 +1194,10 @@ export async function listIssues(
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const issues = await provider.issues.list(params.owner, params.repo, listOptions(params));
-  return result(
-    params.platform,
-    summarizeIssuePage(issues),
-    "Issue bodies are omitted from list output; use forges_issues_get to read one body.",
-  );
+  return result(summarizeIssuePage(issues), {
+    platform: params.platform,
+    note: "Issue bodies are omitted from list output; use forges_issues_get to read one body.",
+  });
 }
 
 export async function searchIssuesGlobal(
@@ -1207,9 +1221,11 @@ export async function searchIssuesGlobal(
     order: params.order,
   });
   return result(
-    params.platform,
     { ...summarizeIssuePage(search), resultLimit: search.resultLimit },
-    "Issue bodies are omitted; use forges_issues_get with the hit's repository and number.",
+    {
+      platform: params.platform,
+      note: "Issue bodies are omitted; use forges_issues_get with the hit's repository and number.",
+    },
   );
 }
 
@@ -1224,18 +1240,17 @@ export async function searchIssues(
     params.query,
     listOptions(params),
   );
-  return result(
-    params.platform,
-    summarizeIssuePage(issues),
-    "Issue bodies are omitted from search output; use forges_issues_get to read one body.",
-  );
+  return result(summarizeIssuePage(issues), {
+    platform: params.platform,
+    note: "Issue bodies are omitted from search output; use forges_issues_get to read one body.",
+  });
 }
 
 export async function getIssue(args: GetRepositoryItemParams): Promise<ForgesToolResult<Issue>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const issue = await provider.issues.get(params.owner, params.repo, params.number);
-  return result(params.platform, issue);
+  return result(issue, { platform: params.platform });
 }
 
 function commentListOptions(params: ListCommentsParams): ListCommentOptions {
@@ -1256,11 +1271,10 @@ export async function listIssueComments(
     params.number,
     commentListOptions(params),
   );
-  return result(
-    params.platform,
-    summarizeCommentPage(comments),
-    "Comment bodies are truncated in list output; use forges_issues_comments_get to read one in full.",
-  );
+  return result(summarizeCommentPage(comments), {
+    platform: params.platform,
+    note: "Comment bodies are truncated in list output; use forges_issues_comments_get to read one in full.",
+  });
 }
 
 export async function getIssueComment(args: GetCommentParams): Promise<ForgesToolResult<Comment>> {
@@ -1272,7 +1286,7 @@ export async function getIssueComment(args: GetCommentParams): Promise<ForgesToo
     params.number,
     params.commentId,
   );
-  return result(params.platform, comment);
+  return result(comment, { platform: params.platform });
 }
 
 export async function createIssueComment(
@@ -1284,7 +1298,7 @@ export async function createIssueComment(
     const comment = await provider.issues.createComment(params.owner, params.repo, params.number, {
       body: params.body,
     });
-    return result(params.platform, comment);
+    return result(comment, { platform: params.platform });
   });
 }
 
@@ -1303,7 +1317,7 @@ export async function listIssueReactions(
     params.number,
     reactionListOptions(params),
   );
-  return result(params.platform, reactions);
+  return result(reactions, { platform: params.platform });
 }
 
 export async function createIssue(args: CreateIssueParams): Promise<ForgesToolResult<Issue>> {
@@ -1317,7 +1331,10 @@ export async function createIssue(args: CreateIssueParams): Promise<ForgesToolRe
       labels: params.labels,
       assignees: params.assignees,
     });
-    return result(params.platform, issue, assignmentNote(params.assignees, issue.assignees));
+    return result(issue, {
+      platform: params.platform,
+      note: assignmentNote(params.assignees, issue.assignees),
+    });
   });
 }
 
@@ -1332,12 +1349,11 @@ export async function listPullRequests(
     listOptions(params),
   );
   const page = summarizeIssuePage(pullRequests);
-  return result(
-    params.platform,
-    page,
-    "Pull-request bodies are omitted from list output; use forges_pull_requests_get to read one body. A row leaves out the merge commit, time and merger until it is merged, and mergeable or mergeStatus while the list does not report them.",
-    { ...page, items: page.items.map(pullRequestRowText) },
-  );
+  return result(page, {
+    platform: params.platform,
+    note: "Pull-request bodies are omitted from list output; use forges_pull_requests_get to read one body. A row leaves out the merge commit, time and merger until it is merged, and mergeable or mergeStatus while the list does not report them.",
+    modelValue: { ...page, items: page.items.map(pullRequestRowText) },
+  });
 }
 
 export async function listPullRequestFiles(
@@ -1355,7 +1371,7 @@ export async function listPullRequestFiles(
     params.number,
     options,
   );
-  return result(params.platform, files);
+  return result(files, { platform: params.platform });
 }
 
 export async function listPullRequestChecks(
@@ -1376,19 +1392,18 @@ export async function listPullRequestChecks(
       ? undefined
       : { sha: params.headSha, read: async () => (await readPullRequest()).headSha };
   if (params.waitSeconds === undefined) {
-    const once = await readChecks(readPage, params.cursor, expectedHead);
-    return result(params.platform, once.page, once.note);
+    const once = await readChecks(readPage, { cursor: params.cursor, expectedHead });
+    return result(once.page, { platform: params.platform, note: once.note });
   }
 
   const readLastChange = async () => (await readPullRequest()).updatedAt;
-  const waited = await waitForChecks(
-    readPage,
-    params.cursor,
-    params.waitSeconds,
+  const waited = await waitForChecks(readPage, {
+    cursor: params.cursor,
+    waitSeconds: params.waitSeconds,
     readLastChange,
     expectedHead,
-  );
-  return result(params.platform, waited.page, waited.note);
+  });
+  return result(waited.page, { platform: params.platform, note: waited.note });
 }
 
 export async function listPullRequestReviews(
@@ -1406,11 +1421,10 @@ export async function listPullRequestReviews(
     params.number,
     options,
   );
-  return result(
-    params.platform,
-    summarizeReviewPage(reviews),
-    "Review bodies are truncated in list output; use forges_pull_requests_reviews_get to read one in full on GitHub or Gitea. GitLab entries are reviewer stances, not review bodies. Inline review comments are the threads forges_threads_list reads.",
-  );
+  return result(summarizeReviewPage(reviews), {
+    platform: params.platform,
+    note: "Review bodies are truncated in list output; use forges_pull_requests_reviews_get to read one in full on GitHub or Gitea. GitLab entries are reviewer stances, not review bodies. Inline review comments are the threads forges_threads_list reads.",
+  });
 }
 
 export async function getPullRequestReview(
@@ -1424,7 +1438,7 @@ export async function getPullRequestReview(
     params.number,
     params.reviewId,
   );
-  return result(params.platform, review);
+  return result(review, { platform: params.platform });
 }
 
 export async function searchPullRequestsGlobal(
@@ -1446,9 +1460,11 @@ export async function searchPullRequestsGlobal(
     order: params.order,
   });
   return result(
-    params.platform,
     { ...summarizeIssuePage(search), resultLimit: search.resultLimit },
-    "Pull-request bodies and revision details are omitted; use forges_pull_requests_get with the hit's repository and number.",
+    {
+      platform: params.platform,
+      note: "Pull-request bodies and revision details are omitted; use forges_pull_requests_get with the hit's repository and number.",
+    },
   );
 }
 
@@ -1463,11 +1479,10 @@ export async function searchPullRequests(
     params.query,
     listOptions(params),
   );
-  return result(
-    params.platform,
-    summarizeIssuePage(pullRequests),
-    "Pull-request bodies and revision details are omitted from search output; use forges_pull_requests_get to read one in full.",
-  );
+  return result(summarizeIssuePage(pullRequests), {
+    platform: params.platform,
+    note: "Pull-request bodies and revision details are omitted from search output; use forges_pull_requests_get to read one in full.",
+  });
 }
 
 export async function getPullRequest(
@@ -1478,7 +1493,7 @@ export async function getPullRequest(
   const pullRequest = await provider.pullRequests.get(params.owner, params.repo, params.number, {
     closingIssues: params.closingIssues,
   });
-  return result(params.platform, pullRequest);
+  return result(pullRequest, { platform: params.platform });
 }
 
 export async function listPullRequestComments(
@@ -1492,11 +1507,10 @@ export async function listPullRequestComments(
     params.number,
     commentListOptions(params),
   );
-  return result(
-    params.platform,
-    summarizeCommentPage(comments),
-    "Comment bodies are truncated in list output; use forges_pull_requests_comments_get to read one in full.",
-  );
+  return result(summarizeCommentPage(comments), {
+    platform: params.platform,
+    note: "Comment bodies are truncated in list output; use forges_pull_requests_comments_get to read one in full.",
+  });
 }
 
 export async function getPullRequestComment(
@@ -1510,7 +1524,7 @@ export async function getPullRequestComment(
     params.number,
     params.commentId,
   );
-  return result(params.platform, comment);
+  return result(comment, { platform: params.platform });
 }
 
 export async function createPullRequestComment(
@@ -1525,7 +1539,7 @@ export async function createPullRequestComment(
       params.number,
       { body: params.body },
     );
-    return result(params.platform, comment);
+    return result(comment, { platform: params.platform });
   });
 }
 
@@ -1540,7 +1554,7 @@ export async function listPullRequestReactions(
     params.number,
     reactionListOptions(params),
   );
-  return result(params.platform, reactions);
+  return result(reactions, { platform: params.platform });
 }
 
 export async function createPullRequest(
@@ -1558,11 +1572,10 @@ export async function createPullRequest(
       draft: params.draft,
       assignees: params.assignees,
     });
-    return result(
-      params.platform,
-      pullRequest,
-      assignmentNote(params.assignees, pullRequest.assignees),
-    );
+    return result(pullRequest, {
+      platform: params.platform,
+      note: assignmentNote(params.assignees, pullRequest.assignees),
+    });
   });
 }
 
@@ -1581,7 +1594,10 @@ export async function updateIssue(args: UpdateIssueParams): Promise<ForgesToolRe
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
     const issue = await provider.issues.update(params.owner, params.repo, params.number, input);
-    return result(params.platform, issue, reassignmentNote(input, issue.assignees));
+    return result(issue, {
+      platform: params.platform,
+      note: reassignmentNote(input, issue.assignees),
+    });
   });
 }
 
@@ -1607,7 +1623,10 @@ export async function updatePullRequest(
       params.number,
       input,
     );
-    return result(params.platform, pullRequest, reassignmentNote(input, pullRequest.assignees));
+    return result(pullRequest, {
+      platform: params.platform,
+      note: reassignmentNote(input, pullRequest.assignees),
+    });
   });
 }
 
@@ -1630,7 +1649,7 @@ export async function mergePullRequest(
       params.number,
       input,
     );
-    return result(params.platform, pullRequest);
+    return result(pullRequest, { platform: params.platform });
   });
 }
 
@@ -1638,7 +1657,7 @@ export async function getUser(args: GetUserParams): Promise<ForgesToolResult<Use
   const params = platformTarget(args);
   const provider = await readProvider(params.platform);
   const user = await provider.users.get(params.username);
-  return result(params.platform, user);
+  return result(user, { platform: params.platform });
 }
 
 export type AuthenticatedUserParams = PlatformParams & AccountParams;
@@ -1648,7 +1667,7 @@ async function authenticatedUserResult(
   account: string | undefined,
 ): Promise<ForgesToolResult<User>> {
   const provider = await authenticatedProvider(platform, account);
-  return result(platform, await provider.users.authenticated());
+  return result(await provider.users.authenticated(), { platform });
 }
 
 export function getAuthenticatedUser(
@@ -1719,11 +1738,10 @@ export async function listThreads(
     params.number,
     threadListOptions(params),
   );
-  return result(
-    params.platform,
-    summarizeThreadPage(threads),
-    "Comment bodies are truncated in list output; use forges_threads_get to read one full thread.",
-  );
+  return result(summarizeThreadPage(threads), {
+    platform: params.platform,
+    note: "Comment bodies are truncated in list output; use forges_threads_get to read one full thread.",
+  });
 }
 
 export async function getThread(args: GetThreadParams): Promise<ForgesToolResult<Thread>> {
@@ -1735,7 +1753,7 @@ export async function getThread(args: GetThreadParams): Promise<ForgesToolResult
     params.number,
     params.threadId,
   );
-  return result(params.platform, thread);
+  return result(thread, { platform: params.platform });
 }
 
 export async function replyToThread(
@@ -1751,7 +1769,7 @@ export async function replyToThread(
       params.threadId,
       { body: params.body },
     );
-    return result(params.platform, comment);
+    return result(comment, { platform: params.platform });
   });
 }
 
@@ -1765,7 +1783,7 @@ export async function resolveThread(args: ThreadStateParams): Promise<ForgesTool
       params.number,
       params.threadId,
     );
-    return result(params.platform, thread);
+    return result(thread, { platform: params.platform });
   });
 }
 
@@ -1779,7 +1797,7 @@ export async function unresolveThread(args: ThreadStateParams): Promise<ForgesTo
       params.number,
       params.threadId,
     );
-    return result(params.platform, thread);
+    return result(thread, { platform: params.platform });
   });
 }
 
@@ -1790,12 +1808,12 @@ export async function verifyLocalMerge(
   params: VerifyLocalMergeOptions,
 ): Promise<ForgesToolResult<LocalMergeVerification>> {
   const local = await loadLocal();
-  return result("local", await local.verifyLocalMerge(params));
+  return result(await local.verifyLocalMerge(params), { platform: "local" });
 }
 
 export async function inspectLocal(
   params: InspectLocalOptions,
 ): Promise<ForgesToolResult<LocalInspection>> {
   const local = await loadLocal();
-  return result("local", await local.inspectLocal(params));
+  return result(await local.inspectLocal(params), { platform: "local" });
 }

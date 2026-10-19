@@ -477,8 +477,8 @@ function forgejoJobsPage(
   page: number,
   perPage: number,
 ): NumberedPage<CiJob> {
-  if (headers.has("Link")) return buildPageResult(rows, headers, mapForgejoActionsJob);
-  return slicePage(rows.map(mapForgejoActionsJob), page, perPage);
+  if (headers.has("Link")) return buildPageResult({ items: rows, headers }, mapForgejoActionsJob);
+  return slicePage(rows.map(mapForgejoActionsJob), { page, perPage });
 }
 
 /**
@@ -946,7 +946,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       if (contents.encoding !== "base64" || contents.content === undefined) {
         throw new ForgesError(`Gitea returned no content for ${path}`, 502, PLATFORM);
       }
-      return buildRepositoryFile(path, sha, contents.content, options);
+      return buildRepositoryFile({ path, sha, base64: contents.content }, options);
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
@@ -1078,7 +1078,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       );
       if (Array.isArray(data)) return forgejoJobsPage(data, headers, page, perPage);
       const totalCount = data?.total_count;
-      const result = buildPageResult(data?.jobs ?? [], headers, mapActionsJob);
+      const result = buildPageResult({ items: data?.jobs ?? [], headers }, mapActionsJob);
       const hasNextPage =
         result.hasNextPage ||
         (!headers.has("Link") &&
@@ -1110,12 +1110,12 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       const raw = await this.#tryActionsJob(route);
       if (raw === null) {
         const log = await this.#readActionsJobLog(route);
-        return buildCiJobLog(jobFromForgejoLog(jobId, log), log, options);
+        return buildCiJobLog({ job: jobFromForgejoLog(jobId, log), log }, options);
       }
       if (isForgejoActionsJob(raw)) return await this.#readForgejoJobLog(route, raw, options);
       const job = mapActionsJob(raw);
-      if (!jobStarted(job, true)) return buildCiJobLog(job, null, options);
-      return buildCiJobLog(job, await this.#readActionsJobLog(route), options);
+      if (!jobStarted(job, true)) return buildCiJobLog({ job, log: null }, options);
+      return buildCiJobLog({ job, log: await this.#readActionsJobLog(route) }, options);
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
@@ -1139,13 +1139,13 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     options?: CiJobLogOptions,
   ): Promise<CiJobLog> {
     const job = mapForgejoActionsJob(raw);
-    if (raw.task_id === 0) return buildCiJobLog(job, null, options);
+    if (raw.task_id === 0) return buildCiJobLog({ job, log: null }, options);
     try {
-      return buildCiJobLog(job, await this.#readActionsJobLog(route), options);
+      return buildCiJobLog({ job, log: await this.#readActionsJobLog(route) }, options);
     } catch (error) {
       const normalized = normalizeError(error, PLATFORM);
       if (normalized.status !== 404 || job.status === "completed") throw normalized;
-      return buildCiJobLog(job, { text: "", complete: true, timestamped: false }, options);
+      return buildCiJobLog({ job, log: { text: "", complete: true, timestamped: false } }, options);
     }
   }
 
@@ -1228,7 +1228,9 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits`,
         { query },
       );
-      const result = buildPageResult(data ?? [], headers, (raw) => this.mapCommitSummary(raw));
+      const result = buildPageResult({ items: data ?? [], headers }, (raw) =>
+        this.mapCommitSummary(raw),
+      );
       const totalHeader = headers.get("x-total-count");
       const totalCount = totalHeader === null ? undefined : Number.parseInt(totalHeader, 10);
       const hasNextPage = result.hasNextPage || headers.get("x-hasmore") === "true";
@@ -1276,7 +1278,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       );
       const commits = comparison.commits.map((raw) => this.mapCommitSummary(raw)).toReversed();
       return {
-        ...slicePage(commits, options?.page, options?.perPage),
+        ...slicePage(commits, { page: options?.page, perPage: options?.perPage }),
         totalCount: commits.length,
         status: null,
         aheadBy: commits.length,
@@ -1327,7 +1329,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
           patch: patch === undefined || binary ? "" : patch,
         };
       });
-      return buildCommitPatch(commit.sha, files, null, options);
+      return buildCommitPatch({ sha: commit.sha, files, filesComplete: null }, options);
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
@@ -1352,7 +1354,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         { query },
       );
       return {
-        ...buildPageResult(data ?? [], headers, (raw) => this.mapIssue(raw)),
+        ...buildPageResult({ items: data ?? [], headers }, (raw) => this.mapIssue(raw)),
         incomplete: false,
       };
     } catch (error) {
@@ -1485,7 +1487,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls`,
         { query },
       );
-      return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequest(raw));
+      return buildPageResult({ items: data ?? [], headers }, (raw) => this.mapPullRequest(raw));
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
@@ -1630,7 +1632,9 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         { query },
       );
       return {
-        ...buildPageResult(data ?? [], headers, (raw) => this.mapPullRequestSearchItem(raw)),
+        ...buildPageResult({ items: data ?? [], headers }, (raw) =>
+          this.mapPullRequestSearchItem(raw),
+        ),
         incomplete: false,
       };
     } catch (error) {
@@ -1747,7 +1751,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
       const exactTotal = Number.isFinite(total) && (scopedToRepository || wanted.length < 2);
       return {
-        ...buildPageResult(items, headers, (item) => item),
+        ...buildPageResult({ items, headers }, (item) => item),
         totalCount: exactTotal ? total : undefined,
         incomplete: items.length !== rawItems.length,
         resultLimit: null,
@@ -1861,7 +1865,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         },
       });
     } catch (error) {
-      throw normalizeMergeError(error, PLATFORM, input.headSha !== undefined);
+      throw normalizeMergeError(error, {
+        platform: PLATFORM,
+        pinnedHead: input.headSha !== undefined,
+      });
     }
     try {
       return this.mapPullRequest(await this.client<GiteaPullRequest>(pullPath));
@@ -2111,7 +2118,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
           this.assertIssueKind(owner, repo, number, pullRequest),
           this.getIssueComment(owner, repo, number, commentId),
         ]);
-        return slicePage((reactions ?? []).map(mapReaction), page, perPage);
+        return slicePage((reactions ?? []).map(mapReaction), { page, perPage });
       }
 
       const [{ data, headers }] = await Promise.all([
@@ -2123,7 +2130,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         this.assertIssueKind(owner, repo, number, pullRequest),
       ]);
       const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
-      const result = buildPageResult(data ?? [], headers, mapReaction);
+      const result = buildPageResult({ items: data ?? [], headers }, mapReaction);
       const hasNextPage =
         result.hasNextPage ||
         (await this.#countedNextPage(page, perPage, result.items.length, total));

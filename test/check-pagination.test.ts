@@ -9,14 +9,14 @@ const CHECKS_SUBJECT = ["owner", "repo", 1];
 /** Options no check listing takes, for the listing whose cursors they carry. */
 const invalidOptions = (listing: string) => [
   { page: 2 },
-  { cursor: cursorFor(listing, 0) },
-  { cursor: cursorFor(listing, -1) },
-  { cursor: cursorFor(listing, 1.5) },
-  { cursor: cursorFor(listing, NaN) },
-  { cursor: cursorFor(listing, Infinity) },
-  { cursor: cursorFor(listing, Number.MAX_SAFE_INTEGER + 1) },
-  { cursor: cursorFor(listing, Number.MAX_SAFE_INTEGER), perPage: 100 },
-  { cursor: cursorFor("issues.list", 2) },
+  { cursor: cursorFor(listing, { page: 0 }) },
+  { cursor: cursorFor(listing, { page: -1 }) },
+  { cursor: cursorFor(listing, { page: 1.5 }) },
+  { cursor: cursorFor(listing, { page: NaN }) },
+  { cursor: cursorFor(listing, { page: Infinity }) },
+  { cursor: cursorFor(listing, { page: Number.MAX_SAFE_INTEGER + 1 }) },
+  { cursor: cursorFor(listing, { page: Number.MAX_SAFE_INTEGER }), perPage: 100 },
+  { cursor: cursorFor("issues.list", { page: 2 }) },
   { cursor: "not a cursor" },
   { perPage: 0 },
   { perPage: -1 },
@@ -64,16 +64,19 @@ describe.each(["github", "gitlab", "gitea"] as const)("%s check pagination", (pl
     {},
     { perPage: 1 },
     {
-      cursor: cursorFor("pullRequests.listChecks", 2, CHECKS_SUBJECT, { perPage: 100 }),
+      cursor: cursorFor("pullRequests.listChecks", {
+        page: 2,
+        subject: CHECKS_SUBJECT,
+        filters: { perPage: 100 },
+      }),
       perPage: 100,
     },
     {
-      cursor: cursorFor(
-        "pullRequests.listChecks",
-        Math.floor((Number.MAX_SAFE_INTEGER - 1) / 100),
-        CHECKS_SUBJECT,
-        { perPage: 100 },
-      ),
+      cursor: cursorFor("pullRequests.listChecks", {
+        page: Math.floor((Number.MAX_SAFE_INTEGER - 1) / 100),
+        subject: CHECKS_SUBJECT,
+        filters: { perPage: 100 },
+      }),
       perPage: 100,
     },
   ])("accepts valid options %o and reaches the provider", async (options) => {

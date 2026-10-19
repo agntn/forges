@@ -29,22 +29,37 @@ const files: CommitPatchFile[] = [
 
 describe("buildCommitPatch", () => {
   it("continues a long stream without gaps across slice boundaries", () => {
-    const first = buildCommitPatch("resolved", files, true, { maxChars: 37 });
+    const first = buildCommitPatch(
+      { sha: "resolved", files, filesComplete: true },
+      { maxChars: 37 },
+    );
     expect(first).toMatchObject({ sha: "resolved", offset: 0, nextOffset: 37, truncated: true });
 
-    const second = buildCommitPatch("resolved", files, true, {
-      offset: first.nextOffset ?? 0,
-      maxChars: 200_000,
-    });
-    const whole = buildCommitPatch("resolved", files, true, { maxChars: 200_000 });
+    const second = buildCommitPatch(
+      { sha: "resolved", files, filesComplete: true },
+      {
+        offset: first.nextOffset ?? 0,
+        maxChars: 200_000,
+      },
+    );
+    const whole = buildCommitPatch(
+      { sha: "resolved", files, filesComplete: true },
+      { maxChars: 200_000 },
+    );
 
     expect(first.content + second.content).toBe(whole.content);
     expect(second).toMatchObject({ nextOffset: null, truncated: false });
   });
 
   it("distinguishes renamed, binary, unavailable, and truncated patch content", () => {
-    const full = buildCommitPatch("resolved", files, null, { maxChars: 200_000 });
-    const bounded = buildCommitPatch("resolved", files, null, { maxChars: 80 });
+    const full = buildCommitPatch(
+      { sha: "resolved", files, filesComplete: null },
+      { maxChars: 200_000 },
+    );
+    const bounded = buildCommitPatch(
+      { sha: "resolved", files, filesComplete: null },
+      { maxChars: 80 },
+    );
 
     expect(full.content).toContain("--- renamed src/renamed.ts from src/old.ts");
     expect(full.content).toContain("[binary patch omitted]");
@@ -54,10 +69,13 @@ describe("buildCommitPatch", () => {
   });
 
   it("filters one file before applying the output budget", () => {
-    const result = buildCommitPatch("resolved", files, true, {
-      path: "public/logo.png",
-      maxChars: 200_000,
-    });
+    const result = buildCommitPatch(
+      { sha: "resolved", files, filesComplete: true },
+      {
+        path: "public/logo.png",
+        maxChars: 200_000,
+      },
+    );
 
     expect(result.content).toContain("[binary patch omitted]");
     expect(result.content).not.toContain("src/renamed.ts");
@@ -65,20 +83,23 @@ describe("buildCommitPatch", () => {
   });
 
   it("rejects invalid continuation bounds", () => {
-    expect(() => buildCommitPatch("resolved", files, true, { offset: -1 })).toThrow(
-      "offset must be a non-negative integer",
-    );
-    expect(() => buildCommitPatch("resolved", files, true, { maxChars: 200_001 })).toThrow(
-      "maxChars must be an integer",
-    );
     expect(() =>
-      buildCommitPatch("resolved", files, true, {
-        offset: Number.MAX_SAFE_INTEGER,
-        maxChars: 1,
-      }),
+      buildCommitPatch({ sha: "resolved", files, filesComplete: true }, { offset: -1 }),
+    ).toThrow("offset must be a non-negative integer");
+    expect(() =>
+      buildCommitPatch({ sha: "resolved", files, filesComplete: true }, { maxChars: 200_001 }),
+    ).toThrow("maxChars must be an integer");
+    expect(() =>
+      buildCommitPatch(
+        { sha: "resolved", files, filesComplete: true },
+        {
+          offset: Number.MAX_SAFE_INTEGER,
+          maxChars: 1,
+        },
+      ),
     ).toThrow("safe integer limit");
-    expect(() => buildCommitPatch("resolved", files, true, { offset: 10_000 })).toThrow(
-      "past the end",
-    );
+    expect(() =>
+      buildCommitPatch({ sha: "resolved", files, filesComplete: true }, { offset: 10_000 }),
+    ).toThrow("past the end");
   });
 });

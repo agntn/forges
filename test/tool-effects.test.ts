@@ -37,7 +37,9 @@ describe("tool effects", () => {
     (name) => {
       expect(() => getToolEffect(name)).toThrow("Missing tool effect");
       expect(() => toolApproval(name)).toThrow("Missing tool effect");
-      expect(() => renderToolCall(name, name, {}, {}, {})).toThrow("Missing tool effect");
+      expect(() => renderToolCall({ name, label: name, args: {}, options: {} }, {})).toThrow(
+        "Missing tool effect",
+      );
     },
   );
 
@@ -45,10 +47,12 @@ describe("tool effects", () => {
     for (const name of Object.keys(toolEffects)) {
       const write = writes.includes(name);
       expect(toolApproval(name)).toBe(write ? "write" : "read");
-      expect(renderToolCall(name, name, {}, {}, {}).includes("(write)")).toBe(write);
-      expect(renderToolResult(name, { content: [] }, false, {}, {})).toContain(
-        write ? "(write)" : "(read)",
-      );
+      expect(
+        renderToolCall({ name, label: name, args: {}, options: {} }, {}).includes("(write)"),
+      ).toBe(write);
+      expect(
+        renderToolResult({ name, result: { content: [] }, isError: false, options: {} }, {}),
+      ).toContain(write ? "(write)" : "(read)");
     }
   });
 });

@@ -52,8 +52,8 @@ export function sharedForge(forge: string, instance: string): FakeForge {
 }
 
 /** The repository ref the providers hand to `forges`. */
-export function repoRef(fake: FakeForge, owner: string, name: string) {
-  return { forge: fake.forge, instance: fake.instance, owner, name };
+export function repoRef(fake: FakeForge, repo: { owner: string; name: string }) {
+  return { forge: fake.forge, instance: fake.instance, ...repo };
 }
 
 /** A listing whose page read fails with `error`. */

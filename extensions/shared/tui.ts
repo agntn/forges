@@ -63,8 +63,9 @@ function scalar(record: Readonly<Record<string, unknown>>, key: string): string 
   return undefined;
 }
 
-function paint(theme: StatusTheme, color: string, text: string): string {
-  return theme.fg ? theme.fg(color, text) : text;
+/** Colors text through the theme, or leaves it plain when the host paints nothing. */
+function painter(theme: StatusTheme): (color: string, text: string) => string {
+  return (color, text) => (theme.fg ? theme.fg(color, text) : text);
 }
 
 /** Stable category mark used by Pi, OMP, and MCP clients. */
@@ -148,26 +149,30 @@ function callIcon(options: RenderOptions | undefined): { glyph: string; color: s
     : { glyph: "·", color: "muted" };
 }
 
+/** One tool call as the host hands it over: which tool, under what title, with what. */
+export interface RenderedToolCall {
+  name: string;
+  label: string;
+  args: unknown;
+  options: RenderOptions | undefined;
+}
+
 /** Render one compact, terminal-safe tool call row under the tool's own title. */
-export function renderToolCall(
-  name: string,
-  label: string,
-  args: unknown,
-  options: RenderOptions | undefined,
-  theme: StatusTheme,
-): string {
+export function renderToolCall(call: RenderedToolCall, theme: StatusTheme): string {
+  const { name, label, args, options } = call;
   const record = isRecord(args) ? args : {};
+  const paint = painter(theme);
   const icon = callIcon(options);
   const title = sanitizeTerminalText(label);
   const parts = [
-    paint(theme, icon.color, icon.glyph),
-    paint(theme, "toolTitle", theme.bold ? theme.bold(title) : title),
+    paint(icon.color, icon.glyph),
+    paint("toolTitle", theme.bold ? theme.bold(title) : title),
   ];
   const subject = callSubject(record);
-  if (subject) parts.push(paint(theme, "dim", subject));
-  if (toolApproval(name) === "write") parts.push(paint(theme, "accent", "(write)"));
+  if (subject) parts.push(paint("dim", subject));
+  if (toolApproval(name) === "write") parts.push(paint("accent", "(write)"));
   const meta = callMeta(record, subject);
-  if (meta.length > 0) parts.push(paint(theme, "muted", meta.join(" · ")));
+  if (meta.length > 0) parts.push(paint("muted", meta.join(" · ")));
   return parts.join(" ");
 }
 
@@ -251,53 +256,63 @@ function indentPayload(body: string): string {
 }
 
 function expandedBody(result: RenderedToolResult, theme: StatusTheme): string[] {
+  const paint = painter(theme);
   const body = indentPayload(resultText(result));
   if (!body) return [];
-  return body.split(/\r?\n/u).map((line) => `  ${paint(theme, "toolOutput", cleanBodyLine(line))}`);
+  return body.split(/\r?\n/u).map((line) => `  ${paint("toolOutput", cleanBodyLine(line))}`);
 }
 
-function failureBody(result: RenderedToolResult, expanded: boolean, theme: StatusTheme): string[] {
+function failureBody(
+  result: RenderedToolResult,
+  view: Readonly<{ expanded: boolean; theme: StatusTheme }>,
+): string[] {
+  const { expanded, theme } = view;
+  const paint = painter(theme);
   const body = resultText(result);
   if (!body) return [];
   const lines = body.split(/\r?\n/u);
   if (sanitizeTerminalText(lines[0], FIELD_SCAN_LIMIT).length <= SUBJECT_WIDTH) lines.shift();
   return (expanded ? lines : lines.slice(0, PREVIEW_LINES)).map((line) => {
     const clean = cleanBodyLine(line);
-    return `  ${paint(theme, "toolOutput", expanded ? clean : clip(clean, PREVIEW_WIDTH))}`;
+    return `  ${paint("toolOutput", expanded ? clean : clip(clean, PREVIEW_WIDTH))}`;
   });
 }
 
+/** One finished or streaming tool answer, with the host's failure flag beside its own. */
+export interface RenderedToolAnswer {
+  name: string;
+  result: RenderedToolResult;
+  isError: boolean;
+  options: RenderOptions;
+}
+
 /** Render a compact result row and reveal raw text only when expanded. */
-export function renderToolResult(
-  name: string,
-  result: RenderedToolResult,
-  isError: boolean,
-  options: RenderOptions,
-  theme: StatusTheme,
-): string {
+export function renderToolResult(answer: RenderedToolAnswer, theme: StatusTheme): string {
+  const { name, result, isError, options } = answer;
+  const paint = painter(theme);
   const failed = isError || result.isError === true;
   if (failed) {
     const description = sanitizeTerminalText(firstLine(resultText(result)) || "Failed");
     const header = [
-      paint(theme, "error", "✗"),
-      paint(theme, "dim", description),
-      paint(theme, "accent", "(failed)"),
+      paint("error", "✗"),
+      paint("dim", description),
+      paint("accent", "(failed)"),
     ].join(" ");
-    const body = failureBody(result, options.expanded === true, theme);
+    const body = failureBody(result, { expanded: options.expanded === true, theme });
     return body.length > 0 ? [header, ...body].join("\n") : header;
   }
 
   if (options.isPartial === true) {
     const icon = callIcon(options);
     const description = sanitizeTerminalText(firstLine(resultText(result)) || "Working");
-    return `${paint(theme, icon.color, icon.glyph)} ${paint(theme, "dim", description)}`;
+    return `${paint(icon.color, icon.glyph)} ${paint("dim", description)}`;
   }
 
   const meta = resultMeta(result.details);
   const header = [
-    paint(theme, "success", "✓"),
-    paint(theme, "accent", toolApproval(name) === "write" ? "(write)" : "(read)"),
-    meta.length > 0 ? paint(theme, "muted", meta.join(" · ")) : undefined,
+    paint("success", "✓"),
+    paint("accent", toolApproval(name) === "write" ? "(write)" : "(read)"),
+    meta.length > 0 ? paint("muted", meta.join(" · ")) : undefined,
   ]
     .filter((part): part is string => part !== undefined)
     .join(" ");

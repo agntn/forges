@@ -58,7 +58,7 @@ describe("buildPageResult", () => {
   it("maps the rows and reads the next page from the same headers", () => {
     const headers = new Headers({ Link: '<https://api.github.com/repos?page=2>; rel="next"' });
 
-    expect(buildPageResult([1, 2], headers, (value) => value * 10)).toEqual({
+    expect(buildPageResult({ items: [1, 2], headers }, (value) => value * 10)).toEqual({
       items: [10, 20],
       hasNextPage: true,
       nextPage: 2,

@@ -129,13 +129,21 @@ export type Continued<R extends PageResult<unknown>> = Omit<R, "nextCursor"> & {
 /** One continued page of `T`. */
 export type ContinuedPage<T> = Continued<PageResult<T>>;
 
+/** One pagination field: its name, its default and, for a page size, its ceiling. */
+interface PaginationField {
+  label: string;
+  fallback: number;
+  maximum?: number;
+}
+
+const PAGE: PaginationField = { label: "page", fallback: 1 };
+const PER_PAGE: PaginationField = { label: "perPage", fallback: 30, maximum: 100 };
+
 function paginationPageValue(
   value: number | undefined,
-  fallback: number,
-  label: string,
-  platform: string | undefined,
-  maximum?: number,
+  field: PaginationField & { platform: string | undefined },
 ): number {
+  const { label, fallback, maximum, platform } = field;
   const resolved = value ?? fallback;
   if (
     !Number.isSafeInteger(resolved) ||
@@ -153,13 +161,20 @@ interface ContributionTemplatePagination {
   perPage: number;
 }
 
+/** A listing's name and the request it answers, so its cursors fit no other listing or request. */
+interface Listing<O> {
+  listing: string;
+  subject: readonly unknown[];
+  options: O | undefined;
+}
+
 function contributionTemplatePagination(
   options: WithPage<ListContributionTemplatesOptions> | undefined,
   platform: string | undefined,
 ): ContributionTemplatePagination {
   return {
-    page: paginationPageValue(options?.page, 1, "page", platform),
-    perPage: paginationPageValue(options?.perPage, 30, "perPage", platform, 100),
+    page: paginationPageValue(options?.page, { ...PAGE, platform }),
+    perPage: paginationPageValue(options?.perPage, { ...PER_PAGE, platform }),
   };
 }
 
@@ -188,18 +203,17 @@ function assertReleaseTag(tag: string, platform?: string): void {
 /** Checks shared by pull request and issue search across repositories, before any request. */
 function assertGlobalSearch(
   noun: "Pull-request" | "Issue",
-  query: string,
-  options: GlobalIssueSearchOptions | undefined,
-  platform?: string,
+  search: GlobalIssueSearchOptions & { query: string; platform?: string },
 ): void {
-  if (options?.author !== undefined && !/^[^\s:'"]+$/u.test(options.author)) {
+  const { query, platform, ...options } = search;
+  if (options.author !== undefined && !/^[^\s:'"]+$/u.test(options.author)) {
     throw new ForgesError(`${noun} search author must be a single login`, 400, platform);
   }
-  if (options?.owner !== undefined && !/^\S+$/u.test(options.owner)) {
+  if (options.owner !== undefined && !/^\S+$/u.test(options.owner)) {
     throw new ForgesError(`${noun} search owner must be one name without spaces`, 400, platform);
   }
-  const labelled = noun === "Issue" && (options?.labels?.length ?? 0) > 0;
-  const scoped = options?.author !== undefined || options?.owner !== undefined || labelled;
+  const labelled = noun === "Issue" && (options.labels?.length ?? 0) > 0;
+  const scoped = options.author !== undefined || options.owner !== undefined || labelled;
   if (query.trim() === "" && !scoped) {
     throw new ForgesError(
       noun === "Issue"
@@ -209,7 +223,7 @@ function assertGlobalSearch(
       platform,
     );
   }
-  if (options?.repo !== undefined && options.owner === undefined) {
+  if (options.repo !== undefined && options.owner === undefined) {
     throw new ForgesError(`${noun} search repository scope requires an owner`, 400, platform);
   }
 }
@@ -267,7 +281,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     this.#platform = platform;
     this.repos = {
       list: (owner, options) =>
-        this.#paged("repos.list", [owner], options, (positioned) =>
+        this.#paged({ listing: "repos.list", subject: [owner], options }, (positioned) =>
           this.listRepos(owner, positioned),
         ),
       get: (owner, repo) => this.getRepo(owner, repo),
@@ -277,17 +291,20 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         return this.readRepositoryContents(owner, repo, normalizedPath, options);
       },
       listTags: (owner, repo, options) =>
-        this.#paged("repos.listTags", [owner, repo], options, (positioned) =>
+        this.#paged({ listing: "repos.listTags", subject: [owner, repo], options }, (positioned) =>
           this.listTags(owner, repo, positioned),
         ),
     };
     this.contributionTemplates = {
       list: (owner, repo, kind, options) =>
-        this.#paged("contributionTemplates.list", [owner, repo, kind], options, async (paged) => {
-          const pagination = contributionTemplatePagination(paged, this.#platform);
-          const templates = await this.listContributionTemplates(owner, repo, kind);
-          return paginateContributionTemplates(templates, pagination);
-        }),
+        this.#paged(
+          { listing: "contributionTemplates.list", subject: [owner, repo, kind], options },
+          async (paged) => {
+            const pagination = contributionTemplatePagination(paged, this.#platform);
+            const templates = await this.listContributionTemplates(owner, repo, kind);
+            return paginateContributionTemplates(templates, pagination);
+          },
+        ),
       get: async (owner, repo, kind, key) => {
         if (key.length === 0) {
           throw this.#refusal("Contribution template key must not be empty");
@@ -312,25 +329,29 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         if (options?.repo !== undefined && options.owner === undefined) {
           throw this.#refusal("Code search repository scope requires an owner");
         }
-        return this.#paged("code.search", [query], options, (paged) =>
+        return this.#paged({ listing: "code.search", subject: [query], options }, (paged) =>
           this.searchCode(query, paged),
         );
       },
     };
     this.ciRuns = {
       list: (owner, repo, options) =>
-        this.#paged("ciRuns.list", [owner, repo], options, (positioned) =>
+        this.#paged({ listing: "ciRuns.list", subject: [owner, repo], options }, (positioned) =>
           this.listCiRuns(owner, repo, positioned),
         ),
       listJobs: async (owner, repo, runId, options) => {
-        assertCiId(runId, "run", this.#platform);
-        const perPage = paginationPageValue(options?.perPage, 30, "perPage", this.#platform, 100);
-        return this.#paged("ciRuns.listJobs", [owner, repo, runId], options, (positioned) =>
-          this.listCiJobs(owner, repo, runId, { ...positioned, perPage }),
+        assertCiId(runId, { kind: "run", platform: this.#platform });
+        const perPage = paginationPageValue(options?.perPage, {
+          ...PER_PAGE,
+          platform: this.#platform,
+        });
+        return this.#paged(
+          { listing: "ciRuns.listJobs", subject: [owner, repo, runId], options },
+          (positioned) => this.listCiJobs(owner, repo, runId, { ...positioned, perPage }),
         );
       },
       readJobLog: async (owner, repo, jobId, options) => {
-        assertCiId(jobId, "job", this.#platform);
+        assertCiId(jobId, { kind: "job", platform: this.#platform });
         assertCiJobLogOptions(options, this.#platform);
         return this.readCiJobLog(owner, repo, jobId, options);
       },
@@ -343,12 +364,12 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         if (options?.repo !== undefined && options.owner === undefined) {
           throw this.#refusal("Commit search repository scope requires an owner");
         }
-        return this.#paged("commits.search", [query], options, (paged) =>
+        return this.#paged({ listing: "commits.search", subject: [query], options }, (paged) =>
           this.searchCommits(query, paged),
         );
       },
       list: (owner, repo, options) =>
-        this.#paged("commits.list", [owner, repo], options, (positioned) =>
+        this.#paged({ listing: "commits.list", subject: [owner, repo], options }, (positioned) =>
           this.listCommits(owner, repo, positioned),
         ),
       get: (owner, repo, sha) => this.getCommit(owner, repo, sha),
@@ -356,20 +377,28 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         if (ref.trim() === "") {
           throw this.#refusal("Commit checks need a SHA, branch or tag");
         }
-        return this.#paged("commits.listChecks", [owner, repo, ref], options, (paged) => {
-          this.#assertCheckPage(paged);
-          return this.listCommitChecks(owner, repo, ref, paged);
-        });
+        return this.#paged(
+          { listing: "commits.listChecks", subject: [owner, repo, ref], options },
+          (paged) => {
+            this.#assertCheckPage(paged);
+            return this.listCommitChecks(owner, repo, ref, paged);
+          },
+        );
       },
       compare: async (owner, repo, base, head, options) => {
         if (base.trim() === "" || head.trim() === "") {
           throw this.#refusal("Commit comparison needs a base and a head ref");
         }
-        return this.#paged("commits.compare", [owner, repo, base, head], options, (paged) =>
-          this.compareCommits(owner, repo, base, head, {
-            page: paged.page ?? 1,
-            perPage: paginationPageValue(options?.perPage, 30, "perPage", this.#platform, 100),
-          }),
+        return this.#paged(
+          { listing: "commits.compare", subject: [owner, repo, base, head], options },
+          (paged) =>
+            this.compareCommits(owner, repo, base, head, {
+              page: paged.page ?? 1,
+              perPage: paginationPageValue(options?.perPage, {
+                ...PER_PAGE,
+                platform: this.#platform,
+              }),
+            }),
         );
       },
       readPatch: async (owner, repo, sha, options) => {
@@ -379,7 +408,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.releases = {
       list: (owner, repo, options) =>
-        this.#paged("releases.list", [owner, repo], options, (positioned) =>
+        this.#paged({ listing: "releases.list", subject: [owner, repo], options }, (positioned) =>
           this.listReleases(owner, repo, positioned),
         ),
       get: async (owner, repo, tag) => {
@@ -400,22 +429,23 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.issues = {
       searchGlobal: async (query, options) => {
-        assertGlobalSearch("Issue", query, options, this.#platform);
+        assertGlobalSearch("Issue", { ...options, query, platform: this.#platform });
         assertGlobalIssueFilters(options, this.#platform);
-        return this.#paged("issues.searchGlobal", [query], options, (paged) =>
+        return this.#paged({ listing: "issues.searchGlobal", subject: [query], options }, (paged) =>
           this.searchIssuesGlobal(query, paged),
         );
       },
       list: (owner, repo, options) =>
-        this.#paged("issues.list", [owner, repo], options, (positioned) =>
+        this.#paged({ listing: "issues.list", subject: [owner, repo], options }, (positioned) =>
           this.listIssues(owner, repo, positioned),
         ),
       search: async (owner, repo, query, options) => {
         if (query.trim() === "") {
           throw this.#refusal("Issue search query must not be empty");
         }
-        return this.#paged("issues.search", [owner, repo, query], options, (paged) =>
-          this.searchIssues(owner, repo, query, paged),
+        return this.#paged(
+          { listing: "issues.search", subject: [owner, repo, query], options },
+          (paged) => this.searchIssues(owner, repo, query, paged),
         );
       },
       get: (owner, repo, number) => this.getIssue(owner, repo, number),
@@ -428,10 +458,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         return this.updateIssue(owner, repo, number, input);
       },
       listComments: async (owner, repo, number, options) => {
-        return this.#paged("issues.listComments", [owner, repo, number], options, (paged) => {
-          this.#assertListPage(paged);
-          return this.listIssueComments(owner, repo, number, paged);
-        });
+        return this.#paged(
+          { listing: "issues.listComments", subject: [owner, repo, number], options },
+          (paged) => {
+            this.#assertListPage(paged);
+            return this.listIssueComments(owner, repo, number, paged);
+          },
+        );
       },
       getComment: (owner, repo, number, commentId) =>
         this.getIssueComment(owner, repo, number, commentId),
@@ -440,35 +473,44 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         return this.createIssueComment(owner, repo, number, input);
       },
       listReactions: async (owner, repo, number, options) => {
-        return this.#paged("issues.listReactions", [owner, repo, number], options, (paged) => {
-          this.#assertListPage(paged);
-          return this.listIssueReactions(owner, repo, number, paged);
-        });
+        return this.#paged(
+          { listing: "issues.listReactions", subject: [owner, repo, number], options },
+          (paged) => {
+            this.#assertListPage(paged);
+            return this.listIssueReactions(owner, repo, number, paged);
+          },
+        );
       },
     };
     this.pullRequests = {
       searchGlobal: async (query, options) => {
-        assertGlobalSearch("Pull-request", query, options, this.#platform);
-        return this.#paged("pullRequests.searchGlobal", [query], options, (paged) =>
-          this.searchPullRequestsGlobal(query, paged),
+        assertGlobalSearch("Pull-request", { ...options, query, platform: this.#platform });
+        return this.#paged(
+          { listing: "pullRequests.searchGlobal", subject: [query], options },
+          (paged) => this.searchPullRequestsGlobal(query, paged),
         );
       },
       list: (owner, repo, options) =>
-        this.#paged("pullRequests.list", [owner, repo], options, (paged) =>
+        this.#paged({ listing: "pullRequests.list", subject: [owner, repo], options }, (paged) =>
           this.listPullRequests(owner, repo, paged),
         ),
       listFiles: (owner, repo, number, options) =>
-        this.#paged("pullRequests.listFiles", [owner, repo, number], options, (paged) =>
-          this.listPullRequestFiles(owner, repo, number, paged),
+        this.#paged(
+          { listing: "pullRequests.listFiles", subject: [owner, repo, number], options },
+          (paged) => this.listPullRequestFiles(owner, repo, number, paged),
         ),
       listChecks: (owner, repo, number, options) =>
-        this.#paged("pullRequests.listChecks", [owner, repo, number], options, (paged) => {
-          this.#assertCheckPage(paged);
-          return this.listPullRequestChecks(owner, repo, number, paged);
-        }),
+        this.#paged(
+          { listing: "pullRequests.listChecks", subject: [owner, repo, number], options },
+          (paged) => {
+            this.#assertCheckPage(paged);
+            return this.listPullRequestChecks(owner, repo, number, paged);
+          },
+        ),
       listReviews: (owner, repo, number, options) =>
-        this.#paged("pullRequests.listReviews", [owner, repo, number], options, (paged) =>
-          this.listPullRequestReviews(owner, repo, number, paged),
+        this.#paged(
+          { listing: "pullRequests.listReviews", subject: [owner, repo, number], options },
+          (paged) => this.listPullRequestReviews(owner, repo, number, paged),
         ),
       getReview: (owner, repo, number, reviewId) =>
         this.getPullRequestReview(owner, repo, number, reviewId),
@@ -476,8 +518,9 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         if (query.trim() === "") {
           throw this.#refusal("Pull-request search query must not be empty");
         }
-        return this.#paged("pullRequests.search", [owner, repo, query], options, (paged) =>
-          this.searchPullRequests(owner, repo, query, paged),
+        return this.#paged(
+          { listing: "pullRequests.search", subject: [owner, repo, query], options },
+          (paged) => this.searchPullRequests(owner, repo, query, paged),
         );
       },
       get: async (owner, repo, number, options) => {
@@ -501,10 +544,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         return this.mergePullRequest(owner, repo, number, input);
       },
       listComments: async (owner, repo, number, options) => {
-        return this.#paged("pullRequests.listComments", [owner, repo, number], options, (paged) => {
-          this.#assertListPage(paged);
-          return this.listPullRequestComments(owner, repo, number, paged);
-        });
+        return this.#paged(
+          { listing: "pullRequests.listComments", subject: [owner, repo, number], options },
+          (paged) => {
+            this.#assertListPage(paged);
+            return this.listPullRequestComments(owner, repo, number, paged);
+          },
+        );
       },
       getComment: (owner, repo, number, commentId) =>
         this.getPullRequestComment(owner, repo, number, commentId),
@@ -514,9 +560,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       },
       listReactions: async (owner, repo, number, options) => {
         return this.#paged(
-          "pullRequests.listReactions",
-          [owner, repo, number],
-          options,
+          { listing: "pullRequests.listReactions", subject: [owner, repo, number], options },
           (paged) => {
             this.#assertListPage(paged);
             return this.listPullRequestReactions(owner, repo, number, paged);
@@ -530,7 +574,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.threads = {
       list: (owner, repo, number, options) =>
-        this.#paged("threads.list", [owner, repo, number], options, (paged) =>
+        this.#paged({ listing: "threads.list", subject: [owner, repo, number], options }, (paged) =>
           this.listThreads(owner, repo, number, paged),
         ),
       get: (owner, repo, number, threadId) => this.getThread(owner, repo, number, threadId),
@@ -544,11 +588,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
 
   /** Reads the page a cursor names and writes the next; URLs stay on {@link cursorOrigin}. */
   async #paged<O extends { cursor?: string }, R extends PageResult<unknown>>(
-    listing: string,
-    subject: readonly unknown[],
-    options: O | undefined,
+    source: Listing<O>,
     read: (positioned: Positioned<O>) => Promise<Continued<R> | Numbered<R>>,
   ): Promise<R> {
+    const { listing, subject, options } = source;
     if (options !== undefined && Object.hasOwn(options, "page")) {
       throw this.#refusal("page is gone: pass the nextCursor of the previous page as cursor");
     }
@@ -557,14 +600,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     const at =
       cursor === undefined
         ? undefined
-        : decodeCursor(
-            cursor,
+        : decodeCursor(cursor, {
             listing,
-            this.cursorOrigin(),
-            this.#platform,
+            origin: this.cursorOrigin(),
+            platform: this.#platform,
             scope,
-            this.cursorKey(),
-          );
+            key: this.cursorKey(),
+          });
     const page = at !== undefined && "page" in at ? at.page : undefined;
     const positioned = {
       ...rest,
@@ -576,7 +618,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     const position: PagePosition | undefined =
       next ?? (hasNextPage ? { page: nextPage ?? (page ?? 1) + 1 } : undefined);
     if (position === undefined) return result as unknown as R;
-    const nextCursor = encodeCursor(listing, position, scope, this.cursorKey());
+    const nextCursor = encodeCursor(position, { listing, scope, key: this.cursorKey() });
     return { ...result, nextCursor } as unknown as R;
   }
 
@@ -595,8 +637,11 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   }
 
   #assertCheckPage(options: WithPage<ListPullRequestChecksOptions> | undefined): void {
-    const page = paginationPageValue(options?.page, 1, "page", this.#platform);
-    const perPage = paginationPageValue(options?.perPage, 30, "perPage", this.#platform, 100);
+    const page = paginationPageValue(options?.page, { ...PAGE, platform: this.#platform });
+    const perPage = paginationPageValue(options?.perPage, {
+      ...PER_PAGE,
+      platform: this.#platform,
+    });
     if (!Number.isSafeInteger(page * perPage + 1)) {
       throw this.#refusal("Check pagination exceeds the safe integer range");
     }
@@ -604,8 +649,8 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
 
   /** Gitea cuts discussions and comment reactions locally, where a zero page never ends. */
   #assertListPage(options: WithPage<ListCommentOptions> | undefined): void {
-    paginationPageValue(options?.page, 1, "page", this.#platform);
-    paginationPageValue(options?.perPage, 30, "perPage", this.#platform, 100);
+    paginationPageValue(options?.page, { ...PAGE, platform: this.#platform });
+    paginationPageValue(options?.perPage, { ...PER_PAGE, platform: this.#platform });
   }
 
   #unsupported(message: string): Promise<never> {

@@ -9,47 +9,59 @@ describe("page cursors", () => {
     const url = `${origin}/api/v4/projects/${"group%2F".repeat(200)}repo/repository/commits?ref_name=${"x".repeat(400)}&page=2`;
     const scope = cursorScope(["group", "repo", { ref: "main" }]);
 
-    const cursor = encodeCursor("commits.list", { url }, scope);
+    const cursor = encodeCursor({ url }, { listing: "commits.list", scope });
 
     expect(cursor.length).toBeGreaterThan(2048);
-    expect(decodeCursor(cursor, "commits.list", origin, "gitlab", scope)).toEqual({ url });
+    expect(
+      decodeCursor(cursor, { listing: "commits.list", origin, platform: "gitlab", scope }),
+    ).toEqual({ url });
   });
 
   it("refuses a cursor from another repository or other filters of the same listing", () => {
     const cursor = encodeCursor(
-      "issues.list",
       { url: `${origin}/api/v1/repos/a/one/issues?page=2` },
-      cursorScope(["a", "one", { state: "open" }]),
+      { listing: "issues.list", scope: cursorScope(["a", "one", { state: "open" }]) },
     );
 
     for (const scope of [
       cursorScope(["b", "two", { state: "open" }]),
       cursorScope(["a", "one", { state: "closed" }]),
     ]) {
-      expect(() => decodeCursor(cursor, "issues.list", origin, "gitea", scope)).toThrow(
-        expect.objectContaining({ status: 400 }),
-      );
+      expect(() =>
+        decodeCursor(cursor, { listing: "issues.list", origin, platform: "gitea", scope }),
+      ).toThrow(expect.objectContaining({ status: 400 }));
     }
   });
 
   it("takes back only a cursor signed with its own key", () => {
     const key = new Uint8Array(32).fill(7);
     const url = `${origin}/api/v1/repos/a/one/issues?page=2`;
-    const signed = encodeCursor("issues.list", { url }, "s", key);
-    const forged = encodeCursor("issues.list", { url: `${origin}/api/v1/user/emails` }, "s");
+    const signed = encodeCursor({ url }, { listing: "issues.list", scope: "s", key });
+    const forged = encodeCursor(
+      { url: `${origin}/api/v1/user/emails` },
+      { listing: "issues.list", scope: "s" },
+    );
     const tampered = Buffer.from(
       Buffer.from(signed, "base64url").toString().replace("page=2", "page=3"),
     ).toString("base64url");
 
-    expect(decodeCursor(signed, "issues.list", origin, "gitea", "s", key)).toEqual({ url });
+    expect(
+      decodeCursor(signed, { listing: "issues.list", origin, platform: "gitea", scope: "s", key }),
+    ).toEqual({ url });
     for (const cursor of [
       forged,
       tampered,
-      encodeCursor("issues.list", { url }, "s", new Uint8Array(32)),
+      encodeCursor({ url }, { listing: "issues.list", scope: "s", key: new Uint8Array(32) }),
     ]) {
-      expect(() => decodeCursor(cursor, "issues.list", origin, "gitea", "s", key)).toThrow(
-        expect.objectContaining({ status: 400 }),
-      );
+      expect(() =>
+        decodeCursor(cursor, {
+          listing: "issues.list",
+          origin,
+          platform: "gitea",
+          scope: "s",
+          key,
+        }),
+      ).toThrow(expect.objectContaining({ status: 400 }));
     }
   });
 

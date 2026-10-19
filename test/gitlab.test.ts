@@ -340,10 +340,14 @@ describe("GitLabProvider", () => {
       const result = await gl.code.search("Provider", {
         owner: "gitlab-org",
         repo: "gitlab-foss",
-        cursor: cursorFor("code.search", 2, ["Provider"], {
-          owner: "gitlab-org",
-          repo: "gitlab-foss",
-          perPage: 1,
+        cursor: cursorFor("code.search", {
+          page: 2,
+          subject: ["Provider"],
+          filters: {
+            owner: "gitlab-org",
+            repo: "gitlab-foss",
+            perPage: 1,
+          },
         }),
         perPage: 1,
       });
@@ -363,10 +367,14 @@ describe("GitLabProvider", () => {
         ],
         totalCount: 12,
         incomplete: false,
-        nextCursor: cursorFor("code.search", 3, ["Provider"], {
-          owner: "gitlab-org",
-          repo: "gitlab-foss",
-          perPage: 1,
+        nextCursor: cursorFor("code.search", {
+          page: 3,
+          subject: ["Provider"],
+          filters: {
+            owner: "gitlab-org",
+            repo: "gitlab-foss",
+            perPage: 1,
+          },
         }),
       });
     });
@@ -500,12 +508,11 @@ describe("GitLabProvider", () => {
           },
         ],
         totalCount: 2,
-        nextCursor: cursorFor(
-          "contributionTemplates.list",
-          2,
-          ["gitlab-org", "gitlab-foss", "issue"],
-          { perPage: 1 },
-        ),
+        nextCursor: cursorFor("contributionTemplates.list", {
+          page: 2,
+          subject: ["gitlab-org", "gitlab-foss", "issue"],
+          filters: { perPage: 1 },
+        }),
       });
     });
 
@@ -617,9 +624,12 @@ describe("GitLabProvider", () => {
 
       const result = await gl.repos.list("parent/child", { perPage: 10 });
 
-      expect(forge.repos.byOwner).toHaveBeenCalledWith(repoRef(forge, "parent/child", ""), {
-        perPage: 10,
-      });
+      expect(forge.repos.byOwner).toHaveBeenCalledWith(
+        repoRef(forge, { owner: "parent/child", name: "" }),
+        {
+          perPage: 10,
+        },
+      );
       expect(result.totalCount).toBe(42);
       expect(result.items[0]).toMatchObject({
         id: "278964",
@@ -654,7 +664,9 @@ describe("GitLabProvider", () => {
 
       await gl.repos.get("gitlab-org", "gitlab-foss");
 
-      expect(forge.repos.get).toHaveBeenCalledWith(repoRef(forge, "gitlab-org", "gitlab-foss"));
+      expect(forge.repos.get).toHaveBeenCalledWith(
+        repoRef(forge, { owner: "gitlab-org", name: "gitlab-foss" }),
+      );
     });
 
     it("preserves nested groups while encoding each project path segment", async () => {
@@ -662,7 +674,9 @@ describe("GitLabProvider", () => {
 
       await gl.repos.get("parent/child", "project name");
 
-      expect(forge.repos.get).toHaveBeenCalledWith(repoRef(forge, "parent/child", "project name"));
+      expect(forge.repos.get).toHaveBeenCalledWith(
+        repoRef(forge, { owner: "parent/child", name: "project name" }),
+      );
     });
 
     it("returns mapped repository", async () => {
@@ -927,7 +941,11 @@ describe("GitLabProvider", () => {
       expect(result).toEqual({
         items: [{ name: "v1.121.0", sha: "4d447cc6c19858928884626d802c8f7b7c5f799e" }],
         totalCount: 157,
-        nextCursor: cursorFor("repos.listTags", 2, ["gitlab-org", "cli"], { perPage: 1 }),
+        nextCursor: cursorFor("repos.listTags", {
+          page: 2,
+          subject: ["gitlab-org", "cli"],
+          filters: { perPage: 1 },
+        }),
       });
       expect(mocks.client).toHaveBeenCalledTimes(1);
     });
@@ -1178,7 +1196,7 @@ describe("GitLabProvider", () => {
         {
           forge: "gitlab",
           instance: "gitlab.com",
-          repo: repoRef(forge, "gitlab-org", "gitlab-foss"),
+          repo: repoRef(forge, { owner: "gitlab-org", name: "gitlab-foss" }),
           id: "9001",
         },
         { perPage: 10 },
@@ -1252,10 +1270,13 @@ describe("GitLabProvider", () => {
         perPage: 10,
       });
 
-      expect(forge.ci.runs).toHaveBeenCalledWith(repoRef(forge, "gitlab-org", "gitlab-foss"), {
-        perPage: 10,
-        branch: "main",
-      });
+      expect(forge.ci.runs).toHaveBeenCalledWith(
+        repoRef(forge, { owner: "gitlab-org", name: "gitlab-foss" }),
+        {
+          perPage: 10,
+          branch: "main",
+        },
+      );
       expect(result).toEqual({
         items: [
           {
@@ -1307,13 +1328,16 @@ describe("GitLabProvider", () => {
         perPage: 10,
       });
 
-      expect(forge.commits.list).toHaveBeenCalledWith(repoRef(forge, "gitlab-org", "gitlab-foss"), {
-        perPage: 10,
-        ref: "main",
-        path: "src/provider.ts",
-        since: new Date("2026-08-01T00:00:00Z"),
-        until: new Date("2026-08-29T23:59:59Z"),
-      });
+      expect(forge.commits.list).toHaveBeenCalledWith(
+        repoRef(forge, { owner: "gitlab-org", name: "gitlab-foss" }),
+        {
+          perPage: 10,
+          ref: "main",
+          path: "src/provider.ts",
+          since: new Date("2026-08-01T00:00:00Z"),
+          until: new Date("2026-08-29T23:59:59Z"),
+        },
+      );
       expect(result).toEqual({
         items: [
           {
@@ -1388,12 +1412,11 @@ describe("GitLabProvider", () => {
       expect(result.items.map(({ sha }) => sha)).toEqual(["a", "b"]);
       expect(result).toMatchObject({
         totalCount: 3,
-        nextCursor: cursorFor(
-          "commits.compare",
-          2,
-          ["gitlab-org", "cli", "v1.50.0", "release/v1.51"],
-          { perPage: 2 },
-        ),
+        nextCursor: cursorFor("commits.compare", {
+          page: 2,
+          subject: ["gitlab-org", "cli", "v1.50.0", "release/v1.51"],
+          filters: { perPage: 2 },
+        }),
         status: null,
         aheadBy: 3,
         behindBy: null,
@@ -1414,8 +1437,12 @@ describe("GitLabProvider", () => {
       });
 
       const result = await gl.commits.compare("gitlab-org", "cli", "v1.50.0", "v1.51.0", {
-        cursor: cursorFor("commits.compare", 2, ["gitlab-org", "cli", "v1.50.0", "v1.51.0"], {
-          perPage: 2,
+        cursor: cursorFor("commits.compare", {
+          page: 2,
+          subject: ["gitlab-org", "cli", "v1.50.0", "v1.51.0"],
+          filters: {
+            perPage: 2,
+          },
         }),
         perPage: 2,
       });
@@ -1597,11 +1624,14 @@ describe("GitLabProvider", () => {
 
       const result = await gl.issues.list("gitlab-org", "gitlab-foss");
 
-      expect(forge.threads.list).toHaveBeenCalledWith(repoRef(forge, "gitlab-org", "gitlab-foss"), {
-        perPage: 30,
-        kind: "issue",
-        state: "all",
-      });
+      expect(forge.threads.list).toHaveBeenCalledWith(
+        repoRef(forge, { owner: "gitlab-org", name: "gitlab-foss" }),
+        {
+          perPage: 30,
+          kind: "issue",
+          state: "all",
+        },
+      );
       expect(result.items).toHaveLength(1);
       expect(result.items[0]?.assignees).toEqual([{ login: "triager" }]);
       expect(result.items[0]?.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss/-/issues/15");
@@ -1612,7 +1642,7 @@ describe("GitLabProvider", () => {
 
       await gl.issues.list("o", "r", { state: "open" });
 
-      expect(forge.threads.list).toHaveBeenCalledWith(repoRef(forge, "o", "r"), {
+      expect(forge.threads.list).toHaveBeenCalledWith(repoRef(forge, { owner: "o", name: "r" }), {
         perPage: 30,
         kind: "issue",
         state: "open",
@@ -1630,9 +1660,13 @@ describe("GitLabProvider", () => {
 
       const result = await gl.issues.search("gitlab-org", "gitlab-foss", "runner timeout", {
         state: "open",
-        cursor: cursorFor("issues.search", 2, ["gitlab-org", "gitlab-foss", "runner timeout"], {
-          state: "open",
-          perPage: 1,
+        cursor: cursorFor("issues.search", {
+          page: 2,
+          subject: ["gitlab-org", "gitlab-foss", "runner timeout"],
+          filters: {
+            state: "open",
+            perPage: 1,
+          },
         }),
         perPage: 1,
       });
@@ -1649,9 +1683,13 @@ describe("GitLabProvider", () => {
         items: [expect.objectContaining({ number: 15 })],
         incomplete: false,
         totalCount: 7,
-        nextCursor: cursorFor("issues.search", 3, ["gitlab-org", "gitlab-foss", "runner timeout"], {
-          state: "open",
-          perPage: 1,
+        nextCursor: cursorFor("issues.search", {
+          page: 3,
+          subject: ["gitlab-org", "gitlab-foss", "runner timeout"],
+          filters: {
+            state: "open",
+            perPage: 1,
+          },
         }),
       });
     });
@@ -1747,7 +1785,11 @@ describe("GitLabProvider", () => {
       ]);
       expect(result.nextCursor).toBeDefined();
       expect(result.nextCursor).toBe(
-        cursorFor("issues.listComments", 2, ["gitlab-org", "gitlab-foss", 7], {}),
+        cursorFor("issues.listComments", {
+          page: 2,
+          subject: ["gitlab-org", "gitlab-foss", 7],
+          filters: {},
+        }),
       );
       expect(result.totalCount).toBeUndefined();
     });
@@ -1882,8 +1924,12 @@ describe("GitLabProvider", () => {
       });
 
       const result = await gl.pullRequests.listFiles("gitlab-org", "gitlab-foss", 33, {
-        cursor: cursorFor("pullRequests.listFiles", 2, ["gitlab-org", "gitlab-foss", 33], {
-          perPage: 2,
+        cursor: cursorFor("pullRequests.listFiles", {
+          page: 2,
+          subject: ["gitlab-org", "gitlab-foss", 33],
+          filters: {
+            perPage: 2,
+          },
         }),
         perPage: 2,
       });
@@ -1909,8 +1955,12 @@ describe("GitLabProvider", () => {
           },
         ],
         totalCount: 4,
-        nextCursor: cursorFor("pullRequests.listFiles", 3, ["gitlab-org", "gitlab-foss", 33], {
-          perPage: 2,
+        nextCursor: cursorFor("pullRequests.listFiles", {
+          page: 3,
+          subject: ["gitlab-org", "gitlab-foss", 33],
+          filters: {
+            perPage: 2,
+          },
         }),
       });
     });
@@ -1927,8 +1977,12 @@ describe("GitLabProvider", () => {
       mocks.client.mockResolvedValueOnce({ ...glPipeline, name: "verify" });
 
       const result = await gl.commits.listChecks("gitlab-org", "gitlab-foss", "feat/checks", {
-        cursor: cursorFor("commits.listChecks", 2, ["gitlab-org", "gitlab-foss", "feat/checks"], {
-          perPage: 1,
+        cursor: cursorFor("commits.listChecks", {
+          page: 2,
+          subject: ["gitlab-org", "gitlab-foss", "feat/checks"],
+          filters: {
+            perPage: 1,
+          },
         }),
         perPage: 1,
       });
@@ -1951,12 +2005,11 @@ describe("GitLabProvider", () => {
           },
         ],
         totalCount: 5,
-        nextCursor: cursorFor(
-          "commits.listChecks",
-          3,
-          ["gitlab-org", "gitlab-foss", "feat/checks"],
-          { perPage: 1 },
-        ),
+        nextCursor: cursorFor("commits.listChecks", {
+          page: 3,
+          subject: ["gitlab-org", "gitlab-foss", "feat/checks"],
+          filters: { perPage: 1 },
+        }),
       });
     });
 
@@ -2043,8 +2096,12 @@ describe("GitLabProvider", () => {
       );
       expect(result).toMatchObject({
         items: [expect.objectContaining({ id: "9001" })],
-        nextCursor: cursorFor("pullRequests.listChecks", 2, ["gitlab-org", "gitlab-foss", 33], {
-          perPage: 1,
+        nextCursor: cursorFor("pullRequests.listChecks", {
+          page: 2,
+          subject: ["gitlab-org", "gitlab-foss", 33],
+          filters: {
+            perPage: 1,
+          },
         }),
       });
     });
@@ -2347,8 +2404,12 @@ describe("GitLabProvider", () => {
       mocks.client.mockResolvedValueOnce(approvals).mockResolvedValueOnce(reviewers);
 
       const result = await gl.pullRequests.listReviews("gitlab-org", "gitlab-foss", 33, {
-        cursor: cursorFor("pullRequests.listReviews", 2, ["gitlab-org", "gitlab-foss", 33], {
-          perPage: 3,
+        cursor: cursorFor("pullRequests.listReviews", {
+          page: 2,
+          subject: ["gitlab-org", "gitlab-foss", 33],
+          filters: {
+            perPage: 3,
+          },
         }),
         perPage: 3,
       });
@@ -2372,8 +2433,12 @@ describe("GitLabProvider", () => {
 
       expect(result.items.map((review) => review.id)).toEqual(["1758950", "21826781", "2293"]);
       expect(result).toMatchObject({
-        nextCursor: cursorFor("pullRequests.listReviews", 2, ["gitlab-org", "gitlab-foss", 33], {
-          perPage: 3,
+        nextCursor: cursorFor("pullRequests.listReviews", {
+          page: 2,
+          subject: ["gitlab-org", "gitlab-foss", 33],
+          filters: {
+            perPage: 3,
+          },
         }),
       });
     });
@@ -2420,9 +2485,12 @@ describe("GitLabProvider", () => {
 
       const result = await gl.releases.list("gitlab-org", "cli", { perPage: 2 });
 
-      expect(forge.releases.list).toHaveBeenCalledWith(repoRef(forge, "gitlab-org", "cli"), {
-        perPage: 2,
-      });
+      expect(forge.releases.list).toHaveBeenCalledWith(
+        repoRef(forge, { owner: "gitlab-org", name: "cli" }),
+        {
+          perPage: 2,
+        },
+      );
       expect(result).toEqual({
         items: [release, { ...release, id: "v1.117.0", tag: "v1.117.0", name: "", body: "" }],
         totalCount: 157,
@@ -2438,7 +2506,7 @@ describe("GitLabProvider", () => {
       const result = await gl.releases.get("gitlab-org", "cli", "release/1.118");
 
       expect(forge.releases.getByTag).toHaveBeenCalledWith(
-        repoRef(forge, "gitlab-org", "cli"),
+        repoRef(forge, { owner: "gitlab-org", name: "cli" }),
         "release/1.118",
       );
       expect(result).toEqual({
@@ -2460,19 +2528,22 @@ describe("GitLabProvider", () => {
         ref: "main",
       });
 
-      expect(forge.releases.create).toHaveBeenCalledWith(repoRef(forge, "gitlab-org", "cli"), {
-        tag: "v1.118.0",
-        name: "v1.118.0",
-        body: "## Changelog",
-        target: "main",
-      });
+      expect(forge.releases.create).toHaveBeenCalledWith(
+        repoRef(forge, { owner: "gitlab-org", name: "cli" }),
+        {
+          tag: "v1.118.0",
+          name: "v1.118.0",
+          body: "## Changelog",
+          target: "main",
+        },
+      );
     });
 
     it("updates a release by tag with PUT, slash encoded", async () => {
       const ref = {
         forge: "gitlab",
         instance: "gitlab.com",
-        repo: repoRef(forge, "gitlab-org", "cli"),
+        repo: repoRef(forge, { owner: "gitlab-org", name: "cli" }),
         id: "release/1.118",
         tag: "release/1.118",
       };
@@ -2533,12 +2604,11 @@ describe("GitLabProvider", () => {
 
       const result = await gl.pullRequests.search("gitlab-org", "gitlab-foss", "runner timeout", {
         state: "closed",
-        cursor: cursorFor(
-          "pullRequests.search",
-          2,
-          ["gitlab-org", "gitlab-foss", "runner timeout"],
-          { state: "closed", perPage: 1 },
-        ),
+        cursor: cursorFor("pullRequests.search", {
+          page: 2,
+          subject: ["gitlab-org", "gitlab-foss", "runner timeout"],
+          filters: { state: "closed", perPage: 1 },
+        }),
         perPage: 1,
       });
 
@@ -2560,12 +2630,11 @@ describe("GitLabProvider", () => {
         ],
         incomplete: false,
         totalCount: 7,
-        nextCursor: cursorFor(
-          "pullRequests.search",
-          3,
-          ["gitlab-org", "gitlab-foss", "runner timeout"],
-          { state: "closed", perPage: 1 },
-        ),
+        nextCursor: cursorFor("pullRequests.search", {
+          page: 3,
+          subject: ["gitlab-org", "gitlab-foss", "runner timeout"],
+          filters: { state: "closed", perPage: 1 },
+        }),
       });
       expect(result.items[0]).not.toHaveProperty("sourceBranch");
       expect(result.items[0]).not.toHaveProperty("headSha");
@@ -3090,8 +3159,12 @@ describe("GitLabProvider", () => {
       });
 
       const result = await gl.pullRequests.listComments("gitlab-org", "gitlab-foss", 8, {
-        cursor: cursorFor("pullRequests.listComments", 2, ["gitlab-org", "gitlab-foss", 8], {
-          perPage: 10,
+        cursor: cursorFor("pullRequests.listComments", {
+          page: 2,
+          subject: ["gitlab-org", "gitlab-foss", 8],
+          filters: {
+            perPage: 10,
+          },
         }),
         perPage: 10,
       });
@@ -3126,7 +3199,7 @@ describe("GitLabProvider", () => {
   });
 
   describe("reactions", () => {
-    const glAward = (id: number, name: string, created_at: string) => ({
+    const glAward = (id: number, { name, created_at }: { name: string; created_at: string }) => ({
       id,
       name,
       user: { id: 33467498, username: "secresearch2026x", state: "active" },
@@ -3141,12 +3214,12 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.rawFetch.mockResolvedValueOnce({
         data: [
-          glAward(41959775, "thumbsup", "2026-02-05T18:02:26.874Z"),
-          glAward(41977501, "thumbsdown", "2026-02-05T23:17:54.303Z"),
-          glAward(41977502, "smile", "2026-02-05T23:17:55.090Z"),
-          glAward(41977503, "tada", "2026-02-05T23:17:55.995Z"),
-          glAward(41977504, "eyes", "2026-02-05T23:17:57.340Z"),
-          glAward(41977505, "fire", "2026-02-05T23:17:58.020Z"),
+          glAward(41959775, { name: "thumbsup", created_at: "2026-02-05T18:02:26.874Z" }),
+          glAward(41977501, { name: "thumbsdown", created_at: "2026-02-05T23:17:54.303Z" }),
+          glAward(41977502, { name: "smile", created_at: "2026-02-05T23:17:55.090Z" }),
+          glAward(41977503, { name: "tada", created_at: "2026-02-05T23:17:55.995Z" }),
+          glAward(41977504, { name: "eyes", created_at: "2026-02-05T23:17:57.340Z" }),
+          glAward(41977505, { name: "fire", created_at: "2026-02-05T23:17:58.020Z" }),
         ],
         headers: glHeaders({ nextPage: "2", total: "8" }),
       });
@@ -3173,8 +3246,12 @@ describe("GitLabProvider", () => {
       });
       expect(result).toMatchObject({
         totalCount: 8,
-        nextCursor: cursorFor("issues.listReactions", 2, ["gitlab-org", "gitlab", 1], {
-          perPage: 6,
+        nextCursor: cursorFor("issues.listReactions", {
+          page: 2,
+          subject: ["gitlab-org", "gitlab", 1],
+          filters: {
+            perPage: 6,
+          },
         }),
       });
     });
@@ -3184,7 +3261,11 @@ describe("GitLabProvider", () => {
       mocks.rawFetch.mockResolvedValueOnce({ data: [], headers: glHeaders({ nextPage: "" }) });
 
       const result = await gl.pullRequests.listReactions("gitlab-org", "gitlab", 8, {
-        cursor: cursorFor("pullRequests.listReactions", 2, ["gitlab-org", "gitlab", 8], {}),
+        cursor: cursorFor("pullRequests.listReactions", {
+          page: 2,
+          subject: ["gitlab-org", "gitlab", 8],
+          filters: {},
+        }),
       });
 
       expect(mocks.rawFetch).toHaveBeenCalledWith(
@@ -3198,7 +3279,7 @@ describe("GitLabProvider", () => {
     it("reads a note's award emoji under its merge request", async () => {
       mockProjectResolve(278964);
       mocks.rawFetch.mockResolvedValueOnce({
-        data: [glAward(1, "heart", "2026-02-05T23:17:55.995Z")],
+        data: [glAward(1, { name: "heart", created_at: "2026-02-05T23:17:55.995Z" })],
         headers: glHeaders(),
       });
 
@@ -3214,7 +3295,7 @@ describe("GitLabProvider", () => {
     it("keeps a name that only looks like an object key", async () => {
       mockProjectResolve(278964);
       mocks.rawFetch.mockResolvedValueOnce({
-        data: [glAward(1, "constructor", "2026-02-05T23:17:55.995Z")],
+        data: [glAward(1, { name: "constructor", created_at: "2026-02-05T23:17:55.995Z" })],
         headers: glHeaders(),
       });
 

@@ -20,7 +20,7 @@ export function assertRepositoryContentsOptions(
   options: RepositoryContentsOptions = {},
   platform?: string,
 ): TextWindow {
-  const window = readTextWindow("File", options, platform);
+  const window = readTextWindow(options, { subject: "File", platform });
   if (options.ref !== undefined && options.ref.length === 0) {
     throw new ForgesError("File ref must not be empty", 400, platform);
   }
@@ -93,36 +93,35 @@ function decodeText(bytes: Uint8Array): string | null {
   }
 }
 
+/** Which file a platform served: its path and the blob or commit SHA it reported. */
+export interface RepositoryFileRef {
+  path: string;
+  sha: string;
+}
+
 /** Decode base64 file content and cut one bounded slice of its text. */
 export function buildRepositoryFile(
-  path: string,
-  sha: string,
-  base64: string,
+  file: RepositoryFileRef & { base64: string },
   options: RepositoryContentsOptions = {},
 ): RepositoryFileContents {
-  return buildRepositoryFileFromBytes(
-    path,
-    sha,
-    Buffer.from(base64.replaceAll("\n", ""), "base64"),
-    options,
-  );
+  const { path, sha, base64 } = file;
+  const bytes = Buffer.from(base64.replaceAll("\n", ""), "base64");
+  return buildRepositoryFileFromBytes({ path, sha, bytes }, options);
 }
 
 /** Cut one bounded slice of a file a platform served as raw bytes. */
 export function buildRepositoryFileFromBytes(
-  path: string,
-  sha: string,
-  bytes: Uint8Array,
+  file: RepositoryFileRef & { bytes: Uint8Array },
   options: RepositoryContentsOptions = {},
 ): RepositoryFileContents {
+  const { path, sha, bytes } = file;
   const window = assertRepositoryContentsOptions(options);
   assertFileSize(path, bytes.length);
   const text = decodeText(bytes);
-  const { end, nextOffset, truncated } = textWindowEnd(
-    text?.length ?? 0,
-    window,
-    "File offset is past the end of the file",
-  );
+  const { end, nextOffset, truncated } = textWindowEnd(window, {
+    length: text?.length ?? 0,
+    pastEnd: "File offset is past the end of the file",
+  });
   return {
     type: "file",
     path,

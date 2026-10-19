@@ -29,11 +29,11 @@ export default async function forgesOmpExtension(pi: ExtensionAPI): Promise<void
   function statusRenderers(name: string, title: string): OmpRenderers {
     return {
       renderCall(args: unknown, options: RenderOptions, theme: StatusTheme) {
-        return new Text(renderToolCall(name, title, args, options, theme), 0, 0);
+        return new Text(renderToolCall({ name, label: title, args, options }, theme), 0, 0);
       },
       renderResult(result: RenderedToolResult, options: RenderOptions, theme: StatusTheme) {
         return new Text(
-          renderToolResult(name, result, result.isError === true, options, theme),
+          renderToolResult({ name, result, isError: result.isError === true, options }, theme),
           0,
           0,
         );
