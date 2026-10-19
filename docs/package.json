@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@agntn/credentials": "0.0.2",
-    "@agntn/hashes": "0.6.3",
+    "@agntn/hashes": "0.6.7",
     "better-sqlite3": "12.11.1",
     "docus": "5.13.0",
     "nuxt": "4.5.2",
