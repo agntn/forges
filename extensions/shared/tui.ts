@@ -126,10 +126,11 @@ function callMeta(
     );
   }
 
-  for (const key of ["platform", "kind", "state", "branch", "ref", "page", "perPage"]) {
+  for (const key of ["platform", "kind", "state", "branch", "ref", "perPage"]) {
     const value = scalar(record, key);
     if (value) meta.push(`${key} ${sanitizeTerminalText(value, META_WIDTH)}`);
   }
+  if (scalar(record, "cursor")) meta.push("next page");
   if (record.draft === true) meta.push("draft");
   return meta.slice(0, META_LIMIT);
 }
@@ -216,10 +217,7 @@ function resultMeta(details: unknown): string[] {
   if (payload.merged === true) meta.push("merged");
   else if (payload.draft === true) meta.push("draft");
   if (payload.incomplete === true) meta.push("partial");
-  if (payload.hasNextPage === true) {
-    const nextPage = scalar(payload, "nextPage");
-    meta.push(nextPage ? `next page ${sanitizeTerminalText(nextPage)}` : "more pages");
-  }
+  if (scalar(payload, "nextCursor")) meta.push("more pages");
 
   const platform = scalar(details, "platform");
   if (platform && meta.length === 0) meta.push(sanitizeTerminalText(platform, META_WIDTH));

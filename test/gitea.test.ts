@@ -29,7 +29,9 @@ function textStream(...chunks: string[]): ReadableStream<Uint8Array> {
 }
 
 vi.mock("../src/http.ts", () => ({
-  createHttpClient: vi.fn(() => mockClient),
+  toFetchError: (error: unknown) => error,
+  forgeFetch: vi.fn(),
+  createForgeClient: vi.fn(() => mockClient),
   rawFetch: vi.fn(async (_client: unknown, _url: string, _opts?: unknown) => ({
     ...mockRawResponse,
   })),
@@ -42,14 +44,36 @@ vi.mock("../src/cache.ts", () => ({
   ),
 }));
 
+vi.mock("forges/gitea", async () => {
+  const { forgeOptions, sharedForge } = await import("./support/forge.ts");
+  return {
+    gitea: (options: unknown) => {
+      forgeOptions.push(options);
+      return sharedForge("gitea", "gitea.com");
+    },
+  };
+});
+
+vi.mock("forges/forgejo", async () => {
+  const { forgeOptions, sharedForge } = await import("./support/forge.ts");
+  return {
+    forgejo: (options: unknown) => {
+      forgeOptions.push(options);
+      return sharedForge("forgejo", "codeberg.org");
+    },
+  };
+});
+
 // Import mocked modules to control them
 import { rawFetch } from "../src/http.ts";
-import { createHttpClient } from "../src/http.ts";
 import { cachedFetch } from "../src/cache.ts";
+import { cursorFor } from "./support/cursor.ts";
+import { forgeOptions, listing, raws, repoRef, sharedForge } from "./support/forge.ts";
 import { FetchError } from "../src/errors.ts";
 
+const forge = sharedForge("gitea", "gitea.com");
+
 const mockedRawFetch = vi.mocked(rawFetch);
-const mockedCreateHttpClient = vi.mocked(createHttpClient);
 const mockedCachedFetch = vi.mocked(cachedFetch);
 
 // -- Gitea API fixture data --
@@ -231,77 +255,66 @@ describe("Gitea Provider", () => {
   });
 
   describe("provider setup", () => {
-    it("defaults to the public API base URL", () => {
-      expect(mockedCreateHttpClient).toHaveBeenCalledWith(
-        expect.objectContaining({ baseURL: "https://gitea.com/api/v1" }),
-      );
-    });
+    async function openedWith(baseURL: string | undefined): Promise<unknown> {
+      forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo() });
+      await new GiteaProvider({ baseURL, token: "test-token" }).repos.get("o", "r");
+      return forgeOptions.at(-1);
+    }
 
-    it("defaults to the public API base URL when baseURL is empty", () => {
-      new GiteaProvider({ baseURL: "", token: "test-token" });
-
-      expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
-        expect.objectContaining({ baseURL: "https://gitea.com/api/v1" }),
-      );
-    });
-
-    it("appends /api/v1 for root instance URLs", () => {
-      new GiteaProvider({ baseURL: "https://codeberg.org", token: "test-token" });
-
-      expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
-        expect.objectContaining({ baseURL: "https://codeberg.org/api/v1" }),
-      );
-    });
-
-    it("appends /api/v1 for subpath instance URLs with trailing slash", () => {
-      new GiteaProvider({ baseURL: "https://codeberg.org/forgejo/", token: "test-token" });
-
-      expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
-        expect.objectContaining({ baseURL: "https://codeberg.org/forgejo/api/v1" }),
-      );
-    });
-
-    it("preserves already-prefixed api URLs", () => {
-      new GiteaProvider({ baseURL: "https://codeberg.org/api/v1", token: "test-token" });
-
-      expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
-        expect.objectContaining({ baseURL: "https://codeberg.org/api/v1" }),
-      );
-    });
-
-    it("preserves already-prefixed api URLs under a subpath", () => {
-      new GiteaProvider({ baseURL: "https://codeberg.org/forgejo/api/v1", token: "test-token" });
-
-      expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
-        expect.objectContaining({ baseURL: "https://codeberg.org/forgejo/api/v1" }),
-      );
-    });
-
-    it("does not treat api paths with extra trailing segments as already prefixed", () => {
-      new GiteaProvider({
-        baseURL: "https://codeberg.org/custom/api/v1/proxy",
-        token: "test-token",
+    it("opens Gitea on gitea.com with the token on the first request", async () => {
+      expect(await openedWith(undefined)).toMatchObject({
+        baseUrl: "https://gitea.com",
+        auth: { type: "token", token: "test-token" },
       });
+    });
 
-      expect(mockedCreateHttpClient).toHaveBeenLastCalledWith(
-        expect.objectContaining({ baseURL: "https://codeberg.org/custom/api/v1/proxy/api/v1" }),
-      );
+    it.each([
+      ["", "https://gitea.com"],
+      ["https://gitea.example.com", "https://gitea.example.com"],
+      ["https://gitea.example.com/forgejo/", "https://gitea.example.com/forgejo"],
+      ["https://gitea.example.com/api/v1", "https://gitea.example.com"],
+      ["https://gitea.example.com/forgejo/api/v1", "https://gitea.example.com/forgejo"],
+      [
+        "https://gitea.example.com/custom/api/v1/proxy",
+        "https://gitea.example.com/custom/api/v1/proxy",
+      ],
+    ])("reads %j as the instance root %j", async (baseURL, root) => {
+      expect(await openedWith(baseURL)).toMatchObject({ baseUrl: root });
+    });
+
+    it("opens Forgejo for Codeberg", async () => {
+      const codeberg = sharedForge("forgejo", "codeberg.org");
+      codeberg.repos.get.mockResolvedValueOnce({ raw: giteaRepo() });
+
+      await new GiteaProvider({ baseURL: "https://codeberg.org", token: "" }).repos.get("o", "r");
+
+      expect(codeberg.repos.get).toHaveBeenCalledOnce();
+      expect(forgeOptions.at(-1)).toMatchObject({
+        baseUrl: "https://codeberg.org",
+        auth: { type: "anonymous" },
+      });
     });
   });
 
   // --- repos ---
 
   describe("repos.list", () => {
-    it("returns mapped repositories", async () => {
-      mockedRawFetch.mockResolvedValueOnce({
-        data: [giteaRepo(), giteaRepo({ id: 101, name: "repo-2", full_name: "testowner/repo-2" })],
-        headers: makeHeaders(),
-        status: 200,
+    it("lists an owner's repositories through forges", async () => {
+      forge.repos.byOwner.mockReturnValueOnce(
+        listing({
+          items: raws(
+            giteaRepo(),
+            giteaRepo({ id: 101, name: "repo-2", full_name: "testowner/repo-2" }),
+          ),
+          total: 2,
+        }),
+      );
+
+      const result = await provider.repos.list("testowner", { perPage: 50 });
+
+      expect(forge.repos.byOwner).toHaveBeenCalledWith(repoRef(forge, "testowner", ""), {
+        perPage: 50,
       });
-
-      const result = await provider.repos.list("testowner");
-
-      expect(result.items).toHaveLength(2);
       expect(result.items[0]).toEqual({
         id: "100",
         name: "test-repo",
@@ -318,77 +331,20 @@ describe("Gitea Provider", () => {
         owner: { login: "testowner", avatarUrl: "https://gitea.com/avatars/1" },
       });
       expect(result.items[1].id).toBe("101");
+      expect(result.totalCount).toBe(2);
     });
 
-    it("uses limit param instead of per_page", async () => {
-      mockedRawFetch.mockResolvedValueOnce({
-        data: [],
-        headers: makeHeaders(),
-        status: 200,
-      });
-
-      await provider.repos.list("testowner", { perPage: 50 });
-
-      expect(mockedRawFetch).toHaveBeenCalledWith(expect.anything(), "/users/testowner/repos", {
-        query: { limit: "50" },
-      });
-    });
-
-    it("passes page parameter", async () => {
-      mockedRawFetch.mockResolvedValueOnce({
-        data: [],
-        headers: makeHeaders(),
-        status: 200,
-      });
-
-      await provider.repos.list("testowner", { page: 3, perPage: 10 });
-
-      expect(mockedRawFetch).toHaveBeenCalledWith(expect.anything(), "/users/testowner/repos", {
-        query: { page: "3", limit: "10" },
-      });
-    });
-
-    it("parses Link header for pagination", async () => {
-      mockedRawFetch.mockResolvedValueOnce({
-        data: [giteaRepo()],
-        headers: makeHeaders({ Link: linkHeader(2, 30) }),
-        status: 200,
-      });
+    it("hands the next page URL back as a cursor", async () => {
+      forge.repos.byOwner.mockReturnValueOnce(
+        listing({
+          items: raws(giteaRepo()),
+          cursor: { nextUrl: "https://gitea.com/api/v1/users/testowner/repos?page=2" },
+        }),
+      );
 
       const result = await provider.repos.list("testowner");
 
-      expect(result.hasNextPage).toBe(true);
-      expect(result.nextPage).toBe(2);
-    });
-
-    it("reads the next page from a relative Link and drops one it cannot read", async () => {
-      for (const [next, nextPage] of [
-        ["/api/v1/users/testowner/repos?page=2", 2],
-        ["https://gitea.com/api/v1/users/testowner/repos?page=abc", undefined],
-      ] as const) {
-        mockedRawFetch.mockResolvedValueOnce({
-          data: [giteaRepo()],
-          headers: makeHeaders({ Link: `<${next}>; rel="next"` }),
-          status: 200,
-        });
-
-        const result = await provider.repos.list("testowner");
-
-        expect(result).toMatchObject({ hasNextPage: true, nextPage });
-      }
-    });
-
-    it("handles empty results", async () => {
-      mockedRawFetch.mockResolvedValueOnce({
-        data: [],
-        headers: makeHeaders(),
-        status: 200,
-      });
-
-      const result = await provider.repos.list("testowner");
-
-      expect(result.items).toHaveLength(0);
-      expect(result.hasNextPage).toBe(false);
+      expect(result.nextCursor).toEqual(expect.any(String));
     });
   });
 
@@ -521,7 +477,7 @@ describe("Gitea Provider", () => {
 
   describe("repos.get", () => {
     it("returns a mapped repository", async () => {
-      mockClient.mockResolvedValueOnce(giteaRepo());
+      forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo() });
 
       const result = await provider.repos.get("testowner", "test-repo");
 
@@ -531,12 +487,12 @@ describe("Gitea Provider", () => {
       expect(result.isFork).toBe(false);
       expect(result.parent).toBeNull();
       expect(result.viewerPermission).toBe("read");
-      expect(mockClient).toHaveBeenCalledWith("/repos/testowner/test-repo");
+      expect(forge.repos.get).toHaveBeenCalledWith(repoRef(forge, "testowner", "test-repo"));
     });
 
     it("maps a fork parent and write permission", async () => {
-      mockClient.mockResolvedValueOnce(
-        giteaRepo({
+      forge.repos.get.mockResolvedValueOnce({
+        raw: giteaRepo({
           fork: true,
           parent: {
             full_name: "upstream/test-repo",
@@ -544,7 +500,7 @@ describe("Gitea Provider", () => {
           },
           permissions: { admin: false, push: true, pull: true },
         }),
-      );
+      });
 
       const result = await provider.repos.get("testowner", "test-repo");
 
@@ -559,7 +515,7 @@ describe("Gitea Provider", () => {
     });
 
     it("keeps omitted viewer permissions unknown", async () => {
-      mockClient.mockResolvedValueOnce(giteaRepo({ permissions: undefined }));
+      forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo({ permissions: undefined }) });
 
       const result = await provider.repos.get("testowner", "test-repo");
 
@@ -567,8 +523,8 @@ describe("Gitea Provider", () => {
     });
 
     it("maps merge settings the way gitea.com reports them without push access", async () => {
-      mockClient.mockResolvedValueOnce(
-        giteaRepo({
+      forge.repos.get.mockResolvedValueOnce({
+        raw: giteaRepo({
           permissions: { admin: false, push: false, pull: true },
           allow_merge_commits: false,
           allow_rebase: false,
@@ -578,7 +534,7 @@ describe("Gitea Provider", () => {
           default_merge_style: "squash",
           default_delete_branch_after_merge: true,
         }),
-      );
+      });
 
       const result = await provider.repos.get("gitea", "helm-gitea");
 
@@ -592,25 +548,25 @@ describe("Gitea Provider", () => {
     });
 
     it("lists every shared method Codeberg allows and leaves out a style without one", async () => {
-      mockClient
-        .mockResolvedValueOnce(
-          giteaRepo({
+      forge.repos.get
+        .mockResolvedValueOnce({
+          raw: giteaRepo({
             allow_merge_commits: true,
             allow_rebase: true,
             allow_squash_merge: true,
             default_merge_style: "squash",
             default_delete_branch_after_merge: true,
           }),
-        )
-        .mockResolvedValueOnce(
-          giteaRepo({
+        })
+        .mockResolvedValueOnce({
+          raw: giteaRepo({
             allow_merge_commits: true,
             allow_rebase: true,
             allow_squash_merge: true,
             default_merge_style: "rebase-merge",
             default_delete_branch_after_merge: false,
           }),
-        );
+        });
 
       const forgejo = await provider.repos.get("forgejo", "forgejo");
       const rebaseMerge = await provider.repos.get("forgejo", "forgejo");
@@ -626,8 +582,8 @@ describe("Gitea Provider", () => {
     });
 
     it("allows no method and no default once pull requests are off", async () => {
-      mockClient.mockResolvedValueOnce(
-        giteaRepo({
+      forge.repos.get.mockResolvedValueOnce({
+        raw: giteaRepo({
           has_pull_requests: false,
           allow_merge_commits: false,
           allow_rebase: false,
@@ -635,7 +591,7 @@ describe("Gitea Provider", () => {
           default_merge_style: "merge",
           default_delete_branch_after_merge: false,
         }),
-      );
+      });
 
       const result = await provider.repos.get("testowner", "test-repo");
 
@@ -643,7 +599,7 @@ describe("Gitea Provider", () => {
     });
 
     it("keeps merge settings unknown when a server leaves the flags out", async () => {
-      mockClient.mockResolvedValueOnce(giteaRepo({ allow_squash_merge: true }));
+      forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo({ allow_squash_merge: true }) });
 
       const result = await provider.repos.get("testowner", "test-repo");
 
@@ -652,26 +608,24 @@ describe("Gitea Provider", () => {
 
     it("reads current viewer permission on every call", async () => {
       mockedCachedFetch.mockResolvedValue(giteaRepo());
-      mockClient
-        .mockResolvedValueOnce(giteaRepo())
-        .mockResolvedValueOnce(
-          giteaRepo({ permissions: { admin: false, push: true, pull: true } }),
-        );
+      forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo() }).mockResolvedValueOnce({
+        raw: giteaRepo({ permissions: { admin: false, push: true, pull: true } }),
+      });
 
       await provider.repos.get("testowner", "test-repo");
       const repository = await provider.repos.get("testowner", "test-repo");
 
       expect(repository.viewerPermission).toBe("write");
-      expect(mockClient).toHaveBeenCalledTimes(2);
+      expect(forge.repos.get).toHaveBeenCalledTimes(2);
       expect(mockedCachedFetch).not.toHaveBeenCalled();
     });
 
-    it("encodes repository path segments before transport", async () => {
-      mockClient.mockResolvedValueOnce(giteaRepo());
+    it("hands names with spaces and hashes to forges, which encodes them", async () => {
+      forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo() });
 
       await provider.repos.get("test owner", "test#repo");
 
-      expect(mockClient).toHaveBeenCalledWith("/repos/test%20owner/test%23repo");
+      expect(forge.repos.get).toHaveBeenCalledWith(repoRef(forge, "test owner", "test#repo"));
     });
 
     it.each(["", ".", "..", "../admin", "team/admin", "team\\admin", "%2e%2e", "%2Fadmin"])(
@@ -681,7 +635,7 @@ describe("Gitea Provider", () => {
           status: 400,
           message: expect.stringContaining("Owner must be one path segment"),
         });
-        expect(mockClient).not.toHaveBeenCalled();
+        expect(forge.repos.get).not.toHaveBeenCalled();
       },
     );
   });
@@ -704,124 +658,27 @@ describe("Gitea Provider", () => {
       archive_download_count: { zip: 25, tar_gz: 43 },
     };
 
-    it("lists tags with limit and the peeled commit, not the tag object", async () => {
-      mockedRawFetch.mockResolvedValueOnce({
-        data: [giteaTag],
-        headers: makeHeaders({ "x-total-count": "36" }),
-        status: 200,
-      });
+    it("lists tags with the peeled commit, not the tag object", async () => {
+      forge.contents.tags.mockReturnValueOnce(
+        listing({
+          items: raws(giteaTag),
+          total: 36,
+          cursor: {
+            nextUrl: "https://codeberg.org/api/v1/repos/Codeberg/pages-server/tags?page=2",
+          },
+        }),
+      );
 
       const result = await provider.repos.listTags("Codeberg", "pages-server", { perPage: 1 });
 
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/Codeberg/pages-server/tags",
-        { query: { page: "1", limit: "1" } },
-      );
+      expect(forge.contents.tags).toHaveBeenCalledWith(repoRef(forge, "Codeberg", "pages-server"), {
+        perPage: 1,
+      });
       expect(result).toEqual({
         items: [{ name: "v6.3", sha: "838a5bda92846725034218500ea1f498eb2e5d6f" }],
         totalCount: 36,
-        hasNextPage: true,
-        nextPage: 2,
+        nextCursor: expect.any(String),
       });
-    });
-
-    it("keeps paging when the server clamps limit and sends no Link", async () => {
-      const page = (count: number) => Array.from({ length: count }, () => giteaTag);
-      const total = makeHeaders({ "x-total-count": "123" });
-      mockedRawFetch
-        .mockResolvedValueOnce({ data: page(50), headers: total, status: 200 })
-        .mockResolvedValueOnce({ data: page(50), headers: total, status: 200 })
-        .mockResolvedValueOnce({ data: page(23), headers: total, status: 200 })
-        .mockResolvedValueOnce({ data: [], headers: total, status: 200 });
-
-      const pages = [];
-      for (let next: number | undefined = 1; next !== undefined;) {
-        const result = await provider.repos.listTags("gitea", "act_runner", {
-          page: next,
-          perPage: 100,
-        });
-        pages.push(result.items.length);
-        next = result.nextPage;
-      }
-
-      expect(pages).toEqual([50, 50, 23, 0]);
-    });
-
-    it("walks a clamped list to its last row with the server's page size", async () => {
-      mockClient.mockResolvedValueOnce({ max_response_items: 50 });
-      const page = (count: number) => Array.from({ length: count }, () => giteaTag);
-      const total = makeHeaders({ "x-total-count": "123" });
-      mockedRawFetch
-        .mockResolvedValueOnce({ data: page(50), headers: total, status: 200 })
-        .mockResolvedValueOnce({ data: page(50), headers: total, status: 200 })
-        .mockResolvedValueOnce({ data: page(23), headers: total, status: 200 });
-
-      const pages = [];
-      for (let next: number | undefined = 1; next !== undefined;) {
-        const result = await provider.repos.listTags("gitea", "act_runner", {
-          page: next,
-          perPage: 100,
-        });
-        pages.push(result.items.length);
-        next = result.nextPage;
-      }
-
-      expect(pages).toEqual([50, 50, 23]);
-      expect(mockClient).toHaveBeenCalledTimes(1);
-      expect(mockClient).toHaveBeenCalledWith("/settings/api");
-    });
-
-    it.each([
-      ["the server's page size", { max_response_items: 50 }],
-      ["no page size to go by", new Error("settings unavailable")],
-    ])("reads a clamped page as half the count, not all of it, with %s", async (_, settings) => {
-      if (settings instanceof Error) mockClient.mockRejectedValueOnce(settings);
-      else mockClient.mockResolvedValueOnce(settings);
-      mockedRawFetch.mockResolvedValueOnce({
-        data: Array.from({ length: 50 }, () => giteaTag),
-        headers: makeHeaders({ "x-total-count": "150" }),
-        status: 200,
-      });
-
-      const result = await provider.repos.listTags("gitea", "act_runner", {
-        page: 2,
-        perPage: 100,
-      });
-
-      expect(result).toMatchObject({ hasNextPage: true, nextPage: 3 });
-    });
-
-    it("stops on a short page that closes the count", async () => {
-      mockClient.mockResolvedValueOnce({ max_response_items: 50 });
-      mockedRawFetch.mockResolvedValueOnce({
-        data: [giteaTag, giteaTag],
-        headers: makeHeaders({ "x-total-count": "32" }),
-        status: 200,
-      });
-
-      const result = await provider.repos.listTags("Codeberg", "pages-server", {
-        page: 2,
-        perPage: 30,
-      });
-
-      expect(result).toMatchObject({ hasNextPage: false, nextPage: undefined });
-    });
-
-    it("stops when the count is exhausted", async () => {
-      mockClient.mockResolvedValueOnce({ max_response_items: 50 });
-      mockedRawFetch.mockResolvedValueOnce({
-        data: [giteaTag],
-        headers: makeHeaders({ "x-total-count": "3" }),
-        status: 200,
-      });
-
-      const result = await provider.repos.listTags("Codeberg", "pages-server", {
-        page: 2,
-        perPage: 2,
-      });
-
-      expect(result).toMatchObject({ totalCount: 3, hasNextPage: false, nextPage: undefined });
     });
   });
 
@@ -934,7 +791,7 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.ciRuns.listJobs("testowner", "test-repo", "9876", {
-        page: 2,
+        cursor: cursorFor("ciRuns.listJobs", 2),
         perPage: 10,
       });
 
@@ -975,13 +832,17 @@ describe("Gitea Provider", () => {
         .mockResolvedValueOnce(page(0));
 
       const pages = [];
-      for (let next: number | undefined = 1; next !== undefined;) {
+      for (
+        let cursor: string | undefined, first = true;
+        first || cursor !== undefined;
+        first = false
+      ) {
         const result = await provider.ciRuns.listJobs("testowner", "test-repo", "9876", {
-          page: next,
+          cursor,
           perPage: 100,
         });
         pages.push(result.items.length);
-        next = result.nextPage;
+        cursor = result.nextCursor;
       }
 
       expect(pages).toEqual([50, 50, 23, 0]);
@@ -1053,8 +914,6 @@ describe("Gitea Provider", () => {
             },
           ],
           totalCount: 2,
-          hasNextPage: false,
-          nextPage: undefined,
         });
       });
 
@@ -1067,20 +926,20 @@ describe("Gitea Provider", () => {
           perPage: 1,
         });
         const second = await provider.ciRuns.listJobs("forgejo", "website", "7529583", {
-          page: 2,
+          cursor: cursorFor("ciRuns.listJobs", 2),
           perPage: 1,
         });
 
         expect(first.items.map((job) => job.name)).toEqual(["publish"]);
-        expect(first).toMatchObject({ totalCount: 2, hasNextPage: true, nextPage: 2 });
+        expect(first).toMatchObject({ totalCount: 2, nextCursor: cursorFor("ciRuns.listJobs", 2) });
         expect(second.items.map((job) => job.name)).toEqual(["sync"]);
-        expect(second).toMatchObject({ totalCount: 2, hasNextPage: false });
+        expect(second).toMatchObject({ totalCount: 2 });
       });
 
       it.each([
         [{ perPage: 0 }, "perPage must be an integer from 1 to 100"],
         [{ perPage: 101 }, "perPage must be an integer from 1 to 100"],
-        [{ page: 0 }, "page must be a positive integer"],
+        [{ cursor: cursorFor("ciRuns.listJobs", 0) }, expect.stringContaining("cursor is not one")],
       ])("refuses %o before the local cut pages forever", async (options, message) => {
         await expect(
           provider.ciRuns.listJobs("forgejo", "website", "7529583", options),
@@ -1098,12 +957,12 @@ describe("Gitea Provider", () => {
         });
 
         const result = await provider.ciRuns.listJobs("forgejo", "website", "7529583", {
-          page: 2,
+          cursor: cursorFor("ciRuns.listJobs", 2),
           perPage: 1,
         });
 
         expect(result.items.map((job) => job.name)).toEqual(["sync"]);
-        expect(result.hasNextPage).toBe(false);
+        expect(result.nextCursor).toBeUndefined();
       });
     });
 
@@ -1412,10 +1271,9 @@ describe("Gitea Provider", () => {
 
   describe("ciRuns.list", () => {
     it("returns normalized paged workflow runs and filters by branch", async () => {
-      mockedRawFetch.mockResolvedValueOnce({
-        data: {
-          total_count: 25,
-          workflow_runs: [
+      forge.ci.runs.mockReturnValueOnce(
+        listing({
+          items: raws(
             giteaCiRun(),
             giteaCiRun({ id: 401, status: "in_progress", conclusion: "" }),
             giteaCiRun({
@@ -1428,23 +1286,23 @@ describe("Gitea Provider", () => {
               status: "success",
               conclusion: undefined,
             }),
-          ],
-        },
-        headers: makeHeaders(),
-        status: 200,
-      });
+          ),
+          total: 25,
+          cursor: {
+            nextUrl: "https://gitea.com/api/v1/repos/testowner/test-repo/actions/runs?page=3",
+          },
+        }),
+      );
 
       const result = await provider.ciRuns.list("testowner", "test-repo", {
         branch: "main",
-        page: 2,
         perPage: 10,
       });
 
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/testowner/test-repo/actions/runs",
-        { query: { branch: "main", page: "2", limit: "10" } },
-      );
+      expect(forge.ci.runs).toHaveBeenCalledWith(repoRef(forge, "testowner", "test-repo"), {
+        perPage: 10,
+        branch: "main",
+      });
       expect(result).toEqual({
         items: [
           {
@@ -1465,48 +1323,8 @@ describe("Gitea Provider", () => {
           }),
         ],
         totalCount: 25,
-        hasNextPage: true,
-        nextPage: 3,
+        nextCursor: expect.any(String),
       });
-    });
-
-    it("keeps paging when the server clamps limit and sends no Link", async () => {
-      const page = (count: number) => ({
-        data: { total_count: 123, workflow_runs: Array.from({ length: count }, giteaCiRun) },
-        headers: makeHeaders(),
-        status: 200,
-      });
-      mockedRawFetch
-        .mockResolvedValueOnce(page(50))
-        .mockResolvedValueOnce(page(50))
-        .mockResolvedValueOnce(page(23))
-        .mockResolvedValueOnce(page(0));
-
-      const pages = [];
-      for (let next: number | undefined = 1; next !== undefined;) {
-        const result = await provider.ciRuns.list("forgejo", "website", {
-          page: next,
-          perPage: 100,
-        });
-        pages.push(result.items.length);
-        next = result.nextPage;
-      }
-
-      expect(pages).toEqual([50, 50, 23, 0]);
-    });
-
-    it("trusts a Link header without next on the last clamped page", async () => {
-      mockedRawFetch.mockResolvedValueOnce({
-        data: { total_count: 123, workflow_runs: Array.from({ length: 23 }, giteaCiRun) },
-        headers: makeHeaders({
-          Link: '<https://gitea.com/api/v1/repos/gitea/tea/actions/runs?limit=100&page=2>; rel="prev"',
-        }),
-        status: 200,
-      });
-
-      const result = await provider.ciRuns.list("gitea", "tea", { page: 3, perPage: 100 });
-
-      expect(result).toMatchObject({ totalCount: 123, hasNextPage: false, nextPage: undefined });
     });
   });
 
@@ -1517,7 +1335,7 @@ describe("Gitea Provider", () => {
       await expect(
         provider.commits.list("testowner", "test-repo", {
           path: "src/provider.ts",
-          page: 2,
+          cursor: cursorFor("commits.list", 2),
           perPage: 1,
         }),
       ).rejects.toMatchObject({
@@ -1570,7 +1388,6 @@ describe("Gitea Provider", () => {
 
       const result = await provider.commits.list("forgejo", "forgejo", {
         path: "README.md",
-        page: 1,
         perPage: 2,
       });
 
@@ -1591,8 +1408,7 @@ describe("Gitea Provider", () => {
       );
       expect(result).toMatchObject({
         totalCount: 546,
-        hasNextPage: true,
-        nextPage: 2,
+        nextCursor: cursorFor("commits.list", 2),
         items: [{ sha, message: "docs: refresh readme" }],
       });
     });
@@ -1619,7 +1435,7 @@ describe("Gitea Provider", () => {
         ref: "main",
         since: "2026-08-01T00:00:00Z",
         until: "2026-08-29T23:59:59Z",
-        page: 2,
+        cursor: cursorFor("commits.list", 2),
         perPage: 10,
       });
 
@@ -1641,8 +1457,7 @@ describe("Gitea Provider", () => {
       );
       expect(result).toMatchObject({
         totalCount: 31,
-        hasNextPage: true,
-        nextPage: 3,
+        nextCursor: cursorFor("commits.list", 3),
       });
       expect(mockClient).not.toHaveBeenCalled();
     });
@@ -1681,8 +1496,7 @@ describe("Gitea Provider", () => {
       expect(result.items.map(({ sha }) => sha)).toEqual(["ffff540", "d536242"]);
       expect(result).toMatchObject({
         totalCount: 3,
-        hasNextPage: true,
-        nextPage: 2,
+        nextCursor: cursorFor("commits.compare", 2),
         status: null,
         aheadBy: 3,
         behindBy: null,
@@ -1881,11 +1695,7 @@ describe("Gitea Provider", () => {
 
   describe("issues.list", () => {
     it("returns mapped issues", async () => {
-      mockedRawFetch.mockResolvedValueOnce({
-        data: [giteaIssue()],
-        headers: makeHeaders(),
-        status: 200,
-      });
+      forge.threads.list.mockReturnValueOnce(listing({ items: raws(giteaIssue()) }));
 
       const result = await provider.issues.list("testowner", "test-repo");
 
@@ -1905,36 +1715,16 @@ describe("Gitea Provider", () => {
       });
     });
 
-    it("uses limit param and includes type=issues filter", async () => {
-      mockedRawFetch.mockResolvedValueOnce({
-        data: [],
-        headers: makeHeaders(),
-        status: 200,
+    it("asks forges for issues in the given state", async () => {
+      forge.threads.list.mockReturnValueOnce(listing({ items: [] }));
+
+      await provider.issues.list("testowner", "test-repo", { state: "closed", perPage: 25 });
+
+      expect(forge.threads.list).toHaveBeenCalledWith(repoRef(forge, "testowner", "test-repo"), {
+        perPage: 25,
+        kind: "issue",
+        state: "closed",
       });
-
-      await provider.issues.list("testowner", "test-repo", { perPage: 25 });
-
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/testowner/test-repo/issues",
-        { query: expect.objectContaining({ limit: "25", type: "issues" }) },
-      );
-    });
-
-    it("passes state filter", async () => {
-      mockedRawFetch.mockResolvedValueOnce({
-        data: [],
-        headers: makeHeaders(),
-        status: 200,
-      });
-
-      await provider.issues.list("testowner", "test-repo", { state: "closed" });
-
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/testowner/test-repo/issues",
-        { query: expect.objectContaining({ state: "closed", type: "issues" }) },
-      );
     });
   });
 
@@ -1950,7 +1740,7 @@ describe("Gitea Provider", () => {
 
       const result = await provider.issues.search("testowner", "test-repo", "runner timeout", {
         state: "closed",
-        page: 2,
+        cursor: cursorFor("issues.search", 2),
         perPage: 1,
       });
 
@@ -1970,8 +1760,7 @@ describe("Gitea Provider", () => {
       expect(result).toMatchObject({
         items: [expect.objectContaining({ number: 1 })],
         incomplete: false,
-        hasNextPage: true,
-        nextPage: 3,
+        nextCursor: cursorFor("issues.search", 3),
       });
     });
 
@@ -2239,43 +2028,34 @@ describe("Gitea Provider", () => {
 
   describe("pullRequests.listFiles", () => {
     it("reads changed files and normalizes Gitea's changed status", async () => {
-      mockedRawFetch.mockResolvedValueOnce({
-        data: [
-          {
-            filename: "src/auth.ts",
-            status: "changed",
-            additions: 4,
-            deletions: 1,
-            patch: "@@ -1 +1 @@",
+      forge.threads.files.mockReturnValueOnce(
+        listing({
+          items: [
+            {
+              path: "src/auth.ts",
+              status: "changed",
+              statusRaw: "changed",
+              additions: 4,
+              deletions: 1,
+            },
+          ],
+          cursor: {
+            nextUrl: "https://gitea.com/api/v1/repos/testowner/test-repo/pulls/5/files?page=3",
           },
-        ],
-        headers: makeHeaders({
-          Link: '<https://gitea.com/api/v1/repos/testowner/test-repo/pulls/5/files?page=3>; rel="next"',
         }),
-        status: 200,
-      });
+      );
 
       const result = await provider.pullRequests.listFiles("testowner", "test-repo", 5, {
-        page: 2,
         perPage: 10,
       });
 
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/testowner/test-repo/pulls/5/files",
-        { query: { page: "2", limit: "10" } },
+      expect(forge.threads.files).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "pull_request", number: "5" }),
+        { perPage: 10 },
       );
       expect(result).toEqual({
-        items: [
-          {
-            path: "src/auth.ts",
-            status: "modified",
-            additions: 4,
-            deletions: 1,
-          },
-        ],
-        hasNextPage: true,
-        nextPage: 3,
+        items: [{ path: "src/auth.ts", status: "modified", additions: 4, deletions: 1 }],
+        nextCursor: expect.any(String),
       });
     });
   });
@@ -2306,8 +2086,6 @@ describe("Gitea Provider", () => {
             url: "",
           },
         ],
-        hasNextPage: false,
-        nextPage: undefined,
       });
     });
 
@@ -2325,7 +2103,7 @@ describe("Gitea Provider", () => {
         "/repos/testowner/test-repo/git/commits/main",
         { query: { stat: "false", files: "false", verification: "false" } },
       );
-      expect(result).toEqual({ items: [], hasNextPage: false, nextPage: undefined });
+      expect(result).toEqual({ items: [] });
     });
 
     it("answers NotFoundError for a ref Forgejo hands an empty status", async () => {
@@ -2367,7 +2145,7 @@ describe("Gitea Provider", () => {
         });
 
       const result = await provider.pullRequests.listChecks("testowner", "test-repo", 5, {
-        page: 2,
+        cursor: cursorFor("pullRequests.listChecks", 2),
         perPage: 1,
       });
 
@@ -2393,8 +2171,7 @@ describe("Gitea Provider", () => {
             url: "https://gitea.com/testowner/test-repo/status/501",
           },
         ],
-        hasNextPage: true,
-        nextPage: 3,
+        nextCursor: cursorFor("pullRequests.listChecks", 3),
       });
     });
 
@@ -2497,8 +2274,7 @@ describe("Gitea Provider", () => {
             url: "https://gitea.com/testowner/test-repo/pulls/5#pullrequestreview-381752",
           },
         ],
-        hasNextPage: true,
-        nextPage: 2,
+        nextCursor: cursorFor("pullRequests.listReviews", 2),
       });
     });
 
@@ -2511,11 +2287,11 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
-        page: 2,
+        cursor: cursorFor("pullRequests.listReviews", 2),
         perPage: 2,
       });
 
-      expect(result).toMatchObject({ hasNextPage: false, nextPage: undefined });
+      expect(result.nextCursor).toBeUndefined();
     });
 
     it("stops on a short page that closes the count with a review request in it", async () => {
@@ -2527,11 +2303,11 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
-        page: 2,
+        cursor: cursorFor("pullRequests.listReviews", 2),
         perPage: 3,
       });
 
-      expect(result).toMatchObject({ hasNextPage: false, nextPage: undefined });
+      expect(result.nextCursor).toBeUndefined();
     });
 
     it("keeps paging when the server clamps limit and sends no Link", async () => {
@@ -2547,13 +2323,17 @@ describe("Gitea Provider", () => {
         .mockResolvedValueOnce(page(0));
 
       const pages = [];
-      for (let next: number | undefined = 1; next !== undefined;) {
+      for (
+        let cursor: string | undefined, first = true;
+        first || cursor !== undefined;
+        first = false
+      ) {
         const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
-          page: next,
+          cursor,
           perPage: 100,
         });
         pages.push(result.items.length);
-        next = result.nextPage;
+        cursor = result.nextCursor;
       }
 
       expect(pages).toEqual([34, 34, 16, 0]);
@@ -2572,7 +2352,7 @@ describe("Gitea Provider", () => {
         perPage: 1,
       });
 
-      expect(result).toMatchObject({ hasNextPage: true, nextPage: 2 });
+      expect(result).toMatchObject({ nextCursor: cursorFor("pullRequests.listReviews", 2) });
     });
   });
 
@@ -2603,65 +2383,57 @@ describe("Gitea Provider", () => {
       publishedAt: "2026-09-10T11:34:12Z",
       url: "https://gitea.com/testowner/test-repo/releases/tag/v0.16.0",
     };
+    const ref = repoRef(forge, "testowner", "test-repo");
 
-    it("lists releases with limit and pages by x-total-count", async () => {
-      mockedRawFetch.mockResolvedValueOnce({
-        data: [giteaRelease, { ...giteaRelease, id: 945507, tag_name: "v0.15.0", author: null }],
-        headers: makeHeaders({ "x-total-count": "27" }),
-        status: 200,
-      });
+    it("lists releases through forges with the total", async () => {
+      forge.releases.list.mockReturnValueOnce(
+        listing({
+          items: raws(giteaRelease, {
+            ...giteaRelease,
+            id: 945507,
+            tag_name: "v0.15.0",
+            author: null,
+          }),
+          total: 27,
+          cursor: { nextUrl: "https://gitea.com/api/v1/repos/testowner/test-repo/releases?page=2" },
+        }),
+      );
 
       const result = await provider.releases.list("testowner", "test-repo", { perPage: 2 });
 
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/testowner/test-repo/releases",
-        { query: { page: "1", limit: "2" } },
-      );
+      expect(forge.releases.list).toHaveBeenCalledWith(ref, { perPage: 2 });
       expect(result).toEqual({
         items: [release, { ...release, id: "945507", tag: "v0.15.0", author: { login: "" } }],
         totalCount: 27,
-        hasNextPage: true,
-        nextPage: 2,
+        nextCursor: expect.any(String),
       });
-    });
-
-    it("stops when the count is exhausted", async () => {
-      mockedRawFetch.mockResolvedValueOnce({
-        data: [giteaRelease],
-        headers: makeHeaders({ "x-total-count": "3" }),
-        status: 200,
-      });
-
-      const result = await provider.releases.list("testowner", "test-repo", {
-        page: 2,
-        perPage: 2,
-      });
-
-      expect(result).toMatchObject({ totalCount: 3, hasNextPage: false, nextPage: undefined });
     });
 
     it("reads one release by its tag", async () => {
-      mockClient.mockResolvedValueOnce({ ...giteaRelease, name: null, body: null, html_url: null });
+      forge.releases.getByTag.mockResolvedValueOnce({
+        raw: { ...giteaRelease, name: null, body: null, html_url: null },
+      });
 
       const result = await provider.releases.get("testowner", "test-repo", "v0.16.0");
 
-      expect(mockClient).toHaveBeenCalledWith("/repos/testowner/test-repo/releases/tags/v0.16.0");
+      expect(forge.releases.getByTag).toHaveBeenCalledWith(ref, "v0.16.0");
       expect(result).toEqual({ ...release, name: "", body: "", url: "" });
     });
 
-    it("encodes a slash in the tag instead of refusing it", async () => {
-      mockClient.mockResolvedValueOnce({ ...giteaRelease, tag_name: "release/0.16" });
+    it("hands a tag with a slash to forges instead of refusing it", async () => {
+      forge.releases.getByTag.mockResolvedValueOnce({
+        raw: { ...giteaRelease, tag_name: "release/0.16" },
+      });
 
       await provider.releases.get("testowner", "test-repo", "release/0.16");
 
-      expect(mockClient).toHaveBeenCalledWith(
-        "/repos/testowner/test-repo/releases/tags/release%2F0.16",
-      );
+      expect(forge.releases.getByTag).toHaveBeenCalledWith(ref, "release/0.16");
     });
 
-    it("creates a release with the Gitea field names", async () => {
-      mockClient.mockResolvedValueOnce({ ...giteaRelease, draft: true, published_at: null });
+    it("creates a release from the tag, target and flags", async () => {
+      forge.releases.create.mockResolvedValueOnce({
+        raw: { ...giteaRelease, draft: true, published_at: null },
+      });
 
       const result = await provider.releases.create("testowner", "test-repo", {
         tag: "v0.16.0",
@@ -2670,47 +2442,35 @@ describe("Gitea Provider", () => {
         draft: true,
       });
 
-      expect(mockClient).toHaveBeenCalledWith("/repos/testowner/test-repo/releases", {
-        method: "POST",
-        body: {
-          tag_name: "v0.16.0",
-          target_commitish: "main",
-          name: undefined,
-          body: "## What's Changed",
-          draft: true,
-          prerelease: undefined,
-        },
+      expect(forge.releases.create).toHaveBeenCalledWith(ref, {
+        tag: "v0.16.0",
+        body: "## What's Changed",
+        draft: true,
+        target: "main",
       });
       expect(result).toEqual({ ...release, draft: true, publishedAt: "" });
     });
 
     it("updates by the id behind the tag", async () => {
-      mockClient
-        .mockResolvedValueOnce(giteaRelease)
-        .mockResolvedValueOnce({ ...giteaRelease, prerelease: true });
+      const releaseRef = { forge: "gitea", instance: "gitea.com", repo: ref, id: "945508" };
+      forge.releases.getByTag.mockResolvedValueOnce({ ref: releaseRef, raw: giteaRelease });
+      forge.releases.update.mockResolvedValueOnce({ raw: { ...giteaRelease, prerelease: true } });
 
       const result = await provider.releases.update("testowner", "test-repo", "v0.16.0", {
         prerelease: true,
       });
 
-      expect(mockClient).toHaveBeenNthCalledWith(
-        1,
-        "/repos/testowner/test-repo/releases/tags/v0.16.0",
-      );
-      expect(mockClient).toHaveBeenNthCalledWith(2, "/repos/testowner/test-repo/releases/945508", {
-        method: "PATCH",
-        body: { name: undefined, body: undefined, draft: undefined, prerelease: true },
-      });
+      expect(forge.releases.update).toHaveBeenCalledWith(releaseRef, { prerelease: true });
       expect(result).toEqual({ ...release, prerelease: true });
     });
 
     it("maps a missing tag to NotFoundError", async () => {
-      mockClient.mockRejectedValueOnce(makeFetchError(404));
+      forge.releases.getByTag.mockRejectedValueOnce(makeFetchError(404));
 
       await expect(
         provider.releases.update("testowner", "test-repo", "v9.9.9", { body: "x" }),
       ).rejects.toBeInstanceOf(NotFoundError);
-      expect(mockClient).toHaveBeenCalledTimes(1);
+      expect(forge.releases.update).not.toHaveBeenCalled();
     });
   });
 
@@ -2734,7 +2494,7 @@ describe("Gitea Provider", () => {
         "testowner",
         "test-repo",
         "runner timeout",
-        { state: "closed", page: 2, perPage: 1 },
+        { state: "closed", cursor: cursorFor("pullRequests.search", 2), perPage: 1 },
       );
 
       expect(mockedRawFetch).toHaveBeenCalledTimes(1);
@@ -2755,8 +2515,7 @@ describe("Gitea Provider", () => {
       expect(result).toMatchObject({
         items: [{ number: 1, merged: true, draft: true }],
         incomplete: false,
-        hasNextPage: true,
-        nextPage: 3,
+        nextCursor: cursorFor("pullRequests.search", 3),
       });
       expect(result.items[0]).not.toHaveProperty("sourceBranch");
       expect(result.items[0]).not.toHaveProperty("headSha");
@@ -2766,7 +2525,7 @@ describe("Gitea Provider", () => {
       mockedRawFetch.mockResolvedValueOnce({ data: [], headers: makeHeaders(), status: 200 });
 
       await provider.pullRequests.search("testowner", "test-repo", "runner timeout", {
-        page: 2,
+        cursor: cursorFor("pullRequests.search", 2),
       });
 
       expect(mockedRawFetch).toHaveBeenCalledWith(
@@ -3226,13 +2985,17 @@ describe("Gitea Provider", () => {
         createdAt: "2024-01-04T00:00:00Z",
         updatedAt: "2024-01-04T01:00:00Z",
       });
-      expect(result.hasNextPage).toBe(true);
-      expect(result.nextPage).toBe(2);
+      expect(result.nextCursor).toBeDefined();
+      expect(result.nextCursor).toBe(cursorFor("issues.listComments", 2));
     });
 
     it.each([
       ["issues", { perPage: 0 }, "perPage must be an integer from 1 to 100"],
-      ["pullRequests", { page: 0 }, "page must be a positive integer"],
+      [
+        "pullRequests",
+        { page: 0 },
+        "page is gone: pass the nextCursor of the previous page as cursor",
+      ],
     ] as const)("refuses %s %o before the local cut sees it", async (kind, page, message) => {
       await expect(
         provider[kind].listComments("testowner", "test-repo", 1, page),
@@ -3248,13 +3011,13 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.issues.listComments("testowner", "test-repo", 1, {
-        page: 2,
+        cursor: cursorFor("issues.listComments", 2),
         perPage: 2,
       });
 
       expect(result.items.map((comment) => comment.id)).toEqual(["23"]);
-      expect(result.hasNextPage).toBe(false);
-      expect(result.nextPage).toBeUndefined();
+      expect(result.nextCursor).toBeUndefined();
+      expect(result.nextCursor).toBeUndefined();
     });
 
     it("follows the Link header and restores oldest-first order across batches", async () => {
@@ -3302,8 +3065,8 @@ describe("Gitea Provider", () => {
 
       expect(mockedRawFetch).toHaveBeenCalledTimes(2);
       expect(result.items.map((comment) => comment.id)).toEqual(["21"]);
-      expect(result.hasNextPage).toBe(true);
-      expect(result.nextPage).toBe(2);
+      expect(result.nextCursor).toBeDefined();
+      expect(result.nextCursor).toBe(cursorFor("issues.listComments", 2));
     });
   });
 
@@ -3437,7 +3200,7 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.issues.listReactions("gitea", "tea", 37, {
-        page: 3,
+        cursor: cursorFor("issues.listReactions", 3),
         perPage: 2,
       });
 
@@ -3452,8 +3215,6 @@ describe("Gitea Provider", () => {
           { content: "hooray", user: { login: "lunny" }, createdAt: "2020-03-05T15:48:01Z" },
         ],
         totalCount: 6,
-        hasNextPage: false,
-        nextPage: undefined,
       });
     });
 
@@ -3468,7 +3229,10 @@ describe("Gitea Provider", () => {
 
       const result = await provider.pullRequests.listReactions("gitea", "tea", 37, { perPage: 5 });
 
-      expect(result).toMatchObject({ totalCount: 6, hasNextPage: true, nextPage: 2 });
+      expect(result).toMatchObject({
+        totalCount: 6,
+        nextCursor: cursorFor("pullRequests.listReactions", 2),
+      });
     });
 
     it("answers 404 when the number is the other kind", async () => {
@@ -3497,7 +3261,7 @@ describe("Gitea Provider", () => {
 
       const result = await provider.issues.listReactions("gitea", "tea", 1);
 
-      expect(result).toMatchObject({ items: [], hasNextPage: false });
+      expect(result).toMatchObject({ items: [] });
     });
 
     it("cuts a comment's whole list locally after checking the comment's issue", async () => {
@@ -3507,7 +3271,7 @@ describe("Gitea Provider", () => {
 
       const result = await provider.issues.listReactions("testowner", "test-repo", 1, {
         commentId: "21",
-        page: 2,
+        cursor: cursorFor("issues.listReactions", 2),
         perPage: 4,
       });
 
@@ -3522,15 +3286,17 @@ describe("Gitea Provider", () => {
           { content: "hooray", user: { login: "lunny" }, createdAt: "2020-03-05T15:48:01Z" },
         ],
         totalCount: 6,
-        hasNextPage: false,
-        nextPage: undefined,
       });
     });
 
     it.each([
       ["issues", { perPage: 0 }, "perPage must be an integer from 1 to 100"],
       ["issues", { perPage: 101 }, "perPage must be an integer from 1 to 100"],
-      ["pullRequests", { page: 0 }, "page must be a positive integer"],
+      [
+        "pullRequests",
+        { page: 0 },
+        "page is gone: pass the nextCursor of the previous page as cursor",
+      ],
     ] as const)("refuses %s %o before the local cut sees it", async (kind, page, message) => {
       await expect(
         provider[kind].listReactions("testowner", "test-repo", 1, { commentId: "21", ...page }),
@@ -3554,7 +3320,7 @@ describe("Gitea Provider", () => {
 
   describe("users.get", () => {
     it("returns a mapped user", async () => {
-      mockClient.mockResolvedValueOnce(giteaUser());
+      forge.users.get.mockResolvedValueOnce({ raw: giteaUser() });
 
       const result = await provider.users.get("testuser");
 
@@ -3579,37 +3345,41 @@ describe("Gitea Provider", () => {
     it("reads the current profile on every call", async () => {
       const edited = giteaUser({ full_name: "Edited User" });
       mockedCachedFetch.mockResolvedValue(giteaUser());
-      mockClient.mockResolvedValueOnce(giteaUser()).mockResolvedValueOnce(edited);
+      forge.users.get
+        .mockResolvedValueOnce({ raw: giteaUser() })
+        .mockResolvedValueOnce({ raw: edited });
 
       await provider.users.get("testuser");
       const user = await provider.users.get("testuser");
 
       expect(user.name).toBe("Edited User");
-      expect(mockClient).toHaveBeenCalledTimes(2);
+      expect(forge.users.get).toHaveBeenCalledTimes(2);
       expect(mockedCachedFetch).not.toHaveBeenCalled();
     });
   });
 
   describe("users.authenticated", () => {
     it("returns the authenticated user", async () => {
-      mockClient.mockResolvedValueOnce(giteaUser({ is_admin: true }));
+      forge.users.me.mockResolvedValueOnce({ raw: giteaUser({ is_admin: true }) });
 
       const result = await provider.users.authenticated();
 
       expect(result.isAdmin).toBe(true);
-      expect(mockClient).toHaveBeenCalledWith("/user");
+      expect(forge.users.me).toHaveBeenCalledOnce();
     });
 
     it("reads the current authenticated identity on every call", async () => {
       const switched = giteaUser({ id: 43, login: "anotheruser" });
       mockedCachedFetch.mockResolvedValue(giteaUser());
-      mockClient.mockResolvedValueOnce(giteaUser()).mockResolvedValueOnce(switched);
+      forge.users.me
+        .mockResolvedValueOnce({ raw: giteaUser() })
+        .mockResolvedValueOnce({ raw: switched });
 
       await provider.users.authenticated();
       const user = await provider.users.authenticated();
 
       expect(user.login).toBe("anotheruser");
-      expect(mockClient).toHaveBeenCalledTimes(2);
+      expect(forge.users.me).toHaveBeenCalledTimes(2);
       expect(mockedCachedFetch).not.toHaveBeenCalled();
     });
   });
@@ -3618,16 +3388,16 @@ describe("Gitea Provider", () => {
 
   describe("null-safe field handling", () => {
     it("handles null description on repository", async () => {
-      mockClient.mockResolvedValueOnce(giteaRepo({ description: null }));
+      forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo({ description: null }) });
 
       const result = await provider.repos.get("testowner", "test-repo");
       expect(result.description).toBe("");
     });
 
     it("handles null profile fields on user", async () => {
-      mockClient.mockResolvedValueOnce(
-        giteaUser({ description: null, location: null, website: null, html_url: null }),
-      );
+      forge.users.get.mockResolvedValueOnce({
+        raw: giteaUser({ description: null, location: null, website: null, html_url: null }),
+      });
 
       const result = await provider.users.get("testuser");
 
@@ -3638,14 +3408,16 @@ describe("Gitea Provider", () => {
     });
 
     it("handles null default_branch on repository", async () => {
-      mockClient.mockResolvedValueOnce(giteaRepo({ default_branch: null }));
+      forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo({ default_branch: null }) });
 
       const result = await provider.repos.get("testowner", "test-repo");
       expect(result.defaultBranch).toBe("main");
     });
 
     it("handles null html_url and clone_url on repository", async () => {
-      mockClient.mockResolvedValueOnce(giteaRepo({ html_url: null, clone_url: null }));
+      forge.repos.get.mockResolvedValueOnce({
+        raw: giteaRepo({ html_url: null, clone_url: null }),
+      });
 
       const result = await provider.repos.get("testowner", "test-repo");
       expect(result.url).toBe("");
@@ -3653,11 +3425,11 @@ describe("Gitea Provider", () => {
     });
 
     it("handles null avatar_url on owner", async () => {
-      mockClient.mockResolvedValueOnce(
-        giteaRepo({
+      forge.repos.get.mockResolvedValueOnce({
+        raw: giteaRepo({
           owner: { login: "testowner", avatar_url: null },
         }),
-      );
+      });
 
       const result = await provider.repos.get("testowner", "test-repo");
       expect(result.owner.avatarUrl).toBe("");
@@ -3706,13 +3478,13 @@ describe("Gitea Provider", () => {
     });
 
     it("handles null user fields", async () => {
-      mockClient.mockResolvedValueOnce(
-        giteaUser({
+      forge.users.get.mockResolvedValueOnce({
+        raw: giteaUser({
           full_name: null,
           email: null,
           avatar_url: null,
         }),
-      );
+      });
 
       const result = await provider.users.get("testuser");
       expect(result.name).toBe("");
@@ -3762,7 +3534,7 @@ describe("Gitea Provider", () => {
 
   describe("ID normalization", () => {
     it("converts numeric IDs to strings for repos", async () => {
-      mockClient.mockResolvedValueOnce(giteaRepo({ id: 999 }));
+      forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo({ id: 999 }) });
 
       const result = await provider.repos.get("testowner", "test-repo");
       expect(result.id).toBe("999");
@@ -3776,7 +3548,7 @@ describe("Gitea Provider", () => {
     });
 
     it("converts numeric IDs to strings for users", async () => {
-      mockClient.mockResolvedValueOnce(giteaUser({ id: 777 }));
+      forge.users.get.mockResolvedValueOnce({ raw: giteaUser({ id: 777 }) });
 
       const result = await provider.users.get("testuser");
       expect(result.id).toBe("777");

@@ -4,7 +4,20 @@
  */
 
 import { Buffer } from "node:buffer";
-import { Provider, type ProviderRawTypes } from "../provider.ts";
+import type { ForgeProvider as Forge } from "forges";
+import { github } from "forges/github";
+
+import { ForgeBackedProvider, releaseUpdate } from "./forge.ts";
+import { version } from "../version.ts";
+import {
+  type ContinuedPage,
+  type Positioned,
+  type Numbered,
+  type NumberedPage,
+  type NumberedSearchPage,
+  type WithPage,
+  type ProviderRawTypes,
+} from "../provider.ts";
 import type {
   ProviderConfig,
   Repository,
@@ -43,17 +56,10 @@ import type {
   GlobalIssueSearchResult,
   User,
   Owner,
-  PageResult,
-  SearchPageResult,
   ListOptions,
-  ListCiJobsOptions,
-  ListCiRunsOptions,
-  ListCommentOptions,
-  ListCommitOptions,
   ListPullRequestChecksOptions,
   ListCommitChecksOptions,
   ListPullRequestReviewsOptions,
-  ListPullRequestFilesOptions,
   ListReactionOptions,
   ListThreadOptions,
   Comment,
@@ -63,10 +69,8 @@ import type {
   CreateReleaseInput,
   IssueState,
   ListReleasesOptions,
-  ListTagsOptions,
   Release,
   ReplyThreadInput,
-  Tag,
   Thread,
   ThreadComment,
   UpdateIssueInput,
@@ -82,7 +86,7 @@ import {
   normalizeMergeError,
   normalizeMergedReadError,
 } from "../errors.ts";
-import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
+import { forgeFetch, rawFetch } from "../http.ts";
 import { buildPageResult, paginationFromLink } from "../pagination.ts";
 import {
   encodeApiResponsePathSegment,
@@ -219,16 +223,6 @@ interface GitHubCiRun {
   status: string;
   conclusion: string | null;
   html_url: string;
-}
-
-interface GitHubCiRunsResponse {
-  total_count: number;
-  workflow_runs: GitHubCiRun[];
-}
-
-interface GitHubCiJobsResponse {
-  total_count: number;
-  jobs: ActionsJob[];
 }
 
 interface GitHubCheckRun {
@@ -384,12 +378,6 @@ interface GitHubReaction {
   user: { login: string } | null;
   content: string;
   created_at: string;
-}
-
-interface GitHubTag {
-  name: string;
-  /** An empty sha for a tag on a tree or blob. */
-  commit: { sha: string };
 }
 
 interface GitHubRelease {
@@ -656,41 +644,20 @@ function githubSearchQualifierSegment(value: string, field: string): string {
 
 // --- Provider ---
 
-export class GitHubProvider extends Provider<GitHubRawTypes> {
-  private client: HttpClient;
+export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   private readonly restBaseURL: string;
   private readonly authenticated: boolean;
   private gitHubHost: boolean | undefined;
 
-  constructor(config: ProviderConfig) {
-    super("github");
-    this.restBaseURL = config.baseURL || "https://api.github.com";
-    const token = config.token ?? "";
-    this.authenticated = token !== "";
-    this.client = createHttpClient({
-      baseURL: this.restBaseURL,
-      token,
-      tokenHeader: "Authorization",
-      tokenPrefix: "token ",
-    });
-  }
+  readonly #token: string;
 
-  /**
-   * An empty token names no viewer, so anonymous reads skip the lookup. An
-   * installation token has no viewer either: GitHub refuses /user for it with
-   * 403 while the public repository routes still answer, so that refusal
-   * means "not the viewer" rather than a failed listing.
-   */
-  private async isViewer(owner: string): Promise<boolean> {
-    if (!this.authenticated) return false;
-    try {
-      const viewer = await this.getAuthenticatedUser();
-      return viewer.login.toLowerCase() === owner.toLowerCase();
-    } catch (error) {
-      const normalized = normalizeError(error, "github");
-      if (normalized.status === 403) return false;
-      throw normalized;
-    }
+  constructor(config: ProviderConfig) {
+    const restBaseURL = config.baseURL || "https://api.github.com";
+    super("github", restBaseURL, config.token ?? "");
+    this.restBaseURL = restBaseURL;
+    const token = config.token ?? "";
+    this.#token = token;
+    this.authenticated = token !== "";
   }
 
   private repositoryRoute(fullName: string): string {
@@ -947,6 +914,27 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
+  protected override openForge(): Promise<Forge> {
+    return Promise.resolve(
+      github({
+        baseUrl: this.restBaseURL,
+        auth:
+          this.#token === ""
+            ? { type: "anonymous" as const }
+            : { type: "token" as const, token: this.#token },
+        userAgent: `forges/${version}`,
+        fetch: forgeFetch,
+      }) as Forge,
+    );
+  }
+
+  protected override listRepos(
+    owner: string,
+    options?: Positioned<ListOptions>,
+  ): Promise<ContinuedPage<Repository>> {
+    return this.listOwnerRepos(owner, options);
+  }
+
   protected override mapOwner(raw: GitHubOwner): Owner {
     return {
       login: raw.login,
@@ -972,7 +960,11 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     };
   }
 
-  private mapCiRun(raw: GitHubCiRun): CiRun {
+  protected override mapCiJob(raw: ActionsJob): CiJob {
+    return mapActionsJob(raw);
+  }
+
+  protected override mapCiRun(raw: GitHubCiRun): CiRun {
     return {
       id: String(raw.id),
       branch: raw.head_branch ?? "",
@@ -982,7 +974,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     };
   }
 
-  private mapCommitSummary(raw: GitHubCommit): CommitSummary {
+  protected override mapCommitSummary(raw: GitHubCommit): CommitSummary {
     return {
       sha: raw.sha,
       message: raw.commit.message,
@@ -1035,7 +1027,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     };
   }
 
-  private mapRelease(raw: GitHubRelease): Release {
+  protected override mapRelease(raw: GitHubRelease): Release {
     return {
       id: String(raw.id),
       tag: raw.tag_name,
@@ -1141,92 +1133,6 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   // --- Repos ---
 
-  /**
-   * /users/{owner}/repos answers for organizations too, but only with their
-   * public repositories, so the organization route has to go first. It
-   * returns 404 for regular users, which selects the user route. That route
-   * is public-only as well, even when the owner is the viewer, so the
-   * viewer's own inventory comes from /user/repos, which carries the private
-   * repositories too.
-   */
-  protected override async listRepos(
-    owner: string,
-    options?: ListOptions,
-  ): Promise<PageResult<Repository>> {
-    try {
-      const query: Record<string, string> = {};
-      if (options?.page) query.page = String(options.page);
-      if (options?.perPage) query.per_page = String(options.perPage);
-
-      let response: RawFetchResult<GitHubRepo[]>;
-      try {
-        response = await rawFetch<GitHubRepo[]>(
-          this.client,
-          `/orgs/${encodePathSegment(owner, "Owner")}/repos`,
-          { query },
-        );
-      } catch (error) {
-        const normalized = normalizeError(error, "github");
-        if (normalized.status !== 404) {
-          throw normalized;
-        }
-
-        response = (await this.isViewer(owner))
-          ? await rawFetch<GitHubRepo[]>(this.client, "/user/repos", {
-              query: { ...query, affiliation: "owner" },
-            })
-          : await rawFetch<GitHubRepo[]>(
-              this.client,
-              `/users/${encodePathSegment(owner, "Owner")}/repos`,
-              {
-                query,
-              },
-            );
-      }
-
-      return buildPageResult(response.data ?? [], response.headers, (raw) =>
-        this.mapRepository(raw),
-      );
-    } catch (error) {
-      throw normalizeError(error, "github");
-    }
-  }
-
-  protected override async getRepo(owner: string, repo: string): Promise<Repository> {
-    try {
-      const data = await this.client<GitHubRepo>(
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`,
-      );
-      return this.mapRepository(data);
-    } catch (error) {
-      throw normalizeError(error, "github");
-    }
-  }
-
-  protected override async listTags(
-    owner: string,
-    repo: string,
-    options?: ListTagsOptions,
-  ): Promise<PageResult<Tag>> {
-    try {
-      const query: Record<string, string> = {};
-      if (options?.page) query.page = String(options.page);
-      if (options?.perPage) query.per_page = String(options.perPage);
-
-      const { data, headers } = await rawFetch<GitHubTag[]>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/tags`,
-        { query },
-      );
-      return buildPageResult(data ?? [], headers, (raw) => ({
-        name: raw.name,
-        sha: raw.commit.sha || null,
-      }));
-    } catch (error) {
-      throw normalizeError(error, "github");
-    }
-  }
-
   protected override async readRepositoryContents(
     owner: string,
     repo: string,
@@ -1292,56 +1198,6 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     throw new ForgesError(`GitHub could not resolve ${ref} to a commit`, 502, "github");
   }
 
-  protected override async listCiRuns(
-    owner: string,
-    repo: string,
-    options?: ListCiRunsOptions,
-  ): Promise<PageResult<CiRun>> {
-    try {
-      const query: Record<string, string> = {};
-      if (options?.page) query.page = String(options.page);
-      if (options?.perPage) query.per_page = String(options.perPage);
-      if (options?.branch) query.branch = options.branch;
-
-      const { data, headers } = await rawFetch<GitHubCiRunsResponse>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/runs`,
-        { query },
-      );
-      return {
-        ...buildPageResult(data?.workflow_runs ?? [], headers, (raw) => this.mapCiRun(raw)),
-        totalCount: data?.total_count,
-      };
-    } catch (error) {
-      throw normalizeError(error, "github");
-    }
-  }
-
-  protected override async listCiJobs(
-    owner: string,
-    repo: string,
-    runId: string,
-    options?: ListCiJobsOptions,
-  ): Promise<PageResult<CiJob>> {
-    try {
-      const query: Record<string, string> = {};
-      if (options?.page) query.page = String(options.page);
-      if (options?.perPage) query.per_page = String(options.perPage);
-
-      const { data, headers } = await rawFetch<GitHubCiJobsResponse>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/runs/${runId}/jobs`,
-        { query },
-      );
-      return {
-        ...buildPageResult(data?.jobs ?? [], headers, mapActionsJob),
-        totalCount: data?.total_count,
-      };
-    } catch (error) {
-      throw normalizeError(error, "github");
-    }
-  }
-
   protected override async readCiJobLog(
     owner: string,
     repo: string,
@@ -1365,8 +1221,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   protected override async searchCommits(
     searchQuery: string,
-    options?: CommitSearchOptions,
-  ): Promise<CommitSearchResult> {
+    options?: WithPage<CommitSearchOptions>,
+  ): Promise<Numbered<CommitSearchResult>> {
     try {
       const page = options?.page ?? 1;
       const perPage = options?.perPage ?? 30;
@@ -1438,31 +1294,6 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
-  protected override async listCommits(
-    owner: string,
-    repo: string,
-    options?: ListCommitOptions,
-  ): Promise<PageResult<CommitSummary>> {
-    try {
-      const query: Record<string, string> = {};
-      if (options?.ref) query.sha = options.ref;
-      if (options?.path) query.path = options.path;
-      if (options?.since) query.since = options.since;
-      if (options?.until) query.until = options.until;
-      if (options?.page) query.page = String(options.page);
-      if (options?.perPage) query.per_page = String(options.perPage);
-
-      const { data, headers } = await rawFetch<GitHubCommit[]>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits`,
-        { query },
-      );
-      return buildPageResult(data ?? [], headers, (raw) => this.mapCommitSummary(raw));
-    } catch (error) {
-      throw normalizeError(error, "github");
-    }
-  }
-
   protected override async getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
     try {
       const path = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodePathSegment(sha, "Commit SHA")}`;
@@ -1510,8 +1341,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     repo: string,
     base: string,
     head: string,
-    options?: CompareCommitsOptions,
-  ): Promise<CommitComparison> {
+    options?: WithPage<CompareCommitsOptions>,
+  ): Promise<Numbered<CommitComparison>> {
     try {
       const page = options?.page ?? 1;
       const { data, headers } = await rawFetch<GitHubComparison>(
@@ -1615,8 +1446,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   protected override async searchCode(
     searchQuery: string,
-    options?: CodeSearchOptions,
-  ): Promise<SearchPageResult<CodeSearchItem>> {
+    options?: WithPage<CodeSearchOptions>,
+  ): Promise<NumberedSearchPage<CodeSearchItem>> {
     try {
       const qualifiers: string[] = [];
       if (options?.owner !== undefined && options.repo !== undefined) {
@@ -1715,8 +1546,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     owner: string,
     repo: string,
     number: number,
-    options?: ListPullRequestReviewsOptions,
-  ): Promise<PageResult<PullRequestReview>> {
+    options?: WithPage<ListPullRequestReviewsOptions>,
+  ): Promise<NumberedPage<PullRequestReview>> {
     try {
       const query: Record<string, string> = {};
       if (options?.page) query.page = String(options.page);
@@ -1748,43 +1579,27 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   // --- Releases ---
 
-  private releasesRoute(owner: string, repo: string): string {
-    return `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/releases`;
-  }
-
   /** A 404 from a host without the releases API, GitBucket for one, is a 501, not a missing release. */
   private async releaseError(owner: string, repo: string, error: unknown): Promise<ForgesError> {
-    if (
-      error instanceof FetchError &&
-      error.status === 404 &&
-      !(await this.isGitHubHost(owner, repo))
-    ) {
+    const normalized = normalizeError(error, "github");
+    if (normalized.status === 404 && !(await this.isGitHubHost(owner, repo))) {
       return new ForgesError(
         "Releases are not supported by this GitHub-compatible host",
         501,
         "github",
-        error,
+        normalized,
       );
     }
-    return normalizeError(error, "github");
+    return normalized;
   }
 
   protected override async listReleases(
     owner: string,
     repo: string,
-    options?: ListReleasesOptions,
-  ): Promise<PageResult<Release>> {
+    options?: Positioned<ListReleasesOptions>,
+  ): Promise<ContinuedPage<Release>> {
     try {
-      const query: Record<string, string> = {};
-      if (options?.page) query.page = String(options.page);
-      if (options?.perPage) query.per_page = String(options.perPage);
-
-      const { data, headers } = await rawFetch<GitHubRelease[]>(
-        this.client,
-        this.releasesRoute(owner, repo),
-        { query },
-      );
-      return buildPageResult(data ?? [], headers, (raw) => this.mapRelease(raw));
+      return await super.listReleases(owner, repo, options);
     } catch (error) {
       throw await this.releaseError(owner, repo, error);
     }
@@ -1796,27 +1611,28 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     repo: string,
     tag: string,
   ): Promise<GitHubRelease | null> {
-    try {
+    return this.forgeCall(async (forge) => {
+      let cursor: { nextUrl?: string } | undefined;
       for (let page = 1; page <= MAX_DRAFT_RELEASE_PAGES; page += 1) {
-        const { data, headers } = await rawFetch<GitHubRelease[]>(
-          this.client,
-          this.releasesRoute(owner, repo),
-          { query: { page: String(page), per_page: "100" } },
-        );
-        const draft = (data ?? []).find((release) => release.draft && release.tag_name === tag);
-        if (draft) return draft;
-        if (!paginationFromLink(headers).hasNextPage) break;
+        const releases = await forge.releases
+          .list(this.repoRef(forge, owner, repo), { perPage: 100, ...(cursor ? { cursor } : {}) })
+          .page();
+        const draft = releases.items.find((release) => release.isDraft && release.tag === tag);
+        if (draft) return draft.raw as GitHubRelease;
+        if (!releases.cursor) break;
+        cursor = releases.cursor;
       }
       return null;
-    } catch (error) {
-      throw normalizeError(error, "github");
-    }
+    });
   }
 
   private async readRelease(owner: string, repo: string, tag: string): Promise<GitHubRelease> {
+    encodeRefPathSegment(tag, "Tag");
     try {
-      return await this.client<GitHubRelease>(
-        `${this.releasesRoute(owner, repo)}/tags/${encodeRefPathSegment(tag, "Tag")}`,
+      return await this.forgeCall(
+        async (forge) =>
+          (await forge.releases.getByTag(this.repoRef(forge, owner, repo), tag))
+            .raw as GitHubRelease,
       );
     } catch (error) {
       const normalized = await this.releaseError(owner, repo, error);
@@ -1837,18 +1653,7 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     input: CreateReleaseInput,
   ): Promise<Release> {
     try {
-      const data = await this.client<GitHubRelease>(this.releasesRoute(owner, repo), {
-        method: "POST",
-        body: {
-          tag_name: input.tag,
-          target_commitish: input.ref,
-          name: input.name,
-          body: input.body,
-          draft: input.draft,
-          prerelease: input.prerelease,
-        },
-      });
-      return this.mapRelease(data);
+      return await super.createRelease(owner, repo, input);
     } catch (error) {
       throw await this.releaseError(owner, repo, error);
     }
@@ -1862,58 +1667,24 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     input: UpdateReleaseInput,
   ): Promise<Release> {
     const release = await this.readRelease(owner, repo, tag);
-    try {
-      const data = await this.client<GitHubRelease>(
-        `${this.releasesRoute(owner, repo)}/${encodePathSegment(release.id)}`,
-        {
-          method: "PATCH",
-          body: {
-            name: input.name,
-            body: input.body,
-            draft: input.draft,
-            prerelease: input.prerelease,
-          },
-        },
+    return this.forgeCall(async (forge) => {
+      const ref = this.repoRef(forge, owner, repo);
+      const updated = await forge.releases.update(
+        { forge: forge.forge, instance: forge.instance, repo: ref, id: String(release.id), tag },
+        releaseUpdate(input),
       );
-      return this.mapRelease(data);
-    } catch (error) {
-      throw normalizeError(error, "github");
-    }
+      return this.mapRelease(updated.raw as GitHubRelease);
+    });
   }
 
   // --- Issues ---
-
-  protected override async listIssues(
-    owner: string,
-    repo: string,
-    options?: ListOptions,
-  ): Promise<PageResult<Issue>> {
-    try {
-      const query: Record<string, string> = {};
-      if (options?.page) query.page = String(options.page);
-      if (options?.perPage) query.per_page = String(options.perPage);
-      if (options?.state) query.state = options.state;
-
-      const { data, headers } = await rawFetch<GitHubIssue[]>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues`,
-        { query },
-      );
-
-      // GitHub's `/issues` lists pull requests too.
-      const issuesOnly = (data ?? []).filter((issue) => issue.pull_request === undefined);
-      return buildPageResult(issuesOnly, headers, (raw) => this.mapIssue(raw));
-    } catch (error) {
-      throw normalizeError(error, "github");
-    }
-  }
 
   protected override async searchIssues(
     owner: string,
     repo: string,
     searchQuery: string,
-    options?: ListOptions,
-  ): Promise<SearchPageResult<Issue>> {
+    options?: WithPage<ListOptions>,
+  ): Promise<NumberedSearchPage<Issue>> {
     try {
       const encodedOwner = encodePathSegment(owner, "Owner");
       const encodedRepo = encodePathSegment(repo, "Repository name");
@@ -2003,8 +1774,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   protected override async listPullRequests(
     owner: string,
     repo: string,
-    options?: ListOptions,
-  ): Promise<PageResult<PullRequest>> {
+    options?: WithPage<ListOptions>,
+  ): Promise<NumberedPage<PullRequest>> {
     try {
       const query: Record<string, string> = {};
       if (options?.page) query.page = String(options.page);
@@ -2023,28 +1794,6 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     }
   }
 
-  protected override async listPullRequestFiles(
-    owner: string,
-    repo: string,
-    number: number,
-    options?: ListPullRequestFilesOptions,
-  ): Promise<PageResult<PullRequestFile>> {
-    try {
-      const query: Record<string, string> = {};
-      if (options?.page) query.page = String(options.page);
-      if (options?.perPage) query.per_page = String(options.perPage);
-
-      const { data, headers } = await rawFetch<GitHubPullRequestFile[]>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/files`,
-        { query },
-      );
-      return buildPageResult(data ?? [], headers, (raw) => this.mapPullRequestFile(raw));
-    } catch (error) {
-      throw normalizeError(error, "github");
-    }
-  }
-
   /**
    * CLA bots and Jenkins report commit statuses, not check runs, and branch protection
    * can require one. Statuses go first: a handful of rows, and a required one is the
@@ -2054,8 +1803,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     owner: string,
     repo: string,
     number: number,
-    options?: ListPullRequestChecksOptions,
-  ): Promise<PageResult<PullRequestCheck>> {
+    options?: WithPage<ListPullRequestChecksOptions>,
+  ): Promise<NumberedPage<PullRequestCheck>> {
     try {
       const pullRequest = await this.getPullRequest(owner, repo, number);
       return await this.#readRevisionChecks(owner, repo, pullRequest.headSha, options);
@@ -2069,8 +1818,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     owner: string,
     repo: string,
     ref: string,
-    options?: ListCommitChecksOptions,
-  ): Promise<PageResult<PullRequestCheck>> {
+    options?: WithPage<ListCommitChecksOptions>,
+  ): Promise<NumberedPage<PullRequestCheck>> {
     try {
       const sha = isCommitSha(ref) ? ref : await this.#commitOf(owner, repo, ref);
       return await this.#readRevisionChecks(owner, repo, sha, options);
@@ -2098,8 +1847,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     owner: string,
     repo: string,
     ref: string,
-    options: ListCommitChecksOptions | undefined,
-  ): Promise<PageResult<PullRequestCheck>> {
+    options: WithPage<ListCommitChecksOptions> | undefined,
+  ): Promise<NumberedPage<PullRequestCheck>> {
     const perPage = options?.perPage ?? 30;
     const page = options?.page ?? 1;
     const skip = (page - 1) * perPage;
@@ -2183,8 +1932,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   protected override async searchPullRequestsGlobal(
     searchQuery: string,
-    options?: GlobalPullRequestSearchOptions,
-  ): Promise<GlobalPullRequestSearchResult> {
+    options?: WithPage<GlobalPullRequestSearchOptions>,
+  ): Promise<Numbered<GlobalPullRequestSearchResult>> {
     return this.searchAcrossRepositories("pull-request", searchQuery, options, (raw) =>
       this.mapPullRequestSearchItem(raw),
     );
@@ -2192,8 +1941,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   protected override async searchIssuesGlobal(
     searchQuery: string,
-    options?: GlobalIssueSearchOptions,
-  ): Promise<GlobalIssueSearchResult> {
+    options?: WithPage<GlobalIssueSearchOptions>,
+  ): Promise<Numbered<GlobalIssueSearchResult>> {
     return this.searchAcrossRepositories("issue", searchQuery, options, (raw) =>
       this.mapIssue(raw),
     );
@@ -2203,9 +1952,9 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
   private async searchAcrossRepositories<T extends Issue>(
     kind: "pull-request" | "issue",
     searchQuery: string,
-    options: GlobalIssueSearchOptions | undefined,
+    options: WithPage<GlobalIssueSearchOptions> | undefined,
     map: (raw: GitHubIssue) => T,
-  ): Promise<SearchPageResult<T & { repository: string }> & { resultLimit: number }> {
+  ): Promise<NumberedSearchPage<T & { repository: string }> & { resultLimit: number }> {
     const noun = kind === "issue" ? "Issue" : "Pull-request";
     try {
       const page = options?.page ?? 1;
@@ -2321,8 +2070,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     owner: string,
     repo: string,
     searchQuery: string,
-    options?: ListOptions,
-  ): Promise<SearchPageResult<PullRequestSearchItem>> {
+    options?: WithPage<ListOptions>,
+  ): Promise<NumberedSearchPage<PullRequestSearchItem>> {
     try {
       const encodedOwner = encodePathSegment(owner, "Owner");
       const encodedRepo = encodePathSegment(repo, "Repository name");
@@ -2623,39 +2372,6 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   // --- Comments ---
 
-  protected override async listIssueComments(
-    owner: string,
-    repo: string,
-    number: number,
-    options?: ListCommentOptions,
-  ): Promise<PageResult<Comment>> {
-    try {
-      const query: Record<string, string> = {};
-      if (options?.page) query.page = String(options.page);
-      if (options?.perPage) query.per_page = String(options.perPage);
-
-      const { data, headers } = await rawFetch<GitHubComment[]>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}/comments`,
-        { query },
-      );
-
-      return buildPageResult(data ?? [], headers, (raw) => this.mapComment(raw));
-    } catch (error) {
-      throw normalizeError(error, "github");
-    }
-  }
-
-  /** GitHub serves pull-request discussion comments from the issues endpoint. */
-  protected override async listPullRequestComments(
-    owner: string,
-    repo: string,
-    number: number,
-    options?: ListCommentOptions,
-  ): Promise<PageResult<Comment>> {
-    return this.listIssueComments(owner, repo, number, options);
-  }
-
   /**
    * GitHub keys discussion comments by id alone, so the endpoint cannot scope
    * the read. The returned issue_url is checked against the requested number
@@ -2725,8 +2441,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     owner: string,
     repo: string,
     number: number,
-    options?: ListReactionOptions,
-  ): Promise<PageResult<Reaction>> {
+    options?: WithPage<ListReactionOptions>,
+  ): Promise<NumberedPage<Reaction>> {
     return this.listReactions(owner, repo, number, false, options);
   }
 
@@ -2735,8 +2451,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     owner: string,
     repo: string,
     number: number,
-    options?: ListReactionOptions,
-  ): Promise<PageResult<Reaction>> {
+    options?: WithPage<ListReactionOptions>,
+  ): Promise<NumberedPage<Reaction>> {
     return this.listReactions(owner, repo, number, true, options);
   }
 
@@ -2746,8 +2462,8 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
     repo: string,
     number: number,
     pullRequest: boolean,
-    options?: ListReactionOptions,
-  ): Promise<PageResult<Reaction>> {
+    options?: WithPage<ListReactionOptions>,
+  ): Promise<NumberedPage<Reaction>> {
     try {
       const query: Record<string, string> = {};
       if (options?.page) query.page = String(options.page);
@@ -2815,34 +2531,14 @@ export class GitHubProvider extends Provider<GitHubRawTypes> {
 
   // --- Users ---
 
-  protected override async getUser(username: string): Promise<User> {
-    try {
-      const data = await this.client<GitHubUser>(
-        `/users/${encodePathSegment(username, "Username")}`,
-      );
-      return this.mapUser(data);
-    } catch (error) {
-      throw normalizeError(error, "github");
-    }
-  }
-
-  protected override async getAuthenticatedUser(): Promise<User> {
-    try {
-      const data = await this.client<GitHubUser>("/user");
-      return this.mapUser(data);
-    } catch (error) {
-      throw normalizeError(error, "github");
-    }
-  }
-
   // --- Threads ---
 
   protected override async listThreads(
     owner: string,
     repo: string,
     number: number,
-    options?: ListThreadOptions,
-  ): Promise<PageResult<Thread>> {
+    options?: WithPage<ListThreadOptions>,
+  ): Promise<NumberedPage<Thread>> {
     try {
       const perPage = options?.perPage ?? 30;
       const page = options?.page ?? 1;

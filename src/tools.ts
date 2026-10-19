@@ -57,7 +57,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_repos_list",
       title: forgeToolTitle("forges_repos_list", "List Repositories"),
       description:
-        "List the repositories owned by one user or organization on GitHub, GitLab, Gitea, or Forgejo, or in a Cloudflare Artifacts namespace, normalized to one shape. A row leaves out an owner that repeats the one asked for, and the merge settings, which come with forges_repos_get. Results are paged: read hasNextPage and nextPage instead of assuming the first page is everything.",
+        "List the repositories owned by one user or organization on GitHub, GitLab, Gitea, or Forgejo, or in a Cloudflare Artifacts namespace, normalized to one shape. A row leaves out an owner that repeats the one asked for, and the merge settings, which come with forges_repos_get. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.",
       snippet: "List repositories through GitHub, GitLab, Gitea, or Cloudflare Artifacts.",
       guidelines: [
         "Use forges_repos_list for repository discovery instead of constructing provider API requests.",
@@ -98,7 +98,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_repos_tags",
       title: forgeToolTitle("forges_repos_tags", "List Repository Tags"),
       description:
-        "List the Git tags of one repository, each with the commit it points at. An annotated tag is peeled to its commit, not its tag object, and sha is null when the forge names no commit. GitLab is asked for version order, newest first. GitHub and Gitea promise no order, so compare names instead of trusting the first row. A tag needs no release, so this also finds the ones forges_releases_list never shows. Results are paged: read hasNextPage and nextPage instead of assuming the first page is everything.",
+        "List the Git tags of one repository, each with the commit it points at. An annotated tag is peeled to its commit, not its tag object, and sha is null when the forge names no commit. GitLab is asked for version order, newest first. GitHub and Gitea promise no order, so compare names instead of trusting the first row. A tag needs no release, so this also finds the ones forges_releases_list never shows. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.",
       snippet: "List repository tags from GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_repos_tags instead of gh api tags or git ls-remote --tags. Pick the newest tag by comparing names, not by row position.",
@@ -165,7 +165,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_ci_jobs_list",
       title: forgeToolTitle("forges_ci_jobs_list", "List CI Jobs"),
       description:
-        "List the jobs of one CI run with their lifecycle status, terminal conclusion, start and end times, web URL and, on GitHub and Gitea, their steps. A failed job has conclusion failure; read its log with forges_ci_jobs_log. An empty page 1 means the run started no jobs. GitLab jobs report no steps. Forgejo jobs bring only id, name, state and, from Forgejo 17, a url: no steps and null times.",
+        "List the jobs of one CI run with their lifecycle status, terminal conclusion, start and end times, web URL and, on GitHub and Gitea, their steps. A failed job has conclusion failure; read its log with forges_ci_jobs_log. An empty first page means the run started no jobs. GitLab jobs report no steps. Forgejo jobs bring only id, name, state and, from Forgejo 17, a url: no steps and null times.",
       snippet: "List the jobs and steps of one CI run to find the one that failed.",
       guidelines: [
         "Use forges_ci_jobs_list instead of gh run view --json jobs to find which job and step of a run failed.",
@@ -191,7 +191,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_commits_search",
       title: forgeToolTitle("forges_commits_search", "Search Commits"),
       description:
-        "Search commits across repositories with optional owner and repository scope. Rows carry repository identity and author and committer dates; a committer identical to the author is left out. GitHub takes its native qualifiers and returns totalCount and resultLimit (1000). GitLab matches message keywords or a SHA on the default branch, returns no totalCount and resultLimit null, and searches a group or the whole instance only with advanced search, so pass owner and repo on other hosts. Messages are cut to their subject line and messageTruncated marks the cut ones; read one whole with forges_commits_get. Results are paged; follow nextPage while hasNextPage is true. incomplete means the search is known to be partial; narrow the query when it is true. Gitea reports unsupported search.",
+        "Search commits across repositories with optional owner and repository scope. Rows carry repository identity and author and committer dates; a committer identical to the author is left out. GitHub takes its native qualifiers and returns totalCount and resultLimit (1000). GitLab matches message keywords or a SHA on the default branch, returns no totalCount and resultLimit null, and searches a group or the whole instance only with advanced search, so pass owner and repo on other hosts. Messages are cut to their subject line and messageTruncated marks the cut ones; read one whole with forges_commits_get. Results are paged; pass nextCursor back as cursor while it is present. incomplete means the search is known to be partial; narrow the query when it is true. Gitea reports unsupported search.",
       snippet: "Find commits without knowing their repository first.",
       guidelines: [
         "Use forges_commits_search for native GitHub commit queries, including author-date: and committer-date: qualifiers, or GitLab message keywords; narrow the query when incomplete is true or totalCount exceeds resultLimit.",
@@ -248,7 +248,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_commits_checks",
       title: forgeToolTitle("forges_commits_checks", "List Commit Checks"),
       description:
-        "List the checks or pipelines that ran on one commit, given as a SHA, branch, or tag, in the rows forges_pull_requests_checks returns: name, lifecycle status, terminal conclusion, and URL. On GitHub the commit statuses come before the check runs; a host without check runs, GitBucket for one, returns the statuses alone. On GitLab the rows are the commit's pipelines, newest first, and a merged results pipeline is missing because it runs on a merge commit. On Gitea they are the combined commit statuses, Actions included. A ref the repository lacks is not found, never an empty list. Continue with nextPage while hasNextPage is true.",
+        "List the checks or pipelines that ran on one commit, given as a SHA, branch, or tag, in the rows forges_pull_requests_checks returns: name, lifecycle status, terminal conclusion, and URL. On GitHub the commit statuses come before the check runs; a host without check runs, GitBucket for one, returns the statuses alone. On GitLab the rows are the commit's pipelines, newest first, and a merged results pipeline is missing because it runs on a merge commit. On Gitea they are the combined commit statuses, Actions included. A ref the repository lacks is not found, never an empty list. Pass nextCursor back as cursor while it is present.",
       snippet: "Read the checks for one commit, branch, or tag on GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_commits_checks for a commit no pull request points at: a branch pushed before its pull request, or a head the pull request has moved past.",
@@ -326,7 +326,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_issues_list",
       title: forgeToolTitle("forges_issues_list", "List Issues"),
       description:
-        "List normalized issues for one repository, optionally filtered by state. Issue bodies are omitted here so one page cannot flood the context; read a single body with forges_issues_get. GitHub serves pull requests from the same endpoint and they are dropped after the page is cut, so an empty page whose hasNextPage is true means keep paging, not that the repository has no issues.",
+        "List normalized issues for one repository, optionally filtered by state. Issue bodies are omitted here so one page cannot flood the context; read a single body with forges_issues_get. GitHub serves pull requests from the same endpoint and they are dropped after the page is cut, so an empty page that still carries nextCursor means keep paging, not that the repository has no issues.",
       snippet: "List repository issues across GitHub, GitLab, or Gitea.",
       guidelines: ["Use forges_issues_list to inspect issue queues across supported platforms."],
       ...effect("forges_issues_list"),
@@ -337,7 +337,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_issues_search_global",
       title: forgeToolTitle("forges_issues_search_global", "Search Issues Across Repositories"),
       description:
-        "Search issues across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. author, state and labels filter on every platform, and an issue must carry every label. Pull requests never appear. Returns repository identity, totalCount and incomplete. Follow nextPage while hasNextPage is true; narrow the query when incomplete is true.",
+        "Search issues across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. author, state and labels filter on every platform, and an issue must carry every label. Pull requests never appear. Returns repository identity, totalCount and incomplete. Pass nextCursor back as cursor while it is present; narrow the query when incomplete is true.",
       snippet: "Find issues across an owner's repositories, filtered by label, state or author.",
       guidelines: [
         "Use forges_issues_search_global for triage across an owner's repositories instead of looping forges_issues_search over each one; narrow the query when incomplete is true.",
@@ -374,7 +374,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_issues_comments",
       title: forgeToolTitle("forges_issues_comments", "List Issue Comments"),
       description:
-        "List the discussion comments under one issue, oldest first. Comment bodies are truncated here; read one whole with forges_issues_comments_get. Ask for a small perPage on a busy issue and follow hasNextPage. GitLab system notes about label and state churn are dropped, so a short page whose hasNextPage is true means keep paging, not that the discussion ended.",
+        "List the discussion comments under one issue, oldest first. Comment bodies are truncated here; read one whole with forges_issues_comments_get. Ask for a small perPage on a busy issue and follow nextCursor. GitLab system notes about label and state churn are dropped, so a short page that still carries nextCursor means keep paging, not that the discussion ended.",
       snippet: "Read the discussion under an issue on GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_issues_comments to read an issue's discussion instead of scraping the web UI.",
@@ -400,7 +400,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_issues_reactions",
       title: forgeToolTitle("forges_issues_reactions", "List Issue Reactions"),
       description:
-        "List the emoji reactions on one issue, oldest first, or on one of its discussion comments when commentId is an id forges_issues_comments returned. Each row names the reaction the way GitHub does (+1, -1, laugh, confused, heart, hooray, rocket, eyes), who reacted and createdAt; an emoji GitHub has no reaction for keeps the forge's own name. A pull request number answers not found; read those with forges_pull_requests_reactions. Results are paged: read hasNextPage and nextPage instead of assuming the first page is everything.",
+        "List the emoji reactions on one issue, oldest first, or on one of its discussion comments when commentId is an id forges_issues_comments returned. Each row names the reaction the way GitHub does (+1, -1, laugh, confused, heart, hooray, rocket, eyes), who reacted and createdAt; an emoji GitHub has no reaction for keeps the forge's own name. A pull request number answers not found; read those with forges_pull_requests_reactions. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.",
       snippet: "Read the reactions on an issue or its comments on GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_issues_reactions instead of gh api .../reactions; pass commentId for a comment's reactions.",
@@ -468,7 +468,7 @@ function defineTools(): ToolDefinition[] {
         "Search Pull Requests Across Repositories",
       ),
       description:
-        "Search pull requests across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. author filters by login on every platform. Returns repository identity, totalCount and incomplete. Follow nextPage while hasNextPage is true; narrow the query when incomplete is true.",
+        "Search pull requests across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. author filters by login on every platform. Returns repository identity, totalCount and incomplete. Pass nextCursor back as cursor while it is present; narrow the query when incomplete is true.",
       snippet: "Find an author's pull requests across repositories, optionally newest first.",
       guidelines: [
         "Use forges_pull_requests_search_global with author, sort created and order desc for recent author contributions; narrow the query when incomplete is true.",
@@ -561,7 +561,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_pull_requests_comments",
       title: forgeToolTitle("forges_pull_requests_comments", "List Pull Request Comments"),
       description:
-        "List the conversation comments under one pull request, oldest first: the discussion, not the code-review threads that forges_threads_list reads. Comment bodies are truncated here; read one whole with forges_pull_requests_comments_get, and bound the volume with perPage and hasNextPage.",
+        "List the conversation comments under one pull request, oldest first: the discussion, not the code-review threads that forges_threads_list reads. Comment bodies are truncated here; read one whole with forges_pull_requests_comments_get, and bound the volume with perPage and nextCursor.",
       snippet: "Read the conversation under a pull request on GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_pull_requests_comments for the pull-request conversation; review threads come from forges_threads_list.",
@@ -587,7 +587,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_pull_requests_reactions",
       title: forgeToolTitle("forges_pull_requests_reactions", "List Pull Request Reactions"),
       description:
-        "List the emoji reactions on one pull request, oldest first, or on one of its conversation comments when commentId is an id forges_pull_requests_comments returned. Some review bots answer with a reaction and nothing else, eyes while they review and +1 when they have nothing to say, so compare createdAt with the latest push before trusting one. Each row names the reaction the way GitHub does (+1, -1, laugh, confused, heart, hooray, rocket, eyes), who reacted and createdAt; an emoji GitHub has no reaction for keeps the forge's own name. An issue number answers not found. Results are paged: read hasNextPage and nextPage instead of assuming the first page is everything.",
+        "List the emoji reactions on one pull request, oldest first, or on one of its conversation comments when commentId is an id forges_pull_requests_comments returned. Some review bots answer with a reaction and nothing else, eyes while they review and +1 when they have nothing to say, so compare createdAt with the latest push before trusting one. Each row names the reaction the way GitHub does (+1, -1, laugh, confused, heart, hooray, rocket, eyes), who reacted and createdAt; an emoji GitHub has no reaction for keeps the forge's own name. An issue number answers not found. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.",
       snippet: "Read the reactions on a pull request or its comments on GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_pull_requests_reactions instead of gh api .../reactions to see whether a review bot reacted after the latest push.",

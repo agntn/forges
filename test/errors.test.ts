@@ -1,6 +1,8 @@
 import { afterEach, describe, it, expect, vi } from "vite-plus/test";
 import { FetchError } from "../src/errors.ts";
-import { createHttpClient, type RequestOptions } from "../src/http.ts";
+import { github } from "forges/github";
+
+import { createForgeClient, forgeFetch, type RequestOptions } from "../src/http.ts";
 import {
   normalizeError,
   normalizeMergeError,
@@ -552,13 +554,16 @@ describe("normalizeError provider reasons", () => {
 
 describe("writes whose outcome is unknown", () => {
   const WRITE_NOTE = "The write may have landed before this failure";
-  const client = createHttpClient({ baseURL: "https://api.github.com", token: "" });
+  const client = createForgeClient(
+    () => Promise.resolve(github({ auth: { type: "anonymous" }, fetch: forgeFetch }) as never),
+    { scope: "test" },
+  );
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  /** The FetchError the real client throws once fetch answers or rejects as given. */
+  /** The FetchError the client throws through `forges` once fetch answers as given. */
   async function failure(
     url: string,
     options: RequestOptions,
@@ -589,7 +594,7 @@ describe("writes whose outcome is unknown", () => {
     const result = normalizeError(error, "github");
     expect(result.status).toBe(502);
     expect(result.message).toMatch(
-      /502\. The write may have landed before this failure, so check for its result before sending it again\.$/,
+      /502 Bad Gateway\. The write may have landed before this failure, so check for its result before sending it again\.$/,
     );
   });
 
@@ -761,7 +766,7 @@ describe("writes whose outcome is unknown", () => {
     const result = normalizeMergeError(error, "github", true);
     expect(result.status).toBe(500);
     expect(result.message).toMatch(
-      /500\. The merge may have landed before this failure, so read the pull request's merged and mergeCommitSha before trying again\.$/,
+      /500 Internal Server Error\. The merge may have landed before this failure, so read the pull request's merged and mergeCommitSha before trying again\.$/,
     );
     expect(result.message).not.toContain(WRITE_NOTE);
   });

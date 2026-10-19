@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
       return {
         platform,
         items: page.items.map(slimPullRequest),
-        hasNextPage: page.hasNextPage,
+        hasNextPage: page.nextCursor !== undefined,
         fetchedAt: new Date().toISOString(),
       };
     });

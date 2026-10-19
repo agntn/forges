@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
         platform,
         number,
         items: page.items.map(slimThread),
-        hasNextPage: page.hasNextPage,
+        hasNextPage: page.nextCursor !== undefined,
         fetchedAt: new Date().toISOString(),
       };
     });

@@ -2,11 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { FetchError } from "../src/errors.ts";
 import { GitHubProvider } from "../src/providers/github.ts";
 import { GitLabProvider } from "../src/providers/gitlab.ts";
+import { cursorFor } from "./support/cursor.ts";
 import { GiteaProvider } from "../src/providers/gitea.ts";
 
 const mocks = vi.hoisted(() => ({ client: vi.fn(), rawFetch: vi.fn() }));
 vi.mock("../src/http.ts", () => ({
-  createHttpClient: () => mocks.client,
+  toFetchError: (error: unknown) => error,
+  forgeFetch: vi.fn(),
+  createForgeClient: () => mocks.client,
   rawFetch: mocks.rawFetch,
 }));
 
@@ -48,8 +51,7 @@ describe("commit search", () => {
           url: hit.html_url,
         },
       ],
-      hasNextPage: true,
-      nextPage: 2,
+      nextCursor: cursorFor("commits.search", 2),
       totalCount: 2,
       incomplete: false,
       resultLimit: 1000,
@@ -74,10 +76,12 @@ describe("commit search", () => {
       },
       headers: new Headers({ link: '<https://api.github.com/search/commits?page=35>; rel="next"' }),
     });
-    const result = await new GitHubProvider({ token: "" }).commits.search("snapshot", { page: 34 });
+    const result = await new GitHubProvider({ token: "" }).commits.search("snapshot", {
+      cursor: cursorFor("commits.search", 34),
+    });
     expect(result.items).toHaveLength(10);
-    expect(result).toMatchObject({ hasNextPage: false, incomplete: true, resultLimit: 1000 });
-    expect(result.nextPage).toBeUndefined();
+    expect(result).toMatchObject({ incomplete: true, resultLimit: 1000 });
+    expect(result.nextCursor).toBeUndefined();
   });
 
   it("does not fill a scoped final page with matches beyond the cap", async () => {
@@ -94,7 +98,7 @@ describe("commit search", () => {
     });
     const result = await new GitHubProvider({ token: "" }).commits.search("snapshot", {
       owner: "other",
-      page: 34,
+      cursor: cursorFor("commits.search", 34),
     });
     expect(result.items).toHaveLength(9);
     expect(result.incomplete).toBe(true);
@@ -114,7 +118,7 @@ describe("commit search", () => {
       {
         owner: "other",
         repo: "chosen",
-        page: 2,
+        cursor: cursorFor("commits.search", 2),
         perPage: 10,
       },
     );
@@ -138,7 +142,6 @@ describe("commit search", () => {
     });
     expect(result).toMatchObject({
       items: [],
-      hasNextPage: false,
       incomplete: false,
       totalCount: 0,
     });
@@ -262,7 +265,7 @@ describe("GitLab commit search", () => {
     const result = await new GitLabProvider({ token: "glpat-test" }).commits.search("snapshot", {
       owner: "gitlab-org",
       repo: "gitlab-runner",
-      page: 2,
+      cursor: cursorFor("commits.search", 2),
       perPage: 1,
     });
 
@@ -274,8 +277,7 @@ describe("GitLab commit search", () => {
     // x-total stops counting 100 past the earlier pages, so it is no count to report.
     expect(result).toEqual({
       items: [gitlabItem],
-      hasNextPage: true,
-      nextPage: 3,
+      nextCursor: cursorFor("commits.search", 3),
       incomplete: false,
       resultLimit: null,
     });
@@ -291,11 +293,11 @@ describe("GitLab commit search", () => {
     const result = await new GitLabProvider({ token: "glpat-test" }).commits.search("snapshot", {
       owner: "gitlab-org",
       repo: "gitlab-runner",
-      page: 2,
+      cursor: cursorFor("commits.search", 2),
       perPage: 100,
     });
 
-    expect(result).toMatchObject({ hasNextPage: true, nextPage: 3 });
+    expect(result).toMatchObject({ nextCursor: cursorFor("commits.search", 3) });
   });
 
   it("ends on a short last page", async () => {
@@ -308,12 +310,12 @@ describe("GitLab commit search", () => {
     const result = await new GitLabProvider({ token: "glpat-test" }).commits.search("snapshot", {
       owner: "gitlab-org",
       repo: "gitlab-runner",
-      page: 2,
+      cursor: cursorFor("commits.search", 2),
       perPage: 100,
     });
 
-    expect(result.hasNextPage).toBe(false);
-    expect(result.nextPage).toBeUndefined();
+    expect(result.nextCursor).toBeUndefined();
+    expect(result.nextCursor).toBeUndefined();
   });
 
   it.each([
@@ -332,7 +334,7 @@ describe("GitLab commit search", () => {
       query: { scope: "commits", search: "snapshot", page: 1, per_page: 30 },
     });
     expect(mocks.client).toHaveBeenCalledWith("/projects/250833");
-    expect(result).toMatchObject({ items: [gitlabItem], hasNextPage: false, incomplete: false });
+    expect(result).toMatchObject({ items: [gitlabItem], incomplete: false });
   });
 
   it("marks a page incomplete when a hit's project cannot be read", async () => {

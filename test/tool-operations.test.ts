@@ -295,13 +295,13 @@ describe("configured provider", () => {
       query: "Provider",
       owner: "agntn",
       repo: "forges",
-      page: 2,
+      cursor: "next",
       perPage: 10,
     });
 
     expect(searched.details.result).toMatchObject({
       query: "Provider",
-      options: { owner: "agntn", repo: "forges", page: 2, perPage: 10 },
+      options: { owner: "agntn", repo: "forges", cursor: "next", perPage: 10 },
     });
   });
 

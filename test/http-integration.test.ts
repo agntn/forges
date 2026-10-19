@@ -2,10 +2,21 @@ import { createServer } from "node:http";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { normalizeError } from "../src/errors.ts";
-import { createHttpClient } from "../src/http.ts";
+import { gitea } from "forges/gitea";
 
-describe("createHttpClient over native fetch", () => {
+import { normalizeError } from "../src/errors.ts";
+import { createForgeClient } from "../src/http.ts";
+
+/** A client on a real `forges` Gitea provider pointed at a local server. */
+function localClient(port: number, token: string) {
+  const forge = gitea({
+    baseUrl: `http://127.0.0.1:${port}`,
+    auth: token === "" ? { type: "anonymous" } : { type: "token", token },
+  });
+  return createForgeClient(() => Promise.resolve(forge as never), { scope: "local" });
+}
+
+describe("createForgeClient over a real forges provider", () => {
   it("adds authentication to a real request", async () => {
     let authorization: string | undefined;
     const server = createServer((request, response) => {
@@ -26,10 +37,7 @@ describe("createHttpClient over native fetch", () => {
       const address = server.address();
       if (!address || typeof address === "string") throw new Error("Expected a TCP server address");
 
-      const client = createHttpClient({
-        baseURL: `http://127.0.0.1:${address.port}`,
-        token: "test-token",
-      });
+      const client = localClient(address.port, "test-token");
       await client("/");
 
       expect(authorization).toBe("token test-token");
@@ -64,10 +72,7 @@ describe("createHttpClient over native fetch", () => {
       const address = server.address();
       if (!address || typeof address === "string") throw new Error("Expected a TCP server address");
 
-      const client = createHttpClient({
-        baseURL: `http://127.0.0.1:${address.port}`,
-        token: "",
-      });
+      const client = localClient(address.port, "");
       const methods = ["GET", "PATCH", "POST", "PUT", "DELETE"] as const;
       for (const method of methods) {
         await expect(client("/", { method, retryDelay: 0 })).rejects.toThrow();
@@ -93,7 +98,7 @@ describe("createHttpClient over native fetch", () => {
 
   it("carries the platform's reason from a real error response", async () => {
     const server = createServer((request, response) => {
-      if (request.url === "/html") {
+      if (request.url?.endsWith("/html")) {
         response.writeHead(502, { "content-type": "text/html" });
         response.end("<html><body>Bad Gateway</body></html>");
         return;
@@ -116,10 +121,7 @@ describe("createHttpClient over native fetch", () => {
       const address = server.address();
       if (!address || typeof address === "string") throw new Error("Expected a TCP server address");
 
-      const client = createHttpClient({
-        baseURL: `http://127.0.0.1:${address.port}`,
-        token: "",
-      });
+      const client = localClient(address.port, "");
       const failure = async (path: string) => {
         try {
           await client(path, { retry: 0 });

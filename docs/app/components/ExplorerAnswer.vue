@@ -116,7 +116,8 @@ function orEmpty(value: string): string {
         >
       </UTooltip>
       <span v-if="page && !loading" class="console-meta"
-        >{{ page.items.length }} on this page · hasNextPage {{ page.hasNextPage }}</span
+        >{{ page.items.length }} on this page ·
+        {{ page.hasNextPage ? "more pages" : "last page" }}</span
       >
       <span v-else-if="fetchedAt && !loading" class="console-meta"
         >fetched {{ dateOnly(fetchedAt) }}</span

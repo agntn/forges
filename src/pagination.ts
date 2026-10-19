@@ -4,7 +4,7 @@
  */
 
 import { normalizeError } from "./errors.ts";
-import type { PageResult } from "./types.ts";
+import type { NumberedPage } from "./provider.ts";
 
 /**
  * Parsed Link header entry
@@ -117,7 +117,7 @@ export function buildPageResult<TRaw, TMapped>(
   items: TRaw[],
   headers: Headers,
   mapper: (raw: TRaw) => TMapped,
-): PageResult<TMapped> {
+): NumberedPage<TMapped> {
   return { items: items.map(mapper), ...paginationFromLink(headers) };
 }
 
@@ -228,7 +228,7 @@ export async function fetchAllPages<T>(
 }
 
 /** One page of a list the platform returned whole. */
-export function slicePage<T>(items: readonly T[], page = 1, perPage = 30): PageResult<T> {
+export function slicePage<T>(items: readonly T[], page = 1, perPage = 30): NumberedPage<T> {
   const start = (page - 1) * perPage;
   const hasNextPage = start + perPage < items.length;
   return {
@@ -254,7 +254,7 @@ export async function cursorPage<T>(
   page = 1,
   perPage = 30,
   maxChunk = 100,
-): Promise<PageResult<T>> {
+): Promise<NumberedPage<T>> {
   const start = (page - 1) * perPage;
   const wanted = start + perPage + 1;
   const items: T[] = [];

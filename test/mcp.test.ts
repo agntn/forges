@@ -411,7 +411,7 @@ describe("forges MCP server", () => {
         owner: "agntn",
         repo: "forges",
         kind: "issue",
-        page: 1,
+        cursor: "page-1",
         perPage: 10,
       },
     });
@@ -427,7 +427,7 @@ describe("forges MCP server", () => {
     });
 
     expect(mocks.contributionTemplates.list).toHaveBeenCalledWith("agntn", "forges", "issue", {
-      page: 1,
+      cursor: "page-1",
       perPage: 10,
     });
     expect(mocks.contributionTemplates.get).toHaveBeenCalledWith(
@@ -463,7 +463,7 @@ describe("forges MCP server", () => {
         query: "Provider",
         owner: "agntn",
         repo: "forges",
-        page: 2,
+        cursor: "page-2",
         perPage: 10,
       },
     });
@@ -471,7 +471,7 @@ describe("forges MCP server", () => {
     expect(mocks.code.search).toHaveBeenCalledWith("Provider", {
       owner: "agntn",
       repo: "forges",
-      page: 2,
+      cursor: "page-2",
       perPage: 10,
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: search });
@@ -481,7 +481,7 @@ describe("forges MCP server", () => {
     const client = await connectTestClient();
     const { tools } = await client.listTools();
     const tool = tools.find((entry) => entry.name === "forges_commits_search");
-    expect(tool?.description).toContain("follow nextPage while hasNextPage is true");
+    expect(tool?.description).toContain("pass nextCursor back as cursor while it is present");
     expect(tool?.description).toContain("incomplete means the search is known to be partial");
     expect(tool?.description).toContain("narrow the query");
   });
@@ -502,14 +502,14 @@ describe("forges MCP server", () => {
         platform: "github",
         query: "author:octocat",
         owner: "other",
-        page: 2,
+        cursor: "page-2",
         perPage: 10,
       },
     });
     expect(mocks.commits.search).toHaveBeenCalledWith("author:octocat", {
       owner: "other",
       repo: undefined,
-      page: 2,
+      cursor: "page-2",
       perPage: 10,
     });
     expect(JSON.parse(text(response.content))).toMatchObject({
@@ -542,14 +542,14 @@ describe("forges MCP server", () => {
         owner: "agntn",
         repo: "forges",
         branch: "main",
-        page: 2,
+        cursor: "page-2",
         perPage: 10,
       },
     });
 
     expect(mocks.ciRuns.list).toHaveBeenCalledWith("agntn", "forges", {
       branch: "main",
-      page: 2,
+      cursor: "page-2",
       perPage: 10,
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: runs });
@@ -584,7 +584,7 @@ describe("forges MCP server", () => {
     });
 
     expect(mocks.ciRuns.listJobs).toHaveBeenCalledWith("agntn", "forges", "35448775016", {
-      page: undefined,
+      cursor: undefined,
       perPage: 10,
     });
     expect(mocks.ciRuns.readJobLog).toHaveBeenCalledWith("agntn", "forges", "105912189006", {
@@ -622,7 +622,7 @@ describe("forges MCP server", () => {
         path: "src/provider.ts",
         since: "2026-08-01T00:00:00Z",
         until: "2026-08-29T23:59:59Z",
-        page: 2,
+        cursor: "page-2",
         perPage: 10,
       },
     });
@@ -632,7 +632,7 @@ describe("forges MCP server", () => {
       path: "src/provider.ts",
       since: "2026-08-01T00:00:00Z",
       until: "2026-08-29T23:59:59Z",
-      page: 2,
+      cursor: "page-2",
       perPage: 10,
     });
     expect(JSON.parse(text(response.content))).toMatchObject({
@@ -927,7 +927,7 @@ describe("forges MCP server", () => {
     );
 
     expect(mocks.commits.compare).toHaveBeenNthCalledWith(1, "agntn", "forges", "v0.3.4", "main", {
-      page: undefined,
+      cursor: undefined,
       perPage: 1,
     });
     const { committer: _committer, ...compared } = comparison.items[0]!;
@@ -1064,13 +1064,13 @@ describe("forges MCP server", () => {
         owner: "agntn",
         repo: "forges",
         number: 53,
-        page: 2,
+        cursor: "page-2",
         perPage: 10,
       },
     });
 
     expect(mocks.pullRequests.listFiles).toHaveBeenCalledWith("agntn", "forges", 53, {
-      page: 2,
+      cursor: "page-2",
       perPage: 10,
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: files });
@@ -1104,7 +1104,7 @@ describe("forges MCP server", () => {
     });
 
     expect(mocks.commits.listChecks).toHaveBeenCalledWith("agntn", "forges", "feat/commit-checks", {
-      page: undefined,
+      cursor: undefined,
       perPage: 10,
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: checks });
@@ -1133,13 +1133,13 @@ describe("forges MCP server", () => {
         owner: "agntn",
         repo: "forges",
         number: 53,
-        page: 2,
+        cursor: "page-2",
         perPage: 10,
       },
     });
 
     expect(mocks.pullRequests.listChecks).toHaveBeenCalledWith("agntn", "forges", 53, {
-      page: 2,
+      cursor: "page-2",
       perPage: 10,
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: checks });
@@ -1173,7 +1173,7 @@ describe("forges MCP server", () => {
     });
 
     expect(mocks.pullRequests.listChecks).toHaveBeenCalledWith("agntn", "forges", 53, {
-      page: 1,
+      cursor: undefined,
       perPage: undefined,
     });
     const payload = JSON.parse(text(response.content));
@@ -1211,7 +1211,7 @@ describe("forges MCP server", () => {
     });
 
     const payload = JSON.parse(text(response.content));
-    expect(payload.result).toEqual({ items: [], hasNextPage: false, staleHead: "6784d37" });
+    expect(payload.result).toEqual({ items: [], staleHead: "6784d37" });
     expect(payload.note).toContain("not at headSha a585fda");
     expect(mocks.pullRequests.listChecks).not.toHaveBeenCalled();
   });
@@ -1261,7 +1261,7 @@ describe("forges MCP server", () => {
     });
 
     expect(mocks.pullRequests.listReviews).toHaveBeenCalledWith("agntn", "forges", 107, {
-      page: undefined,
+      cursor: undefined,
       perPage: 5,
     });
     const parsed = JSON.parse(text(response.content));
@@ -1409,7 +1409,7 @@ describe("forges MCP server", () => {
     });
 
     expect(mocks.issues.search).toHaveBeenCalledWith("agntn", "forges", "issue search", {
-      page: undefined,
+      cursor: undefined,
       perPage: undefined,
       state: "open",
     });
@@ -1457,7 +1457,7 @@ describe("forges MCP server", () => {
       repo: undefined,
       state: "open",
       labels: ["enhancement"],
-      page: undefined,
+      cursor: undefined,
       perPage: undefined,
       sort: undefined,
       order: undefined,
@@ -1512,7 +1512,7 @@ describe("forges MCP server", () => {
     });
 
     expect(mocks.pullRequests.search).toHaveBeenCalledWith("agntn", "forges", "issue search", {
-      page: undefined,
+      cursor: undefined,
       perPage: undefined,
       state: "closed",
     });
@@ -1545,7 +1545,7 @@ describe("forges MCP server", () => {
 
     expect(mocks.pullRequests.listReactions).toHaveBeenCalledWith("agntn", "forges", 266, {
       commentId: "6129105893",
-      page: undefined,
+      cursor: undefined,
       perPage: 5,
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: page });
@@ -1567,7 +1567,7 @@ describe("forges MCP server", () => {
     expect(mocks.issues.listReactions).toHaveBeenCalledTimes(1);
     expect(mocks.issues.listReactions).toHaveBeenCalledWith("agntn", "forges", 256, {
       commentId: undefined,
-      page: undefined,
+      cursor: undefined,
       perPage: undefined,
     });
     expect(invalid.isError).toBe(true);
@@ -1588,7 +1588,7 @@ describe("forges MCP server", () => {
     });
 
     expect(mocks.repos.listTags).toHaveBeenCalledWith("agntn", "forges", {
-      page: undefined,
+      cursor: undefined,
       perPage: 1,
     });
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: page });
@@ -1616,7 +1616,7 @@ describe("forges MCP server", () => {
     });
 
     expect(mocks.releases.list).toHaveBeenCalledWith("agntn", "forges", {
-      page: undefined,
+      cursor: undefined,
       perPage: 5,
     });
     const parsed = JSON.parse(text(response.content));
@@ -1980,11 +1980,11 @@ describe("forges MCP server", () => {
 
     const response = await client.callTool({
       name: "forges_issues_list",
-      arguments: { owner: "agntn", repo: "forges", page: "two" },
+      arguments: { owner: "agntn", repo: "forges", perPage: "two" },
     });
 
     expect(response.isError).toBe(true);
-    expect(text(response.content)).toMatch(/^Invalid arguments at \/page: must be /u);
+    expect(text(response.content)).toMatch(/^Invalid arguments at \/perPage: must be /u);
     expect(text(response.content)).not.toContain("one of");
   });
 
@@ -1998,7 +1998,7 @@ describe("forges MCP server", () => {
 
     expect(response.isError).toBe(true);
     expect(text(response.content)).toBe(
-      'Invalid arguments: unknown property "per_page"; takes platform, owner, repo, page, perPage, state',
+      'Invalid arguments: unknown property "per_page"; takes platform, owner, repo, cursor, perPage, state',
     );
     expect(mocks.createProvider).not.toHaveBeenCalled();
   });
@@ -2018,7 +2018,7 @@ describe("forges MCP server", () => {
     expect(text(response.content).split("\n")).toEqual(
       Object.keys(stray).map(
         (key) =>
-          `Invalid arguments: unknown property "${key}"; takes platform, owner, repo, page, perPage, state`,
+          `Invalid arguments: unknown property "${key}"; takes platform, owner, repo, cursor, perPage, state`,
       ),
     );
     expect(mocks.createProvider).not.toHaveBeenCalled();

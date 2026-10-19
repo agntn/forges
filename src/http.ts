@@ -1,23 +1,16 @@
 /**
- * HTTP client factory over native fetch
- * Provides configurable authentication, retry logic, and rate limit awareness
+ * The HTTP client providers call, sent through a `forges` provider.
+ *
+ * `forges` owns the transport: credentials, which go only to the API origin,
+ * redirects, timeouts and rate limits. This module keeps the call shape the
+ * providers already use, and turns a `forges` failure back into a
+ * {@link FetchError}, so `normalizeError` reads it the way it always did.
  */
 
-import { sha256 } from "@agntn/hashes/sha2";
+import type { FetchLike, ForgeProvider as Forge, RawResponse } from "forges";
+
 import { CACHE_SCOPE } from "./cache.ts";
-import { FetchError, retryAfterSeconds } from "./errors.ts";
-import { version } from "./version.ts";
-
-/**
- * Configuration for HTTP client
- */
-export interface HttpClientConfig {
-  baseURL: string;
-  token: string;
-  tokenHeader?: string; // e.g., 'Authorization', 'Private-Token'
-  tokenPrefix?: string; // e.g., 'token ', 'Bearer '
-  userAgent?: string;
-}
+import { FetchError } from "./errors.ts";
 
 /** How a response body is read: parsed JSON (the default), text, binary, or the stream itself. */
 export type ResponseType = "json" | "text" | "blob" | "arrayBuffer" | "stream";
@@ -47,7 +40,7 @@ export interface RequestOptions<R extends ResponseType = ResponseType> {
   retry?: number | false;
   /** Milliseconds between attempts, unless the server asks for a longer wait. */
   retryDelay?: number;
-  /** Statuses worth another attempt. No response, or a body cut short, counts as 500. */
+  /** Statuses worth another attempt. No response counts as 500. */
   retryStatusCodes?: readonly number[];
   signal?: AbortSignal;
 }
@@ -91,92 +84,140 @@ const TEXT_TYPES = new Set([
   "application/html",
 ]);
 
-/** Create a client with auth headers, retries and rate limit warnings. */
-export function createHttpClient(config: HttpClientConfig): HttpClient {
-  const {
-    baseURL,
-    token,
-    tokenHeader = "Authorization",
-    tokenPrefix = "token ",
-    userAgent = `forges/${version}`,
-  } = config;
+/** The reason phrases `normalizeError` compares a forge's message with. */
+const STATUS_TEXT: Readonly<Record<number, string>> = {
+  400: "Bad Request",
+  401: "Unauthorized",
+  403: "Forbidden",
+  404: "Not Found",
+  405: "Method Not Allowed",
+  406: "Not Acceptable",
+  408: "Request Timeout",
+  409: "Conflict",
+  410: "Gone",
+  412: "Precondition Failed",
+  413: "Content Too Large",
+  415: "Unsupported Media Type",
+  422: "Unprocessable Entity",
+  425: "Too Early",
+  429: "Too Many Requests",
+  500: "Internal Server Error",
+  501: "Not Implemented",
+  502: "Bad Gateway",
+  503: "Service Unavailable",
+  504: "Gateway Timeout",
+};
 
-  /** An empty token sends no auth header: unauthenticated reads are intentional. */
+/** Where a client sends its requests, and what keeps its cached responses apart. */
+export interface ForgeClientOptions {
+  /** Keeps cached responses of one origin and credential apart from the rest. */
+  scope: string;
+  /** Put in front of every path that is not a whole URL, such as an account route. */
+  prefix?: string;
+}
+
+/** A client on the `forges` provider `open` resolves; reads retry twice, writes never. */
+export function createForgeClient(
+  open: () => Promise<Forge>,
+  client: ForgeClientOptions,
+): HttpClient {
+  const prefix = client.prefix?.replace(/\/+$/u, "") ?? "";
+
   async function raw(url: string, options: RequestOptions = {}): Promise<RawFetchResult<unknown>> {
     const method = (options.method ?? "GET").toUpperCase();
-    const target = options.query
-      ? withQuery(withBase(url, baseURL), options.query)
-      : withBase(url, baseURL);
-
-    const headers = new Headers({ "User-Agent": userAgent });
-    for (const [name, value] of new Headers(options.headers)) headers.set(name, value);
-    if (token) headers.set(tokenHeader, tokenPrefix ? `${tokenPrefix}${token}` : token);
-
-    let body = options.body;
-    if (body && PAYLOAD_METHODS.has(method) && isJSONBody(body)) {
-      if (typeof body !== "string") body = JSON.stringify(body);
-      if (!headers.has("content-type")) headers.set("content-type", "application/json");
-      if (!headers.has("accept")) headers.set("accept", "application/json");
-    }
-
+    const path = prefix && !URL.canParse(url) ? `${prefix}/${url.replace(/^\/+/u, "")}` : url;
+    const target = options.query ? withQuery(path, options.query) : path;
+    const headers = Object.fromEntries(new Headers(options.headers));
     const retries =
       options.retry === false ? 0 : (options.retry ?? (PAYLOAD_METHODS.has(method) ? 0 : 2));
     const retryStatusCodes = options.retryStatusCodes ?? RETRY_STATUS_CODES;
     const retryDelay = options.retryDelay ?? 1000;
-    const init: RequestInit = {
-      method,
-      headers,
-      body: body as RequestInit["body"],
-      signal: options.signal,
-    };
+    const forge = await open();
 
     for (let attempt = 0; ; attempt++) {
-      let response: Response | undefined;
+      let response: RawResponse;
+      try {
+        response = await forge.request(method, target, {
+          raw: true,
+          body: options.body,
+          headers,
+          signal: options.signal,
+        });
+      } catch (error) {
+        const failure = toFetchError(error, method, target, options);
+        const wait = retryWait(failure, options.signal, retryStatusCodes);
+        if (attempt < retries && wait !== undefined) {
+          await delay(Math.max(retryDelay, wait), options.signal);
+          continue;
+        }
+        throw failure;
+      }
       let data: unknown;
       try {
-        response = await fetch(target, init);
-        data = await readBody(
-          response,
-          method,
-          response.status < 400 ? options.responseType : undefined,
+        data = await readBody(response, method, options.responseType);
+      } catch (cause) {
+        const failure = new FetchError(
+          `[${method}] ${JSON.stringify(target)}: ${response.status} ${cause instanceof Error ? cause.message : String(cause)}`,
+          { cause },
         );
-      } catch (error) {
-        const aborted = error instanceof Error && error.name === "AbortError";
-        if (!aborted && attempt < retries && retryStatusCodes.includes(500)) {
-          await delay(retryDelay, options.signal);
-          continue;
-        }
-        throw requestError(method, target, options, response, undefined, error);
+        failure.request = target;
+        failure.options = { ...options, method };
+        failure.status = response.status;
+        failure.statusCode = response.status;
+        throw failure;
       }
-
-      if (response.status < 400 || response.status >= 600) {
-        return { data, headers: response.headers, status: response.status };
-      }
-
-      warnOnLowRateLimit(response.headers);
-      if (attempt < retries && retryStatusCodes.includes(response.status)) {
-        const wait = retryAfterSeconds(response.headers);
-        if (wait === undefined || wait * 1000 <= MAX_SERVER_WAIT_MS) {
-          await delay(Math.max(retryDelay, (wait ?? 0) * 1000), options.signal);
-          continue;
-        }
-      }
-      throw requestError(method, target, options, response, data);
+      return { data, headers: response.headers, status: response.status };
     }
   }
 
-  const client = (async (url: string, options?: RequestOptions) =>
+  const send = (async (url: string, options?: RequestOptions) =>
     (await raw(url, options)).data) as HttpClient;
+  return Object.assign(send, { raw: raw as HttpClient["raw"], [CACHE_SCOPE]: client.scope });
+}
 
-  // Cache storage is process-global, so tag this client with the identity its
-  // responses belong to. The token is hashed: cache keys can reach an external
-  // storage backend and must never carry the raw credential.
-  const credential = Buffer.from(sha256(Buffer.from(token))).toString("hex", 0, 8);
-  return Object.assign(client, {
-    raw: raw as HttpClient["raw"],
-    [CACHE_SCOPE]: `${baseURL}#${credential}`,
+/** Milliseconds before another try, or none for an abort, a final status or too long a wait. */
+function retryWait(
+  failure: unknown,
+  signal: AbortSignal | undefined,
+  retryStatusCodes: readonly number[],
+): number | undefined {
+  if (signal?.aborted || !(failure instanceof FetchError)) return undefined;
+  if (!retryStatusCodes.includes(failure.status ?? 500)) return undefined;
+  const header = failure.response?.headers.get("Retry-After");
+  const wait = header === null || header === undefined ? 0 : Number(header) * 1000;
+  return wait <= MAX_SERVER_WAIT_MS ? wait : undefined;
+}
+
+/** Ends early on abort, so the next attempt fails on the signal instead of sleeping through it. */
+function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  if (ms <= 0 || signal?.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done, { once: true });
   });
 }
+
+/** Fetch for every `forges` provider here: a refusal with a cut body keeps its status. */
+export const forgeFetch: FetchLike = async (input, init) => {
+  const response = await globalThis.fetch(input, init);
+  if (response.status < 400 || response.status > 599 || response.body === null) return response;
+  let text = "";
+  try {
+    text = await response.text();
+  } catch {
+    text = "";
+  }
+  return new Response(text, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+};
 
 /** Like a client call, but keeps the headers and status that pagination reads. */
 export function rawFetch<T = unknown, R extends ResponseType = "json">(
@@ -187,17 +228,71 @@ export function rawFetch<T = unknown, R extends ResponseType = "json">(
   return client.raw<T, R>(url, options);
 }
 
-/** A path joins the base URL. A URL on its host stays as it is, one elsewhere is joined too. */
-function withBase(url: string, baseURL: string): string {
-  const base = baseURL.endsWith("/") ? baseURL.slice(0, -1) : baseURL;
-  if (!base || url.startsWith(base) || sameOrigin(url, base)) return url;
-  if (!url || url === "/") return base;
-  return `${base}/${url.replace(/^\.?\//u, "")}`;
+/** The fields a `forges` failure carries, read without importing its classes. */
+interface ForgeFailure extends Error {
+  status?: number;
+  method?: string;
+  url?: string;
+  body?: string;
+  resetAt?: Date;
 }
 
-/** Same scheme, host and port, so the token goes nowhere the base URL wouldn't take it. */
-function sameOrigin(url: string, base: string): boolean {
-  return URL.canParse(url) && URL.canParse(base) && new URL(url).origin === new URL(base).origin;
+/** A `forges` failure as the {@link FetchError} that `normalizeError` and redaction read. */
+export function toFetchError(
+  error: unknown,
+  method?: string,
+  url?: string,
+  options?: object,
+): unknown {
+  if (!(error instanceof Error) || error instanceof FetchError) return error;
+  const failure = error as ForgeFailure;
+  method ??= failure.method ?? "GET";
+  url = failure.url ?? url ?? "";
+  if (typeof failure.status !== "number") {
+    if (failure.name !== "ForgeNetworkError" && failure.name !== "ForgeTimeoutError") return error;
+    const fetchError = new FetchError(
+      `[${method}] ${JSON.stringify(url)}: <no response> ${error.message}`,
+      {
+        cause: error,
+      },
+    );
+    fetchError.request = url;
+    fetchError.options = { ...options, method };
+    return fetchError;
+  }
+  const status = failure.status;
+  const statusText = STATUS_TEXT[status] ?? "";
+  const headers = new Headers();
+  const wait = secondsUntil(failure.resetAt);
+  if (wait !== undefined) headers.set("Retry-After", String(wait));
+  const fetchError = new FetchError(
+    `[${method}] ${JSON.stringify(url)}: ${status} ${statusText}`.trimEnd(),
+    { cause: error },
+  );
+  fetchError.request = url;
+  fetchError.options = { ...options, method };
+  fetchError.response = { status, statusText, headers } as Response;
+  fetchError.data = parseBody(failure.body);
+  fetchError.status = status;
+  fetchError.statusCode = status;
+  fetchError.statusText = statusText;
+  fetchError.statusMessage = statusText;
+  return fetchError;
+}
+
+/** `forges` keeps the first 512 characters of a failed body; a cut JSON body stays text. */
+function parseBody(body: string | undefined): unknown {
+  if (body === undefined || body === "") return undefined;
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    return body;
+  }
+}
+
+function secondsUntil(date: Date | undefined): number | undefined {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return undefined;
+  return Math.max(0, Math.ceil((date.getTime() - Date.now()) / 1000));
 }
 
 /** Merge query values into the URL. A key given here replaces the same key already in it. */
@@ -226,50 +321,34 @@ function queryValue(value: unknown): string {
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 
-/** Plain objects, arrays and primitives go out as JSON. FormData, streams and buffers don't. */
-function isJSONBody(body: unknown): boolean {
-  const type = typeof body;
-  if (type === "string" || type === "number" || type === "boolean") return true;
-  if (type !== "object" || body === null) return false;
-  if (Array.isArray(body)) return true;
-  if (ArrayBuffer.isView(body) || body instanceof ArrayBuffer) return false;
-  if (body instanceof FormData || body instanceof URLSearchParams || body instanceof Blob)
-    return false;
-  if (body instanceof ReadableStream) return false;
-  const proto: unknown = Object.getPrototypeOf(body);
-  return (
-    proto === Object.prototype ||
-    proto === null ||
-    typeof (body as { toJSON?: unknown }).toJSON === "function"
-  );
-}
-
-/** A failure is read by its content type: a forge says why in JSON, whatever the call asked for. */
+/** Only a success gets here, read the way the call asked; `forges` threw any failure. */
 async function readBody(
-  response: Response,
+  response: RawResponse,
   method: string,
   responseType: ResponseType | undefined,
 ): Promise<unknown> {
   if (!response.body || NULL_BODY_STATUSES.has(response.status) || method === "HEAD") {
+    await response.body?.cancel();
     return undefined;
   }
-  switch (responseType ?? detectResponseType(response.headers.get("content-type"))) {
+  const type = responseType ?? detectResponseType(response.headers.get("content-type"));
+  if (type === "stream") return response.body;
+  const body = new Response(response.body, { headers: response.headers });
+  switch (type) {
     case "json": {
-      const text = await response.text();
+      const text = await body.text();
       try {
         return JSON.parse(text) as unknown;
       } catch {
         return text;
       }
     }
-    case "stream":
-      return response.body;
     case "text":
-      return response.text();
+      return body.text();
     case "arrayBuffer":
-      return response.arrayBuffer();
+      return body.arrayBuffer();
     case "blob":
-      return response.blob();
+      return body.blob();
   }
 }
 
@@ -279,55 +358,6 @@ function detectResponseType(contentType: string | null): ResponseType {
   if (type === "text/event-stream") return "stream";
   if (TEXT_TYPES.has(type) || type.startsWith("text/")) return "text";
   return "blob";
-}
-
-function warnOnLowRateLimit(headers: Headers): void {
-  const remaining = headers.get("X-RateLimit-Remaining");
-  if (remaining === null) return;
-  const remainingCount = parseInt(remaining, 10);
-  if (remainingCount < 10) {
-    console.warn(`[forges] Rate limit warning: ${remainingCount} requests remaining`);
-  }
-}
-
-/** The `[METHOD] "<url>": <status>` message is the shape endpoint redaction expects. */
-function requestError(
-  method: string,
-  url: string,
-  options: RequestOptions,
-  response: Response | undefined,
-  data: unknown,
-  cause?: unknown,
-): FetchError {
-  const status = response ? `${response.status} ${response.statusText}` : "<no response>";
-  const reason = cause instanceof Error ? cause.message : cause === undefined ? "" : String(cause);
-  const error = new FetchError(
-    `[${method}] ${JSON.stringify(url)}: ${status}${reason ? ` ${reason}` : ""}`,
-    cause === undefined ? undefined : { cause },
-  );
-  error.request = url;
-  error.options = options;
-  error.response = response;
-  error.data = data;
-  error.status = response?.status;
-  error.statusCode = response?.status;
-  error.statusText = response?.statusText;
-  error.statusMessage = response?.statusText;
-  return error;
-}
-
-/** Ends early on abort, so the next attempt fails on the signal instead of sleeping through it. */
-function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {
-  if (ms <= 0 || signal?.aborted) return Promise.resolve();
-  return new Promise((resolve) => {
-    const done = (): void => {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", done);
-      resolve();
-    };
-    const timer = setTimeout(done, ms);
-    signal?.addEventListener("abort", done, { once: true });
-  });
 }
 
 export { FetchError };

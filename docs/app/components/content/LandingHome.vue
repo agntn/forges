@@ -44,14 +44,14 @@ const { samples, paused, current, step } = useLandingForge();
       :checks="[
         'GitLab iid becomes number, and GitHub issues that are really PRs are filtered out',
         'list, search, get, create and listComments with the same options everywhere',
-        'PageResult with items, hasNextPage and nextPage, whether the platform sent Link or x-next-page',
+        'PageResult with items and an opaque nextCursor, whether the platform sent Link or x-next-page',
       ]"
       reverse
     >
       Every platform paginates its own way and names things its own way, and none of it is your
-      problem. A page is <code class="forges-code">{ items, hasNextPage, nextPage }</code>, a state
-      is <code class="forges-code">open</code> or <code class="forges-code">closed</code>, and a
-      pull request knows its branches, its head SHA and whether it's still a draft.
+      problem. A page is <code class="forges-code">{ items, nextCursor }</code>, a state is
+      <code class="forges-code">open</code> or <code class="forges-code">closed</code>, and a pull
+      request knows its branches, its head SHA and whether it's still a draft.
       <template #visual>
         <LandingPulls :sample="current" @pause="paused = $event" />
       </template>

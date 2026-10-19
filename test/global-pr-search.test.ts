@@ -2,11 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { FetchError } from "../src/errors.ts";
 import { GitHubProvider } from "../src/providers/github.ts";
 import { GitLabProvider } from "../src/providers/gitlab.ts";
+import { cursorFor } from "./support/cursor.ts";
 import { GiteaProvider } from "../src/providers/gitea.ts";
 
 const mocks = vi.hoisted(() => ({ client: vi.fn(), rawFetch: vi.fn() }));
 vi.mock("../src/http.ts", () => ({
-  createHttpClient: () => mocks.client,
+  toFetchError: (error: unknown) => error,
+  forgeFetch: vi.fn(),
+  createForgeClient: () => mocks.client,
   rawFetch: mocks.rawFetch,
 }));
 
@@ -61,8 +64,7 @@ describe("global pull-request search", () => {
       draft: false,
     });
     expect(result).toMatchObject({
-      hasNextPage: true,
-      nextPage: 2,
+      nextCursor: cursorFor("pullRequests.searchGlobal", 2),
       totalCount: 3,
       incomplete: false,
       resultLimit: 1000,
@@ -117,7 +119,6 @@ describe("global pull-request search", () => {
         items: [],
         totalCount: 0,
         incomplete,
-        hasNextPage: false,
         resultLimit: 1000,
       });
     },
@@ -134,16 +135,15 @@ describe("global pull-request search", () => {
     });
     const result = await new GitHubProvider({ token: "" }).pullRequests.searchGlobal(
       "author:contributor",
-      { page: 34 },
+      { cursor: cursorFor("pullRequests.searchGlobal", 34) },
     );
     expect(result.items).toHaveLength(9);
     expect(result).toMatchObject({
-      hasNextPage: false,
       incomplete: true,
       totalCount: 1200,
       resultLimit: 1000,
     });
-    expect(result.nextPage).toBeUndefined();
+    expect(result.nextCursor).toBeUndefined();
   });
 
   it("rejects invalid scope and pagination before transport", async () => {
@@ -239,8 +239,7 @@ describe("Gitea global pull-request search", () => {
       ["someone/project", false, true],
     ]);
     expect(result).toMatchObject({
-      hasNextPage: true,
-      nextPage: 2,
+      nextCursor: cursorFor("pullRequests.searchGlobal", 2),
       totalCount: 10236,
       incomplete: false,
       resultLimit: null,
@@ -256,7 +255,7 @@ describe("Gitea global pull-request search", () => {
     expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, path, {
       query: { q: "fix", type: "pulls", state: "all", page: "1", limit: "30", ...extra },
     });
-    expect(result).toMatchObject({ items: [], hasNextPage: false, incomplete: false });
+    expect(result).toMatchObject({ items: [], incomplete: false });
     expect(result.totalCount).toBeUndefined();
   });
 
@@ -371,8 +370,7 @@ describe("GitLab global pull-request search", () => {
       ["group/sub/project", 3, false, true],
     ]);
     expect(result).toMatchObject({
-      hasNextPage: true,
-      nextPage: 2,
+      nextCursor: cursorFor("pullRequests.searchGlobal", 2),
       totalCount: 74,
       incomplete: false,
       resultLimit: null,
@@ -396,7 +394,7 @@ describe("GitLab global pull-request search", () => {
       },
       retryStatusCodes: [409, 425, 429, 500, 502, 503, 504],
     });
-    expect(result).toMatchObject({ items: [], hasNextPage: false, incomplete: false });
+    expect(result).toMatchObject({ items: [], incomplete: false });
     expect(result.totalCount).toBeUndefined();
   });
 

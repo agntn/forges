@@ -93,7 +93,7 @@ describe("entry points", () => {
       "clearCache",
       "configureStorage",
       "createCache",
-      "createHttpClient",
+      "createForgeClient",
       "createProvider",
       "default",
       "fetchAllPages",

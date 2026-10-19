@@ -170,13 +170,13 @@ export function normalizeMergedReadError(error: unknown, platform: string): Forg
   return withHint(classifyError(error, platform), MERGED_READ);
 }
 
-const MERGED_READ =
+export const MERGED_READ =
   "The merge went through, but reading the pull request back failed. Read it again instead of merging a second time.";
 
-const UNSETTLED_WRITE =
+export const UNSETTLED_WRITE =
   "The write may have landed before this failure, so check for its result before sending it again.";
 
-const UNSETTLED_MERGE =
+export const UNSETTLED_MERGE =
   "The merge may have landed before this failure, so read the pull request's merged and mergeCommitSha before trying again.";
 
 const WRITE_METHODS = new Set(["PATCH", "POST", "PUT", "DELETE"]);
@@ -242,7 +242,7 @@ function unsettledWrite(error: FetchError): boolean {
 }
 
 /** A copy with the hint appended, keeping the subclass and fields such as `retryAfter`. */
-function withHint<E extends ForgesError>(error: E, hint: string): E {
+export function withHint<E extends ForgesError>(error: E, hint: string): E {
   const hinted = Object.assign(Object.create(Object.getPrototypeOf(error) as object) as E, error);
   hinted.message = `${error.message.replace(/[\s.]+$/u, "")}. ${hint}`;
   hinted.stack = error.stack?.replace(error.message, () => hinted.message);
@@ -280,7 +280,7 @@ function withProviderReason(message: string, error: FetchError): string {
  * `message`, GitLab's `error` and GitHub's `errors` as one printable line, without URL credentials.
  * An HTML page or plain text body gives no reason at all.
  */
-function providerReason(data: unknown): string | undefined {
+export function providerReason(data: unknown): string | undefined {
   if (typeof data !== "object" || data === null || Array.isArray(data)) return undefined;
   const body = data as Record<string, unknown>;
 

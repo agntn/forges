@@ -146,10 +146,10 @@ for (const target of TARGETS) {
     },
     issues: {
       items: issues.items.map(slimIssue),
-      hasNextPage: issues.hasNextPage,
+      hasNextPage: issues.nextCursor !== undefined,
       totalCount: issues.totalCount ?? null,
     },
-    pullRequests: { items: pulls.items.map(slimPull), hasNextPage: pulls.hasNextPage },
+    pullRequests: { items: pulls.items.map(slimPull), hasNextPage: pulls.nextCursor !== undefined },
     commits: commits.items.map(slimCommit),
     ciRuns: ci.items.map((run) => ({
       id: run.id,

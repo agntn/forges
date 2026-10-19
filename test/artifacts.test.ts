@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({ resolve: vi.fn() }));
 vi.mock("@agntn/credentials/cloudflare", () => ({ resolve: mocks.resolve }));
 
 import { CredentialsError } from "@agntn/credentials";
+import { cursorFor } from "./support/cursor.ts";
 
 /* A credential failure renamed the way a subclass would be, so only instanceof recognises it. */
 function missingAccount(): CredentialsError {
@@ -254,7 +255,7 @@ describe("repos", () => {
     expect((error as Error).message).toContain("Repository not found");
   });
 
-  it("walks the cursor up to the requested page and one row past it", async () => {
+  it("pages by the Artifacts cursor, one request a page", async () => {
     const names = ["a", "b", "c", "d", "e"];
     const fetch = serve((url) => {
       if (!url.pathname.endsWith("/namespaces/tools/repos")) return undefined;
@@ -270,15 +271,18 @@ describe("repos", () => {
       });
     });
 
-    const page = await provider().repos.list("tools", { page: 2, perPage: 2 });
+    const first = await provider().repos.list("tools", { perPage: 2 });
+    const second = await provider().repos.list("tools", { cursor: first.nextCursor, perPage: 2 });
 
-    expect(page.items.map((repo) => repo.name)).toEqual(["c", "d"]);
-    expect(page.hasNextPage).toBe(true);
-    expect(page.nextPage).toBe(3);
-    expect(sent(fetch).url.searchParams.get("limit")).toBe("5");
+    expect(first.items.map((repo) => repo.name)).toEqual(["a", "b"]);
+    expect(second.items.map((repo) => repo.name)).toEqual(["c", "d"]);
+    expect(second.nextCursor).toEqual(expect.any(String));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(sent(fetch, 1).url.searchParams.get("cursor")).toBe("2");
+    expect(sent(fetch, 1).url.searchParams.get("limit")).toBe("2");
   });
 
-  it("ends the list when the cursor leads to an empty page", async () => {
+  it("ends the list on the empty page a last cursor leads to", async () => {
     serve((url) => {
       if (!url.pathname.endsWith("/namespaces/tools/repos")) return undefined;
       return url.searchParams.has("cursor")
@@ -289,9 +293,10 @@ describe("repos", () => {
     });
 
     const page = await provider().repos.list("tools", { perPage: 2 });
+    const last = await provider().repos.list("tools", { cursor: page.nextCursor, perPage: 2 });
 
     expect(page.items.map((repo) => repo.name)).toEqual(["a", "b"]);
-    expect(page.hasNextPage).toBe(false);
+    expect(last).toEqual({ items: [] });
   });
 
   it("stops at an empty cursor instead of starting over from the first page", async () => {
@@ -306,14 +311,14 @@ describe("repos", () => {
     const page = await provider().repos.list("tools", { perPage: 2 });
 
     expect(page.items.map((repo) => repo.name)).toEqual(["a"]);
-    expect(page.hasNextPage).toBe(false);
+    expect(page.nextCursor).toBeUndefined();
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("asks for at most 200 repositories a request", async () => {
     const fetch = serve(at(`${ACCOUNT_URL}/namespaces/tools/repos`, () => envelope([])));
 
-    await provider().repos.list("tools", { page: 3, perPage: 100 });
+    await provider().repos.list("tools", { perPage: 500 });
 
     expect(sent(fetch).url.searchParams.get("limit")).toBe("200");
   });
@@ -468,7 +473,7 @@ describe("commits", () => {
 
     const page = await provider().commits.list("tools", "notes", {
       ref: "main",
-      page: 2,
+      cursor: cursorFor("commits.list", 2),
       perPage: 2,
     });
 
@@ -476,7 +481,7 @@ describe("commits", () => {
     expect(url.searchParams.get("offset")).toBe("2");
     expect(url.searchParams.get("limit")).toBe("3");
     expect(url.searchParams.get("ref")).toBe("main");
-    expect(page.hasNextPage).toBe(true);
+    expect(page.nextCursor).toBeDefined();
     expect(page.items).toHaveLength(2);
     expect(page.items[0]).toEqual({
       sha: HEAD,
@@ -501,8 +506,6 @@ describe("commits", () => {
 
     expect(await provider().commits.list("tools", "notes")).toEqual({
       items: [],
-      hasNextPage: false,
-      nextPage: undefined,
     });
   });
 

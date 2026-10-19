@@ -164,7 +164,7 @@ function assertRenderedCall(tool, api) {
 async function assertDistributionFallback(tool) {
   await assert.rejects(
     () => tool.execute("packed-test", repositoryArgs, undefined, undefined, {}),
-    /Failed to parse URL/,
+    /Invalid baseUrl for github/,
   );
   assertLoaded(gitHubProvider, "a GitHub call loads the GitHub provider");
   assertNotLoaded(otherProviders, "a GitHub call must not load the other providers");
@@ -500,7 +500,7 @@ async function assertPackedPrSearch(piTools, ompTools) {
     assert.equal(full.totalCount, 1200);
     assert.equal(full.incomplete, true);
     assert.equal(full.resultLimit, 1000);
-    assert.equal(full.nextPage, 2);
+    assert.equal(typeof full.nextCursor, "string");
     const expected = { ...full, items: full.items.map(({ body: _body, ...item }) => item) };
     const args = { platform: "github", query, ...options };
     for (const tools of [piTools, ompTools]) {
