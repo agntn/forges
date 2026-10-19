@@ -791,7 +791,7 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.ciRuns.listJobs("testowner", "test-repo", "9876", {
-        cursor: cursorFor("ciRuns.listJobs", 2),
+        cursor: cursorFor("ciRuns.listJobs", 2, ["testowner", "test-repo", "9876"], {}),
         perPage: 10,
       });
 
@@ -926,12 +926,15 @@ describe("Gitea Provider", () => {
           perPage: 1,
         });
         const second = await provider.ciRuns.listJobs("forgejo", "website", "7529583", {
-          cursor: cursorFor("ciRuns.listJobs", 2),
+          cursor: cursorFor("ciRuns.listJobs", 2, ["forgejo", "website", "7529583"], {}),
           perPage: 1,
         });
 
         expect(first.items.map((job) => job.name)).toEqual(["publish"]);
-        expect(first).toMatchObject({ totalCount: 2, nextCursor: cursorFor("ciRuns.listJobs", 2) });
+        expect(first).toMatchObject({
+          totalCount: 2,
+          nextCursor: cursorFor("ciRuns.listJobs", 2, ["forgejo", "website", "7529583"], {}),
+        });
         expect(second.items.map((job) => job.name)).toEqual(["sync"]);
         expect(second).toMatchObject({ totalCount: 2 });
       });
@@ -939,7 +942,12 @@ describe("Gitea Provider", () => {
       it.each([
         [{ perPage: 0 }, "perPage must be an integer from 1 to 100"],
         [{ perPage: 101 }, "perPage must be an integer from 1 to 100"],
-        [{ cursor: cursorFor("ciRuns.listJobs", 0) }, expect.stringContaining("cursor is not one")],
+        [
+          {
+            cursor: cursorFor("ciRuns.listJobs", 0),
+          },
+          expect.stringContaining("cursor is not one"),
+        ],
       ])("refuses %o before the local cut pages forever", async (options, message) => {
         await expect(
           provider.ciRuns.listJobs("forgejo", "website", "7529583", options),
@@ -957,7 +965,7 @@ describe("Gitea Provider", () => {
         });
 
         const result = await provider.ciRuns.listJobs("forgejo", "website", "7529583", {
-          cursor: cursorFor("ciRuns.listJobs", 2),
+          cursor: cursorFor("ciRuns.listJobs", 2, ["forgejo", "website", "7529583"], {}),
           perPage: 1,
         });
 
@@ -1335,7 +1343,9 @@ describe("Gitea Provider", () => {
       await expect(
         provider.commits.list("testowner", "test-repo", {
           path: "src/provider.ts",
-          cursor: cursorFor("commits.list", 2),
+          cursor: cursorFor("commits.list", 2, ["testowner", "test-repo"], {
+            path: "src/provider.ts",
+          }),
           perPage: 1,
         }),
       ).rejects.toMatchObject({
@@ -1408,7 +1418,7 @@ describe("Gitea Provider", () => {
       );
       expect(result).toMatchObject({
         totalCount: 546,
-        nextCursor: cursorFor("commits.list", 2),
+        nextCursor: cursorFor("commits.list", 2, ["forgejo", "forgejo"], { path: "README.md" }),
         items: [{ sha, message: "docs: refresh readme" }],
       });
     });
@@ -1435,7 +1445,11 @@ describe("Gitea Provider", () => {
         ref: "main",
         since: "2026-08-01T00:00:00Z",
         until: "2026-08-29T23:59:59Z",
-        cursor: cursorFor("commits.list", 2),
+        cursor: cursorFor("commits.list", 2, ["testowner", "test-repo"], {
+          ref: "main",
+          since: "2026-08-01T00:00:00Z",
+          until: "2026-08-29T23:59:59Z",
+        }),
         perPage: 10,
       });
 
@@ -1457,7 +1471,11 @@ describe("Gitea Provider", () => {
       );
       expect(result).toMatchObject({
         totalCount: 31,
-        nextCursor: cursorFor("commits.list", 3),
+        nextCursor: cursorFor("commits.list", 3, ["testowner", "test-repo"], {
+          ref: "main",
+          since: "2026-08-01T00:00:00Z",
+          until: "2026-08-29T23:59:59Z",
+        }),
       });
       expect(mockClient).not.toHaveBeenCalled();
     });
@@ -1496,7 +1514,12 @@ describe("Gitea Provider", () => {
       expect(result.items.map(({ sha }) => sha)).toEqual(["ffff540", "d536242"]);
       expect(result).toMatchObject({
         totalCount: 3,
-        nextCursor: cursorFor("commits.compare", 2),
+        nextCursor: cursorFor(
+          "commits.compare",
+          2,
+          ["gitea", "tea", "v0.10.0", "release/v0.10"],
+          {},
+        ),
         status: null,
         aheadBy: 3,
         behindBy: null,
@@ -1740,7 +1763,9 @@ describe("Gitea Provider", () => {
 
       const result = await provider.issues.search("testowner", "test-repo", "runner timeout", {
         state: "closed",
-        cursor: cursorFor("issues.search", 2),
+        cursor: cursorFor("issues.search", 2, ["testowner", "test-repo", "runner timeout"], {
+          state: "closed",
+        }),
         perPage: 1,
       });
 
@@ -1760,7 +1785,9 @@ describe("Gitea Provider", () => {
       expect(result).toMatchObject({
         items: [expect.objectContaining({ number: 1 })],
         incomplete: false,
-        nextCursor: cursorFor("issues.search", 3),
+        nextCursor: cursorFor("issues.search", 3, ["testowner", "test-repo", "runner timeout"], {
+          state: "closed",
+        }),
       });
     });
 
@@ -2145,7 +2172,7 @@ describe("Gitea Provider", () => {
         });
 
       const result = await provider.pullRequests.listChecks("testowner", "test-repo", 5, {
-        cursor: cursorFor("pullRequests.listChecks", 2),
+        cursor: cursorFor("pullRequests.listChecks", 2, ["testowner", "test-repo", 5], {}),
         perPage: 1,
       });
 
@@ -2171,7 +2198,7 @@ describe("Gitea Provider", () => {
             url: "https://gitea.com/testowner/test-repo/status/501",
           },
         ],
-        nextCursor: cursorFor("pullRequests.listChecks", 3),
+        nextCursor: cursorFor("pullRequests.listChecks", 3, ["testowner", "test-repo", 5], {}),
       });
     });
 
@@ -2274,7 +2301,7 @@ describe("Gitea Provider", () => {
             url: "https://gitea.com/testowner/test-repo/pulls/5#pullrequestreview-381752",
           },
         ],
-        nextCursor: cursorFor("pullRequests.listReviews", 2),
+        nextCursor: cursorFor("pullRequests.listReviews", 2, ["testowner", "test-repo", 5], {}),
       });
     });
 
@@ -2287,7 +2314,7 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
-        cursor: cursorFor("pullRequests.listReviews", 2),
+        cursor: cursorFor("pullRequests.listReviews", 2, ["testowner", "test-repo", 5], {}),
         perPage: 2,
       });
 
@@ -2303,7 +2330,7 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
-        cursor: cursorFor("pullRequests.listReviews", 2),
+        cursor: cursorFor("pullRequests.listReviews", 2, ["testowner", "test-repo", 5], {}),
         perPage: 3,
       });
 
@@ -2352,7 +2379,9 @@ describe("Gitea Provider", () => {
         perPage: 1,
       });
 
-      expect(result).toMatchObject({ nextCursor: cursorFor("pullRequests.listReviews", 2) });
+      expect(result).toMatchObject({
+        nextCursor: cursorFor("pullRequests.listReviews", 2, ["testowner", "test-repo", 5], {}),
+      });
     });
   });
 
@@ -2494,7 +2523,16 @@ describe("Gitea Provider", () => {
         "testowner",
         "test-repo",
         "runner timeout",
-        { state: "closed", cursor: cursorFor("pullRequests.search", 2), perPage: 1 },
+        {
+          state: "closed",
+          cursor: cursorFor(
+            "pullRequests.search",
+            2,
+            ["testowner", "test-repo", "runner timeout"],
+            { state: "closed" },
+          ),
+          perPage: 1,
+        },
       );
 
       expect(mockedRawFetch).toHaveBeenCalledTimes(1);
@@ -2515,7 +2553,12 @@ describe("Gitea Provider", () => {
       expect(result).toMatchObject({
         items: [{ number: 1, merged: true, draft: true }],
         incomplete: false,
-        nextCursor: cursorFor("pullRequests.search", 3),
+        nextCursor: cursorFor(
+          "pullRequests.search",
+          3,
+          ["testowner", "test-repo", "runner timeout"],
+          { state: "closed" },
+        ),
       });
       expect(result.items[0]).not.toHaveProperty("sourceBranch");
       expect(result.items[0]).not.toHaveProperty("headSha");
@@ -2525,7 +2568,12 @@ describe("Gitea Provider", () => {
       mockedRawFetch.mockResolvedValueOnce({ data: [], headers: makeHeaders(), status: 200 });
 
       await provider.pullRequests.search("testowner", "test-repo", "runner timeout", {
-        cursor: cursorFor("pullRequests.search", 2),
+        cursor: cursorFor(
+          "pullRequests.search",
+          2,
+          ["testowner", "test-repo", "runner timeout"],
+          {},
+        ),
       });
 
       expect(mockedRawFetch).toHaveBeenCalledWith(
@@ -2986,7 +3034,9 @@ describe("Gitea Provider", () => {
         updatedAt: "2024-01-04T01:00:00Z",
       });
       expect(result.nextCursor).toBeDefined();
-      expect(result.nextCursor).toBe(cursorFor("issues.listComments", 2));
+      expect(result.nextCursor).toBe(
+        cursorFor("issues.listComments", 2, ["testowner", "test-repo", 1], {}),
+      );
     });
 
     it.each([
@@ -3011,7 +3061,7 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.issues.listComments("testowner", "test-repo", 1, {
-        cursor: cursorFor("issues.listComments", 2),
+        cursor: cursorFor("issues.listComments", 2, ["testowner", "test-repo", 1], {}),
         perPage: 2,
       });
 
@@ -3066,7 +3116,9 @@ describe("Gitea Provider", () => {
       expect(mockedRawFetch).toHaveBeenCalledTimes(2);
       expect(result.items.map((comment) => comment.id)).toEqual(["21"]);
       expect(result.nextCursor).toBeDefined();
-      expect(result.nextCursor).toBe(cursorFor("issues.listComments", 2));
+      expect(result.nextCursor).toBe(
+        cursorFor("issues.listComments", 2, ["testowner", "test-repo", 1], {}),
+      );
     });
   });
 
@@ -3200,7 +3252,7 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.issues.listReactions("gitea", "tea", 37, {
-        cursor: cursorFor("issues.listReactions", 3),
+        cursor: cursorFor("issues.listReactions", 3, ["gitea", "tea", 37], {}),
         perPage: 2,
       });
 
@@ -3231,7 +3283,7 @@ describe("Gitea Provider", () => {
 
       expect(result).toMatchObject({
         totalCount: 6,
-        nextCursor: cursorFor("pullRequests.listReactions", 2),
+        nextCursor: cursorFor("pullRequests.listReactions", 2, ["gitea", "tea", 37], {}),
       });
     });
 
@@ -3271,7 +3323,9 @@ describe("Gitea Provider", () => {
 
       const result = await provider.issues.listReactions("testowner", "test-repo", 1, {
         commentId: "21",
-        cursor: cursorFor("issues.listReactions", 2),
+        cursor: cursorFor("issues.listReactions", 2, ["testowner", "test-repo", 1], {
+          commentId: "21",
+        }),
         perPage: 4,
       });
 

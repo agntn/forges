@@ -338,7 +338,10 @@ describe("GitLabProvider", () => {
       const result = await gl.code.search("Provider", {
         owner: "gitlab-org",
         repo: "gitlab-foss",
-        cursor: cursorFor("code.search", 2),
+        cursor: cursorFor("code.search", 2, ["Provider"], {
+          owner: "gitlab-org",
+          repo: "gitlab-foss",
+        }),
         perPage: 1,
       });
 
@@ -357,7 +360,10 @@ describe("GitLabProvider", () => {
         ],
         totalCount: 12,
         incomplete: false,
-        nextCursor: cursorFor("code.search", 3),
+        nextCursor: cursorFor("code.search", 3, ["Provider"], {
+          owner: "gitlab-org",
+          repo: "gitlab-foss",
+        }),
       });
     });
 
@@ -490,7 +496,12 @@ describe("GitLabProvider", () => {
           },
         ],
         totalCount: 2,
-        nextCursor: cursorFor("contributionTemplates.list", 2),
+        nextCursor: cursorFor(
+          "contributionTemplates.list",
+          2,
+          ["gitlab-org", "gitlab-foss", "issue"],
+          {},
+        ),
       });
     });
 
@@ -908,7 +919,7 @@ describe("GitLabProvider", () => {
       expect(result).toEqual({
         items: [{ name: "v1.121.0", sha: "4d447cc6c19858928884626d802c8f7b7c5f799e" }],
         totalCount: 157,
-        nextCursor: cursorFor("repos.listTags", 2),
+        nextCursor: cursorFor("repos.listTags", 2, ["gitlab-org", "cli"], {}),
       });
       expect(mocks.client).toHaveBeenCalledTimes(1);
     });
@@ -1369,7 +1380,12 @@ describe("GitLabProvider", () => {
       expect(result.items.map(({ sha }) => sha)).toEqual(["a", "b"]);
       expect(result).toMatchObject({
         totalCount: 3,
-        nextCursor: cursorFor("commits.compare", 2),
+        nextCursor: cursorFor(
+          "commits.compare",
+          2,
+          ["gitlab-org", "cli", "v1.50.0", "release/v1.51"],
+          {},
+        ),
         status: null,
         aheadBy: 3,
         behindBy: null,
@@ -1390,7 +1406,7 @@ describe("GitLabProvider", () => {
       });
 
       const result = await gl.commits.compare("gitlab-org", "cli", "v1.50.0", "v1.51.0", {
-        cursor: cursorFor("commits.compare", 2),
+        cursor: cursorFor("commits.compare", 2, ["gitlab-org", "cli", "v1.50.0", "v1.51.0"], {}),
         perPage: 2,
       });
 
@@ -1602,7 +1618,9 @@ describe("GitLabProvider", () => {
 
       const result = await gl.issues.search("gitlab-org", "gitlab-foss", "runner timeout", {
         state: "open",
-        cursor: cursorFor("issues.search", 2),
+        cursor: cursorFor("issues.search", 2, ["gitlab-org", "gitlab-foss", "runner timeout"], {
+          state: "open",
+        }),
         perPage: 1,
       });
 
@@ -1618,7 +1636,9 @@ describe("GitLabProvider", () => {
         items: [expect.objectContaining({ number: 15 })],
         incomplete: false,
         totalCount: 7,
-        nextCursor: cursorFor("issues.search", 3),
+        nextCursor: cursorFor("issues.search", 3, ["gitlab-org", "gitlab-foss", "runner timeout"], {
+          state: "open",
+        }),
       });
     });
   });
@@ -1712,7 +1732,9 @@ describe("GitLabProvider", () => {
         },
       ]);
       expect(result.nextCursor).toBeDefined();
-      expect(result.nextCursor).toBe(cursorFor("issues.listComments", 2));
+      expect(result.nextCursor).toBe(
+        cursorFor("issues.listComments", 2, ["gitlab-org", "gitlab-foss", 7], {}),
+      );
       expect(result.totalCount).toBeUndefined();
     });
   });
@@ -1846,7 +1868,7 @@ describe("GitLabProvider", () => {
       });
 
       const result = await gl.pullRequests.listFiles("gitlab-org", "gitlab-foss", 33, {
-        cursor: cursorFor("pullRequests.listFiles", 2),
+        cursor: cursorFor("pullRequests.listFiles", 2, ["gitlab-org", "gitlab-foss", 33], {}),
         perPage: 2,
       });
 
@@ -1871,7 +1893,7 @@ describe("GitLabProvider", () => {
           },
         ],
         totalCount: 4,
-        nextCursor: cursorFor("pullRequests.listFiles", 3),
+        nextCursor: cursorFor("pullRequests.listFiles", 3, ["gitlab-org", "gitlab-foss", 33], {}),
       });
     });
   });
@@ -1887,7 +1909,12 @@ describe("GitLabProvider", () => {
       mocks.client.mockResolvedValueOnce({ ...glPipeline, name: "verify" });
 
       const result = await gl.commits.listChecks("gitlab-org", "gitlab-foss", "feat/checks", {
-        cursor: cursorFor("commits.listChecks", 2),
+        cursor: cursorFor(
+          "commits.listChecks",
+          2,
+          ["gitlab-org", "gitlab-foss", "feat/checks"],
+          {},
+        ),
         perPage: 1,
       });
 
@@ -1909,7 +1936,12 @@ describe("GitLabProvider", () => {
           },
         ],
         totalCount: 5,
-        nextCursor: cursorFor("commits.listChecks", 3),
+        nextCursor: cursorFor(
+          "commits.listChecks",
+          3,
+          ["gitlab-org", "gitlab-foss", "feat/checks"],
+          {},
+        ),
       });
     });
 
@@ -1996,7 +2028,7 @@ describe("GitLabProvider", () => {
       );
       expect(result).toMatchObject({
         items: [expect.objectContaining({ id: "9001" })],
-        nextCursor: cursorFor("pullRequests.listChecks", 2),
+        nextCursor: cursorFor("pullRequests.listChecks", 2, ["gitlab-org", "gitlab-foss", 33], {}),
       });
     });
 
@@ -2298,7 +2330,7 @@ describe("GitLabProvider", () => {
       mocks.client.mockResolvedValueOnce(approvals).mockResolvedValueOnce(reviewers);
 
       const result = await gl.pullRequests.listReviews("gitlab-org", "gitlab-foss", 33, {
-        cursor: cursorFor("pullRequests.listReviews", 2),
+        cursor: cursorFor("pullRequests.listReviews", 2, ["gitlab-org", "gitlab-foss", 33], {}),
         perPage: 3,
       });
 
@@ -2320,7 +2352,9 @@ describe("GitLabProvider", () => {
       });
 
       expect(result.items.map((review) => review.id)).toEqual(["1758950", "21826781", "2293"]);
-      expect(result).toMatchObject({ nextCursor: cursorFor("pullRequests.listReviews", 2) });
+      expect(result).toMatchObject({
+        nextCursor: cursorFor("pullRequests.listReviews", 2, ["gitlab-org", "gitlab-foss", 33], {}),
+      });
     });
   });
 
@@ -2472,7 +2506,12 @@ describe("GitLabProvider", () => {
 
       const result = await gl.pullRequests.search("gitlab-org", "gitlab-foss", "runner timeout", {
         state: "closed",
-        cursor: cursorFor("pullRequests.search", 2),
+        cursor: cursorFor(
+          "pullRequests.search",
+          2,
+          ["gitlab-org", "gitlab-foss", "runner timeout"],
+          { state: "closed" },
+        ),
         perPage: 1,
       });
 
@@ -2494,7 +2533,12 @@ describe("GitLabProvider", () => {
         ],
         incomplete: false,
         totalCount: 7,
-        nextCursor: cursorFor("pullRequests.search", 3),
+        nextCursor: cursorFor(
+          "pullRequests.search",
+          3,
+          ["gitlab-org", "gitlab-foss", "runner timeout"],
+          { state: "closed" },
+        ),
       });
       expect(result.items[0]).not.toHaveProperty("sourceBranch");
       expect(result.items[0]).not.toHaveProperty("headSha");
@@ -3019,7 +3063,7 @@ describe("GitLabProvider", () => {
       });
 
       const result = await gl.pullRequests.listComments("gitlab-org", "gitlab-foss", 8, {
-        cursor: cursorFor("pullRequests.listComments", 2),
+        cursor: cursorFor("pullRequests.listComments", 2, ["gitlab-org", "gitlab-foss", 8], {}),
         perPage: 10,
       });
 
@@ -3100,7 +3144,7 @@ describe("GitLabProvider", () => {
       });
       expect(result).toMatchObject({
         totalCount: 8,
-        nextCursor: cursorFor("issues.listReactions", 2),
+        nextCursor: cursorFor("issues.listReactions", 2, ["gitlab-org", "gitlab", 1], {}),
       });
     });
 
@@ -3109,7 +3153,7 @@ describe("GitLabProvider", () => {
       mocks.rawFetch.mockResolvedValueOnce({ data: [], headers: glHeaders({ nextPage: "" }) });
 
       const result = await gl.pullRequests.listReactions("gitlab-org", "gitlab", 8, {
-        cursor: cursorFor("pullRequests.listReactions", 2),
+        cursor: cursorFor("pullRequests.listReactions", 2, ["gitlab-org", "gitlab", 8], {}),
       });
 
       expect(mocks.rawFetch).toHaveBeenCalledWith(

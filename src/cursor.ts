@@ -8,7 +8,13 @@
  * a request anywhere else.
  */
 
+import { Buffer } from "node:buffer";
+import { sha256 } from "@agntn/hashes/sha2";
+
 import { ForgesError } from "./errors.ts";
+
+/** Room for any next-page URL a forge serves; a server refuses longer request lines first. */
+const MAX_CURSOR_LENGTH = 32_768;
 
 /** Where the next page starts: a page number, a next-page URL, or a forge-native token. */
 export type PagePosition = { page: number } | { url: string } | { token: string };
@@ -16,19 +22,37 @@ export type PagePosition = { page: number } | { url: string } | { token: string 
 interface CursorBody {
   /** Listing the cursor belongs to. */
   k: string;
+  /** Digest of the request it continues: who, where and which filters. */
+  s: string;
   p?: number;
   u?: string;
   t?: string;
 }
 
+/** A short digest of the request a listing answered, so its cursor fits no other request. */
+export function cursorScope(subject: readonly unknown[]): string {
+  return Buffer.from(sha256(Buffer.from(canonical(subject)))).toString("base64url", 0, 12);
+}
+
+/** JSON with object keys sorted, so the same filters always give the same digest. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (typeof value === "object" && value !== null) {
+    const entries = Object.entries(value).filter(([, item]) => item !== undefined);
+    entries.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
 /** Turns a position in `listing` into the string a caller passes back as `cursor`. */
-export function encodeCursor(listing: string, position: PagePosition): string {
+export function encodeCursor(listing: string, position: PagePosition, scope = ""): string {
   const body: CursorBody =
     "page" in position
-      ? { k: listing, p: position.page }
+      ? { k: listing, s: scope, p: position.page }
       : "url" in position
-        ? { k: listing, u: position.url }
-        : { k: listing, t: position.token };
+        ? { k: listing, s: scope, u: position.url }
+        : { k: listing, s: scope, t: position.token };
   return Buffer.from(JSON.stringify(body)).toString("base64url");
 }
 
@@ -38,6 +62,7 @@ export function decodeCursor(
   listing: string,
   origin: string | undefined,
   platform?: string,
+  scope = "",
 ): PagePosition {
   const refuse = (): never => {
     throw new ForgesError(
@@ -46,7 +71,7 @@ export function decodeCursor(
       platform,
     );
   };
-  if (!/^[\w-]{1,2048}$/u.test(cursor)) return refuse();
+  if (cursor.length > MAX_CURSOR_LENGTH || !/^[\w-]+$/u.test(cursor)) return refuse();
   let body: unknown;
   try {
     body = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
@@ -54,8 +79,8 @@ export function decodeCursor(
     return refuse();
   }
   if (typeof body !== "object" || body === null) return refuse();
-  const { k, p, u, t } = body as Partial<Record<keyof CursorBody, unknown>>;
-  if (k !== listing) return refuse();
+  const { k, s, p, u, t } = body as Partial<Record<keyof CursorBody, unknown>>;
+  if (k !== listing || (s ?? "") !== scope) return refuse();
   if (typeof p === "number" && Number.isSafeInteger(p) && p >= 2) return { page: p };
   if (typeof t === "string" && t !== "") return { token: t };
   if (typeof u === "string" && origin !== undefined && sameOrigin(u, origin)) return { url: u };

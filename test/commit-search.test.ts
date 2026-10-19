@@ -51,7 +51,7 @@ describe("commit search", () => {
           url: hit.html_url,
         },
       ],
-      nextCursor: cursorFor("commits.search", 2),
+      nextCursor: cursorFor("commits.search", 2, [query], {}),
       totalCount: 2,
       incomplete: false,
       resultLimit: 1000,
@@ -77,7 +77,7 @@ describe("commit search", () => {
       headers: new Headers({ link: '<https://api.github.com/search/commits?page=35>; rel="next"' }),
     });
     const result = await new GitHubProvider({ token: "" }).commits.search("snapshot", {
-      cursor: cursorFor("commits.search", 34),
+      cursor: cursorFor("commits.search", 34, ["snapshot"], {}),
     });
     expect(result.items).toHaveLength(10);
     expect(result).toMatchObject({ incomplete: true, resultLimit: 1000 });
@@ -98,7 +98,7 @@ describe("commit search", () => {
     });
     const result = await new GitHubProvider({ token: "" }).commits.search("snapshot", {
       owner: "other",
-      cursor: cursorFor("commits.search", 34),
+      cursor: cursorFor("commits.search", 34, ["snapshot"], { owner: "other" }),
     });
     expect(result.items).toHaveLength(9);
     expect(result.incomplete).toBe(true);
@@ -118,7 +118,10 @@ describe("commit search", () => {
       {
         owner: "other",
         repo: "chosen",
-        cursor: cursorFor("commits.search", 2),
+        cursor: cursorFor("commits.search", 2, ["snapshot repo:other/project"], {
+          owner: "other",
+          repo: "chosen",
+        }),
         perPage: 10,
       },
     );
@@ -265,7 +268,10 @@ describe("GitLab commit search", () => {
     const result = await new GitLabProvider({ token: "glpat-test" }).commits.search("snapshot", {
       owner: "gitlab-org",
       repo: "gitlab-runner",
-      cursor: cursorFor("commits.search", 2),
+      cursor: cursorFor("commits.search", 2, ["snapshot"], {
+        owner: "gitlab-org",
+        repo: "gitlab-runner",
+      }),
       perPage: 1,
     });
 
@@ -277,7 +283,10 @@ describe("GitLab commit search", () => {
     // x-total stops counting 100 past the earlier pages, so it is no count to report.
     expect(result).toEqual({
       items: [gitlabItem],
-      nextCursor: cursorFor("commits.search", 3),
+      nextCursor: cursorFor("commits.search", 3, ["snapshot"], {
+        owner: "gitlab-org",
+        repo: "gitlab-runner",
+      }),
       incomplete: false,
       resultLimit: null,
     });
@@ -293,11 +302,19 @@ describe("GitLab commit search", () => {
     const result = await new GitLabProvider({ token: "glpat-test" }).commits.search("snapshot", {
       owner: "gitlab-org",
       repo: "gitlab-runner",
-      cursor: cursorFor("commits.search", 2),
+      cursor: cursorFor("commits.search", 2, ["snapshot"], {
+        owner: "gitlab-org",
+        repo: "gitlab-runner",
+      }),
       perPage: 100,
     });
 
-    expect(result).toMatchObject({ nextCursor: cursorFor("commits.search", 3) });
+    expect(result).toMatchObject({
+      nextCursor: cursorFor("commits.search", 3, ["snapshot"], {
+        owner: "gitlab-org",
+        repo: "gitlab-runner",
+      }),
+    });
   });
 
   it("ends on a short last page", async () => {
@@ -310,7 +327,10 @@ describe("GitLab commit search", () => {
     const result = await new GitLabProvider({ token: "glpat-test" }).commits.search("snapshot", {
       owner: "gitlab-org",
       repo: "gitlab-runner",
-      cursor: cursorFor("commits.search", 2),
+      cursor: cursorFor("commits.search", 2, ["snapshot"], {
+        owner: "gitlab-org",
+        repo: "gitlab-runner",
+      }),
       perPage: 100,
     });
 

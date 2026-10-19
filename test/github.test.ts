@@ -561,7 +561,12 @@ describe("GitHubProvider", () => {
     it("rejects invalid local pagination before making a request", async () => {
       await expect(
         gh.contributionTemplates.list("octocat", "hello-world", "issue", {
-          cursor: cursorFor("contributionTemplates.list", 0),
+          cursor: cursorFor(
+            "contributionTemplates.list",
+            0,
+            ["octocat", "hello-world", "issue"],
+            {},
+          ),
         }),
       ).rejects.toMatchObject({ status: 400 });
       expect(mocks.client).not.toHaveBeenCalled();
@@ -627,7 +632,7 @@ describe("GitHubProvider", () => {
       const result = await gh.code.search("Provider", {
         owner: "agntn",
         repo: "forges",
-        cursor: cursorFor("code.search", 2),
+        cursor: cursorFor("code.search", 2, ["Provider"], { owner: "agntn", repo: "forges" }),
         perPage: 1,
       });
 
@@ -648,7 +653,7 @@ describe("GitHubProvider", () => {
         ],
         totalCount: 12,
         incomplete: true,
-        nextCursor: cursorFor("code.search", 3),
+        nextCursor: cursorFor("code.search", 3, ["Provider"], { owner: "agntn", repo: "forges" }),
       });
     });
 
@@ -1481,7 +1486,12 @@ describe("GitHubProvider", () => {
           },
         ],
         totalCount: 16,
-        nextCursor: cursorFor("commits.compare", 2),
+        nextCursor: cursorFor(
+          "commits.compare",
+          2,
+          ["agntn", "forges", "v0.3.4", "renovate/deps"],
+          {},
+        ),
         status: "diverged",
         aheadBy: 16,
         behindBy: 3,
@@ -1512,7 +1522,7 @@ describe("GitHubProvider", () => {
       });
 
       const result = await gh.commits.compare("agntn", "forges", "v0.3.4", "main", {
-        cursor: cursorFor("commits.compare", 2),
+        cursor: cursorFor("commits.compare", 2, ["agntn", "forges", "v0.3.4", "main"], {}),
       });
 
       expect(result).toMatchObject({ files: null, filesComplete: null });
@@ -1554,7 +1564,7 @@ describe("GitHubProvider", () => {
     it("refuses a cursor it never handed out and a perPage outside 1 to 100", async () => {
       await expect(
         gh.commits.compare("agntn", "forges", "v0.3.4", "main", {
-          cursor: cursorFor("commits.compare", 0),
+          cursor: cursorFor("commits.compare", 0, ["agntn", "forges", "v0.3.4", "main"], {}),
         }),
       ).rejects.toMatchObject({
         status: 400,
@@ -1843,7 +1853,9 @@ describe("GitHubProvider", () => {
 
       const result = await gh.issues.search("octocat", "hello-world", 'label:"help wanted"', {
         state: "closed",
-        cursor: cursorFor("issues.search", 2),
+        cursor: cursorFor("issues.search", 2, ["octocat", "hello-world", 'label:"help wanted"'], {
+          state: "closed",
+        }),
         perPage: 1,
       });
 
@@ -1863,7 +1875,12 @@ describe("GitHubProvider", () => {
           }),
         ],
         incomplete: true,
-        nextCursor: cursorFor("issues.search", 3),
+        nextCursor: cursorFor(
+          "issues.search",
+          3,
+          ["octocat", "hello-world", 'label:"help wanted"'],
+          { state: "closed" },
+        ),
       });
     });
 
@@ -2210,7 +2227,7 @@ describe("GitHubProvider", () => {
           },
           { content: "eyes", user: { login: "" }, createdAt: "2026-10-12T17:20:01Z" },
         ],
-        nextCursor: cursorFor("issues.listReactions", 2),
+        nextCursor: cursorFor("issues.listReactions", 2, ["octocat", "hello-world", 42], {}),
       });
     });
 
@@ -2556,7 +2573,7 @@ describe("GitHubProvider", () => {
 
       await expect(
         gh.pullRequests.listChecks("octocat", "hello-world", 99, {
-          cursor: cursorFor("pullRequests.listChecks", 0),
+          cursor: cursorFor("pullRequests.listChecks", 0, ["octocat", "hello-world", 99], {}),
         }),
       ).rejects.toMatchObject({ status: 400 });
       expect(mocks.client).not.toHaveBeenCalled();
@@ -2618,7 +2635,7 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [...statuses, checkRun(6001)],
         totalCount: 5,
-        nextCursor: cursorFor("pullRequests.listChecks", 2),
+        nextCursor: cursorFor("pullRequests.listChecks", 2, ["octocat", "hello-world", 99], {}),
       });
     });
 
@@ -2637,7 +2654,7 @@ describe("GitHubProvider", () => {
         });
 
       const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
-        cursor: cursorFor("pullRequests.listChecks", 2),
+        cursor: cursorFor("pullRequests.listChecks", 2, ["octocat", "hello-world", 99], {}),
         perPage: 2,
       });
 
@@ -2648,7 +2665,7 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [checkRun(6001), checkRun(6002)],
         totalCount: 7,
-        nextCursor: cursorFor("pullRequests.listChecks", 3),
+        nextCursor: cursorFor("pullRequests.listChecks", 3, ["octocat", "hello-world", 99], {}),
       });
     });
 
@@ -2672,7 +2689,7 @@ describe("GitHubProvider", () => {
         });
 
       const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
-        cursor: cursorFor("pullRequests.listChecks", 60),
+        cursor: cursorFor("pullRequests.listChecks", 60, ["octocat", "hello-world", 99], {}),
         perPage: 2,
       });
 
@@ -2688,7 +2705,7 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [checkRun(7117), checkRun(7118)],
         totalCount: 122,
-        nextCursor: cursorFor("pullRequests.listChecks", 61),
+        nextCursor: cursorFor("pullRequests.listChecks", 61, ["octocat", "hello-world", 99], {}),
       });
     });
 
@@ -2716,7 +2733,7 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [statuses[0]],
         totalCount: 5,
-        nextCursor: cursorFor("pullRequests.listChecks", 2),
+        nextCursor: cursorFor("pullRequests.listChecks", 2, ["octocat", "hello-world", 99], {}),
       });
     });
 
@@ -2838,7 +2855,7 @@ describe("GitHubProvider", () => {
       });
 
       const result = await gh.pullRequests.listReviews("octocat", "hello-world", 99, {
-        cursor: cursorFor("pullRequests.listReviews", 2),
+        cursor: cursorFor("pullRequests.listReviews", 2, ["octocat", "hello-world", 99], {}),
         perPage: 2,
       });
 
@@ -2868,7 +2885,7 @@ describe("GitHubProvider", () => {
             url: "https://github.com/octocat/hello-world/pull/99#pullrequestreview-5234330202",
           },
         ],
-        nextCursor: cursorFor("pullRequests.listReviews", 3),
+        nextCursor: cursorFor("pullRequests.listReviews", 3, ["octocat", "hello-world", 99], {}),
       });
     });
 
@@ -3215,7 +3232,16 @@ describe("GitHubProvider", () => {
         "octocat",
         "hello-world",
         "repo:octocat/other-repo OR is:issue OR search",
-        { state: "closed", cursor: cursorFor("pullRequests.search", 2), perPage: 1 },
+        {
+          state: "closed",
+          cursor: cursorFor(
+            "pullRequests.search",
+            2,
+            ["octocat", "hello-world", "repo:octocat/other-repo OR is:issue OR search"],
+            { state: "closed" },
+          ),
+          perPage: 1,
+        },
       );
 
       expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
@@ -3237,7 +3263,12 @@ describe("GitHubProvider", () => {
           },
         ],
         incomplete: true,
-        nextCursor: cursorFor("pullRequests.search", 3),
+        nextCursor: cursorFor(
+          "pullRequests.search",
+          3,
+          ["octocat", "hello-world", "repo:octocat/other-repo OR is:issue OR search"],
+          { state: "closed" },
+        ),
       });
       expect(result.items[0]).not.toHaveProperty("sourceBranch");
       expect(result.items[0]).not.toHaveProperty("headSha");
@@ -4109,6 +4140,21 @@ describe("GitHubProvider", () => {
       expect(forge.repos.byOwner).not.toHaveBeenCalled();
     });
 
+    it("refuses a cursor that another repository handed out", async () => {
+      forge.releases.list.mockReturnValueOnce(
+        listing({
+          items: [],
+          cursor: { nextUrl: "https://api.github.com/repos/a/one/releases?page=2" },
+        }),
+      );
+      const { nextCursor } = await gh.releases.list("a", "one");
+
+      await expect(gh.releases.list("b", "two", { cursor: nextCursor })).rejects.toMatchObject({
+        status: 400,
+      });
+      expect(forge.releases.list).toHaveBeenCalledOnce();
+    });
+
     it("refuses a cursor another listing handed out", async () => {
       forge.releases.list.mockReturnValueOnce(
         listing({ items: [], cursor: { nextUrl: "https://api.github.com/x?page=2" } }),
@@ -4204,7 +4250,7 @@ describe("GitHubProvider", () => {
         .mockResolvedValueOnce(graphqlThreadList([second]));
 
       const result = await gh.threads.list("octocat", "hello-world", 99, {
-        cursor: cursorFor("threads.list", 2),
+        cursor: cursorFor("threads.list", 2, ["octocat", "hello-world", 99], {}),
         perPage: 1,
       });
 
@@ -4271,7 +4317,9 @@ describe("GitHubProvider", () => {
 
       expect(result.items.map((thread) => thread.id)).toEqual(["PRRT_kwDOA"]);
       expect(result.nextCursor).toBeDefined();
-      expect(result.nextCursor).toBe(cursorFor("threads.list", 2));
+      expect(result.nextCursor).toBe(
+        cursorFor("threads.list", 2, ["octocat", "hello-world", 99], { state: "unresolved" }),
+      );
     });
 
     it("gets one thread by GraphQL id", async () => {

@@ -3,6 +3,9 @@ import { createProvider } from "../src/index.ts";
 import { ForgesError } from "../src/errors.ts";
 import { cursorFor } from "./support/cursor.ts";
 
+/** The pull request every valid cursor here continues. */
+const CHECKS_SUBJECT = ["owner", "repo", 1];
+
 /** Options no check listing takes, for the listing whose cursors they carry. */
 const invalidOptions = (listing: string) => [
   { page: 2 },
@@ -60,9 +63,13 @@ describe.each(["github", "gitlab", "gitea"] as const)("%s check pagination", (pl
     undefined,
     {},
     { perPage: 1 },
-    { cursor: cursorFor("pullRequests.listChecks", 2), perPage: 100 },
+    { cursor: cursorFor("pullRequests.listChecks", 2, CHECKS_SUBJECT), perPage: 100 },
     {
-      cursor: cursorFor("pullRequests.listChecks", Math.floor((Number.MAX_SAFE_INTEGER - 1) / 100)),
+      cursor: cursorFor(
+        "pullRequests.listChecks",
+        Math.floor((Number.MAX_SAFE_INTEGER - 1) / 100),
+        CHECKS_SUBJECT,
+      ),
       perPage: 100,
     },
   ])("accepts valid options %o and reaches the provider", async (options) => {
