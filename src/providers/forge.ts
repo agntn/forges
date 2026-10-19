@@ -63,6 +63,9 @@ import type {
 /** The rows a page holds when the caller names no size; GitLab alone would send 20. */
 const DEFAULT_PER_PAGE = 30;
 
+/** Signs anonymous cursors: good while this process runs, and nobody outside it can forge one. */
+let processCursorKey: Uint8Array | undefined;
+
 /** What every `forges` factory here is opened with. */
 export interface ForgeOptions {
   baseUrl: string;
@@ -85,7 +88,7 @@ export abstract class ForgeBackedProvider<
   readonly #platform: string;
   readonly #apiBaseURL: string;
   readonly #token: string;
-  readonly #cursorKey: Uint8Array | undefined;
+  readonly #cursorKey: Uint8Array;
   #forge: Promise<Forge> | undefined;
   #refreshed: Promise<unknown> | undefined;
 
@@ -94,7 +97,10 @@ export abstract class ForgeBackedProvider<
     this.#platform = platform;
     this.#apiBaseURL = apiBaseURL;
     this.#token = token;
-    this.#cursorKey = token === "" ? undefined : sha256(Buffer.from(`cursor:${token}`));
+    this.#cursorKey =
+      token === ""
+        ? (processCursorKey ??= crypto.getRandomValues(new Uint8Array(32)))
+        : sha256(Buffer.from(`cursor:${token}`));
     this.client = createForgeClient(() => this.#open(), {
       scope: credentialScope(apiBaseURL, token),
     });
@@ -116,7 +122,7 @@ export abstract class ForgeBackedProvider<
   protected abstract mapCiJob(raw: never): CiJob;
 
   /** Signs cursors with the token: without it nobody can aim this credential at a URL. */
-  protected override cursorKey(): Uint8Array | undefined {
+  protected override cursorKey(): Uint8Array {
     return this.#cursorKey;
   }
 

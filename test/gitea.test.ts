@@ -385,6 +385,26 @@ describe("Gitea Provider", () => {
       });
       expect(forge.repos.byOwner).toHaveBeenCalledTimes(1);
     });
+
+    it("signs anonymous cursors too, for any provider in the same process", async () => {
+      const url = "https://gitea.com/api/v1/users/testowner/repos?page=2";
+      forge.repos.byOwner
+        .mockReturnValueOnce(listing({ items: raws(giteaRepo()), cursor: { nextUrl: url } }))
+        .mockReturnValueOnce(listing({ items: [] }));
+      const { nextCursor } = await new GiteaProvider({ token: "" }).repos.list("testowner");
+      const { m: _m, ...body } = JSON.parse(Buffer.from(nextCursor!, "base64url").toString());
+      const unsigned = Buffer.from(JSON.stringify(body)).toString("base64url");
+      const another = new GiteaProvider({ token: "" });
+
+      await expect(another.repos.list("testowner", { cursor: unsigned })).rejects.toMatchObject({
+        status: 400,
+      });
+      await another.repos.list("testowner", { cursor: nextCursor });
+      expect(forge.repos.byOwner).toHaveBeenLastCalledWith(expect.anything(), {
+        perPage: 30,
+        cursor: { nextUrl: url },
+      });
+    });
   });
 
   describe("contributionTemplates", () => {
