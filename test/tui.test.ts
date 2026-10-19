@@ -65,12 +65,12 @@ describe("Forges tool TUI", () => {
       content: [{ type: "text", text: JSON.stringify({ items: [{ id: 1 }, { id: 2 }] }) }],
       details: {
         platform: "github",
-        result: { items: [{ id: 1 }, { id: 2 }], hasNextPage: true, nextPage: 2 },
+        result: { items: [{ id: 1 }, { id: 2 }], nextCursor: "eyJrIjoiaXNzdWVzLmxpc3QiLCJwIjoyfQ" },
       },
     };
 
     expect(renderToolResult("forges_issues_list", result, false, {}, plain)).toBe(
-      "✓ (read) 2 items · next page 2",
+      "✓ (read) 2 items · more pages",
     );
   });
 

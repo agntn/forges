@@ -89,7 +89,13 @@ export function forgesToolSchemas() {
         maximum: MAX_WINDOW_CHARS,
       }),
     );
-  const page = Type.Optional(Type.Integer({ description: "Page number", minimum: 1 }));
+  const cursor = Type.Optional(
+    Type.String({
+      description:
+        "nextCursor from the previous page, passed back unchanged; omit for the first page",
+      minLength: 1,
+    }),
+  );
   const perPage = Type.Optional(
     Type.Integer({ description: "Results per page", minimum: 1, maximum: 100 }),
   );
@@ -134,7 +140,7 @@ export function forgesToolSchemas() {
   const listRepositoriesParameters = closed({
     platform: gitPlatform,
     owner: accountOwner,
-    page,
+    cursor,
     perPage,
   });
   const repositoryParameters = closed({ platform: gitPlatform, owner, repo });
@@ -166,7 +172,7 @@ export function forgesToolSchemas() {
     owner,
     repo,
     kind: contributionTemplateKind,
-    page,
+    cursor,
     perPage,
   });
   const contributionTemplateParameters = closed({
@@ -184,7 +190,7 @@ export function forgesToolSchemas() {
     }),
     owner,
     repo: Type.Optional(repo),
-    page,
+    cursor,
     perPage,
   });
   const globalPullRequestSearchParameters = closed({
@@ -204,7 +210,7 @@ export function forgesToolSchemas() {
     ),
     owner,
     repo: Type.Optional(repo),
-    page,
+    cursor,
     perPage,
     sort: Type.Optional(
       Type.Unsafe<"created" | "updated" | "comments">({
@@ -246,7 +252,7 @@ export function forgesToolSchemas() {
         maxItems: 10,
       }),
     ),
-    page,
+    cursor,
     perPage,
     sort: Type.Optional(
       Type.Unsafe<"created" | "updated" | "comments">({
@@ -271,7 +277,7 @@ export function forgesToolSchemas() {
     }),
     owner,
     repo: Type.Optional(repo),
-    page,
+    cursor,
     perPage,
   });
   const commitParameters = closed({ platform: gitPlatform, owner, repo, sha });
@@ -284,7 +290,7 @@ export function forgesToolSchemas() {
         "Commit SHA, branch, or tag whose checks to list; a branch or tag reads the commit it points at now",
       minLength: 1,
     }),
-    page,
+    cursor,
     perPage,
   });
   const commitPatchParameters = closed({
@@ -312,7 +318,7 @@ export function forgesToolSchemas() {
     path,
     since,
     until,
-    page,
+    cursor,
     perPage,
   });
   const compareCommitsParameters = closed({
@@ -334,10 +340,10 @@ export function forgesToolSchemas() {
           "Also return the net changed files from the merge base to head, on the first page only",
       }),
     ),
-    page,
+    cursor,
     perPage,
   });
-  const listCiRunsParameters = closed({ platform, owner, repo, branch, page, perPage });
+  const listCiRunsParameters = closed({ platform, owner, repo, branch, cursor, perPage });
   const listCiJobsParameters = closed({
     platform,
     owner,
@@ -346,7 +352,7 @@ export function forgesToolSchemas() {
       description: "CI run id from forges_ci_runs_list; a pipeline id on GitLab",
       minLength: 1,
     }),
-    page,
+    cursor,
     perPage,
   });
   const ciJobLogParameters = closed({
@@ -366,8 +372,8 @@ export function forgesToolSchemas() {
     ),
     maxChars: maxChars("log"),
   });
-  const listTagsParameters = closed({ platform, owner, repo, page, perPage });
-  const listReleasesParameters = closed({ platform, owner, repo, page, perPage });
+  const listTagsParameters = closed({ platform, owner, repo, cursor, perPage });
+  const listReleasesParameters = closed({ platform, owner, repo, cursor, perPage });
   const releaseParameters = closed({
     platform,
     owner,
@@ -419,7 +425,7 @@ export function forgesToolSchemas() {
     platform,
     owner,
     repo,
-    page,
+    cursor,
     perPage,
     state,
   });
@@ -431,7 +437,7 @@ export function forgesToolSchemas() {
       description: "Search query in the selected provider's syntax",
       minLength: 1,
     }),
-    page,
+    cursor,
     perPage,
     state,
   });
@@ -448,7 +454,7 @@ export function forgesToolSchemas() {
       }),
     ),
   });
-  const listCommentsParameters = closed({ platform, owner, repo, number, page, perPage });
+  const listCommentsParameters = closed({ platform, owner, repo, number, cursor, perPage });
   /**
    * The waiting mode of the check listing. The bound repeats
    * `MAX_CHECK_WAIT_SECONDS` from `src/check-wait.ts`, which this file cannot
@@ -468,7 +474,7 @@ export function forgesToolSchemas() {
     owner,
     repo,
     number,
-    page,
+    cursor,
     perPage,
     waitSeconds,
     headSha: Type.Optional(
@@ -500,7 +506,7 @@ export function forgesToolSchemas() {
         minLength: 1,
       }),
     ),
-    page,
+    cursor,
     perPage,
   });
   const createCommentParameters = closed({
@@ -638,7 +644,7 @@ export function forgesToolSchemas() {
     owner,
     repo,
     number,
-    page,
+    cursor,
     perPage,
     state: threadState,
   });

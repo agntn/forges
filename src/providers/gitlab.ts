@@ -11,7 +11,19 @@
  * - Most endpoints require numeric project ID
  */
 
-import { Provider, type ProviderRawTypes } from "../provider.ts";
+import type { ForgeProvider as Forge, ReleaseRef } from "forges";
+import { gitlab } from "forges/gitlab";
+
+import { ForgeBackedProvider, type ForgeOptions } from "./forge.ts";
+import {
+  type ContinuedPage,
+  type Positioned,
+  type Numbered,
+  type NumberedPage,
+  type NumberedSearchPage,
+  type WithPage,
+  type ProviderRawTypes,
+} from "../provider.ts";
 import type {
   RepositoryContents,
   RepositoryContentsOptions,
@@ -52,13 +64,8 @@ import type {
   GlobalIssueSearchResult,
   User,
   Owner,
-  PageResult,
-  SearchPageResult,
   ListOptions,
-  ListCiJobsOptions,
-  ListCiRunsOptions,
   ListCommentOptions,
-  ListCommitOptions,
   ListPullRequestChecksOptions,
   ListCommitChecksOptions,
   ListPullRequestReviewsOptions,
@@ -71,7 +78,6 @@ import type {
   CreatePullRequestInput,
   CreateReleaseInput,
   IssueState,
-  ListReleasesOptions,
   ListTagsOptions,
   Reaction,
   Release,
@@ -84,7 +90,7 @@ import type {
   MergePullRequestInput,
   UpdateReleaseInput,
 } from "../types.ts";
-import { createHttpClient, rawFetch, type HttpClient, type RawFetchResult } from "../http.ts";
+import { rawFetch } from "../http.ts";
 import { cachedFetch, invalidateCache } from "../cache.ts";
 import {
   FetchError,
@@ -568,8 +574,7 @@ function assertNoCommaLabels(input: UpdateIssueInput): void {
  * - Numeric project IDs required for most endpoints
  * - x-next-page pagination headers
  */
-export class GitLabProvider extends Provider<GitLabRawTypes> {
-  private client: HttpClient;
+export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   private readonly apiBaseURL: string;
   private projectIdCache = new Map<string, ProjectIdCacheEntry>();
   /** Lookups still in flight, so concurrent reads of one project share a request. */
@@ -578,15 +583,9 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   private readonly projectIdCacheTtl: number;
 
   constructor(config: ProviderConfig) {
-    super("gitlab");
-    this.apiBaseURL = normalizeApiBaseURL(config.baseURL, "https://gitlab.com/api/v4", "/api/v4");
-
-    this.client = createHttpClient({
-      baseURL: this.apiBaseURL,
-      token: config.token ?? "",
-      tokenHeader: "Private-Token",
-      tokenPrefix: "",
-    });
+    const apiBaseURL = normalizeApiBaseURL(config.baseURL, "https://gitlab.com/api/v4", "/api/v4");
+    super("gitlab", apiBaseURL, config.token ?? "");
+    this.apiBaseURL = apiBaseURL;
 
     this.projectIdCacheMax = normalizePositiveInteger(
       config.gitlab?.projectIdCacheMax,
@@ -596,6 +595,54 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
       config.gitlab?.projectIdCacheTtl,
       DEFAULT_PROJECT_ID_CACHE_TTL,
     );
+  }
+
+  protected override assertOwnerPath(owner: string): void {
+    encodeNamespacePath(owner);
+  }
+
+  /** The project id comes along, so later reads by path skip their lookup. */
+  protected override async getRepo(owner: string, repo: string): Promise<Repository> {
+    const repository = await super.getRepo(owner, repo);
+    this.setCachedProjectId(`${owner}/${repo}`, Number(repository.id));
+    return repository;
+  }
+
+  protected override createForge(options: ForgeOptions): Forge {
+    return gitlab(options) as Forge;
+  }
+
+  /** GitLab keys a release by its tag, so the update needs no read first. */
+  protected override releaseRef(
+    forge: Forge,
+    owner: string,
+    repo: string,
+    tag: string,
+  ): Promise<ReleaseRef> {
+    const ref = this.repoRef(forge, owner, repo);
+    return Promise.resolve({
+      forge: forge.forge,
+      instance: forge.instance,
+      repo: ref,
+      id: tag,
+      tag,
+    });
+  }
+
+  /** GitLab answered every state when none was named, and keeps doing so. */
+  protected override listIssues(
+    owner: string,
+    repo: string,
+    options?: Positioned<ListOptions>,
+  ): Promise<ContinuedPage<Issue>> {
+    return super.listIssues(owner, repo, { ...options, state: options?.state ?? "all" });
+  }
+
+  protected override listRepos(
+    owner: string,
+    options?: Positioned<ListOptions>,
+  ): Promise<ContinuedPage<Repository>> {
+    return this.listOwnerRepos(owner, options);
   }
 
   protected override mapOwner(raw: GitLabProject): Owner {
@@ -643,7 +690,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     return state === "closed" || state === "merged" ? "closed" : "open";
   }
 
-  private mapCiJob(raw: GitLabJob): CiJob {
+  protected override mapCiJob(raw: GitLabJob): CiJob {
     return {
       id: String(raw.id),
       runId: String(raw.pipeline.id),
@@ -656,7 +703,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     };
   }
 
-  private mapCiRun(raw: GitLabPipeline): CiRun {
+  protected override mapCiRun(raw: GitLabPipeline): CiRun {
     return {
       id: String(raw.id),
       branch: raw.ref ?? "",
@@ -666,7 +713,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     };
   }
 
-  private mapCommitSummary(raw: GitLabCommit): CommitSummary {
+  protected override mapCommitSummary(raw: GitLabCommit): CommitSummary {
     return {
       sha: raw.id,
       message: raw.message,
@@ -952,7 +999,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   /**
    * Parse GitLab pagination headers into PageResult metadata.
    */
-  private parsePagination<T>(items: T[], headers: Headers): PageResult<T> {
+  private parsePagination<T>(items: T[], headers: Headers): NumberedPage<T> {
     const nextPage = headers.get("x-next-page");
     const total = headers.get("x-total");
 
@@ -966,65 +1013,12 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   // --- Repos ---
 
-  protected override async listRepos(
-    owner: string,
-    options?: ListOptions,
-  ): Promise<PageResult<Repository>> {
-    try {
-      const encodedOwner = encodeNamespacePath(owner);
-      // Try user projects first, fall back to group projects
-      let response: RawFetchResult<GitLabProject[]>;
-      try {
-        response = await rawFetch<GitLabProject[]>(this.client, `/users/${encodedOwner}/projects`, {
-          query: {
-            page: options?.page ?? 1,
-            per_page: options?.perPage ?? 30,
-          },
-        });
-      } catch (error: unknown) {
-        const normalized = normalizeError(error, "gitlab");
-        if (normalized.status !== 404) {
-          throw normalized;
-        }
-
-        response = await rawFetch<GitLabProject[]>(
-          this.client,
-          `/groups/${encodedOwner}/projects`,
-          {
-            query: {
-              page: options?.page ?? 1,
-              per_page: options?.perPage ?? 30,
-            },
-          },
-        );
-      }
-
-      const repos = (response.data ?? []).map((raw) => this.mapRepository(raw));
-      return this.parsePagination(repos, response.headers);
-    } catch (error: unknown) {
-      throw normalizeError(error, "gitlab");
-    }
-  }
-
-  protected override async getRepo(owner: string, repo: string): Promise<Repository> {
-    try {
-      const encoded = encodeProjectPath(owner, repo);
-      const project = await this.client<GitLabProject>(`/projects/${encoded}`);
-      // Cache project ID while we have it
-      this.setCachedProjectId(`${owner}/${repo}`, project.id);
-      return this.mapRepository(project);
-    } catch (error: unknown) {
-      throw normalizeError(error, "gitlab");
-    }
-  }
-
-  /** Git keeps no empty directories, so an empty tree below the root is a missing path. */
-  /** Version order, newest first, the order GitHub lists tags in. */
+  /** Version order, newest first, as GitHub lists them; `forges` doesn't ask for it. */
   protected override async listTags(
     owner: string,
     repo: string,
-    options?: ListTagsOptions,
-  ): Promise<PageResult<Tag>> {
+    options?: WithPage<ListTagsOptions>,
+  ): Promise<NumberedPage<Tag>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const { data, headers } = await rawFetch<GitLabTag[]>(
@@ -1280,55 +1274,6 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     }
   }
 
-  protected override async listCiRuns(
-    owner: string,
-    repo: string,
-    options?: ListCiRunsOptions,
-  ): Promise<PageResult<CiRun>> {
-    try {
-      const projectId = await this.resolveProjectId(owner, repo);
-      const query: Record<string, string | number> = {
-        page: options?.page ?? 1,
-        per_page: options?.perPage ?? 30,
-      };
-      if (options?.branch) query.ref = options.branch;
-
-      const { data, headers } = await rawFetch<GitLabPipeline[]>(
-        this.client,
-        `/projects/${projectId}/pipelines`,
-        { query },
-      );
-      return this.parsePagination(
-        (data ?? []).map((raw) => this.mapCiRun(raw)),
-        headers,
-      );
-    } catch (error: unknown) {
-      throw normalizeError(error, "gitlab");
-    }
-  }
-
-  protected override async listCiJobs(
-    owner: string,
-    repo: string,
-    runId: string,
-    options?: ListCiJobsOptions,
-  ): Promise<PageResult<CiJob>> {
-    try {
-      const projectId = await this.resolveProjectId(owner, repo);
-      const { data, headers } = await rawFetch<GitLabJob[]>(
-        this.client,
-        `/projects/${projectId}/pipelines/${runId}/jobs`,
-        { query: { page: options?.page ?? 1, per_page: options?.perPage ?? 30 } },
-      );
-      return this.parsePagination(
-        (data ?? []).map((raw) => this.mapCiJob(raw)),
-        headers,
-      );
-    } catch (error: unknown) {
-      throw normalizeError(error, "gitlab");
-    }
-  }
-
   protected override async readCiJobLog(
     owner: string,
     repo: string,
@@ -1348,36 +1293,6 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
         job,
         { text: cleanGitLabTrace(log.text), complete: log.complete, timestamped: false },
         options,
-      );
-    } catch (error: unknown) {
-      throw normalizeError(error, "gitlab");
-    }
-  }
-
-  protected override async listCommits(
-    owner: string,
-    repo: string,
-    options?: ListCommitOptions,
-  ): Promise<PageResult<CommitSummary>> {
-    try {
-      const projectId = await this.resolveProjectId(owner, repo);
-      const query: Record<string, string | number> = {
-        page: options?.page ?? 1,
-        per_page: options?.perPage ?? 30,
-      };
-      if (options?.ref) query.ref_name = options.ref;
-      if (options?.path) query.path = options.path;
-      if (options?.since) query.since = options.since;
-      if (options?.until) query.until = options.until;
-
-      const { data, headers } = await rawFetch<GitLabCommit[]>(
-        this.client,
-        `/projects/${projectId}/repository/commits`,
-        { query },
-      );
-      return this.parsePagination(
-        (data ?? []).map((raw) => this.mapCommitSummary(raw)),
-        headers,
       );
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
@@ -1430,8 +1345,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     repo: string,
     base: string,
     head: string,
-    options?: CompareCommitsOptions,
-  ): Promise<CommitComparison> {
+    options?: WithPage<CompareCommitsOptions>,
+  ): Promise<Numbered<CommitComparison>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const comparison = await this.client<GitLabComparison>(
@@ -1515,8 +1430,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   protected override async searchCode(
     search: string,
-    options?: CodeSearchOptions,
-  ): Promise<SearchPageResult<CodeSearchItem>> {
+    options?: WithPage<CodeSearchOptions>,
+  ): Promise<NumberedSearchPage<CodeSearchItem>> {
     try {
       let route = "/search";
       let scopedProject: GitLabProject | undefined;
@@ -1565,8 +1480,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   protected override async searchCommits(
     search: string,
-    options?: CommitSearchOptions,
-  ): Promise<CommitSearchResult> {
+    options?: WithPage<CommitSearchOptions>,
+  ): Promise<Numbered<CommitSearchResult>> {
     const page = options?.page ?? 1;
     const perPage = options?.perPage ?? 30;
     if (
@@ -1674,40 +1589,12 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   // --- Issues ---
 
-  protected override async listIssues(
-    owner: string,
-    repo: string,
-    options?: ListOptions,
-  ): Promise<PageResult<Issue>> {
-    try {
-      const projectId = await this.resolveProjectId(owner, repo);
-      const query: Record<string, string | number> = {
-        page: options?.page ?? 1,
-        per_page: options?.perPage ?? 30,
-      };
-
-      const stateFilter = this.mapStateFilter(options?.state);
-      if (stateFilter) {
-        query.state = stateFilter;
-      }
-
-      const response = await rawFetch<GitLabIssue[]>(this.client, `/projects/${projectId}/issues`, {
-        query,
-      });
-
-      const issues = (response.data ?? []).map((raw) => this.mapIssue(raw));
-      return this.parsePagination(issues, response.headers);
-    } catch (error: unknown) {
-      throw normalizeError(error, "gitlab");
-    }
-  }
-
   protected override async searchIssues(
     owner: string,
     repo: string,
     search: string,
-    options?: ListOptions,
-  ): Promise<SearchPageResult<Issue>> {
+    options?: WithPage<ListOptions>,
+  ): Promise<NumberedSearchPage<Issue>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const query: Record<string, string | number> = {
@@ -1774,8 +1661,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   protected override async listPullRequests(
     owner: string,
     repo: string,
-    options?: ListOptions,
-  ): Promise<PageResult<PullRequest>> {
+    options?: WithPage<ListOptions>,
+  ): Promise<NumberedPage<PullRequest>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const query: Record<string, string | number> = {
@@ -1805,8 +1692,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     owner: string,
     repo: string,
     number: number,
-    options?: ListPullRequestFilesOptions,
-  ): Promise<PageResult<PullRequestFile>> {
+    options?: WithPage<ListPullRequestFilesOptions>,
+  ): Promise<NumberedPage<PullRequestFile>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const response = await rawFetch<GitLabMergeRequestDiff[]>(
@@ -1836,8 +1723,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     owner: string,
     repo: string,
     number: number,
-    options?: ListPullRequestChecksOptions,
-  ): Promise<PageResult<PullRequestCheck>> {
+    options?: WithPage<ListPullRequestChecksOptions>,
+  ): Promise<NumberedPage<PullRequestCheck>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const base = `/projects/${projectId}/merge_requests/${encodePathSegment(number, "Number")}`;
@@ -1892,8 +1779,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     owner: string,
     repo: string,
     ref: string,
-    options?: ListCommitChecksOptions,
-  ): Promise<PageResult<PullRequestCheck>> {
+    options?: WithPage<ListCommitChecksOptions>,
+  ): Promise<NumberedPage<PullRequestCheck>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const commit = await this.client<GitLabCommit>(
@@ -1968,8 +1855,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     owner: string,
     repo: string,
     number: number,
-    options?: ListPullRequestReviewsOptions,
-  ): Promise<PageResult<PullRequestReview>> {
+    options?: WithPage<ListPullRequestReviewsOptions>,
+  ): Promise<NumberedPage<PullRequestReview>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const base = `/projects/${projectId}/merge_requests/${encodePathSegment(number, "Number")}`;
@@ -2026,7 +1913,7 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   // --- Releases ---
 
-  private mapRelease(raw: GitLabRelease): Release {
+  protected override mapRelease(raw: GitLabRelease): Release {
     return {
       id: raw.tag_name,
       tag: raw.tag_name,
@@ -2042,78 +1929,23 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   }
 
   /** A draft or pre-release asked of GitLab would silently publish, so it is refused instead. */
-  private assertReleaseFlags(input: { draft?: boolean; prerelease?: boolean }): void {
-    if (input.draft === true) {
-      throw new ForgesError("GitLab releases have no draft state", 501, "gitlab");
-    }
-    if (input.prerelease === true) {
-      throw new ForgesError("GitLab releases have no pre-release flag", 501, "gitlab");
-    }
-  }
-
-  protected override async listReleases(
-    owner: string,
-    repo: string,
-    options?: ListReleasesOptions,
-  ): Promise<PageResult<Release>> {
-    try {
-      const projectId = await this.resolveProjectId(owner, repo);
-      const { data, headers } = await rawFetch<GitLabRelease[]>(
-        this.client,
-        `/projects/${projectId}/releases`,
-        {
-          query: {
-            page: options?.page ?? 1,
-            per_page: options?.perPage ?? 30,
-          },
-        },
-      );
-      return this.parsePagination(
-        (data ?? []).map((raw) => this.mapRelease(raw)),
-        headers,
-      );
-    } catch (error: unknown) {
-      throw normalizeError(error, "gitlab");
-    }
-  }
-
-  protected override async getRelease(owner: string, repo: string, tag: string): Promise<Release> {
-    try {
-      const projectId = await this.resolveProjectId(owner, repo);
-      const release = await this.client<GitLabRelease>(
-        `/projects/${projectId}/releases/${encodeRefPathSegment(tag, "Tag")}`,
-      );
-      return this.mapRelease(release);
-    } catch (error: unknown) {
-      throw normalizeError(error, "gitlab");
-    }
-  }
-
-  protected override async createRelease(
+  /** GitLab has no drafts or pre-releases, so only the name and notes go out. */
+  protected override createRelease(
     owner: string,
     repo: string,
     input: CreateReleaseInput,
   ): Promise<Release> {
     this.assertReleaseFlags(input);
-    try {
-      const projectId = await this.resolveProjectId(owner, repo);
-      const release = await this.client<GitLabRelease>(`/projects/${projectId}/releases`, {
-        method: "POST",
-        body: {
-          tag_name: input.tag,
-          ref: input.ref,
-          name: input.name,
-          description: input.body,
-        },
-      });
-      return this.mapRelease(release);
-    } catch (error: unknown) {
-      throw normalizeError(error, "gitlab");
-    }
+    return super.createRelease(owner, repo, {
+      tag: input.tag,
+      ref: input.ref,
+      name: input.name,
+      body: input.body,
+    });
   }
 
   /** Clearing a flag GitLab never had leaves nothing to send, so that update is a read. */
-  protected override async updateRelease(
+  protected override updateRelease(
     owner: string,
     repo: string,
     tag: string,
@@ -2123,21 +1955,15 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     if (input.name === undefined && input.body === undefined) {
       return this.getRelease(owner, repo, tag);
     }
-    try {
-      const projectId = await this.resolveProjectId(owner, repo);
-      const release = await this.client<GitLabRelease>(
-        `/projects/${projectId}/releases/${encodeRefPathSegment(tag, "Tag")}`,
-        {
-          method: "PUT",
-          body: {
-            name: input.name,
-            description: input.body,
-          },
-        },
-      );
-      return this.mapRelease(release);
-    } catch (error: unknown) {
-      throw normalizeError(error, "gitlab");
+    return super.updateRelease(owner, repo, tag, { name: input.name, body: input.body });
+  }
+
+  private assertReleaseFlags(input: { draft?: boolean; prerelease?: boolean }): void {
+    if (input.draft === true) {
+      throw new ForgesError("GitLab releases have no draft state", 501, "gitlab");
+    }
+    if (input.prerelease === true) {
+      throw new ForgesError("GitLab releases have no pre-release flag", 501, "gitlab");
     }
   }
 
@@ -2145,8 +1971,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     owner: string,
     repo: string,
     search: string,
-    options?: ListOptions,
-  ): Promise<SearchPageResult<PullRequestSearchItem>> {
+    options?: WithPage<ListOptions>,
+  ): Promise<NumberedSearchPage<PullRequestSearchItem>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const query: Record<string, string | number> = {
@@ -2177,8 +2003,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   protected override async searchPullRequestsGlobal(
     searchQuery: string,
-    options?: GlobalPullRequestSearchOptions,
-  ): Promise<GlobalPullRequestSearchResult> {
+    options?: WithPage<GlobalPullRequestSearchOptions>,
+  ): Promise<Numbered<GlobalPullRequestSearchResult>> {
     return this.searchAcrossProjects<GitLabMergeRequest, PullRequestSearchItem>(
       "merge_requests",
       searchQuery,
@@ -2189,8 +2015,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   protected override async searchIssuesGlobal(
     searchQuery: string,
-    options?: GlobalIssueSearchOptions,
-  ): Promise<GlobalIssueSearchResult> {
+    options?: WithPage<GlobalIssueSearchOptions>,
+  ): Promise<Numbered<GlobalIssueSearchResult>> {
     return this.searchAcrossProjects<GitLabIssue, Issue>("issues", searchQuery, options, (raw) =>
       this.mapIssue(raw),
     );
@@ -2203,9 +2029,9 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
   >(
     route: "merge_requests" | "issues",
     searchQuery: string,
-    options: GlobalIssueSearchOptions | undefined,
+    options: WithPage<GlobalIssueSearchOptions> | undefined,
     map: (raw: TRaw) => T,
-  ): Promise<SearchPageResult<T & { repository: string }> & { resultLimit: null }> {
+  ): Promise<NumberedSearchPage<T & { repository: string }> & { resultLimit: null }> {
     const noun = route === "issues" ? "Issue" : "Pull-request";
     const plural = route === "issues" ? "issues" : "merge requests";
     try {
@@ -2510,8 +2336,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     owner: string,
     repo: string,
     number: number,
-    options?: ListCommentOptions,
-  ): Promise<PageResult<Comment>> {
+    options?: WithPage<ListCommentOptions>,
+  ): Promise<NumberedPage<Comment>> {
     return this.listNotes(owner, repo, "issues", number, options);
   }
 
@@ -2519,8 +2345,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     owner: string,
     repo: string,
     number: number,
-    options?: ListCommentOptions,
-  ): Promise<PageResult<Comment>> {
+    options?: WithPage<ListCommentOptions>,
+  ): Promise<NumberedPage<Comment>> {
     return this.listNotes(owner, repo, "merge_requests", number, options);
   }
 
@@ -2542,8 +2368,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     repo: string,
     resource: "issues" | "merge_requests",
     number: number,
-    options?: ListCommentOptions,
-  ): Promise<PageResult<Comment>> {
+    options?: WithPage<ListCommentOptions>,
+  ): Promise<NumberedPage<Comment>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const response = await rawFetch<GitLabNote[]>(
@@ -2610,8 +2436,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     owner: string,
     repo: string,
     number: number,
-    options?: ListReactionOptions,
-  ): Promise<PageResult<Reaction>> {
+    options?: WithPage<ListReactionOptions>,
+  ): Promise<NumberedPage<Reaction>> {
     return this.listAwardEmoji(owner, repo, "issues", number, options);
   }
 
@@ -2619,8 +2445,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     owner: string,
     repo: string,
     number: number,
-    options?: ListReactionOptions,
-  ): Promise<PageResult<Reaction>> {
+    options?: WithPage<ListReactionOptions>,
+  ): Promise<NumberedPage<Reaction>> {
     return this.listAwardEmoji(owner, repo, "merge_requests", number, options);
   }
 
@@ -2630,8 +2456,8 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
     repo: string,
     resource: "issues" | "merge_requests",
     number: number,
-    options?: ListReactionOptions,
-  ): Promise<PageResult<Reaction>> {
+    options?: WithPage<ListReactionOptions>,
+  ): Promise<NumberedPage<Reaction>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const noteable = `/projects/${projectId}/${resource}/${encodePathSegment(number, "Number")}`;
@@ -2706,43 +2532,14 @@ export class GitLabProvider extends Provider<GitLabRawTypes> {
 
   // --- Users ---
 
-  /**
-   * GitLab has no direct /users/:username endpoint and the username search
-   * returns only a basic subset of fields, so the lookup resolves the id
-   * first and then reads the full profile.
-   */
-  protected override async getUser(username: string): Promise<User> {
-    try {
-      const users = await this.client<GitLabUser[]>("/users", { query: { username } });
-      const match = users[0];
-
-      if (match === undefined) {
-        throw new NotFoundError(`User not found: ${username}`, "gitlab");
-      }
-
-      return this.mapUser(await this.client<GitLabUser>(`/users/${match.id}`));
-    } catch (error: unknown) {
-      throw normalizeError(error, "gitlab");
-    }
-  }
-
-  protected override async getAuthenticatedUser(): Promise<User> {
-    try {
-      const user = await this.client<GitLabUser>("/user");
-      return this.mapUser(user);
-    } catch (error: unknown) {
-      throw normalizeError(error, "gitlab");
-    }
-  }
-
   // --- Threads ---
 
   protected override async listThreads(
     owner: string,
     repo: string,
     number: number,
-    options?: ListThreadOptions,
-  ): Promise<PageResult<Thread>> {
+    options?: WithPage<ListThreadOptions>,
+  ): Promise<NumberedPage<Thread>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const perPage = options?.perPage ?? 30;

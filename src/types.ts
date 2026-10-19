@@ -111,7 +111,7 @@ export interface ContributionTemplate extends ContributionTemplateSummary {
 
 /** Pagination for one contribution-template kind. */
 export interface ListContributionTemplatesOptions {
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
@@ -166,7 +166,7 @@ export interface CiJob {
 
 /** Pagination for the jobs of one CI run. */
 export interface ListCiJobsOptions {
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
@@ -266,7 +266,7 @@ export interface GlobalPullRequestSearchOptions {
   author?: string;
   owner?: string;
   repo?: string;
-  page?: number;
+  cursor?: string;
   perPage?: number;
   sort?: "created" | "updated" | "comments";
   order?: "asc" | "desc";
@@ -378,7 +378,7 @@ export interface CommitSearchItem extends CommitSummary {
 export interface CommitSearchOptions {
   owner?: string;
   repo?: string;
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
@@ -430,7 +430,7 @@ export type CommitComparisonStatus = "identical" | "ahead" | "behind" | "diverge
 
 /** Paging for the commits of a comparison. */
 export interface CompareCommitsOptions {
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
@@ -520,7 +520,7 @@ export interface Release {
 
 /** List options for repository releases. */
 export interface ListReleasesOptions {
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
@@ -533,7 +533,7 @@ export interface Tag {
 
 /** List options for repository tags. */
 export interface ListTagsOptions {
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
@@ -560,14 +560,11 @@ export interface UpdateReleaseInput {
   prerelease?: boolean;
 }
 
-/**
- * Paginated result wrapper
- */
+/** One page of a listing; pass `nextCursor` back as `cursor`, it's absent on the last page. */
 export interface PageResult<T> {
   items: T[];
   totalCount?: number;
-  hasNextPage: boolean;
-  nextPage?: number;
+  nextCursor?: string;
 }
 
 /** Paginated search results, including whether the response is known to be partial. */
@@ -586,7 +583,7 @@ export interface CodeSearchItem {
 export interface CodeSearchOptions {
   owner?: string;
   repo?: string;
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
@@ -594,21 +591,21 @@ export interface CodeSearchOptions {
  * List operation options
  */
 export interface ListOptions {
-  page?: number;
+  cursor?: string;
   perPage?: number;
   state?: IssueState | "all";
 }
 
 /** List options for repository CI runs. */
 export interface ListCiRunsOptions {
-  page?: number;
+  cursor?: string;
   perPage?: number;
   branch?: string;
 }
 
 /** List options for repository commits. */
 export interface ListCommitOptions {
-  page?: number;
+  cursor?: string;
   perPage?: number;
   ref?: string;
   path?: string;
@@ -711,7 +708,7 @@ export interface Comment {
  * List operation options for discussion comments
  */
 export interface ListCommentOptions {
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
@@ -736,31 +733,31 @@ export interface Reaction {
 export interface ListReactionOptions {
   /** A discussion comment under the issue or pull request, by the id the comment reads return. */
   commentId?: string;
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
 /** List operation options for pull-request files. */
 export interface ListPullRequestFilesOptions {
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
 /** List operation options for pull-request checks. */
 export interface ListPullRequestChecksOptions {
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
 /** List operation options for the checks of one commit. */
 export interface ListCommitChecksOptions {
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
 /** List operation options for pull-request reviews. */
 export interface ListPullRequestReviewsOptions {
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
@@ -799,7 +796,7 @@ export interface Thread {
  * List operation options for review threads
  */
 export interface ListThreadOptions {
-  page?: number;
+  cursor?: string;
   perPage?: number;
   state?: ThreadState;
 }

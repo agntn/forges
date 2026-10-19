@@ -8,14 +8,20 @@ const mocks = vi.hoisted(() => {
   const client = vi.fn();
   return {
     client,
-    createHttpClient: vi.fn(() => client),
+    toFetchError: (error: unknown) => error,
+    forgeFetch: vi.fn(),
+    credentialScope: () => "test-scope",
+    createForgeClient: vi.fn(() => client),
     rawFetch: vi.fn(),
     cachedFetch: vi.fn(),
   };
 });
 
 vi.mock("../src/http.ts", () => ({
-  createHttpClient: mocks.createHttpClient,
+  toFetchError: (error: unknown) => error,
+  createForgeClient: mocks.createForgeClient,
+  forgeFetch: mocks.forgeFetch,
+  credentialScope: () => "test-scope",
   rawFetch: mocks.rawFetch,
   FetchError,
 }));
@@ -24,7 +30,19 @@ vi.mock("../src/cache.ts", () => ({
   cachedFetch: mocks.cachedFetch,
 }));
 
+vi.mock("forges/github", async () => {
+  const { forgeOptions, sharedForge } = await import("./support/forge.ts");
+  return {
+    github: (options: unknown) => {
+      forgeOptions.push(options);
+      return sharedForge("github", "github.com");
+    },
+  };
+});
+
 import { GitHubProvider } from "../src/providers/github.ts";
+import { failing, forgeOptions, listing, raws, repoRef, sharedForge } from "./support/forge.ts";
+import { cursorFor } from "./support/cursor.ts";
 import type { UpdateIssueInput, UpdatePullRequestInput } from "../src/types.ts";
 
 // --- Fixtures (snake_case matching real GitHub API) ---
@@ -193,18 +211,16 @@ function makeFetchError(status: number, message?: string): FetchError {
   return err;
 }
 
-const LINK_NEXT_PAGE_2 =
-  '<https://api.github.com/user/repos?page=2>; rel="next", ' +
-  '<https://api.github.com/user/repos?page=5>; rel="last"';
-
 // --- Tests ---
+
+const forge = sharedForge("github", "github.com");
 
 describe("GitHubProvider", () => {
   let gh: GitHubProvider;
 
   beforeEach(() => {
     vi.resetAllMocks();
-    mocks.createHttpClient.mockReturnValue(mocks.client);
+    mocks.createForgeClient.mockReturnValue(mocks.client);
     gh = new GitHubProvider({
       baseURL: "https://api.github.com",
       token: "ghp_test",
@@ -277,7 +293,6 @@ describe("GitHubProvider", () => {
           },
         ],
         totalCount: 1,
-        hasNextPage: false,
       });
 
       const template = await gh.contributionTemplates.get(
@@ -300,7 +315,7 @@ describe("GitHubProvider", () => {
 
       await expect(
         gh.contributionTemplates.list("octocat", "hello-world", "issue"),
-      ).resolves.toEqual({ items: [], totalCount: 0, hasNextPage: false });
+      ).resolves.toEqual({ items: [], totalCount: 0 });
       expect(mocks.client).not.toHaveBeenCalledWith("/repos/octocat/.github");
     });
 
@@ -498,7 +513,7 @@ describe("GitHubProvider", () => {
 
       await expect(
         bucket.contributionTemplates.list("octocat", "hello-world", "issue"),
-      ).resolves.toEqual({ items: [], totalCount: 0, hasNextPage: false });
+      ).resolves.toEqual({ items: [], totalCount: 0 });
       expect(mocks.client).not.toHaveBeenCalledWith("/repos/octocat/.github");
     });
 
@@ -547,7 +562,14 @@ describe("GitHubProvider", () => {
 
     it("rejects invalid local pagination before making a request", async () => {
       await expect(
-        gh.contributionTemplates.list("octocat", "hello-world", "issue", { page: 0 }),
+        gh.contributionTemplates.list("octocat", "hello-world", "issue", {
+          cursor: cursorFor(
+            "contributionTemplates.list",
+            0,
+            ["octocat", "hello-world", "issue"],
+            {},
+          ),
+        }),
       ).rejects.toMatchObject({ status: 400 });
       expect(mocks.client).not.toHaveBeenCalled();
     });
@@ -574,24 +596,44 @@ describe("GitHubProvider", () => {
   });
 
   describe("constructor", () => {
-    it("creates http client with GitHub auth config", () => {
-      expect(mocks.createHttpClient).toHaveBeenCalledWith({
-        baseURL: "https://api.github.com",
-        token: "ghp_test",
-        tokenHeader: "Authorization",
-        tokenPrefix: "token ",
+    it("opens forges on the first request with the token and API base", async () => {
+      forge.repos.get.mockResolvedValueOnce({ raw: ghRepo });
+
+      await gh.repos.get("octocat", "hello-world");
+
+      expect(forgeOptions.at(-1)).toMatchObject({
+        baseUrl: "https://api.github.com",
+        auth: { type: "token", token: "ghp_test" },
+        userAgent: expect.stringMatching(/^forges\//u),
       });
     });
 
-    it("defaults baseURL when empty", () => {
-      new GitHubProvider({ baseURL: "", token: "t" });
-      expect(mocks.createHttpClient).toHaveBeenLastCalledWith(
-        expect.objectContaining({ baseURL: "https://api.github.com" }),
-      );
+    it("defaults baseURL when empty and reads anonymously without a token", async () => {
+      forge.repos.get.mockResolvedValueOnce({ raw: ghRepo });
+
+      await new GitHubProvider({ baseURL: "", token: "" }).repos.get("octocat", "hello-world");
+
+      expect(forgeOptions.at(-1)).toMatchObject({
+        baseUrl: "https://api.github.com",
+        auth: { type: "anonymous" },
+      });
     });
   });
 
   describe("code.search", () => {
+    it("refuses a page cursor once the page size changes, instead of skipping rows", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: { total_count: 30, incomplete_results: false, items: [] },
+        headers: makeHeaders('<https://api.github.com/search/code?q=Provider&page=2>; rel="next"'),
+      });
+      const { nextCursor } = await gh.code.search("Provider", { perPage: 10 });
+
+      await expect(
+        gh.code.search("Provider", { cursor: nextCursor, perPage: 50 }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(mocks.rawFetch).toHaveBeenCalledOnce();
+    });
+
     it("maps scoped code results and pagination metadata", async () => {
       mocks.rawFetch.mockResolvedValueOnce({
         data: {
@@ -605,7 +647,11 @@ describe("GitHubProvider", () => {
       const result = await gh.code.search("Provider", {
         owner: "agntn",
         repo: "forges",
-        page: 2,
+        cursor: cursorFor("code.search", 2, ["Provider"], {
+          owner: "agntn",
+          repo: "forges",
+          perPage: 1,
+        }),
         perPage: 1,
       });
 
@@ -626,8 +672,11 @@ describe("GitHubProvider", () => {
         ],
         totalCount: 12,
         incomplete: true,
-        hasNextPage: true,
-        nextPage: 3,
+        nextCursor: cursorFor("code.search", 3, ["Provider"], {
+          owner: "agntn",
+          repo: "forges",
+          perPage: 1,
+        }),
       });
     });
 
@@ -704,161 +753,53 @@ describe("GitHubProvider", () => {
   // --- Repos ---
 
   describe("repos.list", () => {
-    it("returns mapped repositories from the organization route", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [ghRepo],
-        headers: makeHeaders(),
-      });
+    it("lists an owner's repositories through forges and maps each payload", async () => {
+      forge.repos.byOwner.mockReturnValueOnce(listing({ items: raws(ghRepo), total: 1 }));
 
-      const result = await gh.repos.list("octocat");
+      const result = await gh.repos.list("octocat", { perPage: 50 });
 
-      expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/orgs/octocat/repos", {
-        query: {},
+      expect(forge.repos.byOwner).toHaveBeenCalledWith(repoRef(forge, "octocat", ""), {
+        perPage: 50,
       });
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0]).toMatchObject({
-        id: "12345",
-        name: "hello-world",
-        fullName: "octocat/hello-world",
-        private: false,
-        defaultBranch: "main",
-        url: "https://github.com/octocat/hello-world",
-        cloneUrl: "https://github.com/octocat/hello-world.git",
-        owner: {
-          login: "octocat",
-          avatarUrl: "https://avatars.githubusercontent.com/u/1?v=4",
-        },
+      expect(result).toEqual({
+        items: [
+          expect.objectContaining({
+            id: "12345",
+            name: "hello-world",
+            fullName: "octocat/hello-world",
+            private: false,
+            defaultBranch: "main",
+            url: "https://github.com/octocat/hello-world",
+            cloneUrl: "https://github.com/octocat/hello-world.git",
+            owner: {
+              login: "octocat",
+              avatarUrl: "https://avatars.githubusercontent.com/u/1?v=4",
+            },
+          }),
+        ],
+        totalCount: 1,
       });
     });
 
-    it("falls back to the user route when the owner is not an organization", async () => {
-      mocks.client.mockResolvedValueOnce({ ...ghUser, login: "monalisa" });
-      mocks.rawFetch
-        .mockRejectedValueOnce(makeFetchError(404))
-        .mockResolvedValueOnce({ data: [ghRepo], headers: makeHeaders() });
-
-      const result = await gh.repos.list("octocat");
-
-      expect(mocks.client).toHaveBeenCalledWith("/user");
-      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, "/orgs/octocat/repos", {
-        query: {},
-      });
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/users/octocat/repos", {
-        query: {},
-      });
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0]).toMatchObject({ id: "12345", name: "hello-world" });
+    it("rejects an owner that is not one path segment before any request", async () => {
+      await expect(gh.repos.list("../admin")).rejects.toMatchObject({ status: 400 });
+      expect(forge.repos.byOwner).not.toHaveBeenCalled();
     });
 
-    it("lists the viewer's own repositories through /user/repos", async () => {
-      mocks.client.mockResolvedValueOnce(ghUser);
-      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404)).mockResolvedValueOnce({
-        data: [{ ...ghRepo, private: true }],
-        headers: makeHeaders(),
-      });
-
-      const result = await gh.repos.list("OctoCat", { page: 2, perPage: 50 });
-
-      expect(mocks.client).toHaveBeenCalledWith("/user");
-      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/user/repos", {
-        query: { page: "2", per_page: "50", affiliation: "owner" },
-      });
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0]).toMatchObject({ id: "12345", private: true });
-    });
-
-    it("keeps the public user route without a token", async () => {
-      const anonymous = new GitHubProvider({ baseURL: "https://api.github.com", token: "" });
-      mocks.rawFetch
-        .mockRejectedValueOnce(makeFetchError(404))
-        .mockResolvedValueOnce({ data: [ghRepo], headers: makeHeaders() });
-
-      const result = await anonymous.repos.list("octocat");
-
-      expect(mocks.client).not.toHaveBeenCalled();
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/users/octocat/repos", {
-        query: {},
-      });
-      expect(result.items).toHaveLength(1);
-    });
-
-    it("keeps the public user route when the token may not read /user", async () => {
-      mocks.client.mockRejectedValueOnce(makeFetchError(403));
-      mocks.rawFetch
-        .mockRejectedValueOnce(makeFetchError(404))
-        .mockResolvedValueOnce({ data: [ghRepo], headers: makeHeaders() });
-
-      const result = await gh.repos.list("octocat");
-
-      expect(mocks.client).toHaveBeenCalledWith("/user");
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/users/octocat/repos", {
-        query: {},
-      });
-      expect(result.items).toHaveLength(1);
-    });
-
-    it("re-throws other viewer lookup failures", async () => {
-      mocks.client.mockRejectedValueOnce(makeFetchError(500));
-      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
-
-      await expect(gh.repos.list("octocat")).rejects.toThrow(ForgesError);
-      expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
-    });
-
-    it("reports not found when both routes 404", async () => {
-      mocks.client.mockResolvedValueOnce({ ...ghUser, login: "monalisa" });
-      mocks.rawFetch
-        .mockRejectedValueOnce(makeFetchError(404))
-        .mockRejectedValueOnce(makeFetchError(404));
+    it("normalizes a missing owner to NotFoundError", async () => {
+      forge.repos.byOwner.mockReturnValueOnce(failing(makeFetchError(404)));
 
       await expect(gh.repos.list("ghost")).rejects.toThrow(NotFoundError);
-      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
-    });
-
-    it("re-throws non-404 organization route errors without falling back", async () => {
-      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(500));
-
-      await expect(gh.repos.list("octocat")).rejects.toThrow(ForgesError);
-      expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
-    });
-
-    it("forwards pagination options to both routes", async () => {
-      mocks.client.mockResolvedValueOnce({ ...ghUser, login: "monalisa" });
-      mocks.rawFetch
-        .mockRejectedValueOnce(makeFetchError(404))
-        .mockResolvedValueOnce({ data: [], headers: makeHeaders() });
-
-      await gh.repos.list("octocat", { page: 3, perPage: 50 });
-
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, "/orgs/octocat/repos", {
-        query: { page: "3", per_page: "50" },
-      });
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/users/octocat/repos", {
-        query: { page: "3", per_page: "50" },
-      });
-    });
-
-    it("handles null data gracefully", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: null,
-        headers: makeHeaders(),
-      });
-
-      const result = await gh.repos.list("octocat");
-      expect(result.items).toEqual([]);
     });
   });
 
   describe("repos.get", () => {
     it("returns a mapped repository", async () => {
-      mocks.client.mockResolvedValueOnce(ghRepo);
+      forge.repos.get.mockResolvedValueOnce({ raw: ghRepo });
 
       const repo = await gh.repos.get("octocat", "hello-world");
 
-      expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world");
+      expect(forge.repos.get).toHaveBeenCalledWith(repoRef(forge, "octocat", "hello-world"));
       expect(repo.fullName).toBe("octocat/hello-world");
       expect(repo.isFork).toBe(false);
       expect(repo.parent).toBeNull();
@@ -866,19 +807,21 @@ describe("GitHubProvider", () => {
     });
 
     it("maps a fork parent and the highest viewer permission", async () => {
-      mocks.client.mockResolvedValueOnce({
-        ...ghRepo,
-        fork: true,
-        parent: {
-          full_name: "upstream/hello-world",
-          html_url: "https://github.com/upstream/hello-world",
-        },
-        permissions: {
-          admin: false,
-          maintain: true,
-          push: true,
-          triage: true,
-          pull: true,
+      forge.repos.get.mockResolvedValueOnce({
+        raw: {
+          ...ghRepo,
+          fork: true,
+          parent: {
+            full_name: "upstream/hello-world",
+            html_url: "https://github.com/upstream/hello-world",
+          },
+          permissions: {
+            admin: false,
+            maintain: true,
+            push: true,
+            triage: true,
+            pull: true,
+          },
         },
       });
 
@@ -895,7 +838,7 @@ describe("GitHubProvider", () => {
     });
 
     it("keeps omitted viewer permissions unknown", async () => {
-      mocks.client.mockResolvedValueOnce({ ...ghRepo, permissions: undefined });
+      forge.repos.get.mockResolvedValueOnce({ raw: { ...ghRepo, permissions: undefined } });
 
       const repo = await gh.repos.get("octocat", "hello-world");
 
@@ -903,17 +846,19 @@ describe("GitHubProvider", () => {
     });
 
     it("maps merge settings a token with push access sees", async () => {
-      mocks.client.mockResolvedValueOnce({
-        ...ghRepo,
-        allow_merge_commit: false,
-        allow_squash_merge: true,
-        allow_rebase_merge: true,
-        allow_auto_merge: false,
-        squash_merge_commit_title: "COMMIT_OR_PR_TITLE",
-        squash_merge_commit_message: "COMMIT_MESSAGES",
-        merge_commit_title: "MERGE_MESSAGE",
-        merge_commit_message: "PR_TITLE",
-        delete_branch_on_merge: true,
+      forge.repos.get.mockResolvedValueOnce({
+        raw: {
+          ...ghRepo,
+          allow_merge_commit: false,
+          allow_squash_merge: true,
+          allow_rebase_merge: true,
+          allow_auto_merge: false,
+          squash_merge_commit_title: "COMMIT_OR_PR_TITLE",
+          squash_merge_commit_message: "COMMIT_MESSAGES",
+          merge_commit_title: "MERGE_MESSAGE",
+          merge_commit_message: "PR_TITLE",
+          delete_branch_on_merge: true,
+        },
       });
 
       const repo = await gh.repos.get("agntn", "forges");
@@ -928,15 +873,17 @@ describe("GitHubProvider", () => {
     });
 
     it("allows no method once pull requests are off, push access or not", async () => {
-      mocks.client
-        .mockResolvedValueOnce({ ...ghRepo, has_pull_requests: false })
+      forge.repos.get
+        .mockResolvedValueOnce({ raw: { ...ghRepo, has_pull_requests: false } })
         .mockResolvedValueOnce({
-          ...ghRepo,
-          has_pull_requests: false,
-          allow_merge_commit: true,
-          allow_squash_merge: true,
-          allow_rebase_merge: true,
-          delete_branch_on_merge: false,
+          raw: {
+            ...ghRepo,
+            has_pull_requests: false,
+            allow_merge_commit: true,
+            allow_squash_merge: true,
+            allow_rebase_merge: true,
+            delete_branch_on_merge: false,
+          },
         });
 
       const anonymous = await gh.repos.get("torvalds", "linux");
@@ -947,13 +894,15 @@ describe("GitHubProvider", () => {
     });
 
     it("keeps merge settings unknown without push access instead of allowing nothing", async () => {
-      mocks.client.mockResolvedValueOnce(ghRepo).mockResolvedValueOnce({
-        ...ghRepo,
-        allow_merge_commit: null,
-        allow_squash_merge: null,
-        allow_rebase_merge: null,
-        squash_merge_commit_title: null,
-        delete_branch_on_merge: null,
+      forge.repos.get.mockResolvedValueOnce({ raw: ghRepo }).mockResolvedValueOnce({
+        raw: {
+          ...ghRepo,
+          allow_merge_commit: null,
+          allow_squash_merge: null,
+          allow_rebase_merge: null,
+          squash_merge_commit_title: null,
+          delete_branch_on_merge: null,
+        },
       });
 
       const omitted = await gh.repos.get("nodejs", "node");
@@ -965,25 +914,27 @@ describe("GitHubProvider", () => {
 
     it("reads current viewer permission on every call", async () => {
       mocks.cachedFetch.mockResolvedValue(ghRepo);
-      mocks.client.mockResolvedValueOnce(ghRepo).mockResolvedValueOnce({
-        ...ghRepo,
-        permissions: { ...ghRepo.permissions, admin: true },
+      forge.repos.get.mockResolvedValueOnce({ raw: ghRepo }).mockResolvedValueOnce({
+        raw: {
+          ...ghRepo,
+          permissions: { ...ghRepo.permissions, admin: true },
+        },
       });
 
       await gh.repos.get("octocat", "hello-world");
       const repository = await gh.repos.get("octocat", "hello-world");
 
       expect(repository.viewerPermission).toBe("admin");
-      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(forge.repos.get).toHaveBeenCalledTimes(2);
       expect(mocks.cachedFetch).not.toHaveBeenCalled();
     });
 
-    it("encodes repository path segments before transport", async () => {
-      mocks.client.mockResolvedValueOnce(ghRepo);
+    it("hands names with spaces and hashes to forges, which encodes them", async () => {
+      forge.repos.get.mockResolvedValueOnce({ raw: ghRepo });
 
       await gh.repos.get("octo cat", "hello#world");
 
-      expect(mocks.client).toHaveBeenCalledWith("/repos/octo%20cat/hello%23world");
+      expect(forge.repos.get).toHaveBeenCalledWith(repoRef(forge, "octo cat", "hello#world"));
     });
 
     it.each([
@@ -1003,7 +954,7 @@ describe("GitHubProvider", () => {
         status: 400,
         message: expect.stringContaining("Owner must be one path segment"),
       });
-      expect(mocks.client).not.toHaveBeenCalled();
+      expect(forge.repos.get).not.toHaveBeenCalled();
     });
 
     it("names the repository when the name is the bad segment", async () => {
@@ -1011,7 +962,7 @@ describe("GitHubProvider", () => {
         status: 400,
         message: expect.stringMatching(/^Repository name must be one path segment/u),
       });
-      expect(mocks.client).not.toHaveBeenCalled();
+      expect(forge.repos.get).not.toHaveBeenCalled();
     });
   });
 
@@ -1030,48 +981,45 @@ describe("GitHubProvider", () => {
     };
 
     it("lists tags with the commit an annotated tag points at", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [
-          ghTag,
-          {
+      forge.contents.tags.mockReturnValueOnce(
+        listing({
+          items: raws(ghTag, {
             ...ghTag,
             name: "v0.4.1",
             commit: { ...ghTag.commit, sha: "939eda0d708f4731f75b9df55c0a471af455ec7b" },
+          }),
+          cursor: {
+            nextUrl: "https://api.github.com/repositories/1173537090/tags?per_page=2&page=2",
           },
-        ],
-        headers: makeHeaders(
-          '<https://api.github.com/repositories/1173537090/tags?per_page=2&page=2>; rel="next"',
-        ),
-      });
+        }),
+      );
 
       const result = await gh.repos.listTags("agntn", "forges", { perPage: 2 });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/repos/agntn/forges/tags", {
-        query: { per_page: "2" },
+      expect(forge.contents.tags).toHaveBeenCalledWith(repoRef(forge, "agntn", "forges"), {
+        perPage: 2,
       });
       expect(result).toEqual({
         items: [
           { name: "v0.5.0", sha: "394bceb8d2c93f0afaf21a08e47505347e95ab5e" },
           { name: "v0.4.1", sha: "939eda0d708f4731f75b9df55c0a471af455ec7b" },
         ],
-        hasNextPage: true,
-        nextPage: 2,
+        nextCursor: expect.any(String),
       });
     });
 
     it("gives a tag on a tree a null sha, not an empty one", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [
-          {
+      forge.contents.tags.mockReturnValueOnce(
+        listing({
+          items: raws({
             commit: { sha: "", url: "" },
             name: "v2.6.11-tree",
             node_id: "MDM6UmVmMjMyNTI5ODpyZWZzL3RhZ3MvdjIuNi4xMS10cmVl",
             tarball_url: "",
             zipball_url: "",
-          },
-        ],
-        headers: makeHeaders(),
-      });
+          }),
+        }),
+      );
 
       const result = await gh.repos.listTags("torvalds", "linux");
 
@@ -1079,7 +1027,7 @@ describe("GitHubProvider", () => {
     });
 
     it("maps a missing repository to NotFoundError", async () => {
-      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+      forge.contents.tags.mockReturnValueOnce(failing(makeFetchError(404)));
 
       await expect(gh.repos.listTags("agntn", "missing")).rejects.toBeInstanceOf(NotFoundError);
     });
@@ -1322,21 +1270,18 @@ describe("GitHubProvider", () => {
     ].join("\n");
 
     it("lists the jobs of one run with their steps", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: { total_count: 1, jobs: [rawJob] },
-        headers: makeHeaders(),
-        status: 200,
-      });
+      forge.ci.jobs.mockReturnValueOnce(listing({ items: raws(rawJob), total: 1 }));
 
-      const result = await gh.ciRuns.listJobs("octocat", "hello-world", "9876", {
-        page: 2,
-        perPage: 10,
-      });
+      const result = await gh.ciRuns.listJobs("octocat", "hello-world", "9876", { perPage: 10 });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/octocat/hello-world/actions/runs/9876/jobs",
-        { query: { page: "2", per_page: "10" } },
+      expect(forge.ci.jobs).toHaveBeenCalledWith(
+        {
+          forge: "github",
+          instance: "github.com",
+          repo: repoRef(forge, "octocat", "hello-world"),
+          id: "9876",
+        },
+        { perPage: 10 },
       );
       expect(result.items).toEqual([
         {
@@ -1415,28 +1360,36 @@ describe("GitHubProvider", () => {
   });
 
   describe("ciRuns.list", () => {
-    it("returns normalized paged workflow runs and filters by branch", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: {
-          total_count: 12,
-          workflow_runs: [ghCiRun, { ...ghCiRun, id: 9877, status: "queued", conclusion: null }],
-        },
-        headers: makeHeaders(
-          '<https://api.github.com/repos/octocat/hello-world/actions/runs?page=3>; rel="next"',
-        ),
+    it("leaves an empty branch out instead of filtering every run away", async () => {
+      forge.ci.runs.mockReturnValueOnce(listing({ items: [] }));
+
+      await gh.ciRuns.list("octocat", "hello-world", { branch: "" });
+
+      expect(forge.ci.runs).toHaveBeenCalledWith(repoRef(forge, "octocat", "hello-world"), {
+        perPage: 30,
       });
+    });
+
+    it("returns normalized paged workflow runs and filters by branch", async () => {
+      forge.ci.runs.mockReturnValueOnce(
+        listing({
+          items: raws(ghCiRun, { ...ghCiRun, id: 9877, status: "queued", conclusion: null }),
+          total: 12,
+          cursor: {
+            nextUrl: "https://api.github.com/repos/octocat/hello-world/actions/runs?page=3",
+          },
+        }),
+      );
 
       const result = await gh.ciRuns.list("octocat", "hello-world", {
         branch: "main",
-        page: 2,
         perPage: 10,
       });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/octocat/hello-world/actions/runs",
-        { query: { branch: "main", page: "2", per_page: "10" } },
-      );
+      expect(forge.ci.runs).toHaveBeenCalledWith(repoRef(forge, "octocat", "hello-world"), {
+        perPage: 10,
+        branch: "main",
+      });
       expect(result).toEqual({
         items: [
           {
@@ -1450,8 +1403,7 @@ describe("GitHubProvider", () => {
           expect.objectContaining({ id: "9877", status: "queued", conclusion: null }),
         ],
         totalCount: 12,
-        hasNextPage: true,
-        nextPage: 3,
+        nextCursor: expect.any(String),
       });
     });
   });
@@ -1468,36 +1420,28 @@ describe("GitHubProvider", () => {
         html_url: "https://github.com/octocat/hello-world/commit/cb9d4e5",
         parents: [{ sha: "parent-sha" }],
       };
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [commit],
-        headers: makeHeaders(
-          '<https://api.github.com/repos/octocat/hello-world/commits?page=3>; rel="next"',
-        ),
-      });
+      forge.commits.list.mockReturnValueOnce(
+        listing({
+          items: raws(commit),
+          cursor: { nextUrl: "https://api.github.com/repos/octocat/hello-world/commits?page=3" },
+        }),
+      );
 
       const result = await gh.commits.list("octocat", "hello-world", {
         ref: "main",
         path: "src/provider.ts",
         since: "2026-08-01T00:00:00Z",
         until: "2026-08-29T23:59:59Z",
-        page: 2,
         perPage: 10,
       });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/octocat/hello-world/commits",
-        {
-          query: {
-            sha: "main",
-            path: "src/provider.ts",
-            since: "2026-08-01T00:00:00Z",
-            until: "2026-08-29T23:59:59Z",
-            page: "2",
-            per_page: "10",
-          },
-        },
-      );
+      expect(forge.commits.list).toHaveBeenCalledWith(repoRef(forge, "octocat", "hello-world"), {
+        perPage: 10,
+        ref: "main",
+        path: "src/provider.ts",
+        since: new Date("2026-08-01T00:00:00Z"),
+        until: new Date("2026-08-29T23:59:59Z"),
+      });
       expect(result).toEqual({
         items: [
           {
@@ -1509,8 +1453,7 @@ describe("GitHubProvider", () => {
             url: commit.html_url,
           },
         ],
-        hasNextPage: true,
-        nextPage: 3,
+        nextCursor: expect.any(String),
       });
     });
   });
@@ -1576,8 +1519,12 @@ describe("GitHubProvider", () => {
           },
         ],
         totalCount: 16,
-        hasNextPage: true,
-        nextPage: 2,
+        nextCursor: cursorFor(
+          "commits.compare",
+          2,
+          ["agntn", "forges", "v0.3.4", "renovate/deps"],
+          { perPage: 1 },
+        ),
         status: "diverged",
         aheadBy: 16,
         behindBy: 3,
@@ -1607,9 +1554,11 @@ describe("GitHubProvider", () => {
         headers: makeHeaders(),
       });
 
-      const result = await gh.commits.compare("agntn", "forges", "v0.3.4", "main", { page: 2 });
+      const result = await gh.commits.compare("agntn", "forges", "v0.3.4", "main", {
+        cursor: cursorFor("commits.compare", 2, ["agntn", "forges", "v0.3.4", "main"], {}),
+      });
 
-      expect(result).toMatchObject({ hasNextPage: false, files: null, filesComplete: null });
+      expect(result).toMatchObject({ files: null, filesComplete: null });
     });
 
     it("cannot vouch for the file list at the 300-file cap", async () => {
@@ -1645,12 +1594,14 @@ describe("GitHubProvider", () => {
       expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
 
-    it("refuses a page outside 1 and a perPage outside 1 to 100", async () => {
+    it("refuses a cursor it never handed out and a perPage outside 1 to 100", async () => {
       await expect(
-        gh.commits.compare("agntn", "forges", "v0.3.4", "main", { page: 0 }),
+        gh.commits.compare("agntn", "forges", "v0.3.4", "main", {
+          cursor: cursorFor("commits.compare", 0, ["agntn", "forges", "v0.3.4", "main"], {}),
+        }),
       ).rejects.toMatchObject({
         status: 400,
-        message: "page must be a positive integer",
+        message: expect.stringContaining("cursor is not one that commits.compare returned"),
       });
       await expect(
         gh.commits.compare("agntn", "forges", "v0.3.4", "main", { perPage: 101 }),
@@ -1877,10 +1828,7 @@ describe("GitHubProvider", () => {
 
   describe("issues.list", () => {
     it("returns mapped issues", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [ghIssue],
-        headers: makeHeaders(),
-      });
+      forge.threads.list.mockReturnValueOnce(listing({ items: raws(ghIssue) }));
 
       const result = await gh.issues.list("octocat", "hello-world");
 
@@ -1900,38 +1848,25 @@ describe("GitHubProvider", () => {
       });
     });
 
-    it("passes state filter", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [],
-        headers: makeHeaders(),
+    it("asks forges for issues only, open by default or in the given state", async () => {
+      forge.threads.list
+        .mockReturnValueOnce(listing({ items: [] }))
+        .mockReturnValueOnce(listing({ items: [] }));
+
+      await gh.issues.list("octocat", "hello-world");
+      await gh.issues.list("octocat", "hello-world", { state: "closed", perPage: 5 });
+
+      const ref = repoRef(forge, "octocat", "hello-world");
+      expect(forge.threads.list).toHaveBeenNthCalledWith(1, ref, {
+        perPage: 30,
+        kind: "issue",
+        state: "open",
       });
-
-      await gh.issues.list("octocat", "hello-world", { state: "closed" });
-
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/octocat/hello-world/issues",
-        { query: expect.objectContaining({ state: "closed" }) },
-      );
-    });
-
-    it("filters out pull requests from issues endpoint response", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [
-          ghIssue,
-          {
-            ...ghIssue,
-            id: 9999,
-            number: 123,
-            pull_request: { url: "https://api.github.com/repos/o/r/pulls/123" },
-          },
-        ],
-        headers: makeHeaders(),
+      expect(forge.threads.list).toHaveBeenNthCalledWith(2, ref, {
+        perPage: 5,
+        kind: "issue",
+        state: "closed",
       });
-
-      const result = await gh.issues.list("octocat", "hello-world");
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0].number).toBe(42);
     });
   });
 
@@ -1955,7 +1890,10 @@ describe("GitHubProvider", () => {
 
       const result = await gh.issues.search("octocat", "hello-world", 'label:"help wanted"', {
         state: "closed",
-        page: 2,
+        cursor: cursorFor("issues.search", 2, ["octocat", "hello-world", 'label:"help wanted"'], {
+          state: "closed",
+          perPage: 1,
+        }),
         perPage: 1,
       });
 
@@ -1975,8 +1913,12 @@ describe("GitHubProvider", () => {
           }),
         ],
         incomplete: true,
-        hasNextPage: true,
-        nextPage: 3,
+        nextCursor: cursorFor(
+          "issues.search",
+          3,
+          ["octocat", "hello-world", 'label:"help wanted"'],
+          { state: "closed", perPage: 1 },
+        ),
       });
     });
 
@@ -2128,22 +2070,22 @@ describe("GitHubProvider", () => {
 
   describe("issues.listComments", () => {
     it("returns mapped comments with pagination", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [ghComment],
-        headers: makeHeaders(
-          '<https://api.github.com/repos/octocat/hello-world/issues/42/comments?page=3>; rel="next"',
-        ),
-      });
+      const next = "https://api.github.com/repos/octocat/hello-world/issues/42/comments?page=3";
+      forge.threads.comments.mockReturnValueOnce(
+        listing({ items: raws(ghComment), cursor: { nextUrl: next } }),
+      );
 
-      const result = await gh.issues.listComments("octocat", "hello-world", 42, {
-        page: 2,
-        perPage: 1,
-      });
+      const result = await gh.issues.listComments("octocat", "hello-world", 42, { perPage: 1 });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/octocat/hello-world/issues/42/comments",
-        { query: { page: "2", per_page: "1" } },
+      expect(forge.threads.comments).toHaveBeenCalledWith(
+        {
+          forge: "github",
+          instance: "github.com",
+          repo: repoRef(forge, "octocat", "hello-world"),
+          kind: "issue",
+          number: "42",
+        },
+        { perPage: 1 },
       );
       expect(result.items).toEqual([
         {
@@ -2155,15 +2097,13 @@ describe("GitHubProvider", () => {
           updatedAt: "2024-01-17T09:30:00Z",
         },
       ]);
-      expect(result.hasNextPage).toBe(true);
-      expect(result.nextPage).toBe(3);
+      expect(result.nextCursor).toEqual(expect.any(String));
     });
 
     it("maps a ghost author and missing body to empty strings", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [{ ...ghComment, body: null, user: null }],
-        headers: makeHeaders(),
-      });
+      forge.threads.comments.mockReturnValueOnce(
+        listing({ items: raws({ ...ghComment, body: null, user: null }) }),
+      );
 
       const result = await gh.issues.listComments("octocat", "hello-world", 42);
 
@@ -2325,8 +2265,9 @@ describe("GitHubProvider", () => {
           },
           { content: "eyes", user: { login: "" }, createdAt: "2026-10-12T17:20:01Z" },
         ],
-        hasNextPage: true,
-        nextPage: 2,
+        nextCursor: cursorFor("issues.listReactions", 2, ["octocat", "hello-world", 42], {
+          perPage: 2,
+        }),
       });
     });
 
@@ -2494,30 +2435,31 @@ describe("GitHubProvider", () => {
 
   describe("pullRequests.listFiles", () => {
     it("reads changed files without exposing patches", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [
-          {
-            filename: "src/auth.ts",
-            status: "modified",
-            additions: 7,
-            deletions: 2,
-            patch: "@@ -1 +1 @@",
+      forge.threads.files.mockReturnValueOnce(
+        listing({
+          items: [
+            {
+              path: "src/auth.ts",
+              status: "modified",
+              statusRaw: "modified",
+              additions: 7,
+              deletions: 2,
+              patch: "@@ -1 +1 @@",
+            },
+          ],
+          cursor: {
+            nextUrl: "https://api.github.com/repos/octocat/hello-world/pulls/99/files?page=3",
           },
-        ],
-        headers: makeHeaders(
-          '<https://api.github.com/repos/octocat/hello-world/pulls/99/files?page=3>; rel="next"',
-        ),
-      });
+        }),
+      );
 
       const result = await gh.pullRequests.listFiles("octocat", "hello-world", 99, {
-        page: 2,
         perPage: 10,
       });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/octocat/hello-world/pulls/99/files",
-        { query: { page: "2", per_page: "10" } },
+      expect(forge.threads.files).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "pull_request", number: "99" }),
+        { perPage: 10 },
       );
       expect(result).toEqual({
         items: [
@@ -2528,8 +2470,7 @@ describe("GitHubProvider", () => {
             deletions: 2,
           },
         ],
-        hasNextPage: true,
-        nextPage: 3,
+        nextCursor: expect.any(String),
       });
     });
   });
@@ -2618,8 +2559,6 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [...statuses, checkRun(6001)],
         totalCount: 3,
-        hasNextPage: false,
-        nextPage: undefined,
       });
     });
 
@@ -2673,7 +2612,9 @@ describe("GitHubProvider", () => {
         });
 
       await expect(
-        gh.pullRequests.listChecks("octocat", "hello-world", 99, { page: 0 }),
+        gh.pullRequests.listChecks("octocat", "hello-world", 99, {
+          cursor: cursorFor("pullRequests.listChecks", 0, ["octocat", "hello-world", 99], {}),
+        }),
       ).rejects.toMatchObject({ status: 400 });
       expect(mocks.client).not.toHaveBeenCalled();
       expect(mocks.rawFetch).not.toHaveBeenCalled();
@@ -2704,8 +2645,6 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [...statuses, checkRun(6001)],
         totalCount: 3,
-        hasNextPage: false,
-        nextPage: undefined,
       });
     });
 
@@ -2736,8 +2675,9 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [...statuses, checkRun(6001)],
         totalCount: 5,
-        hasNextPage: true,
-        nextPage: 2,
+        nextCursor: cursorFor("pullRequests.listChecks", 2, ["octocat", "hello-world", 99], {
+          perPage: 3,
+        }),
       });
     });
 
@@ -2756,7 +2696,9 @@ describe("GitHubProvider", () => {
         });
 
       const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
-        page: 2,
+        cursor: cursorFor("pullRequests.listChecks", 2, ["octocat", "hello-world", 99], {
+          perPage: 2,
+        }),
         perPage: 2,
       });
 
@@ -2767,8 +2709,9 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [checkRun(6001), checkRun(6002)],
         totalCount: 7,
-        hasNextPage: true,
-        nextPage: 3,
+        nextCursor: cursorFor("pullRequests.listChecks", 3, ["octocat", "hello-world", 99], {
+          perPage: 2,
+        }),
       });
     });
 
@@ -2792,7 +2735,9 @@ describe("GitHubProvider", () => {
         });
 
       const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
-        page: 60,
+        cursor: cursorFor("pullRequests.listChecks", 60, ["octocat", "hello-world", 99], {
+          perPage: 2,
+        }),
         perPage: 2,
       });
 
@@ -2808,8 +2753,9 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [checkRun(7117), checkRun(7118)],
         totalCount: 122,
-        hasNextPage: true,
-        nextPage: 61,
+        nextCursor: cursorFor("pullRequests.listChecks", 61, ["octocat", "hello-world", 99], {
+          perPage: 2,
+        }),
       });
     });
 
@@ -2837,8 +2783,9 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [statuses[0]],
         totalCount: 5,
-        hasNextPage: true,
-        nextPage: 2,
+        nextCursor: cursorFor("pullRequests.listChecks", 2, ["octocat", "hello-world", 99], {
+          perPage: 1,
+        }),
       });
     });
 
@@ -2865,8 +2812,6 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: [checkRun(6001)],
         totalCount: 1,
-        hasNextPage: false,
-        nextPage: undefined,
       });
     });
 
@@ -2890,8 +2835,6 @@ describe("GitHubProvider", () => {
       expect(result).toEqual({
         items: statuses,
         totalCount: 2,
-        hasNextPage: false,
-        nextPage: undefined,
       });
     });
 
@@ -2964,7 +2907,9 @@ describe("GitHubProvider", () => {
       });
 
       const result = await gh.pullRequests.listReviews("octocat", "hello-world", 99, {
-        page: 2,
+        cursor: cursorFor("pullRequests.listReviews", 2, ["octocat", "hello-world", 99], {
+          perPage: 2,
+        }),
         perPage: 2,
       });
 
@@ -2994,8 +2939,9 @@ describe("GitHubProvider", () => {
             url: "https://github.com/octocat/hello-world/pull/99#pullrequestreview-5234330202",
           },
         ],
-        hasNextPage: true,
-        nextPage: 3,
+        nextCursor: cursorFor("pullRequests.listReviews", 3, ["octocat", "hello-world", 99], {
+          perPage: 2,
+        }),
       });
     });
 
@@ -3061,11 +3007,20 @@ describe("GitHubProvider", () => {
       tag_name: `v0.0.${index}`,
     }));
 
-    it("lists releases and follows the Link header", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [
-          ghRelease,
-          {
+    const ref = repoRef(forge, "agntn", "forges");
+    const releaseRef = (id: string, tag: string) => ({
+      forge: "github",
+      instance: "github.com",
+      repo: ref,
+      id,
+      tag,
+    });
+
+    it("lists releases through forges and continues at the next page URL", async () => {
+      const next = "https://api.github.com/repositories/1173537090/releases?per_page=2&page=2";
+      forge.releases.list.mockReturnValueOnce(
+        listing({
+          items: raws(ghRelease, {
             ...ghRelease,
             id: 391667801,
             tag_name: "v0.4.0-rc.1",
@@ -3075,18 +3030,15 @@ describe("GitHubProvider", () => {
             prerelease: true,
             author: null,
             published_at: null,
-          },
-        ],
-        headers: makeHeaders(
-          '<https://api.github.com/repositories/1173537090/releases?per_page=2&page=2>; rel="next"',
-        ),
-      });
+          }),
+          total: 18,
+          cursor: { nextUrl: next },
+        }),
+      );
 
       const result = await gh.releases.list("agntn", "forges", { perPage: 2 });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/repos/agntn/forges/releases", {
-        query: { per_page: "2" },
-      });
+      expect(forge.releases.list).toHaveBeenCalledWith(ref, { perPage: 2 });
       expect(result).toEqual({
         items: [
           release,
@@ -3102,27 +3054,37 @@ describe("GitHubProvider", () => {
             publishedAt: "",
           },
         ],
-        hasNextPage: true,
-        nextPage: 2,
+        totalCount: 18,
+        nextCursor: expect.any(String),
+      });
+
+      forge.releases.list.mockReturnValueOnce(listing({ items: [] }));
+      await gh.releases.list("agntn", "forges", { cursor: result.nextCursor, perPage: 2 });
+      expect(forge.releases.list).toHaveBeenLastCalledWith(ref, {
+        perPage: 2,
+        cursor: { nextUrl: next },
       });
     });
 
     it("reads one release by its tag", async () => {
-      mocks.client.mockResolvedValueOnce(ghRelease);
+      forge.releases.getByTag.mockResolvedValueOnce({ raw: ghRelease });
 
       const result = await gh.releases.get("agntn", "forges", "v0.3.1");
 
-      expect(mocks.client).toHaveBeenCalledWith("/repos/agntn/forges/releases/tags/v0.3.1");
+      expect(forge.releases.getByTag).toHaveBeenCalledWith(ref, "v0.3.1");
       expect(result).toEqual(release);
     });
 
-    it("encodes a slash in the tag instead of refusing it", async () => {
-      mocks.client.mockResolvedValueOnce({ ...ghRelease, tag_name: "storage/v1.30.0" });
+    it("hands a tag with a slash to forges instead of refusing it", async () => {
+      forge.releases.getByTag.mockResolvedValueOnce({
+        raw: { ...ghRelease, tag_name: "storage/v1.30.0" },
+      });
 
       const result = await gh.releases.get("googleapis", "google-cloud-go", "storage/v1.30.0");
 
-      expect(mocks.client).toHaveBeenCalledWith(
-        "/repos/googleapis/google-cloud-go/releases/tags/storage%2Fv1.30.0",
+      expect(forge.releases.getByTag).toHaveBeenCalledWith(
+        repoRef(forge, "googleapis", "google-cloud-go"),
+        "storage/v1.30.0",
       );
       expect(result.tag).toBe("storage/v1.30.0");
     });
@@ -3131,11 +3093,13 @@ describe("GitHubProvider", () => {
       await expect(gh.releases.get("agntn", "forges", tag)).rejects.toMatchObject({
         status: 400,
       });
-      expect(mocks.client).not.toHaveBeenCalled();
+      expect(forge.releases.getByTag).not.toHaveBeenCalled();
     });
 
     it("creates a release from the tag, target and flags", async () => {
-      mocks.client.mockResolvedValueOnce({ ...ghRelease, draft: true, published_at: null });
+      forge.releases.create.mockResolvedValueOnce({
+        raw: { ...ghRelease, draft: true, published_at: null },
+      });
 
       const result = await gh.releases.create("agntn", "forges", {
         tag: "v0.3.1",
@@ -3145,31 +3109,25 @@ describe("GitHubProvider", () => {
         draft: true,
       });
 
-      expect(mocks.client).toHaveBeenCalledWith("/repos/agntn/forges/releases", {
-        method: "POST",
-        body: {
-          tag_name: "v0.3.1",
-          target_commitish: "main",
-          name: "v0.3.1",
-          body: "notes",
-          draft: true,
-          prerelease: undefined,
-        },
+      expect(forge.releases.create).toHaveBeenCalledWith(ref, {
+        tag: "v0.3.1",
+        name: "v0.3.1",
+        body: "notes",
+        draft: true,
+        target: "main",
       });
       expect(result).toEqual({ ...release, draft: true, publishedAt: "" });
     });
 
     it("updates by the id behind the tag and sends only the given fields", async () => {
-      mocks.client
-        .mockResolvedValueOnce(ghRelease)
-        .mockResolvedValueOnce({ ...ghRelease, body: "edited" });
+      forge.releases.getByTag.mockResolvedValueOnce({ raw: ghRelease });
+      forge.releases.update.mockResolvedValueOnce({ raw: { ...ghRelease, body: "edited" } });
 
       const result = await gh.releases.update("agntn", "forges", "v0.3.1", { body: "edited" });
 
-      expect(mocks.client).toHaveBeenNthCalledWith(1, "/repos/agntn/forges/releases/tags/v0.3.1");
-      expect(mocks.client).toHaveBeenNthCalledWith(2, "/repos/agntn/forges/releases/391667800", {
-        method: "PATCH",
-        body: { name: undefined, body: "edited", draft: undefined, prerelease: undefined },
+      expect(forge.releases.getByTag).toHaveBeenCalledWith(ref, "v0.3.1");
+      expect(forge.releases.update).toHaveBeenCalledWith(releaseRef("391667800", "v0.3.1"), {
+        body: "edited",
       });
       expect(result).toEqual({ ...release, body: "edited" });
     });
@@ -3178,7 +3136,7 @@ describe("GitHubProvider", () => {
       await expect(gh.releases.update("agntn", "forges", "v0.3.1", {})).rejects.toMatchObject({
         status: 400,
       });
-      expect(mocks.client).not.toHaveBeenCalled();
+      expect(forge.releases.getByTag).not.toHaveBeenCalled();
     });
 
     it("finds a draft behind a tag the tag route does not serve yet", async () => {
@@ -3189,72 +3147,76 @@ describe("GitHubProvider", () => {
         draft: true,
         published_at: null,
       };
-      mocks.client
-        .mockRejectedValueOnce(makeFetchError(404))
-        .mockResolvedValueOnce({ ...draft, draft: false, published_at: "2026-09-19T12:00:00Z" });
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [{ ...ghRelease, tag_name: "v0.4.0-beta" }, draft],
-        headers: makeHeaders(),
+      forge.releases.getByTag.mockRejectedValueOnce(makeFetchError(404));
+      forge.releases.list.mockReturnValueOnce(
+        listing({
+          items: [
+            { isDraft: false, tag: "v0.4.0-beta", raw: { ...ghRelease, tag_name: "v0.4.0-beta" } },
+            { isDraft: true, tag: "v0.4.0", raw: draft },
+          ],
+        }),
+      );
+      forge.releases.update.mockResolvedValueOnce({
+        raw: { ...draft, draft: false, published_at: "2026-09-19T12:00:00Z" },
       });
 
       const result = await gh.releases.update("agntn", "forges", "v0.4.0", { draft: false });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/repos/agntn/forges/releases", {
-        query: { page: "1", per_page: "100" },
-      });
-      expect(mocks.client).toHaveBeenLastCalledWith("/repos/agntn/forges/releases/391667802", {
-        method: "PATCH",
-        body: { name: undefined, body: undefined, draft: false, prerelease: undefined },
+      expect(forge.releases.list).toHaveBeenCalledWith(ref, { perPage: 100 });
+      expect(forge.releases.update).toHaveBeenCalledWith(releaseRef("391667802", "v0.4.0"), {
+        draft: false,
       });
       expect(result).toMatchObject({ tag: "v0.4.0", draft: false });
     });
 
     it("keeps a GitHub.com 404 as not found once the newest releases hold no such draft", async () => {
-      mocks.client.mockRejectedValueOnce(makeFetchError(404));
-      mocks.rawFetch
-        .mockResolvedValueOnce({
-          data: fullReleasePage,
-          headers: makeHeaders(
-            '<https://api.github.com/repos/agntn/forges/releases?per_page=100&page=2>; rel="next"',
-          ),
-        })
-        .mockResolvedValueOnce({ data: [], headers: makeHeaders() });
+      const page = fullReleasePage.map((raw) => ({ isDraft: false, tag: raw.tag_name, raw }));
+      forge.releases.getByTag.mockRejectedValueOnce(makeFetchError(404));
+      forge.releases.list
+        .mockReturnValueOnce(
+          listing({
+            items: page,
+            cursor: { nextUrl: "https://api.github.com/repos/agntn/forges/releases?page=2" },
+          }),
+        )
+        .mockReturnValueOnce(listing({ items: [] }));
 
       await expect(gh.releases.get("agntn", "forges", "v9.9.9")).rejects.toBeInstanceOf(
         NotFoundError,
       );
-      expect(mocks.client).toHaveBeenCalledTimes(1);
-      expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
+      expect(forge.releases.getByTag).toHaveBeenCalledTimes(1);
+      expect(forge.releases.list).toHaveBeenCalledTimes(2);
     });
 
     it("stops the draft walk at five pages", async () => {
-      mocks.client.mockRejectedValueOnce(makeFetchError(404));
-      mocks.rawFetch.mockResolvedValue({
-        data: fullReleasePage,
-        headers: makeHeaders(
-          '<https://api.github.com/repos/agntn/forges/releases?per_page=100&page=2>; rel="next"',
-        ),
-      });
+      const page = fullReleasePage.map((raw) => ({ isDraft: false, tag: raw.tag_name, raw }));
+      forge.releases.getByTag.mockRejectedValueOnce(makeFetchError(404));
+      forge.releases.list.mockImplementation(() =>
+        listing({
+          items: page,
+          cursor: { nextUrl: "https://api.github.com/repos/agntn/forges/releases?page=2" },
+        }),
+      );
 
       await expect(gh.releases.get("agntn", "forges", "v9.9.9")).rejects.toBeInstanceOf(
         NotFoundError,
       );
-      expect(mocks.rawFetch).toHaveBeenCalledTimes(5);
+      expect(forge.releases.list).toHaveBeenCalledTimes(5);
     });
 
     it("skips the draft walk without a token, because drafts are never listed anonymously", async () => {
       const anonymous = new GitHubProvider({ baseURL: "https://api.github.com", token: "" });
-      mocks.client.mockRejectedValueOnce(makeFetchError(404));
+      forge.releases.getByTag.mockRejectedValueOnce(makeFetchError(404));
 
       await expect(anonymous.releases.get("agntn", "forges", "v9.9.9")).rejects.toBeInstanceOf(
         NotFoundError,
       );
-      expect(mocks.rawFetch).not.toHaveBeenCalled();
+      expect(forge.releases.list).not.toHaveBeenCalled();
     });
 
     it("normalizes a failure of the draft walk", async () => {
-      mocks.client.mockRejectedValueOnce(makeFetchError(404));
-      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(403));
+      forge.releases.getByTag.mockRejectedValueOnce(makeFetchError(404));
+      forge.releases.list.mockReturnValueOnce(failing(makeFetchError(403)));
 
       const error = await gh.releases.get("agntn", "forges", "v9.9.9").catch((e: unknown) => e);
 
@@ -3267,9 +3229,8 @@ describe("GitHubProvider", () => {
         baseURL: "https://gitbucket.example.com/api/v3",
         token: "gb_test",
       });
-      mocks.rawFetch
-        .mockRejectedValueOnce(makeFetchError(404))
-        .mockResolvedValueOnce({ data: ghRepo, headers: new Headers(), status: 200 });
+      forge.releases.list.mockReturnValueOnce(failing(makeFetchError(404)));
+      mocks.rawFetch.mockResolvedValueOnce({ data: ghRepo, headers: new Headers(), status: 200 });
 
       const error = await gitbucket.releases
         .list("octocat", "hello-world")
@@ -3278,13 +3239,13 @@ describe("GitHubProvider", () => {
       expect(error).toBeInstanceOf(ForgesError);
       expect(error).not.toBeInstanceOf(NotFoundError);
       expect((error as ForgesError).status).toBe(501);
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/repos/octocat/hello-world");
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/repos/octocat/hello-world");
 
-      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+      forge.releases.list.mockReturnValueOnce(failing(makeFetchError(404)));
       await expect(gitbucket.releases.list("octocat", "hello-world")).rejects.toMatchObject({
         status: 501,
       });
-      expect(mocks.rawFetch).toHaveBeenCalledTimes(3);
+      expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -3327,7 +3288,16 @@ describe("GitHubProvider", () => {
         "octocat",
         "hello-world",
         "repo:octocat/other-repo OR is:issue OR search",
-        { state: "closed", page: 2, perPage: 1 },
+        {
+          state: "closed",
+          cursor: cursorFor(
+            "pullRequests.search",
+            2,
+            ["octocat", "hello-world", "repo:octocat/other-repo OR is:issue OR search"],
+            { state: "closed", perPage: 1 },
+          ),
+          perPage: 1,
+        },
       );
 
       expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
@@ -3349,8 +3319,12 @@ describe("GitHubProvider", () => {
           },
         ],
         incomplete: true,
-        hasNextPage: true,
-        nextPage: 3,
+        nextCursor: cursorFor(
+          "pullRequests.search",
+          3,
+          ["octocat", "hello-world", "repo:octocat/other-repo OR is:issue OR search"],
+          { state: "closed", perPage: 1 },
+        ),
       });
       expect(result.items[0]).not.toHaveProperty("sourceBranch");
       expect(result.items[0]).not.toHaveProperty("headSha");
@@ -3972,17 +3946,13 @@ describe("GitHubProvider", () => {
 
   describe("pullRequests.listComments", () => {
     it("reads the issue-comments endpoint, which carries the PR discussion", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [ghComment],
-        headers: makeHeaders(),
-      });
+      forge.threads.comments.mockReturnValueOnce(listing({ items: raws(ghComment) }));
 
       const result = await gh.pullRequests.listComments("octocat", "hello-world", 99);
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/octocat/hello-world/issues/99/comments",
-        { query: {} },
+      expect(forge.threads.comments).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "pull_request", number: "99" }),
+        { perPage: 30 },
       );
       expect(result.items).toHaveLength(1);
       expect(result.items[0].id).toBe("3001");
@@ -3993,11 +3963,11 @@ describe("GitHubProvider", () => {
 
   describe("users.get", () => {
     it("returns mapped user", async () => {
-      mocks.client.mockResolvedValueOnce(ghUser);
+      forge.users.get.mockResolvedValueOnce({ raw: ghUser });
 
       const user = await gh.users.get("octocat");
 
-      expect(mocks.client).toHaveBeenCalledWith("/users/octocat");
+      expect(forge.users.get).toHaveBeenCalledWith("octocat");
       expect(user).toMatchObject({
         id: "583231",
         login: "octocat",
@@ -4019,24 +3989,26 @@ describe("GitHubProvider", () => {
     it("reads the current profile on every call", async () => {
       const edited = { ...ghUser, name: "Edited Octocat" };
       mocks.cachedFetch.mockResolvedValue(ghUser);
-      mocks.client.mockResolvedValueOnce(ghUser).mockResolvedValueOnce(edited);
+      forge.users.get.mockResolvedValueOnce({ raw: ghUser }).mockResolvedValueOnce({ raw: edited });
 
       await gh.users.get("octocat");
       const user = await gh.users.get("octocat");
 
       expect(user.name).toBe("Edited Octocat");
-      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(forge.users.get).toHaveBeenCalledTimes(2);
       expect(mocks.cachedFetch).not.toHaveBeenCalled();
     });
 
     it("defaults profile fields when the payload lacks them, like GitBucket", async () => {
-      mocks.client.mockResolvedValueOnce({
-        id: 1,
-        login: "root",
-        name: null,
-        email: null,
-        avatar_url: "https://gitbucket.example/root/_avatar",
-        site_admin: true,
+      forge.users.get.mockResolvedValueOnce({
+        raw: {
+          id: 1,
+          login: "root",
+          name: null,
+          email: null,
+          avatar_url: "https://gitbucket.example/root/_avatar",
+          site_admin: true,
+        },
       });
 
       const user = await gh.users.get("root");
@@ -4056,24 +4028,26 @@ describe("GitHubProvider", () => {
 
   describe("users.authenticated", () => {
     it("fetches /user endpoint", async () => {
-      mocks.client.mockResolvedValueOnce({ ...ghUser, site_admin: true });
+      forge.users.me.mockResolvedValueOnce({ raw: { ...ghUser, site_admin: true } });
 
       const user = await gh.users.authenticated();
 
-      expect(mocks.client).toHaveBeenCalledWith("/user");
+      expect(forge.users.me).toHaveBeenCalledOnce();
       expect(user.isAdmin).toBe(true);
     });
 
     it("reads the current authenticated identity on every call", async () => {
       const switched = { ...ghUser, id: 2, login: "monalisa" };
       mocks.cachedFetch.mockResolvedValue(ghUser);
-      mocks.client.mockResolvedValueOnce(ghUser).mockResolvedValueOnce(switched);
+      forge.users.me
+        .mockResolvedValueOnce({ raw: ghUser })
+        .mockResolvedValueOnce({ raw: switched });
 
       await gh.users.authenticated();
       const user = await gh.users.authenticated();
 
       expect(user.login).toBe("monalisa");
-      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(forge.users.me).toHaveBeenCalledTimes(2);
       expect(mocks.cachedFetch).not.toHaveBeenCalled();
     });
   });
@@ -4082,45 +4056,51 @@ describe("GitHubProvider", () => {
 
   describe("field mapping (snake_case → camelCase)", () => {
     it("maps full_name → fullName", async () => {
-      mocks.client.mockResolvedValueOnce({
-        ...ghRepo,
-        full_name: "org/my-repo",
+      forge.repos.get.mockResolvedValueOnce({
+        raw: {
+          ...ghRepo,
+          full_name: "org/my-repo",
+        },
       });
       const repo = await gh.repos.get("org", "my-repo");
       expect(repo.fullName).toBe("org/my-repo");
     });
 
     it("maps avatar_url → avatarUrl", async () => {
-      mocks.client.mockResolvedValueOnce(ghRepo);
+      forge.repos.get.mockResolvedValueOnce({ raw: ghRepo });
       const repo = await gh.repos.get("o", "r");
       expect(repo.owner.avatarUrl).toBe("https://avatars.githubusercontent.com/u/1?v=4");
     });
 
     it("maps default_branch → defaultBranch", async () => {
-      mocks.client.mockResolvedValueOnce({
-        ...ghRepo,
-        default_branch: "develop",
+      forge.repos.get.mockResolvedValueOnce({
+        raw: {
+          ...ghRepo,
+          default_branch: "develop",
+        },
       });
       const repo = await gh.repos.get("o", "r");
       expect(repo.defaultBranch).toBe("develop");
     });
 
     it("maps html_url → url", async () => {
-      mocks.client.mockResolvedValueOnce(ghRepo);
+      forge.repos.get.mockResolvedValueOnce({ raw: ghRepo });
       const repo = await gh.repos.get("o", "r");
       expect(repo.url).toBe("https://github.com/octocat/hello-world");
     });
 
     it("maps clone_url → cloneUrl", async () => {
-      mocks.client.mockResolvedValueOnce(ghRepo);
+      forge.repos.get.mockResolvedValueOnce({ raw: ghRepo });
       const repo = await gh.repos.get("o", "r");
       expect(repo.cloneUrl).toBe("https://github.com/octocat/hello-world.git");
     });
 
     it("maps site_admin → isAdmin", async () => {
-      mocks.client.mockResolvedValueOnce({
-        ...ghUser,
-        site_admin: true,
+      forge.users.get.mockResolvedValueOnce({
+        raw: {
+          ...ghUser,
+          site_admin: true,
+        },
       });
       const user = await gh.users.get("admin");
       expect(user.isAdmin).toBe(true);
@@ -4154,15 +4134,17 @@ describe("GitHubProvider", () => {
     });
 
     it("converts numeric id to string", async () => {
-      mocks.client.mockResolvedValueOnce({ ...ghRepo, id: 99999 });
+      forge.repos.get.mockResolvedValueOnce({ raw: { ...ghRepo, id: 99999 } });
       const repo = await gh.repos.get("o", "r");
       expect(repo.id).toBe("99999");
     });
 
     it("defaults null description to empty string", async () => {
-      mocks.client.mockResolvedValueOnce({
-        ...ghRepo,
-        description: null,
+      forge.repos.get.mockResolvedValueOnce({
+        raw: {
+          ...ghRepo,
+          description: null,
+        },
       });
       const repo = await gh.repos.get("o", "r");
       expect(repo.description).toBe("");
@@ -4175,10 +4157,7 @@ describe("GitHubProvider", () => {
     });
 
     it("extracts label names from label objects", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [ghIssue],
-        headers: makeHeaders(),
-      });
+      forge.threads.list.mockReturnValueOnce(listing({ items: raws(ghIssue) }));
       const result = await gh.issues.list("o", "r");
       expect(result.items[0].labels).toEqual(["bug", "priority:high"]);
     });
@@ -4187,42 +4166,61 @@ describe("GitHubProvider", () => {
   // --- Pagination ---
 
   describe("pagination", () => {
-    it("parses Link header for next page", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [ghRepo],
-        headers: makeHeaders(LINK_NEXT_PAGE_2),
+    const next = "https://api.github.com/user/repos?page=2";
+
+    it("hands the next page URL back as an opaque cursor and follows it", async () => {
+      forge.repos.byOwner.mockReturnValueOnce(
+        listing({ items: raws(ghRepo), cursor: { nextUrl: next } }),
+      );
+
+      const first = await gh.repos.list("octocat");
+
+      expect(first.nextCursor).toEqual(expect.any(String));
+      expect(first.nextCursor).not.toContain("api.github.com");
+
+      forge.repos.byOwner.mockReturnValueOnce(listing({ items: [] }));
+      const second = await gh.repos.list("octocat", { cursor: first.nextCursor });
+
+      expect(forge.repos.byOwner).toHaveBeenLastCalledWith(repoRef(forge, "octocat", ""), {
+        perPage: 30,
+        cursor: { nextUrl: next },
       });
-
-      const result = await gh.repos.list("octocat");
-
-      expect(result.hasNextPage).toBe(true);
-      expect(result.nextPage).toBe(2);
+      expect(second.nextCursor).toBeUndefined();
     });
 
-    it("returns hasNextPage=false when no Link header", async () => {
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [ghRepo],
-        headers: makeHeaders(),
-      });
+    it("refuses a cursor whose URL leaves the API origin", async () => {
+      const cursor = Buffer.from(
+        JSON.stringify({ k: "repos.list", u: "https://attacker.example/api" }),
+      ).toString("base64url");
 
-      const result = await gh.repos.list("octocat");
-
-      expect(result.hasNextPage).toBe(false);
-      expect(result.nextPage).toBeUndefined();
+      await expect(gh.repos.list("octocat", { cursor })).rejects.toMatchObject({ status: 400 });
+      expect(forge.repos.byOwner).not.toHaveBeenCalled();
     });
 
-    it("parses higher page numbers from Link header", async () => {
-      const link =
-        '<https://api.github.com/repos?page=17>; rel="next", ' +
-        '<https://api.github.com/repos?page=42>; rel="last"';
-      mocks.rawFetch.mockResolvedValueOnce({
-        data: [],
-        headers: makeHeaders(link),
+    it("refuses a cursor that another repository handed out", async () => {
+      forge.releases.list.mockReturnValueOnce(
+        listing({
+          items: [],
+          cursor: { nextUrl: "https://api.github.com/repos/a/one/releases?page=2" },
+        }),
+      );
+      const { nextCursor } = await gh.releases.list("a", "one");
+
+      await expect(gh.releases.list("b", "two", { cursor: nextCursor })).rejects.toMatchObject({
+        status: 400,
       });
+      expect(forge.releases.list).toHaveBeenCalledOnce();
+    });
 
-      const result = await gh.repos.list("octocat");
+    it("refuses a cursor another listing handed out", async () => {
+      forge.releases.list.mockReturnValueOnce(
+        listing({ items: [], cursor: { nextUrl: "https://api.github.com/x?page=2" } }),
+      );
+      const { nextCursor } = await gh.releases.list("octocat", "hello-world");
 
-      expect(result.nextPage).toBe(17);
+      await expect(gh.repos.list("octocat", { cursor: nextCursor })).rejects.toMatchObject({
+        status: 400,
+      });
     });
   });
 
@@ -4230,22 +4228,24 @@ describe("GitHubProvider", () => {
 
   describe("error handling", () => {
     it("throws NotFoundError on 404", async () => {
-      mocks.client.mockRejectedValueOnce(makeFetchError(404));
+      forge.repos.get.mockRejectedValueOnce(makeFetchError(404));
       await expect(gh.repos.get("x", "nonexistent")).rejects.toThrow(NotFoundError);
     });
 
     it("throws AuthenticationError on 401", async () => {
-      mocks.client.mockRejectedValueOnce(makeFetchError(401));
+      forge.users.me.mockRejectedValueOnce(makeFetchError(401));
       await expect(gh.users.authenticated()).rejects.toThrow(AuthenticationError);
     });
 
     it("throws RateLimitError on 429", async () => {
-      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(429));
+      forge.repos.byOwner.mockReturnValueOnce({
+        page: vi.fn().mockRejectedValueOnce(makeFetchError(429)),
+      });
       await expect(gh.repos.list("x")).rejects.toThrow(RateLimitError);
     });
 
     it("sets platform to github on errors", async () => {
-      mocks.client.mockRejectedValueOnce(makeFetchError(500));
+      forge.repos.get.mockRejectedValueOnce(makeFetchError(500));
 
       const error = await gh.repos.get("x", "y").catch((e: unknown) => e);
       expect(error).toBeInstanceOf(ForgesError);
@@ -4253,7 +4253,7 @@ describe("GitHubProvider", () => {
     });
 
     it("preserves status code on generic errors", async () => {
-      mocks.client.mockRejectedValueOnce(makeFetchError(503));
+      forge.repos.get.mockRejectedValueOnce(makeFetchError(503));
 
       const error = await gh.repos.get("x", "y").catch((e: unknown) => e);
       expect(error).toBeInstanceOf(ForgesError);
@@ -4296,7 +4296,7 @@ describe("GitHubProvider", () => {
           ],
         },
       ]);
-      expect(result.hasNextPage).toBe(false);
+      expect(result.nextCursor).toBeUndefined();
     });
 
     it("walks GraphQL cursors instead of treating one page as complete", async () => {
@@ -4307,13 +4307,13 @@ describe("GitHubProvider", () => {
         .mockResolvedValueOnce(graphqlThreadList([second]));
 
       const result = await gh.threads.list("octocat", "hello-world", 99, {
-        page: 2,
+        cursor: cursorFor("threads.list", 2, ["octocat", "hello-world", 99], { perPage: 1 }),
         perPage: 1,
       });
 
       expect(mocks.client).toHaveBeenCalledTimes(2);
       expect(result.items.map((thread) => thread.id)).toEqual(["PRRT_2"]);
-      expect(result.hasNextPage).toBe(false);
+      expect(result.nextCursor).toBeUndefined();
     });
 
     it("stops when GraphQL reports another page without a cursor", async () => {
@@ -4359,8 +4359,8 @@ describe("GitHubProvider", () => {
 
       expect(mocks.client).toHaveBeenCalledTimes(2);
       expect(result.items.map((thread) => thread.id)).toEqual(["PRRT_kwDOA"]);
-      expect(result.hasNextPage).toBe(false);
-      expect(result.nextPage).toBeUndefined();
+      expect(result.nextCursor).toBeUndefined();
+      expect(result.nextCursor).toBeUndefined();
     });
 
     it("advertises a next page once one more matching thread is found", async () => {
@@ -4373,8 +4373,13 @@ describe("GitHubProvider", () => {
       });
 
       expect(result.items.map((thread) => thread.id)).toEqual(["PRRT_kwDOA"]);
-      expect(result.hasNextPage).toBe(true);
-      expect(result.nextPage).toBe(2);
+      expect(result.nextCursor).toBeDefined();
+      expect(result.nextCursor).toBe(
+        cursorFor("threads.list", 2, ["octocat", "hello-world", 99], {
+          state: "unresolved",
+          perPage: 1,
+        }),
+      );
     });
 
     it("gets one thread by GraphQL id", async () => {

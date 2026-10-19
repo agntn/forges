@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
       return {
         platform,
         items: page.items.map(slimIssue),
-        hasNextPage: page.hasNextPage,
+        hasNextPage: page.nextCursor !== undefined,
         totalCount: page.totalCount ?? null,
         fetchedAt: new Date().toISOString(),
       };

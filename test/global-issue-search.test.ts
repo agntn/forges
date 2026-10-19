@@ -6,7 +6,10 @@ import { GiteaProvider } from "../src/providers/gitea.ts";
 
 const mocks = vi.hoisted(() => ({ client: vi.fn(), rawFetch: vi.fn() }));
 vi.mock("../src/http.ts", () => ({
-  createHttpClient: () => mocks.client,
+  toFetchError: (error: unknown) => error,
+  forgeFetch: vi.fn(),
+  credentialScope: () => "test-scope",
+  createForgeClient: () => mocks.client,
   rawFetch: mocks.rawFetch,
 }));
 
@@ -249,7 +252,6 @@ describe("Gitea global issue search", () => {
     expect(result).toEqual({
       items: [],
       totalCount: 0,
-      hasNextPage: false,
       incomplete: false,
       resultLimit: null,
     });

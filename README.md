@@ -23,6 +23,7 @@ Docs, and an explorer that runs the same calls: [forges.agntn.dev](https://forge
 - 🤖 **55 tools, four surfaces.** MCP, Pi, OMP and the CLI share one definition of each. Twelve tools write to the host.
 - 🚫 **Missing is 501.** Code search on Gitea is not an empty page. You get a `ForgesError` with status 501.
 - 🧭 **GitBucket is GitHub plus `baseURL`.** Forgejo and Codeberg are Gitea plus `baseURL`. Same class, different host.
+- 🚚 **The plumbing is [`forges`](https://npmx.dev/package/forges).** It sends the requests, picks the endpoints and walks the pages. This package keeps the shapes your agent already reads. One HTTP client fewer in the world.
 - ☁️ **Cloudflare Artifacts too.** Git without the forge. Repos, files and the log through the same calls, with the namespace as `owner`. Ask it for issues and you get a 501, because there's nobody there to file one.
 
 ## 📦 Install
@@ -87,8 +88,10 @@ import { createProvider } from "@agntn/forges";
 const github = await createProvider("github");
 const repo = await github.repos.get("octocat", "Hello-World");
 
-const { items, hasNextPage } = await github.pullRequests.list("octocat", "Hello-World", {
+const open = await github.pullRequests.list("octocat", "Hello-World", { state: "open" });
+const more = await github.pullRequests.list("octocat", "Hello-World", {
   state: "open",
+  cursor: open.nextCursor,
 });
 
 const gitlab = await createProvider("gitlab", {
@@ -101,7 +104,7 @@ const gitbucket = await createProvider("github", {
 });
 ```
 
-Ten resources on every provider. `repos`, `issues`, `pullRequests`, `threads`. Then `commits`, `ciRuns`, `releases`, `contributionTemplates`, `code`, `users`. Lists come back as `items` plus `hasNextPage`. `totalCount` only when the forge counted. Search adds `incomplete` when the answer is known to be partial. Guides: [Authentication](https://forges.agntn.dev/guide/auth), [Repositories](https://forges.agntn.dev/guide/repositories), [Issues](https://forges.agntn.dev/guide/issues), [Pull requests](https://forges.agntn.dev/guide/pull-requests), [Review threads](https://forges.agntn.dev/guide/threads), [Commits, CI and releases](https://forges.agntn.dev/guide/commits), [Templates](https://forges.agntn.dev/guide/templates), [Code search](https://forges.agntn.dev/guide/code-search).
+Ten resources on every provider. `repos`, `issues`, `pullRequests`, `threads`. Then `commits`, `ciRuns`, `releases`, `contributionTemplates`, `code`, `users`. Lists come back as `items` plus `nextCursor`. Hand it back as `cursor` and you get the next page. No cursor, no more pages. It's opaque on purpose, so don't build one by hand: the provider refuses it. `totalCount` only when the forge counted. Search adds `incomplete` when the answer is known to be partial. Guides: [Authentication](https://forges.agntn.dev/guide/auth), [Repositories](https://forges.agntn.dev/guide/repositories), [Issues](https://forges.agntn.dev/guide/issues), [Pull requests](https://forges.agntn.dev/guide/pull-requests), [Review threads](https://forges.agntn.dev/guide/threads), [Commits, CI and releases](https://forges.agntn.dev/guide/commits), [Templates](https://forges.agntn.dev/guide/templates), [Code search](https://forges.agntn.dev/guide/code-search).
 
 ### Local Git
 

@@ -10,15 +10,24 @@
 
 import type { CloudflareCredential } from "@agntn/credentials/cloudflare";
 import { resolveCloudflareCredential } from "../auth.ts";
-import { createHttpClient, type HttpClient } from "../http.ts";
-import { cursorPage } from "../pagination.ts";
+import { cloudflareArtifacts } from "forges/cloudflare-artifacts";
+
+import { createForgeClient, credentialScope, forgeFetch, type HttpClient } from "../http.ts";
+import { version } from "../version.ts";
 import { FetchError, ForgesError, NotFoundError, normalizeError } from "../errors.ts";
 import {
   encodeApiResponsePathSegment,
   encodePathSegment,
   normalizeApiBaseURL,
 } from "./base-url.ts";
-import { Provider, type ProviderRawTypes } from "../provider.ts";
+import {
+  Provider,
+  type ContinuedPage,
+  type Positioned,
+  type NumberedPage,
+  type WithPage,
+  type ProviderRawTypes,
+} from "../provider.ts";
 import {
   assertContinuationRef,
   buildRepositoryFileFromBytes,
@@ -38,7 +47,6 @@ import type {
   ListOptions,
   ListThreadOptions,
   Owner,
-  PageResult,
   PullRequest,
   ReplyThreadInput,
   Repository,
@@ -212,30 +220,28 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     return raw;
   }
 
+  /** Artifacts pages by its own cursor, which the next page carries as a token. */
   protected override async listRepos(
     owner: string,
-    options?: ListOptions,
-  ): Promise<PageResult<Repository>> {
+    options?: Positioned<ListOptions>,
+  ): Promise<ContinuedPage<Repository>> {
     try {
-      const page = await cursorPage<ArtifactsRepository>(
-        async (limit, cursor) => {
-          const response = await this.withCredential((client) =>
-            client<ArtifactsEnvelope<ArtifactsRepository[]>>(`${this.namespacePath(owner)}/repos`, {
-              query: { limit, cursor },
-            }),
-          );
-          return { items: response.result, cursor: response.result_info?.cursor };
-        },
-        options?.page,
-        options?.perPage,
-        REPOSITORY_CHUNK,
+      const at = options?.at;
+      if (at !== undefined && !("token" in at)) {
+        throw new ForgesError("cursor is not one this listing returned", 400, PLATFORM);
+      }
+      const response = await this.withCredential((client) =>
+        client<ArtifactsEnvelope<ArtifactsRepository[]>>(`${this.namespacePath(owner)}/repos`, {
+          query: { limit: Math.min(options?.perPage ?? 30, REPOSITORY_CHUNK), cursor: at?.token },
+        }),
       );
       const accountURL = await this.accountURL();
+      const cursor = response.result_info?.cursor;
       return {
-        ...page,
-        items: page.items.map((repository) =>
+        items: response.result.map((repository) =>
           this.mapRepository({ accountURL, namespace: owner, repository }),
         ),
+        ...(cursor ? { next: { token: cursor } } : {}),
       };
     } catch (error) {
       throw normalizeError(error, PLATFORM);
@@ -294,8 +300,8 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
   protected override async listCommits(
     owner: string,
     repo: string,
-    options?: ListCommitOptions,
-  ): Promise<PageResult<CommitSummary>> {
+    options?: WithPage<ListCommitOptions>,
+  ): Promise<NumberedPage<CommitSummary>> {
     if (
       options?.path !== undefined ||
       options?.since !== undefined ||
@@ -341,7 +347,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     }
   }
 
-  protected override listIssues(): Promise<PageResult<Issue>> {
+  protected override listIssues(): Promise<NumberedPage<Issue>> {
     return missing("issues");
   }
 
@@ -357,7 +363,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     return missing("issues");
   }
 
-  protected override listPullRequests(): Promise<PageResult<PullRequest>> {
+  protected override listPullRequests(): Promise<NumberedPage<PullRequest>> {
     return missing("pull requests");
   }
 
@@ -377,8 +383,8 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     _owner: string,
     _repo: string,
     _number: number,
-    _options?: ListCommentOptions,
-  ): Promise<PageResult<Comment>> {
+    _options?: WithPage<ListCommentOptions>,
+  ): Promise<NumberedPage<Comment>> {
     return missing("comments");
   }
 
@@ -386,8 +392,8 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     _owner: string,
     _repo: string,
     _number: number,
-    _options?: ListCommentOptions,
-  ): Promise<PageResult<Comment>> {
+    _options?: WithPage<ListCommentOptions>,
+  ): Promise<NumberedPage<Comment>> {
     return missing("comments");
   }
 
@@ -411,8 +417,8 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     _owner: string,
     _repo: string,
     _number: number,
-    _options?: ListThreadOptions,
-  ): Promise<PageResult<Thread>> {
+    _options?: WithPage<ListThreadOptions>,
+  ): Promise<NumberedPage<Thread>> {
     return missing("review threads");
   }
 
@@ -574,11 +580,18 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     const baseURL = this.accountBase(credential.accountId);
     const key = `${baseURL}\n${credential.token}`;
     if (this.client === undefined || this.clientKey !== key) {
-      this.client = createHttpClient({
-        baseURL,
-        token: credential.token,
-        tokenHeader: "Authorization",
-        tokenPrefix: "Bearer ",
+      const forge = cloudflareArtifacts({
+        accountId: credential.accountId,
+        baseUrl: this.apiBaseURL,
+        auth: { type: "token", token: credential.token },
+        userAgent: `forges/${version}`,
+        fetch: forgeFetch,
+      });
+      this.client = createForgeClient(() => Promise.resolve(forge), {
+        scope: credentialScope(baseURL, credential.token),
+        prefix: new URL(baseURL).pathname.slice(
+          new URL(this.apiBaseURL).pathname.replace(/\/+$/u, "").length,
+        ),
       });
       this.clientKey = key;
     }

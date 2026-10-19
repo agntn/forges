@@ -40,9 +40,10 @@ export {
 } from "./pagination.ts";
 
 export {
-  createHttpClient,
+  createForgeClient,
   rawFetch,
   FetchError,
+  type ForgeClientOptions,
   type HttpClient,
   type RawFetchResult,
   type RequestOptions,

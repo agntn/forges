@@ -4,7 +4,7 @@
  */
 
 import { normalizeError } from "./errors.ts";
-import type { PageResult } from "./types.ts";
+import type { NumberedPage } from "./provider.ts";
 
 /**
  * Parsed Link header entry
@@ -117,7 +117,7 @@ export function buildPageResult<TRaw, TMapped>(
   items: TRaw[],
   headers: Headers,
   mapper: (raw: TRaw) => TMapped,
-): PageResult<TMapped> {
+): NumberedPage<TMapped> {
   return { items: items.map(mapper), ...paginationFromLink(headers) };
 }
 
@@ -228,47 +228,12 @@ export async function fetchAllPages<T>(
 }
 
 /** One page of a list the platform returned whole. */
-export function slicePage<T>(items: readonly T[], page = 1, perPage = 30): PageResult<T> {
+export function slicePage<T>(items: readonly T[], page = 1, perPage = 30): NumberedPage<T> {
   const start = (page - 1) * perPage;
   const hasNextPage = start + perPage < items.length;
   return {
     items: items.slice(start, start + perPage),
     totalCount: items.length,
-    hasNextPage,
-    nextPage: hasNextPage ? page + 1 : undefined,
-  };
-}
-
-/** One request of a list paged by cursor, with the cursor that continues it. */
-export interface CursorChunk<T> {
-  items: T[];
-  cursor?: string;
-}
-
-/**
- * One page of a list paged only by cursor, which ends at a missing or empty cursor. A cursor can't
- * jump, so the walk reads every row before the page and one past it.
- */
-export async function cursorPage<T>(
-  fetchChunk: (limit: number, cursor: string | undefined) => Promise<CursorChunk<T>>,
-  page = 1,
-  perPage = 30,
-  maxChunk = 100,
-): Promise<PageResult<T>> {
-  const start = (page - 1) * perPage;
-  const wanted = start + perPage + 1;
-  const items: T[] = [];
-  let cursor: string | undefined;
-  do {
-    const chunk = await fetchChunk(Math.min(maxChunk, wanted - items.length), cursor);
-    if (chunk.items.length === 0) break;
-    items.push(...chunk.items);
-    cursor = chunk.cursor;
-  } while (cursor !== undefined && cursor !== "" && items.length < wanted);
-
-  const hasNextPage = items.length > start + perPage;
-  return {
-    items: items.slice(start, start + perPage),
     hasNextPage,
     nextPage: hasNextPage ? page + 1 : undefined,
   };

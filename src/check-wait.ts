@@ -38,8 +38,8 @@ export type CheckPage = PageResult<PullRequestCheck> & { staleHead?: string };
 
 export type WaitedCheckPage = CheckPage & { wait: CheckWait };
 
-/** Reads one page of checks; the wait calls it repeatedly with the same page size. */
-export type ReadCheckPage = (page: number) => Promise<PageResult<PullRequestCheck>>;
+/** Reads one page of checks at a cursor; the wait calls it repeatedly with the same page size. */
+export type ReadCheckPage = (cursor: string | undefined) => Promise<PageResult<PullRequestCheck>>;
 
 /** Reads when the pull request last changed; a push moves it on GitHub, GitLab and Gitea. */
 export type ReadLastChange = () => Promise<string>;
@@ -90,29 +90,29 @@ function delay(milliseconds: number): Promise<void> {
  * pull request whose first page is green while a later page still runs is not
  * finished, and reporting it as finished is the mistake a hand-rolled loop makes.
  */
-async function scanChecks(read: ReadCheckPage, requestedPage: number): Promise<Scan> {
+async function scanChecks(read: ReadCheckPage, requestedCursor: string | undefined): Promise<Scan> {
   let requested: PageResult<PullRequestCheck> | undefined;
   let checks = 0;
   const pending: string[] = [];
-  let page = 1;
+  let cursor: string | undefined;
   let examinedEveryPage = false;
 
   for (let visited = 0; visited < MAX_SCAN_PAGES; visited += 1) {
-    const result = await read(page);
-    if (page === requestedPage) requested = result;
+    const result = await read(cursor);
+    if (cursor === requestedCursor) requested = result;
     checks += result.items.length;
     for (const check of result.items) {
       if (check.status !== "completed") pending.push(check.name);
     }
-    if (!result.hasNextPage) {
+    if (result.nextCursor === undefined) {
       examinedEveryPage = true;
       break;
     }
-    page = result.nextPage ?? page + 1;
+    cursor = result.nextCursor;
   }
 
   return {
-    requested: requested ?? (await read(requestedPage)),
+    requested: requested ?? (await read(requestedCursor)),
     checks,
     pending,
     examinedEveryPage,
@@ -195,10 +195,10 @@ async function readAtHead<T>(
 /** Reads the checks once, or none while the pull request still lags behind the push. */
 export async function readChecks(
   read: ReadCheckPage,
-  requestedPage: number,
+  requestedCursor: string | undefined,
   expectedHead?: ExpectedHead,
 ): Promise<{ page: CheckPage; note: string | undefined }> {
-  const outcome = await readAtHead(expectedHead, () => read(requestedPage));
+  const outcome = await readAtHead(expectedHead, () => read(requestedCursor));
   if (outcome.stale) {
     return { page: staleHeadPage(outcome.stale), note: staleHeadNote(outcome.stale) };
   }
@@ -206,7 +206,7 @@ export async function readChecks(
 }
 
 function staleHeadPage(stale: Readonly<StaleHead>): CheckPage {
-  return { items: [], hasNextPage: false, staleHead: stale.current };
+  return { items: [], staleHead: stale.current };
 }
 
 function staleHeadNote(stale: Readonly<StaleHead>, waitSeconds?: number): string {
@@ -226,7 +226,7 @@ function staleHeadNote(stale: Readonly<StaleHead>, waitSeconds?: number): string
  */
 export async function waitForChecks(
   read: ReadCheckPage,
-  requestedPage: number,
+  requestedCursor: string | undefined,
   waitSeconds: number,
   readLastChange: ReadLastChange,
   expectedHead?: ExpectedHead,
@@ -238,7 +238,7 @@ export async function waitForChecks(
 
   while (true) {
     polls += 1;
-    const outcome = await readAtHead(expectedHead, () => scanChecks(read, requestedPage));
+    const outcome = await readAtHead(expectedHead, () => scanChecks(read, requestedCursor));
     const stale = outcome.stale;
     if (stale) {
       emptyRun = undefined;

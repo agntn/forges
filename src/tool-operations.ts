@@ -543,7 +543,7 @@ function searchTarget<P extends PlatformParams & { owner?: string; repo?: string
 }
 
 export interface ListRepositoriesParams extends OwnerParams {
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
@@ -551,7 +551,7 @@ export type GetRepositoryParams = RepositoryParams;
 
 export interface ListContributionTemplatesParams extends RepositoryParams {
   readonly kind: ContributionTemplateKind;
-  readonly page?: number;
+  readonly cursor?: string;
   readonly perPage?: number;
 }
 
@@ -595,25 +595,25 @@ export type CompareCommitsParams = RepositoryParams &
 
 export interface ListCiRunsParams extends RepositoryParams {
   branch?: string;
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
 export interface ListCiJobsParams extends RepositoryParams {
   runId: string;
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
 export type ReadCiJobLogParams = RepositoryParams & CiJobLogOptions & { jobId: string };
 
 export interface ListReleasesParams extends RepositoryParams {
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
 export interface ListTagsParams extends RepositoryParams {
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
@@ -627,7 +627,7 @@ export type UpdateReleaseParams = RepositoryParams & { tag: string } & AccountPa
   UpdateReleaseInput;
 
 export interface ListRepositoryItemsParams extends RepositoryParams {
-  page?: number;
+  cursor?: string;
   perPage?: number;
   state?: IssueState | "all";
 }
@@ -659,7 +659,7 @@ export type MergePullRequestParams = GetRepositoryItemParams &
 
 export interface ListCommentsParams extends RepositoryParams {
   number: number;
-  page?: number;
+  cursor?: string;
   perPage?: number;
 }
 
@@ -859,12 +859,12 @@ function pullRequestRowText(pullRequest: PullRequestRow): Partial<PullRequestRow
 }
 
 function listOptions(params: {
-  page?: number;
+  cursor?: string;
   perPage?: number;
   state?: IssueState | "all";
 }): ListOptions {
   return {
-    page: params.page,
+    cursor: params.cursor,
     perPage: params.perPage,
     state: params.state,
   };
@@ -911,7 +911,7 @@ export async function listContributionTemplates(
 ): Promise<ForgesToolResult<PageResult<ContributionTemplateSummary>>> {
   const params = repositoryTarget(args);
   const options: ListContributionTemplatesOptions = {
-    page: params.page,
+    cursor: params.cursor,
     perPage: params.perPage,
   };
   const provider = await readProvider(params.platform);
@@ -950,7 +950,7 @@ export async function searchCode(
   const search = await provider.code.search(params.query, {
     owner: params.owner,
     repo: params.repo,
-    page: params.page,
+    cursor: params.cursor,
     perPage: params.perPage,
   });
   return result(params.platform, search);
@@ -962,7 +962,7 @@ export async function listCiRuns(
   const params = repositoryTarget(args);
   const options: ListCiRunsOptions = {
     branch: params.branch,
-    page: params.page,
+    cursor: params.cursor,
     perPage: params.perPage,
   };
   const provider = await readProvider(params.platform);
@@ -976,7 +976,7 @@ export async function listCiJobs(
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const jobs = await provider.ciRuns.listJobs(params.owner, params.repo, params.runId, {
-    page: params.page,
+    cursor: params.cursor,
     perPage: params.perPage,
   });
   return result(params.platform, jobs);
@@ -1000,7 +1000,7 @@ export async function searchCommits(
   const search = await provider.commits.search(params.query, {
     owner: params.owner,
     repo: params.repo,
-    page: params.page,
+    cursor: params.cursor,
     perPage: params.perPage,
   });
   const items = search.items.map(summarizeCommit);
@@ -1022,7 +1022,7 @@ export async function listCommits(
     path: params.path,
     since: params.since,
     until: params.until,
-    page: params.page,
+    cursor: params.cursor,
     perPage: params.perPage,
   });
   const items = commits.items.map(summarizeCommit);
@@ -1044,7 +1044,7 @@ export async function compareCommits(
     params.repo,
     params.base,
     params.head,
-    { page: params.page, perPage: params.perPage },
+    { cursor: params.cursor, perPage: params.perPage },
   );
   const { files, filesComplete, ...rest } = comparison;
   const items = comparison.items.map(summarizeCommit);
@@ -1072,7 +1072,7 @@ export async function readRepositoryContents(
 
 export async function listTags(args: ListTagsParams): Promise<ForgesToolResult<PageResult<Tag>>> {
   const params = repositoryTarget(args);
-  const options: ListTagsOptions = { page: params.page, perPage: params.perPage };
+  const options: ListTagsOptions = { cursor: params.cursor, perPage: params.perPage };
   const provider = await readProvider(params.platform);
   const tags = await provider.repos.listTags(params.owner, params.repo, options);
   return result(params.platform, tags);
@@ -1089,7 +1089,7 @@ export async function listCommitChecks(
   args: ListCommitChecksParams,
 ): Promise<ForgesToolResult<PageResult<PullRequestCheck>>> {
   const params = repositoryTarget(args);
-  const options: ListCommitChecksOptions = { page: params.page, perPage: params.perPage };
+  const options: ListCommitChecksOptions = { cursor: params.cursor, perPage: params.perPage };
   const provider = await readProvider(params.platform);
   const checks = await provider.commits.listChecks(params.owner, params.repo, params.ref, options);
   return result(params.platform, checks);
@@ -1120,7 +1120,7 @@ export async function listReleases(
 ): Promise<ForgesToolResult<PageResult<Omit<Release, "body">>>> {
   const params = repositoryTarget(args);
   const options: ListReleasesOptions = {
-    page: params.page,
+    cursor: params.cursor,
     perPage: params.perPage,
   };
   const provider = await readProvider(params.platform);
@@ -1201,7 +1201,7 @@ export async function searchIssuesGlobal(
     repo: params.repo,
     state: params.state,
     labels: params.labels,
-    page: params.page,
+    cursor: params.cursor,
     perPage: params.perPage,
     sort: params.sort,
     order: params.order,
@@ -1240,7 +1240,7 @@ export async function getIssue(args: GetRepositoryItemParams): Promise<ForgesToo
 
 function commentListOptions(params: ListCommentsParams): ListCommentOptions {
   return {
-    page: params.page,
+    cursor: params.cursor,
     perPage: params.perPage,
   };
 }
@@ -1289,7 +1289,7 @@ export async function createIssueComment(
 }
 
 function reactionListOptions(params: ListReactionsParams): ListReactionOptions {
-  return { commentId: params.commentId, page: params.page, perPage: params.perPage };
+  return { commentId: params.commentId, cursor: params.cursor, perPage: params.perPage };
 }
 
 export async function listIssueReactions(
@@ -1345,7 +1345,7 @@ export async function listPullRequestFiles(
 ): Promise<ForgesToolResult<PageResult<PullRequestFile>>> {
   const params = repositoryTarget(args);
   const options: ListPullRequestFilesOptions = {
-    page: params.page,
+    cursor: params.cursor,
     perPage: params.perPage,
   };
   const provider = await readProvider(params.platform);
@@ -1366,8 +1366,8 @@ export async function listPullRequestChecks(
     throw new ForgesError("Checks headSha must not be empty", 400, params.platform);
   }
   const provider = await readProvider(params.platform);
-  const readPage = (page: number) => {
-    const options: ListPullRequestChecksOptions = { page, perPage: params.perPage };
+  const readPage = (cursor: string | undefined) => {
+    const options: ListPullRequestChecksOptions = { cursor, perPage: params.perPage };
     return provider.pullRequests.listChecks(params.owner, params.repo, params.number, options);
   };
   const readPullRequest = () => provider.pullRequests.get(params.owner, params.repo, params.number);
@@ -1375,17 +1375,15 @@ export async function listPullRequestChecks(
     params.headSha === undefined
       ? undefined
       : { sha: params.headSha, read: async () => (await readPullRequest()).headSha };
-  const requestedPage = params.page ?? 1;
-
   if (params.waitSeconds === undefined) {
-    const once = await readChecks(readPage, requestedPage, expectedHead);
+    const once = await readChecks(readPage, params.cursor, expectedHead);
     return result(params.platform, once.page, once.note);
   }
 
   const readLastChange = async () => (await readPullRequest()).updatedAt;
   const waited = await waitForChecks(
     readPage,
-    requestedPage,
+    params.cursor,
     params.waitSeconds,
     readLastChange,
     expectedHead,
@@ -1398,7 +1396,7 @@ export async function listPullRequestReviews(
 ): Promise<ForgesToolResult<PageResult<PullRequestReview>>> {
   const params = repositoryTarget(args);
   const options: ListPullRequestReviewsOptions = {
-    page: params.page,
+    cursor: params.cursor,
     perPage: params.perPage,
   };
   const provider = await readProvider(params.platform);
@@ -1442,7 +1440,7 @@ export async function searchPullRequestsGlobal(
     author: params.author,
     owner: params.owner,
     repo: params.repo,
-    page: params.page,
+    cursor: params.cursor,
     perPage: params.perPage,
     sort: params.sort,
     order: params.order,
@@ -1675,7 +1673,7 @@ export function reloadAuthentication(
 
 export interface ListThreadsParams extends RepositoryParams {
   number: number;
-  page?: number;
+  cursor?: string;
   perPage?: number;
   state?: ThreadState;
 }
@@ -1704,7 +1702,7 @@ function summarizeThreadPage(page: PageResult<Thread>): PageResult<Thread> {
 
 function threadListOptions(params: ListThreadsParams): ListThreadOptions {
   return {
-    page: params.page,
+    cursor: params.cursor,
     perPage: params.perPage,
     state: params.state,
   };
