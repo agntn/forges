@@ -156,6 +156,10 @@ export function createForgeClient(
       try {
         data = await readBody(response, method, options.responseType);
       } catch (cause) {
+        if (attempt < retries && !options.signal?.aborted && retryStatusCodes.includes(500)) {
+          await delay(retryDelay, options.signal);
+          continue;
+        }
         const failure = new FetchError(
           `[${method}] ${JSON.stringify(target)}: ${response.status} ${cause instanceof Error ? cause.message : String(cause)}`,
           { cause },

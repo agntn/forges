@@ -173,6 +173,31 @@ describe("createForgeClient", () => {
     expect(request).toHaveBeenCalledTimes(3);
   });
 
+  it("retries a read whose body breaks off, but never a write", async () => {
+    const { forge, request } = fakeForge();
+    const cut = () => ({
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.error(new TypeError("terminated"));
+        },
+      }),
+    });
+    request.mockResolvedValueOnce(cut()).mockResolvedValueOnce(json({ ok: true }));
+    const client = createForgeClient(() => Promise.resolve(forge), { scope: "s" });
+
+    await expect(client("/a", { retryDelay: 0 })).resolves.toEqual({ ok: true });
+    expect(request).toHaveBeenCalledTimes(2);
+
+    request.mockReset();
+    request.mockResolvedValueOnce(cut());
+    await expect(client("/b", { method: "POST", retryDelay: 0 })).rejects.toMatchObject({
+      status: 200,
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("never retries a write, a missing resource or an aborted read", async () => {
     const { forge, request } = fakeForge();
     request.mockRejectedValue(
