@@ -42,6 +42,7 @@ import type {
   CreateIssueInput,
   CreatePullRequestInput,
   Issue,
+  IssueRef,
   ListCommentOptions,
   ListCommitOptions,
   ListOptions,
@@ -49,6 +50,7 @@ import type {
   Owner,
   PullRequest,
   ReplyThreadInput,
+  RepoRef,
   Repository,
   RepositoryContents,
   RepositoryContentsOptions,
@@ -123,8 +125,8 @@ function missing(feature: string): Promise<never> {
   );
 }
 
-function repositoryURL(accountURL: string, namespace: string, repo: string): string {
-  return `${accountURL}/namespaces/${encodeURIComponent(namespace)}/repos/${encodeURIComponent(repo)}`;
+function repositoryURL(accountURL: string, { owner, repo }: RepoRef): string {
+  return `${accountURL}/namespaces/${encodeURIComponent(owner)}/repos/${encodeURIComponent(repo)}`;
 }
 
 /** Unix seconds as ISO 8601, or empty when the API sent no usable time. */
@@ -161,7 +163,10 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
    */
   constructor(config: ProviderConfig) {
     super(PLATFORM);
-    this.apiBaseURL = normalizeApiBaseURL(config.baseURL, DEFAULT_BASE_URL, "/client/v4");
+    this.apiBaseURL = normalizeApiBaseURL(config.baseURL, {
+      fallbackBaseURL: DEFAULT_BASE_URL,
+      apiPath: "/client/v4",
+    });
     this.token = config.token === "" ? undefined : config.token;
     this.accountId = config.accountId;
   }
@@ -183,7 +188,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
       description: repository.description ?? "",
       private: true,
       defaultBranch: repository.default_branch,
-      url: repositoryURL(accountURL, namespace, repository.name),
+      url: repositoryURL(accountURL, { owner: namespace, repo: repository.name }),
       cloneUrl: repository.remote,
       isFork: parent !== null,
       parent:
@@ -193,7 +198,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
               fullName: parent,
               url:
                 parentNamespace && parentName
-                  ? repositoryURL(accountURL, parentNamespace, parentName)
+                  ? repositoryURL(accountURL, { owner: parentNamespace, repo: parentName })
                   : "",
             },
       viewerPermission: null,
@@ -253,14 +258,14 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     }
   }
 
-  protected override async getRepo(owner: string, repo: string): Promise<Repository> {
+  protected override async getRepo(ref: RepoRef): Promise<Repository> {
     try {
       const response = await this.withCredential((client) =>
-        client<ArtifactsEnvelope<ArtifactsRepository>>(this.repoPath(owner, repo)),
+        client<ArtifactsEnvelope<ArtifactsRepository>>(this.repoPath(ref)),
       );
       return this.mapRepository({
         accountURL: await this.accountURL(),
-        namespace: owner,
+        namespace: ref.owner,
         repository: response.result,
       });
     } catch (error) {
@@ -269,22 +274,20 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
   }
 
   protected override async readRepositoryContents(
-    owner: string,
-    repo: string,
-    path: string,
-    options?: RepositoryContentsOptions,
+    ref: RepoRef,
+    { path, ...options }: RepositoryContentsOptions & { path: string },
   ): Promise<RepositoryContents> {
     try {
-      const route = this.repoPath(owner, repo);
-      const commit = await this.resolveCommit(owner, repo, options?.ref);
+      const route = this.repoPath(ref);
+      const commit = await this.resolveCommit(ref, options.ref);
       assertContinuationRef(options, commit.hash);
       if (path !== "") {
-        const file = await this.readFile(route, commit.hash, path);
+        const file = await this.readFile(route, { sha: commit.hash, path });
         if (file !== null) {
           return buildRepositoryFileFromBytes({ path, sha: commit.hash, bytes: file }, options);
         }
       }
-      const tree = await this.walkTree(route, commit.treeHash, path);
+      const tree = await this.walkTree(route, { hash: commit.treeHash, path });
       return {
         type: "directory",
         path,
@@ -303,8 +306,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
   }
 
   protected override async listCommits(
-    owner: string,
-    repo: string,
+    ref: RepoRef,
     options?: WithPage<ListCommitOptions>,
   ): Promise<NumberedPage<CommitSummary>> {
     if (
@@ -322,12 +324,16 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     const page = options?.page ?? 1;
     const perPage = options?.perPage ?? 30;
     try {
-      const commits = await this.log(owner, repo, options?.ref, (page - 1) * perPage, perPage + 1);
+      const commits = await this.log(ref, {
+        ref: options?.ref,
+        offset: (page - 1) * perPage,
+        limit: perPage + 1,
+      });
       if (commits.length === 0 && page === 1 && options?.ref !== undefined) {
         throw new NotFoundError(`No commits at ref ${options.ref}`, { platform: PLATFORM });
       }
       const hasNextPage = commits.length > perPage;
-      const url = repositoryURL(await this.accountURL(), owner, repo);
+      const url = repositoryURL(await this.accountURL(), ref);
       return {
         items: commits.slice(0, perPage).map((commit) => this.mapCommit(url, commit)),
         hasNextPage,
@@ -338,11 +344,11 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     }
   }
 
-  protected override async getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
+  protected override async getCommit(ref: RepoRef, { sha }: { sha: string }): Promise<Commit> {
     try {
-      const commit = await this.resolveCommit(owner, repo, sha);
+      const commit = await this.resolveCommit(ref, sha);
       return {
-        ...this.mapCommit(repositoryURL(await this.accountURL(), owner, repo), commit),
+        ...this.mapCommit(repositoryURL(await this.accountURL(), ref), commit),
         files: [],
         filesComplete: null,
       };
@@ -359,11 +365,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     return missing("issues");
   }
 
-  protected override createIssue(
-    _owner: string,
-    _repo: string,
-    _input: CreateIssueInput,
-  ): Promise<Issue> {
+  protected override createIssue(_ref: RepoRef, _input: CreateIssueInput): Promise<Issue> {
     return missing("issues");
   }
 
@@ -376,26 +378,21 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
   }
 
   protected override createPullRequest(
-    _owner: string,
-    _repo: string,
+    _ref: RepoRef,
     _input: CreatePullRequestInput,
   ): Promise<PullRequest> {
     return missing("pull requests");
   }
 
   protected override listIssueComments(
-    _owner: string,
-    _repo: string,
-    _number: number,
+    _issue: IssueRef,
     _options?: WithPage<ListCommentOptions>,
   ): Promise<NumberedPage<Comment>> {
     return missing("comments");
   }
 
   protected override listPullRequestComments(
-    _owner: string,
-    _repo: string,
-    _number: number,
+    _pull: IssueRef,
     _options?: WithPage<ListCommentOptions>,
   ): Promise<NumberedPage<Comment>> {
     return missing("comments");
@@ -418,9 +415,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
   }
 
   protected override listThreads(
-    _owner: string,
-    _repo: string,
-    _number: number,
+    _pull: IssueRef,
     _options?: WithPage<ListThreadOptions>,
   ): Promise<NumberedPage<Thread>> {
     return missing("review threads");
@@ -431,11 +426,8 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
   }
 
   protected override replyToThread(
-    _owner: string,
-    _repo: string,
-    _number: number,
-    _threadId: string,
-    _input: ReplyThreadInput,
+    _pull: IssueRef,
+    _input: ReplyThreadInput & { threadId: string },
   ): Promise<ThreadComment> {
     return missing("review threads");
   }
@@ -460,18 +452,14 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
   }
 
   /** A full SHA-1 is read as it is. A branch, a tag or no ref at all goes through the log. */
-  private async resolveCommit(
-    owner: string,
-    repo: string,
-    ref: string | undefined,
-  ): Promise<ArtifactsCommit> {
+  private async resolveCommit(target: RepoRef, ref: string | undefined): Promise<ArtifactsCommit> {
     if (isCommitSha(ref)) {
       const response = await this.withCredential((client) =>
-        client<ArtifactsEnvelope<ArtifactsCommit>>(`${this.repoPath(owner, repo)}/commit/${ref}`),
+        client<ArtifactsEnvelope<ArtifactsCommit>>(`${this.repoPath(target)}/commit/${ref}`),
       );
       return response.result;
     }
-    const [commit] = await this.log(owner, repo, ref, 0, 1);
+    const [commit] = await this.log(target, { ref, offset: 0, limit: 1 });
     if (commit === undefined) {
       throw new NotFoundError(
         ref === undefined ? "The repository has no commits yet" : `No commits at ref ${ref}`,
@@ -483,11 +471,8 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
 
   /** An unknown ref, `HEAD` included, gets an empty log, so `HEAD` goes out as no ref. */
   private async log(
-    owner: string,
-    repo: string,
-    ref: string | undefined,
-    offset: number,
-    limit: number,
+    target: RepoRef,
+    { ref, offset, limit }: { ref: string | undefined; offset: number; limit: number },
   ): Promise<ArtifactsCommit[]> {
     if (limit > LOG_LIMIT) {
       throw new ForgesError(`Cloudflare Artifacts reads at most ${LOG_LIMIT - 1} commits a page`, {
@@ -496,7 +481,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
       });
     }
     const response = await this.withCredential((client) =>
-      client<ArtifactsEnvelope<ArtifactsCommit[]>>(`${this.repoPath(owner, repo)}/log`, {
+      client<ArtifactsEnvelope<ArtifactsCommit[]>>(`${this.repoPath(target)}/log`, {
         query: { ref: ref === "HEAD" ? undefined : ref, offset, limit },
       }),
     );
@@ -504,7 +489,10 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
   }
 
   /** The file route answers 404 for a directory too, so null sends the caller to the tree. */
-  private async readFile(route: string, sha: string, path: string): Promise<Uint8Array | null> {
+  private async readFile(
+    route: string,
+    { sha, path }: { sha: string; path: string },
+  ): Promise<Uint8Array | null> {
     try {
       const bytes = await this.withCredential((client) =>
         client(`${route}/file`, { query: { ref: sha, path }, responseType: "arrayBuffer" }),
@@ -519,10 +507,9 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
   /** Follow a path down the trees, one request per directory. Only the last step may be a file. */
   private async walkTree(
     route: string,
-    rootHash: string,
-    path: string,
+    { hash, path }: { hash: string; path: string },
   ): Promise<ArtifactsTreeEntry[]> {
-    let entries = await this.readTree(route, rootHash);
+    let entries = await this.readTree(route, hash);
     if (path === "") return entries;
     const segments = path.split("/");
     for (const [index, segment] of segments.entries()) {
@@ -549,8 +536,8 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     return `/namespaces/${encodePathSegment(namespace, "Owner")}`;
   }
 
-  private repoPath(namespace: string, repo: string): string {
-    return `${this.namespacePath(namespace)}/repos/${encodePathSegment(repo, "Repository name")}`;
+  private repoPath({ owner, repo }: RepoRef): string {
+    return `${this.namespacePath(owner)}/repos/${encodePathSegment(repo, "Repository name")}`;
   }
 
   private async accountURL(): Promise<string> {

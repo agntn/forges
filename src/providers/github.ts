@@ -7,7 +7,16 @@ import { Buffer } from "node:buffer";
 import type { ForgeProvider as Forge, ReleaseRef } from "forges";
 import { github } from "forges/github";
 
-import { commitTag, ForgeBackedProvider, type CommitTag, type ForgeOptions } from "./forge.ts";
+import {
+  commitTag,
+  ForgeBackedProvider,
+  type CommitTag,
+  type ForgeOptions,
+  type KindedIssue,
+  type ReleaseTag,
+  type ReviewThreadRef,
+} from "./forge.ts";
+
 import {
   type ContinuedPage,
   type Positioned,
@@ -19,6 +28,7 @@ import {
 } from "../provider.ts";
 import type {
   ProviderConfig,
+  RepoRef,
   Repository,
   RepositoryMergeSettings,
   RepositoryContents,
@@ -595,9 +605,7 @@ function githubGraphqlUrl(restBaseURL: string): string {
  */
 function threadMatchesPullRequest(
   scope: GitHubGraphQLThreadScope | null | undefined,
-  owner: string,
-  repo: string,
-  number: number,
+  { owner, repo, number }: IssueRef,
 ): boolean {
   const repository = scope?.repository;
   if (!repository) {
@@ -670,7 +678,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
 
   constructor(config: ProviderConfig) {
     const restBaseURL = config.baseURL || "https://api.github.com";
-    super("github", restBaseURL, config.token ?? "");
+    super("github", { apiBaseURL: restBaseURL, token: config.token ?? "" });
+
     this.restBaseURL = restBaseURL;
     const token = config.token ?? "";
     this.authenticated = token !== "";
@@ -724,15 +733,12 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     }
   }
 
-  private async tryListContents(
-    fullName: string,
-    path: string,
-    ref: string,
-  ): Promise<GitHubContent[]> {
+  /** Reads `path` on the default branch, where GitHub looks for community files. */
+  private async tryListContents(repository: GitHubRepo, path: string): Promise<GitHubContent[]> {
     try {
       const contents = await this.client<GitHubContent[] | GitHubContent>(
-        this.contentsRoute(fullName, path),
-        { query: { ref } },
+        this.contentsRoute(repository.full_name, path),
+        { query: { ref: repository.default_branch } },
       );
       return Array.isArray(contents) ? contents : [];
     } catch (error) {
@@ -743,22 +749,23 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   private templateSummary(
-    kind: ContributionTemplateKind,
-    sourceRepository: string,
-    sourceRef: string,
     file: GitHubContent,
-    inherited: boolean,
+    {
+      kind,
+      repository,
+      inherited,
+    }: Readonly<{ kind: ContributionTemplateKind; repository: GitHubRepo; inherited: boolean }>,
   ): ContributionTemplateSummary {
     const name = file.name.replace(/\.[^.]+$/u, "");
     return {
       kind,
-      key: `${sourceRepository}:${file.path}`,
+      key: `${repository.full_name}:${file.path}`,
       name,
       scope: inherited ? "owner" : "repository",
       inherited,
-      sourceRepository,
+      sourceRepository: repository.full_name,
       sourcePath: file.path,
-      sourceRef,
+      sourceRef: repository.default_branch,
     };
   }
 
@@ -766,11 +773,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     repository: GitHubRepo,
     inherited: boolean,
   ): Promise<{ templates: ContributionTemplateSummary[]; overrides: boolean }> {
-    const entries = await this.tryListContents(
-      repository.full_name,
-      GITHUB_ISSUE_TEMPLATE_DIRECTORY,
-      repository.default_branch,
-    );
+    const entries = await this.tryListContents(repository, GITHUB_ISSUE_TEMPLATE_DIRECTORY);
     const files = entries.filter(
       (entry) =>
         entry.type === "file" &&
@@ -783,13 +786,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     if (files.length > 0 || hasConfiguration) {
       return {
         templates: files.map((file) =>
-          this.templateSummary(
-            "issue",
-            repository.full_name,
-            repository.default_branch,
-            file,
-            inherited,
-          ),
+          this.templateSummary(file, { kind: "issue", repository, inherited }),
         ),
         overrides: true,
       };
@@ -797,7 +794,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
 
     const listings = await Promise.all(
       GITHUB_COMMUNITY_FILE_DIRECTORIES.map((location) =>
-        this.tryListContents(repository.full_name, location, repository.default_branch),
+        this.tryListContents(repository, location),
       ),
     );
     const singular = listings
@@ -811,15 +808,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       templates:
         singular === undefined
           ? []
-          : [
-              this.templateSummary(
-                "issue",
-                repository.full_name,
-                repository.default_branch,
-                singular,
-                inherited,
-              ),
-            ],
+          : [this.templateSummary(singular, { kind: "issue", repository, inherited })],
       overrides: singular !== undefined,
     };
   }
@@ -830,14 +819,14 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   ): Promise<{ templates: ContributionTemplateSummary[]; overrides: boolean }> {
     const baseEntries = await Promise.all(
       GITHUB_COMMUNITY_FILE_DIRECTORIES.map((location) =>
-        this.tryListContents(repository.full_name, location, repository.default_branch),
+        this.tryListContents(repository, location),
       ),
     );
     const templateDirectories = await Promise.all(
       GITHUB_COMMUNITY_FILE_DIRECTORIES.map((location) => {
         const path =
           location === "" ? "PULL_REQUEST_TEMPLATE" : `${location}/PULL_REQUEST_TEMPLATE`;
-        return this.tryListContents(repository.full_name, path, repository.default_branch);
+        return this.tryListContents(repository, path);
       }),
     );
     const singular = baseEntries
@@ -861,13 +850,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     const files = singular === undefined ? selectable : [singular, ...selectable];
     return {
       templates: files.map((file) =>
-        this.templateSummary(
-          "pull_request",
-          repository.full_name,
-          repository.default_branch,
-          file,
-          inherited,
-        ),
+        this.templateSummary(file, { kind: "pull_request", repository, inherited }),
       ),
       overrides:
         singular !== undefined || templateDirectories.some((entries) => entries.length > 0),
@@ -875,9 +858,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   protected override async listContributionTemplates(
-    owner: string,
-    repo: string,
-    kind: ContributionTemplateKind,
+    { owner, repo }: RepoRef,
+    { kind }: { kind: ContributionTemplateKind },
   ): Promise<ContributionTemplateSummary[]> {
     try {
       const repository = await this.client<GitHubRepo>(
@@ -907,8 +889,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   protected override async readContributionTemplate(
-    _owner: string,
-    _repo: string,
+    _ref: RepoRef,
     template: ContributionTemplateSummary,
   ): Promise<string> {
     try {
@@ -1150,10 +1131,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   // --- Repos ---
 
   protected override async readRepositoryContents(
-    owner: string,
-    repo: string,
-    path: string,
-    options?: RepositoryContentsOptions,
+    { owner, repo }: RepoRef,
+    { path, ...options }: RepositoryContentsOptions & { path: string },
   ): Promise<RepositoryContents> {
     try {
       const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
@@ -1221,10 +1200,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   protected override async readCiJobLog(
-    owner: string,
-    repo: string,
-    jobId: string,
-    options?: CiJobLogOptions,
+    { owner, repo }: RepoRef,
+    { jobId, ...options }: CiJobLogOptions & { jobId: string },
   ): Promise<CiJobLog> {
     try {
       const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/jobs/${jobId}`;
@@ -1315,7 +1292,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     }
   }
 
-  protected override async getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
+  protected override async getCommit(
+    { owner, repo }: RepoRef,
+    { sha }: { sha: string },
+  ): Promise<Commit> {
     try {
       const path = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodePathSegment(sha, "Commit SHA")}`;
       const files: PullRequestFile[] = [];
@@ -1365,11 +1345,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
 
   /** Files come only with the first page of commits. */
   protected override async compareCommits(
-    owner: string,
-    repo: string,
-    base: string,
-    head: string,
-    options?: WithPage<CompareCommitsOptions>,
+    { owner, repo }: RepoRef,
+    { base, head, ...options }: WithPage<CompareCommitsOptions> & { base: string; head: string },
   ): Promise<Numbered<CommitComparison>> {
     try {
       const page = options?.page ?? 1;
@@ -1401,10 +1378,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   protected override async readCommitPatch(
-    owner: string,
-    repo: string,
-    sha: string,
-    options?: CommitPatchOptions,
+    { owner, repo }: RepoRef,
+    { sha, ...options }: CommitPatchOptions & { sha: string },
   ): Promise<CommitPatch> {
     try {
       const files: CommitPatchFile[] = [];
@@ -1540,10 +1515,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   protected override async getPullRequestReview(
-    owner: string,
-    repo: string,
-    number: number,
-    reviewId: string,
+    { owner, repo, number }: IssueRef,
+    { reviewId }: { reviewId: string },
   ): Promise<PullRequestReview> {
     try {
       const raw = await this.client<GitHubPullRequestReview>(
@@ -1573,9 +1546,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   protected override async listPullRequestReviews(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListPullRequestReviewsOptions>,
   ): Promise<NumberedPage<PullRequestReview>> {
     try {
@@ -1609,9 +1580,9 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   // --- Releases ---
 
   /** A 404 from a host without the releases API, GitBucket for one, is a 501, not a missing release. */
-  private async releaseError(owner: string, repo: string, error: unknown): Promise<ForgesError> {
+  private async releaseError(ref: RepoRef, error: unknown): Promise<ForgesError> {
     const normalized = normalizeError(error, "github");
-    if (normalized.status === 404 && !(await this.isGitHubHost(owner, repo))) {
+    if (normalized.status === 404 && !(await this.isGitHubHost(ref.owner, ref.repo))) {
       return new ForgesError("Releases are not supported by this GitHub-compatible host", {
         status: 501,
         platform: "github",
@@ -1622,30 +1593,25 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   protected override async listReleases(
-    owner: string,
-    repo: string,
+    ref: RepoRef,
     options?: Positioned<ListReleasesOptions>,
   ): Promise<ContinuedPage<Release>> {
     try {
-      return await super.listReleases(owner, repo, options);
+      return await super.listReleases(ref, options);
     } catch (error) {
-      throw await this.releaseError(owner, repo, error);
+      throw await this.releaseError(ref, error);
     }
   }
 
   /** A draft has no tag in git yet, the tag route serves published releases only, and only a token sees drafts. */
-  private async findDraftRelease(
-    owner: string,
-    repo: string,
-    tag: string,
-  ): Promise<GitHubRelease | null> {
+  private async findDraftRelease(release: ReleaseTag): Promise<GitHubRelease | null> {
     return this.forgeCall(async (forge) => {
       let cursor: { nextUrl?: string } | undefined;
       for (let page = 1; page <= MAX_DRAFT_RELEASE_PAGES; page += 1) {
         const releases = await forge.releases
-          .list(this.repoRef(forge, owner, repo), { perPage: 100, ...(cursor ? { cursor } : {}) })
+          .list(this.repoRef(forge, release), { perPage: 100, ...(cursor ? { cursor } : {}) })
           .page();
-        const draft = releases.items.find((release) => release.isDraft && release.tag === tag);
+        const draft = releases.items.find((item) => item.isDraft && item.tag === release.tag);
         if (draft) return draft.raw as GitHubRelease;
         if (!releases.cursor) break;
         cursor = releases.cursor;
@@ -1654,58 +1620,56 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     });
   }
 
-  private async readRelease(owner: string, repo: string, tag: string): Promise<GitHubRelease> {
-    encodeRefPathSegment(tag, "Tag");
+  private async readRelease(release: ReleaseTag): Promise<GitHubRelease> {
+    encodeRefPathSegment(release.tag, "Tag");
     try {
       return await this.forgeCall(
         async (forge) =>
-          (await forge.releases.getByTag(this.repoRef(forge, owner, repo), tag))
+          (await forge.releases.getByTag(this.repoRef(forge, release), release.tag))
             .raw as GitHubRelease,
       );
     } catch (error) {
-      const normalized = await this.releaseError(owner, repo, error);
+      const normalized = await this.releaseError(release, error);
       if (normalized.status !== 404 || !this.authenticated) throw normalized;
-      const draft = await this.findDraftRelease(owner, repo, tag);
+      const draft = await this.findDraftRelease(release);
       if (draft) return draft;
       throw normalized;
     }
   }
 
-  protected override async getRelease(owner: string, repo: string, tag: string): Promise<Release> {
-    return this.mapRelease(await this.readRelease(owner, repo, tag));
+  protected override async getRelease(ref: RepoRef, { tag }: { tag: string }): Promise<Release> {
+    return this.mapRelease(await this.readRelease({ ...ref, tag }));
   }
 
   protected override async createRelease(
-    owner: string,
-    repo: string,
+    ref: RepoRef,
     input: CreateReleaseInput,
   ): Promise<Release> {
     try {
-      return await super.createRelease(owner, repo, input);
+      return await super.createRelease(ref, input);
     } catch (error) {
-      throw await this.releaseError(owner, repo, error);
+      throw await this.releaseError(ref, error);
     }
   }
 
   /** GitHub edits by id, and a draft's id comes from the draft walk the tag route can't do. */
-  protected override async releaseRef(
-    forge: Forge,
-    owner: string,
-    repo: string,
-    tag: string,
-  ): Promise<ReleaseRef> {
-    const release = await this.readRelease(owner, repo, tag);
-    const ref = this.repoRef(forge, owner, repo);
-    return { forge: forge.forge, instance: forge.instance, repo: ref, id: String(release.id), tag };
+  protected override async releaseRef(forge: Forge, release: ReleaseTag): Promise<ReleaseRef> {
+    const raw = await this.readRelease(release);
+    const repo = this.repoRef(forge, release);
+    return {
+      forge: forge.forge,
+      instance: forge.instance,
+      repo,
+      id: String(raw.id),
+      tag: release.tag,
+    };
   }
 
   // --- Issues ---
 
   protected override async searchIssues(
-    owner: string,
-    repo: string,
-    searchQuery: string,
-    options?: WithPage<ListOptions>,
+    { owner, repo }: RepoRef,
+    { query: searchQuery, ...options }: WithPage<ListOptions> & { query: string },
   ): Promise<NumberedSearchPage<Issue>> {
     try {
       const encodedOwner = encodePathSegment(owner, "Owner");
@@ -1748,11 +1712,11 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     }
   }
 
-  protected override async getIssue(
-    owner: string,
-    repo: string,
-    issueNumber: number,
-  ): Promise<Issue> {
+  protected override async getIssue({
+    owner,
+    repo,
+    number: issueNumber,
+  }: IssueRef): Promise<Issue> {
     try {
       const data = await this.client<GitHubIssue>(
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(issueNumber, "Number")}`,
@@ -1767,8 +1731,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   protected override async createIssue(
-    owner: string,
-    repo: string,
+    { owner, repo }: RepoRef,
     input: CreateIssueInput,
   ): Promise<Issue> {
     try {
@@ -1793,8 +1756,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   // --- Pull Requests ---
 
   protected override async listPullRequests(
-    owner: string,
-    repo: string,
+    { owner, repo }: RepoRef,
     options?: WithPage<ListOptions>,
   ): Promise<NumberedPage<PullRequest>> {
     try {
@@ -1820,14 +1782,12 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
    * row nobody should have to find behind pages of check runs.
    */
   protected override async listPullRequestChecks(
-    owner: string,
-    repo: string,
-    number: number,
+    pull: IssueRef,
     options?: WithPage<ListPullRequestChecksOptions>,
   ): Promise<NumberedPage<PullRequestCheck>> {
     try {
-      const pullRequest = await this.getPullRequest(owner, repo, number);
-      return await this.#readRevisionChecks(owner, repo, pullRequest.headSha, options);
+      const pullRequest = await this.getPullRequest(pull);
+      return await this.#readRevisionChecks(pull, { ...options, ref: pullRequest.headSha });
     } catch (error) {
       throw normalizeError(error, "github");
     }
@@ -1835,21 +1795,19 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
 
   /** A branch is pinned to one SHA first, so a push between reads can't mix two commits. */
   protected override async listCommitChecks(
-    owner: string,
-    repo: string,
-    ref: string,
-    options?: WithPage<ListCommitChecksOptions>,
+    repository: RepoRef,
+    { ref, ...options }: WithPage<ListCommitChecksOptions> & { ref: string },
   ): Promise<NumberedPage<PullRequestCheck>> {
     try {
-      const sha = isCommitSha(ref) ? ref : await this.#commitOf(owner, repo, ref);
-      return await this.#readRevisionChecks(owner, repo, sha, options);
+      const sha = isCommitSha(ref) ? ref : await this.#commitOf(repository, ref);
+      return await this.#readRevisionChecks(repository, { ...options, ref: sha });
     } catch (error) {
       throw normalizeError(error, "github");
     }
   }
 
   /** The sha media type answers an unknown ref with 422, the status route with 404. */
-  async #commitOf(owner: string, repo: string, ref: string): Promise<string> {
+  async #commitOf({ owner, repo }: RepoRef, ref: string): Promise<string> {
     try {
       return await this.resolveCommitSha(
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`,
@@ -1867,28 +1825,23 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   async #readRevisionChecks(
-    owner: string,
-    repo: string,
-    ref: string,
-    options: WithPage<ListCommitChecksOptions> | undefined,
+    repository: RepoRef,
+    { ref, ...options }: WithPage<ListCommitChecksOptions> & { ref: string },
   ): Promise<NumberedPage<PullRequestCheck>> {
-    const perPage = options?.perPage ?? 30;
-    const page = options?.page ?? 1;
+    const perPage = options.perPage ?? 30;
+    const page = options.page ?? 1;
     const skip = (page - 1) * perPage;
     const wanted = skip + perPage + 1;
-    const revision = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodeRefPathSegment(ref, "Ref")}`;
+    const revision = `/repos/${encodePathSegment(repository.owner, "Owner")}/${encodePathSegment(repository.repo, "Repository name")}/commits/${encodeRefPathSegment(ref, "Ref")}`;
 
     const statuses = await this.readRevisionRows<GitHubCombinedStatus, GitHubCommitStatus>(
       `${revision}/status`,
-      (data) => data.statuses,
-      wanted,
+      { rows: (data) => data.statuses, wanted },
     );
-    const runs = await this.readCheckRuns(
-      owner,
-      repo,
-      `${revision}/check-runs`,
-      Math.max(1, wanted - statuses.rows.length),
-    );
+    const runs = await this.readCheckRuns(repository, {
+      path: `${revision}/check-runs`,
+      wanted: Math.max(1, wanted - statuses.rows.length),
+    });
     const checks = [
       ...statuses.rows.map((raw) => this.mapCommitStatus(raw)),
       ...runs.rows.map((raw) => this.mapPullRequestCheck(raw)),
@@ -1905,17 +1858,14 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
 
   /** A 404 from a host without check runs, GitBucket for one, leaves the commit statuses. */
   private async readCheckRuns(
-    owner: string,
-    repo: string,
-    path: string,
-    wanted: number,
+    { owner, repo }: RepoRef,
+    { path, wanted }: Readonly<{ path: string; wanted: number }>,
   ): Promise<{ rows: GitHubCheckRun[]; total: number }> {
     try {
-      return await this.readRevisionRows<GitHubCheckRunsResponse, GitHubCheckRun>(
-        path,
-        (data) => data.check_runs,
+      return await this.readRevisionRows<GitHubCheckRunsResponse, GitHubCheckRun>(path, {
+        rows: (data) => data.check_runs,
         wanted,
-      );
+      });
     } catch (error) {
       if (
         error instanceof FetchError &&
@@ -1931,8 +1881,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   /** Pages one revision listing until `wanted` rows are in hand, a page is empty or Link ends. */
   private async readRevisionRows<TResponse extends { total_count: number }, TRow>(
     path: string,
-    rows: (data: TResponse) => TRow[],
-    wanted: number,
+    { rows, wanted }: Readonly<{ rows: (data: TResponse) => TRow[]; wanted: number }>,
   ): Promise<{ rows: TRow[]; total: number }> {
     const collected: TRow[] = [];
     const perPage = String(Math.min(100, wanted));
@@ -1958,26 +1907,36 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     searchQuery: string,
     options?: WithPage<GlobalPullRequestSearchOptions>,
   ): Promise<Numbered<GlobalPullRequestSearchResult>> {
-    return this.searchAcrossRepositories("pull-request", searchQuery, options, (raw) =>
-      this.mapPullRequestSearchItem(raw),
-    );
+    return this.searchAcrossRepositories(searchQuery, {
+      kind: "pull-request",
+      options,
+      map: (raw) => this.mapPullRequestSearchItem(raw),
+    });
   }
 
   protected override async searchIssuesGlobal(
     searchQuery: string,
     options?: WithPage<GlobalIssueSearchOptions>,
   ): Promise<Numbered<GlobalIssueSearchResult>> {
-    return this.searchAcrossRepositories("issue", searchQuery, options, (raw) =>
-      this.mapIssue(raw),
-    );
+    return this.searchAcrossRepositories(searchQuery, {
+      kind: "issue",
+      options,
+      map: (raw) => this.mapIssue(raw),
+    });
   }
 
   /** One route serves both kinds, so a qualifier picks one and every row is checked again. */
   private async searchAcrossRepositories<T extends Issue>(
-    kind: "pull-request" | "issue",
     searchQuery: string,
-    options: WithPage<GlobalIssueSearchOptions> | undefined,
-    map: (raw: GitHubIssue) => T,
+    {
+      kind,
+      options,
+      map,
+    }: Readonly<{
+      kind: "pull-request" | "issue";
+      options: WithPage<GlobalIssueSearchOptions> | undefined;
+      map: (raw: GitHubIssue) => T;
+    }>,
   ): Promise<NumberedSearchPage<T & { repository: string }> & { resultLimit: number }> {
     const noun = kind === "issue" ? "Issue" : "Pull-request";
     try {
@@ -2089,10 +2048,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   protected override async searchPullRequests(
-    owner: string,
-    repo: string,
-    searchQuery: string,
-    options?: WithPage<ListOptions>,
+    { owner, repo }: RepoRef,
+    { query: searchQuery, ...options }: WithPage<ListOptions> & { query: string },
   ): Promise<NumberedSearchPage<PullRequestSearchItem>> {
     try {
       const encodedOwner = encodePathSegment(owner, "Owner");
@@ -2139,11 +2096,11 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     }
   }
 
-  protected override async getPullRequest(
-    owner: string,
-    repo: string,
-    prNumber: number,
-  ): Promise<PullRequest> {
+  protected override async getPullRequest({
+    owner,
+    repo,
+    number: prNumber,
+  }: IssueRef): Promise<PullRequest> {
     try {
       const data = await this.client<GitHubPullRequest>(
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(prNumber, "Number")}`,
@@ -2158,11 +2115,11 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
    * Only GraphQL knows which issues a pull request closes. GitBucket serves no
    * GraphQL, so there the answer is unknown rather than an error.
    */
-  protected override async listClosingIssues(
-    owner: string,
-    repo: string,
-    prNumber: number,
-  ): Promise<ClosingIssue[] | null> {
+  protected override async listClosingIssues({
+    owner,
+    repo,
+    number: prNumber,
+  }: IssueRef): Promise<ClosingIssue[] | null> {
     try {
       const issues: ClosingIssue[] = [];
       let cursor: string | null = null;
@@ -2206,8 +2163,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   protected override async createPullRequest(
-    owner: string,
-    repo: string,
+    { owner, repo }: RepoRef,
     input: CreatePullRequestInput,
   ): Promise<PullRequest> {
     try {
@@ -2250,9 +2206,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
    * after the issue writes so the result shows them.
    */
   protected override async updatePullRequest(
-    owner: string,
-    repo: string,
-    prNumber: number,
+    { owner, repo, number: prNumber }: IssueRef,
     input: UpdatePullRequestInput,
   ): Promise<PullRequest> {
     try {
@@ -2267,7 +2221,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         patched ? { method: "PATCH", body: fields } : {},
       );
 
-      const issueWrites = await this.writeIssueLists(issuePath, input, removedLabelPaths);
+      const issueWrites = await this.writeIssueLists({ issuePath, removedLabelPaths }, input);
       if (issueWrites) data = await this.client<GitHubPullRequest>(pullPath);
       return this.mapPullRequest(data);
     } catch (error) {
@@ -2277,9 +2231,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
 
   /** The merge answers with the new commit only, so the pull request is read again. */
   protected override async mergePullRequest(
-    owner: string,
-    repo: string,
-    prNumber: number,
+    { owner, repo, number: prNumber }: IssueRef,
     input: MergePullRequestInput,
   ): Promise<PullRequest> {
     let pullPath: string;
@@ -2314,9 +2266,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
    * again after the list writes so the result shows them.
    */
   protected override async updateIssue(
-    owner: string,
-    repo: string,
-    issueNumber: number,
+    { owner, repo, number: issueNumber }: IssueRef,
     input: UpdateIssueInput,
   ): Promise<Issue> {
     try {
@@ -2331,7 +2281,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         data = await this.client<GitHubIssue>(issuePath, { method: "PATCH", body: fields });
       }
 
-      if (await this.writeIssueLists(issuePath, input, removedLabelPaths)) {
+      if (await this.writeIssueLists({ issuePath, removedLabelPaths }, input)) {
         data = await this.client<GitHubIssue>(issuePath);
       }
       return this.mapIssue(data);
@@ -2358,9 +2308,11 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
    * leave the others alone. Resolves to whether anything was written.
    */
   private async writeIssueLists(
-    issuePath: string,
+    {
+      issuePath,
+      removedLabelPaths,
+    }: Readonly<{ issuePath: string; removedLabelPaths: readonly string[] }>,
     input: UpdateIssueInput,
-    removedLabelPaths: readonly string[],
   ): Promise<boolean> {
     let written = false;
     if (input.addAssignees?.length) {
@@ -2406,10 +2358,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
    * check rather than failing reads that worked before.
    */
   protected override async getIssueComment(
-    owner: string,
-    repo: string,
-    number: number,
-    commentId: string,
+    { owner, repo, number }: IssueRef,
+    { commentId }: { commentId: string },
   ): Promise<Comment> {
     try {
       const data = await this.client<GitHubComment>(
@@ -2426,18 +2376,14 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
 
   /** Pull-request discussion comments live on the issues endpoint too. */
   protected override async getPullRequestComment(
-    owner: string,
-    repo: string,
-    number: number,
-    commentId: string,
+    pull: IssueRef,
+    comment: { commentId: string },
   ): Promise<Comment> {
-    return this.getIssueComment(owner, repo, number, commentId);
+    return this.getIssueComment(pull, comment);
   }
 
   protected override async createIssueComment(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     input: CreateCommentInput,
   ): Promise<Comment> {
     try {
@@ -2453,43 +2399,35 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
 
   /** A pull-request conversation comment is posted through its issue as well. */
   protected override async createPullRequestComment(
-    owner: string,
-    repo: string,
-    number: number,
+    pull: IssueRef,
     input: CreateCommentInput,
   ): Promise<Comment> {
-    return this.createIssueComment(owner, repo, number, input);
+    return this.createIssueComment(pull, input);
   }
 
   // --- Reactions ---
 
   protected override async listIssueReactions(
-    owner: string,
-    repo: string,
-    number: number,
+    issue: IssueRef,
     options?: WithPage<ListReactionOptions>,
   ): Promise<NumberedPage<Reaction>> {
-    return this.listReactions(owner, repo, number, false, options);
+    return this.listReactions({ ...issue, pullRequest: false }, options);
   }
 
   /** Pull requests take reactions on the issue routes too. */
   protected override async listPullRequestReactions(
-    owner: string,
-    repo: string,
-    number: number,
+    pull: IssueRef,
     options?: WithPage<ListReactionOptions>,
   ): Promise<NumberedPage<Reaction>> {
-    return this.listReactions(owner, repo, number, true, options);
+    return this.listReactions({ ...pull, pullRequest: true }, options);
   }
 
   /** Routes take either kind and a comment ignores its issue; checks win over the reaction 404. */
   private async listReactions(
-    owner: string,
-    repo: string,
-    number: number,
-    pullRequest: boolean,
+    target: KindedIssue,
     options?: WithPage<ListReactionOptions>,
   ): Promise<NumberedPage<Reaction>> {
+    const { owner, repo, number } = target;
     try {
       const query: Record<string, string> = {};
       if (options?.page) query.page = String(options.page);
@@ -2505,8 +2443,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
               : `${base}/comments/${encodePathSegment(commentId, "Comment id")}/reactions`,
           query,
         }),
-        this.assertIssueKind(owner, repo, number, pullRequest),
-        commentId === undefined ? undefined : this.getIssueComment(owner, repo, number, commentId),
+        this.assertIssueKind(target),
+        commentId === undefined ? undefined : this.getIssueComment(target, { commentId }),
       ]);
       const failed = checks.find((check) => check.status === "rejected");
       if (failed) throw failed.reason;
@@ -2543,7 +2481,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (options?.perPage) query.per_page = String(options.perPage);
       const [read, kind] = await Promise.allSettled([
         rawFetch<GitHubIssue[]>(this.client, { url: `${issuePath(issue)}/sub_issues`, query }),
-        this.assertIssueKind(issue.owner, issue.repo, issue.number, false),
+        this.assertIssueKind({ ...issue, pullRequest: false }),
       ]);
       if (kind.status === "rejected") throw kind.reason;
       if (read.status === "rejected") throw read.reason;
@@ -2589,8 +2527,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   /** GitHub links children by REST id, and a pull request is no parent, so both get read first. */
   private async subIssueId(issue: IssueRef, input: SubIssueInput): Promise<number> {
     const [child] = await Promise.all([
-      this.getIssue(issue.owner, issue.repo, input.subIssue),
-      this.assertIssueKind(issue.owner, issue.repo, issue.number, false),
+      this.getIssue({ ...issue, number: input.subIssue }),
+      this.assertIssueKind({ ...issue, pullRequest: false }),
     ]);
     return Number(child.id);
   }
@@ -2612,12 +2550,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   /** An issue read tells the kinds apart, so the wrong one is a 404 as on GitLab. */
-  private async assertIssueKind(
-    owner: string,
-    repo: string,
-    number: number,
-    pullRequest: boolean,
-  ): Promise<void> {
+  private async assertIssueKind({ owner, repo, number, pullRequest }: KindedIssue): Promise<void> {
     let issue: { pull_request?: unknown };
     try {
       issue = await this.client<{ pull_request?: unknown }>(
@@ -2637,9 +2570,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   // --- Threads ---
 
   protected override async listThreads(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListThreadOptions>,
   ): Promise<NumberedPage<Thread>> {
     try {
@@ -2696,17 +2627,15 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   protected override async getThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
+    { owner, repo, number }: IssueRef,
+    { threadId }: { threadId: string },
   ): Promise<Thread> {
     try {
       const data = await this.graphql<GitHubGraphQLThreadNodeData>(GET_THREAD_QUERY, {
         id: threadId,
         commentsAfter: null,
       });
-      if (!data.node || !threadMatchesPullRequest(data.node.pullRequest, owner, repo, number)) {
+      if (!data.node || !threadMatchesPullRequest(data.node.pullRequest, { owner, repo, number })) {
         throw new NotFoundError(
           `Resource not found: thread ${threadId} on ${owner}/${repo}#${number}`,
           { platform: "github" },
@@ -2719,16 +2648,13 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   protected override async replyToThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
-    input: ReplyThreadInput,
+    { owner, repo, number }: IssueRef,
+    { threadId, ...input }: ReplyThreadInput & { threadId: string },
   ): Promise<ThreadComment> {
     try {
       // The reply target is always derived from the thread: a caller-supplied
       // comment id could point at another thread on the same pull request.
-      const commentId = await this.rootCommentId(owner, repo, number, threadId);
+      const commentId = await this.rootCommentId({ owner, repo, number, threadId });
       const data = await this.client<GitHubReviewComment>(
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/comments/${encodePathSegment(commentId, "Comment id")}/replies`,
         {
@@ -2749,47 +2675,36 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   protected override async resolveThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
+    pull: IssueRef,
+    { threadId }: { threadId: string },
   ): Promise<Thread> {
     return this.mutateThread(
-      owner,
-      repo,
-      number,
-      threadId,
-      RESOLVE_THREAD_MUTATION,
-      "resolveReviewThread",
+      { ...pull, threadId },
+      { query: RESOLVE_THREAD_MUTATION, field: "resolveReviewThread" },
     );
   }
 
   protected override async unresolveThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
+    pull: IssueRef,
+    { threadId }: { threadId: string },
   ): Promise<Thread> {
     return this.mutateThread(
-      owner,
-      repo,
-      number,
-      threadId,
-      UNRESOLVE_THREAD_MUTATION,
-      "unresolveReviewThread",
+      { ...pull, threadId },
+      { query: UNRESOLVE_THREAD_MUTATION, field: "unresolveReviewThread" },
     );
   }
 
   private async mutateThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
-    query: string,
-    field: "resolveReviewThread" | "unresolveReviewThread",
+    target: ReviewThreadRef,
+    {
+      query,
+      field,
+    }: Readonly<{ query: string; field: "resolveReviewThread" | "unresolveReviewThread" }>,
   ): Promise<Thread> {
+    const { owner, repo, number, threadId } = target;
     try {
-      await this.assertThreadScope(owner, repo, number, threadId);
+      await this.assertThreadScope(target);
+
       const data = await this.graphql<GitHubGraphQLThreadMutationData>(query, {
         id: threadId,
         commentsAfter: null,
@@ -2807,16 +2722,16 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     }
   }
 
-  private async assertThreadScope(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
-  ): Promise<void> {
+  private async assertThreadScope({
+    owner,
+    repo,
+    number,
+    threadId,
+  }: ReviewThreadRef): Promise<void> {
     const data = await this.graphql<GitHubGraphQLThreadScopeData>(THREAD_SCOPE_QUERY, {
       id: threadId,
     });
-    if (!threadMatchesPullRequest(data.node?.pullRequest, owner, repo, number)) {
+    if (!threadMatchesPullRequest(data.node?.pullRequest, { owner, repo, number })) {
       throw new NotFoundError(
         `Resource not found: thread ${threadId} on ${owner}/${repo}#${number}`,
         { platform: "github" },
@@ -2824,13 +2739,9 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     }
   }
 
-  private async rootCommentId(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
-  ): Promise<string> {
-    const thread = await this.getThread(owner, repo, number, threadId);
+  private async rootCommentId({ threadId, ...pull }: ReviewThreadRef): Promise<string> {
+    const thread = await this.getThread(pull, { threadId });
+
     const commentId = thread.comments[0]?.id;
     if (!commentId) {
       throw new ForgesError(`Review thread ${threadId} has no comment id to reply to`, {

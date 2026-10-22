@@ -11,7 +11,15 @@ import type { ForgeProvider as Forge } from "forges";
 import { forgejo } from "forges/forgejo";
 import { gitea } from "forges/gitea";
 
-import { commitTag, ForgeBackedProvider, type CommitTag, type ForgeOptions } from "./forge.ts";
+import {
+  commitTag,
+  ForgeBackedProvider,
+  type CommitTag,
+  type ForgeOptions,
+  type KindedIssue,
+  type ReviewThreadRef,
+} from "./forge.ts";
+
 import { rawFetch } from "../http.ts";
 import { buildPageResult, parseLinkHeader, slicePage } from "../pagination.ts";
 import {
@@ -41,6 +49,7 @@ import type {
   RepositoryContents,
   RepositoryContentsOptions,
   ProviderConfig,
+  RepoRef,
   Repository,
   CiJob,
   CiJobLog,
@@ -56,6 +65,7 @@ import type {
   ContributionTemplateKind,
   ContributionTemplateSummary,
   Issue,
+  IssueRef,
   PullRequest,
   PullRequestCheck,
   PullRequestReview,
@@ -471,10 +481,8 @@ function eventPayloadBranch(eventPayload: string | null | undefined): string {
 
 /** Forgejo ignores page and limit on jobs, so the page is cut here unless Link says it paged. */
 function forgejoJobsPage(
-  rows: ForgejoActionsJob[],
-  headers: Headers,
-  page: number,
-  perPage: number,
+  { rows, headers }: Readonly<{ rows: ForgejoActionsJob[]; headers: Headers }>,
+  { page, perPage }: Readonly<{ page: number; perPage: number }>,
 ): NumberedPage<CiJob> {
   if (headers.has("Link")) return buildPageResult({ items: rows, headers }, mapForgejoActionsJob);
   return slicePage(rows.map(mapForgejoActionsJob), { page, perPage });
@@ -663,8 +671,11 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
    */
 
   constructor(config: ProviderConfig) {
-    const baseURL = normalizeApiBaseURL(config.baseURL, "https://gitea.com/api/v1", "/api/v1");
-    super(PLATFORM, baseURL, config.token ?? "");
+    const baseURL = normalizeApiBaseURL(config.baseURL, {
+      fallbackBaseURL: "https://gitea.com/api/v1",
+      apiPath: "/api/v1",
+    });
+    super(PLATFORM, { apiBaseURL: baseURL, token: config.token ?? "" });
     this.apiBaseURL = baseURL;
   }
 
@@ -908,10 +919,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   protected override async readRepositoryContents(
-    owner: string,
-    repo: string,
-    path: string,
-    options?: RepositoryContentsOptions,
+    { owner, repo }: RepoRef,
+    { path, ...options }: RepositoryContentsOptions & { path: string },
   ): Promise<RepositoryContents> {
     try {
       const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
@@ -956,20 +965,18 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     }
   }
 
-  private contributionTemplateContentsRoute(owner: string, repo: string, path: string): string {
+  private contributionTemplateContentsRoute({ owner, repo }: RepoRef, path: string): string {
     const encodedPath = path.split("/").map(encodeApiResponsePathSegment).join("/");
     return `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/contents/${encodedPath}`;
   }
 
   private async tryContributionTemplateFile(
-    owner: string,
-    repo: string,
-    path: string,
-    ref: string,
+    repository: RepoRef,
+    { path, ref }: Readonly<{ path: string; ref: string }>,
   ): Promise<GiteaContent | null> {
     try {
       const file = await this.client<GiteaContent>(
-        this.contributionTemplateContentsRoute(owner, repo, path),
+        this.contributionTemplateContentsRoute(repository, path),
         { query: { ref } },
       );
       return file.type === "file" ? file : null;
@@ -982,9 +989,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
 
   private giteaTemplateSummary(
     repository: GiteaRepository,
-    kind: ContributionTemplateKind,
-    key: string,
-    name: string,
+    { kind, key, name }: Readonly<{ kind: ContributionTemplateKind; key: string; name: string }>,
   ): ContributionTemplateSummary {
     return {
       kind,
@@ -999,9 +1004,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   protected override async listContributionTemplates(
-    owner: string,
-    repo: string,
-    kind: ContributionTemplateKind,
+    { owner, repo }: RepoRef,
+    { kind }: { kind: ContributionTemplateKind },
   ): Promise<ContributionTemplateSummary[]> {
     try {
       const repository = await this.client<GiteaRepository>(
@@ -1021,17 +1025,24 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
               .at(-1)
               ?.replace(/\.[^.]+$/u, "") ?? "";
           return [
-            this.giteaTemplateSummary(repository, kind, row.file_name, row.name || fallbackName),
+            this.giteaTemplateSummary(repository, {
+              kind,
+              key: row.file_name,
+              name: row.name || fallbackName,
+            }),
           ];
         });
       }
 
       const sourceRef = repository.default_branch ?? "main";
       for (const candidate of GITEA_PULL_REQUEST_TEMPLATE_CANDIDATES) {
-        const file = await this.tryContributionTemplateFile(owner, repo, candidate, sourceRef);
+        const file = await this.tryContributionTemplateFile(
+          { owner, repo },
+          { path: candidate, ref: sourceRef },
+        );
         if (file === null) continue;
         const name = file.name.replace(/\.[^.]+$/u, "");
-        return [this.giteaTemplateSummary(repository, kind, file.path, name)];
+        return [this.giteaTemplateSummary(repository, { kind, key: file.path, name: name })];
       }
       return [];
     } catch (error) {
@@ -1040,8 +1051,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   protected override async readContributionTemplate(
-    owner: string,
-    repo: string,
+    { owner, repo }: RepoRef,
     template: ContributionTemplateSummary,
   ): Promise<string> {
     try {
@@ -1052,7 +1062,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         });
       }
       const file = await this.client<GiteaContent>(
-        this.contributionTemplateContentsRoute(owner, repo, template.sourcePath),
+        this.contributionTemplateContentsRoute({ owner, repo }, template.sourcePath),
         { query: { ref: template.sourceRef } },
       );
       if (file.type !== "file" || file.encoding !== "base64" || file.content === undefined) {
@@ -1073,10 +1083,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
 
   /** Forgejo ignores page and limit on jobs, so this listing cuts the page itself. */
   protected override async listCiJobs(
-    owner: string,
-    repo: string,
-    runId: string,
-    options?: WithPage<ListCiJobsOptions>,
+    { owner, repo }: RepoRef,
+    { runId, ...options }: WithPage<ListCiJobsOptions> & { runId: string },
   ): Promise<NumberedPage<CiJob>> {
     try {
       const page = options?.page ?? 1;
@@ -1088,17 +1096,15 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
           query: { page: String(page), limit: String(perPage) },
         },
       );
-      if (Array.isArray(data)) return forgejoJobsPage(data, headers, page, perPage);
+      if (Array.isArray(data)) return forgejoJobsPage({ rows: data, headers }, { page, perPage });
       const totalCount = data?.total_count;
       const result = buildPageResult({ items: data?.jobs ?? [], headers }, mapActionsJob);
       const hasNextPage =
         result.hasNextPage ||
         (!headers.has("Link") &&
           (await this.#countedNextPage(
-            page,
-            perPage,
-            result.items.length,
-            totalCount ?? Number.NaN,
+            { page, perPage },
+            { served: result.items.length, total: totalCount ?? Number.NaN },
           )));
       return {
         ...result,
@@ -1112,10 +1118,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   protected override async readCiJobLog(
-    owner: string,
-    repo: string,
-    jobId: string,
-    options?: CiJobLogOptions,
+    { owner, repo }: RepoRef,
+    { jobId, ...options }: CiJobLogOptions & { jobId: string },
   ): Promise<CiJobLog> {
     try {
       const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/jobs/${jobId}`;
@@ -1124,7 +1128,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         const log = await this.#readActionsJobLog(route);
         return buildCiJobLog({ job: jobFromForgejoLog(jobId, log), log }, options);
       }
-      if (isForgejoActionsJob(raw)) return await this.#readForgejoJobLog(route, raw, options);
+      if (isForgejoActionsJob(raw)) return await this.#readForgejoJobLog({ route, raw }, options);
       const job = mapActionsJob(raw);
       if (!jobStarted(job, true)) return buildCiJobLog({ job, log: null }, options);
       return buildCiJobLog({ job, log: await this.#readActionsJobLog(route) }, options);
@@ -1146,8 +1150,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
 
   /** A job with a task has started, so a log it hasn't written yet reads empty. */
   async #readForgejoJobLog(
-    route: string,
-    raw: ForgejoActionsJob,
+    { route, raw }: Readonly<{ route: string; raw: ForgejoActionsJob }>,
     options?: CiJobLogOptions,
   ): Promise<CiJobLog> {
     const job = mapForgejoActionsJob(raw);
@@ -1170,10 +1173,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
 
   /** Gitea clamps `limit`, so a short page goes by the real page size, or keeps paging blind. */
   async #countedNextPage(
-    page: number,
-    perPage: number,
-    served: number,
-    total: number,
+    { page, perPage }: Readonly<{ page: number; perPage: number }>,
+    { served, total }: Readonly<{ served: number; total: number }>,
   ): Promise<boolean> {
     if (served === 0 || !Number.isFinite(total)) return false;
     if (served >= perPage) return page * perPage < total;
@@ -1209,8 +1210,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
 
   /** Gitea is told to leave stats, files and signatures out here, which `forges` doesn't do. */
   protected override async listCommits(
-    owner: string,
-    repo: string,
+    { owner, repo }: RepoRef,
     options?: WithPage<ListCommitOptions>,
   ): Promise<NumberedPage<CommitSummary>> {
     try {
@@ -1255,7 +1255,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     }
   }
 
-  protected override async getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
+  protected override async getCommit(
+    { owner, repo }: RepoRef,
+    { sha }: { sha: string },
+  ): Promise<Commit> {
     try {
       const commit = await this.client<GiteaCommit>(
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/git/commits/${encodePathSegment(sha, "Commit SHA")}`,
@@ -1275,11 +1278,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
    * list for the range or count of what base has that head lacks.
    */
   protected override async compareCommits(
-    owner: string,
-    repo: string,
-    base: string,
-    head: string,
-    options?: WithPage<CompareCommitsOptions>,
+    { owner, repo }: RepoRef,
+    { base, head, ...options }: WithPage<CompareCommitsOptions> & { base: string; head: string },
   ): Promise<Numbered<CommitComparison>> {
     try {
       const comparison = await this.client<GiteaComparison>(
@@ -1303,10 +1303,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   protected override async readCommitPatch(
-    owner: string,
-    repo: string,
-    sha: string,
-    options?: CommitPatchOptions,
+    { owner, repo }: RepoRef,
+    { sha, ...options }: CommitPatchOptions & { sha: string },
   ): Promise<CommitPatch> {
     try {
       const commit = await this.client<GiteaCommit>(
@@ -1346,10 +1344,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   // --- Releases ---
 
   protected override async searchIssues(
-    owner: string,
-    repo: string,
-    searchQuery: string,
-    options?: WithPage<ListOptions>,
+    { owner, repo }: RepoRef,
+    { query: searchQuery, ...options }: WithPage<ListOptions> & { query: string },
   ): Promise<NumberedSearchPage<Issue>> {
     try {
       const query = buildListQuery(options);
@@ -1370,7 +1366,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     }
   }
 
-  protected override async getIssue(owner: string, repo: string, number: number): Promise<Issue> {
+  protected override async getIssue({ owner, repo, number }: IssueRef): Promise<Issue> {
     try {
       const issue = await this.client<GiteaIssue>(
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`,
@@ -1385,8 +1381,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   protected override async createIssue(
-    owner: string,
-    repo: string,
+    { owner, repo }: RepoRef,
     input: CreateIssueInput,
   ): Promise<Issue> {
     try {
@@ -1398,7 +1393,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         body.assignees = input.assignees;
       }
       if (input.labels?.length) {
-        body.labels = await this.resolveIssueLabelIds(owner, repo, input.labels);
+        body.labels = await this.resolveIssueLabelIds({ owner, repo }, input.labels);
       }
       return this.mapIssue(
         await this.client<GiteaIssue>(
@@ -1415,25 +1410,22 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   private async resolveIssueLabelIds(
-    owner: string,
-    repo: string,
+    { owner, repo }: RepoRef,
     names: readonly string[],
   ): Promise<number[]> {
     const ids = new Map<string, number>();
     const pending = new Set(names);
     await this.collectIssueLabelIds(
       `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/labels`,
-      pending,
-      ids,
+      { pending, ids },
     );
 
     if (pending.size > 0) {
       try {
-        await this.collectIssueLabelIds(
-          `/orgs/${encodePathSegment(owner, "Owner")}/labels`,
+        await this.collectIssueLabelIds(`/orgs/${encodePathSegment(owner, "Owner")}/labels`, {
           pending,
           ids,
-        );
+        });
       } catch (error) {
         const normalized = normalizeError(error, PLATFORM);
         if (normalized.status !== 404) throw normalized;
@@ -1456,8 +1448,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
 
   private async collectIssueLabelIds(
     path: string,
-    pending: Set<string>,
-    ids: Map<string, number>,
+    { pending, ids }: Readonly<{ pending: Set<string>; ids: Map<string, number> }>,
   ): Promise<void> {
     let page = 1;
     while (pending.size > 0 && page <= MAX_GITEA_LABEL_PAGES) {
@@ -1490,8 +1481,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   protected override async listPullRequests(
-    owner: string,
-    repo: string,
+    { owner, repo }: RepoRef,
     options?: WithPage<ListOptions>,
   ): Promise<NumberedPage<PullRequest>> {
     try {
@@ -1507,14 +1497,15 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   protected override async listPullRequestChecks(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListPullRequestChecksOptions>,
   ): Promise<NumberedPage<PullRequestCheck>> {
     try {
-      const pullRequest = await this.getPullRequest(owner, repo, number);
-      return await this.#readRevisionChecks(owner, repo, pullRequest.headSha, options);
+      const pullRequest = await this.getPullRequest({ owner, repo, number });
+      return await this.#readRevisionChecks(
+        { owner, repo },
+        { ...options, ref: pullRequest.headSha },
+      );
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
@@ -1522,13 +1513,11 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
 
   /** Forgejo answers an unknown ref with an empty status, so an empty page checks the ref. */
   protected override async listCommitChecks(
-    owner: string,
-    repo: string,
-    ref: string,
-    options?: WithPage<ListCommitChecksOptions>,
+    { owner, repo }: RepoRef,
+    { ref, ...options }: WithPage<ListCommitChecksOptions> & { ref: string },
   ): Promise<NumberedPage<PullRequestCheck>> {
     try {
-      const checks = await this.#readRevisionChecks(owner, repo, ref, options);
+      const checks = await this.#readRevisionChecks({ owner, repo }, { ...options, ref: ref });
       if (checks.items.length === 0) {
         await this.client(
           `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/git/commits/${encodeRefPathSegment(ref, "Ref")}`,
@@ -1543,13 +1532,11 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
 
   /** Forgejo pages combined statuses without Link, so only a full page probes the next. */
   async #readRevisionChecks(
-    owner: string,
-    repo: string,
-    ref: string,
-    options: WithPage<ListCommitChecksOptions> | undefined,
+    { owner, repo }: RepoRef,
+    { ref, ...options }: WithPage<ListCommitChecksOptions> & { ref: string },
   ): Promise<NumberedPage<PullRequestCheck>> {
-    const page = options?.page ?? 1;
-    const perPage = options?.perPage ?? 30;
+    const page = options.page ?? 1;
+    const perPage = options.perPage ?? 30;
     const path = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodeRefPathSegment(ref, "Ref")}/status`;
     const { data, headers } = await rawFetch<GiteaCombinedStatus>(this.client, {
       url: path,
@@ -1573,10 +1560,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   protected override async getPullRequestReview(
-    owner: string,
-    repo: string,
-    number: number,
-    reviewId: string,
+    { owner, repo, number }: IssueRef,
+    { reviewId }: { reviewId: string },
   ): Promise<PullRequestReview> {
     try {
       const raw = await this.client<GiteaPullReview>(
@@ -1600,9 +1585,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
    * includes the review requests this list drops, so it is not reported as totalCount.
    */
   protected override async listPullRequestReviews(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListPullRequestReviewsOptions>,
   ): Promise<NumberedPage<PullRequestReview>> {
     try {
@@ -1616,7 +1599,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
       const hasNextPage =
         !!parseLinkHeader(headers.get("Link")).next ||
-        (await this.#countedNextPage(page, perPage, rows.length, total));
+        (await this.#countedNextPage({ page, perPage }, { served: rows.length, total }));
       return {
         items: rows.map((raw) => this.mapPullRequestReview(raw)).filter(isPullRequestReview),
         hasNextPage,
@@ -1628,10 +1611,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   protected override async searchPullRequests(
-    owner: string,
-    repo: string,
-    searchQuery: string,
-    options?: WithPage<ListOptions>,
+    { owner, repo }: RepoRef,
+    { query: searchQuery, ...options }: WithPage<ListOptions> & { query: string },
   ): Promise<NumberedSearchPage<PullRequestSearchItem>> {
     try {
       const query = buildListQuery(options);
@@ -1658,18 +1639,22 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     searchQuery: string,
     options?: WithPage<GlobalPullRequestSearchOptions>,
   ): Promise<Numbered<GlobalPullRequestSearchResult>> {
-    return this.searchAcrossRepositories("pull-request", searchQuery, options, (raw) =>
-      raw.pull_request ? this.mapPullRequestSearchItem(raw) : undefined,
-    );
+    return this.searchAcrossRepositories(searchQuery, {
+      kind: "pull-request",
+      options,
+      map: (raw) => (raw.pull_request ? this.mapPullRequestSearchItem(raw) : undefined),
+    });
   }
 
   protected override async searchIssuesGlobal(
     searchQuery: string,
     options?: WithPage<GlobalIssueSearchOptions>,
   ): Promise<Numbered<GlobalIssueSearchResult>> {
-    return this.searchAcrossRepositories("issue", searchQuery, options, (raw) =>
-      raw.pull_request ? undefined : this.mapIssue(raw),
-    );
+    return this.searchAcrossRepositories(searchQuery, {
+      kind: "issue",
+      options,
+      map: (raw) => (raw.pull_request ? undefined : this.mapIssue(raw)),
+    });
   }
 
   /**
@@ -1679,10 +1664,16 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
    * Both also drop an unknown label name, and the search route matches any of several labels.
    */
   private async searchAcrossRepositories<T extends Issue>(
-    kind: "pull-request" | "issue",
     searchQuery: string,
-    options: WithPage<GlobalIssueSearchOptions> | undefined,
-    map: (raw: GiteaIssue) => T | undefined,
+    {
+      kind,
+      options,
+      map,
+    }: Readonly<{
+      kind: "pull-request" | "issue";
+      options: WithPage<GlobalIssueSearchOptions> | undefined;
+      map: (raw: GiteaIssue) => T | undefined;
+    }>,
   ): Promise<NumberedSearchPage<T & { repository: string }> & { resultLimit: null }> {
     const noun = kind === "issue" ? "Issue" : "Pull-request";
     try {
@@ -1774,11 +1765,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     }
   }
 
-  protected override async getPullRequest(
-    owner: string,
-    repo: string,
-    number: number,
-  ): Promise<PullRequest> {
+  protected override async getPullRequest({ owner, repo, number }: IssueRef): Promise<PullRequest> {
     try {
       return this.mapPullRequest(
         await this.client<GiteaPullRequest>(
@@ -1791,8 +1778,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   protected override async createPullRequest(
-    owner: string,
-    repo: string,
+    { owner, repo }: RepoRef,
     input: CreatePullRequestInput,
   ): Promise<PullRequest> {
     try {
@@ -1830,9 +1816,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
    * its labels changed by mistake.
    */
   protected override async updatePullRequest(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     input: UpdatePullRequestInput,
   ): Promise<PullRequest> {
     try {
@@ -1845,7 +1829,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
           ? await this.client<GiteaPullRequest>(pullPath)
           : undefined;
 
-      await this.writeIssueLabels(owner, repo, issuePath, input, current?.labels);
+      await this.writeIssueLabels({ owner, repo, issuePath, current: current?.labels }, input);
       const body = this.editFields(input, current);
 
       return this.mapPullRequest(
@@ -1860,9 +1844,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
 
   /** Gitea answers a merge with an empty body, so the pull request is read again. */
   protected override async mergePullRequest(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     input: MergePullRequestInput,
   ): Promise<PullRequest> {
     let pullPath: string;
@@ -1895,9 +1877,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
    * because this route answers for a pull request number too.
    */
   protected override async updateIssue(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     input: UpdateIssueInput,
   ): Promise<Issue> {
     try {
@@ -1907,7 +1887,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         throw new NotFoundError(`Issue not found: ${number}`, { platform: PLATFORM });
       }
 
-      await this.writeIssueLabels(owner, repo, issuePath, input, current.labels);
+      await this.writeIssueLabels({ owner, repo, issuePath, current: current.labels }, input);
       const body = this.editFields(input, current);
 
       return this.mapIssue(
@@ -1922,14 +1902,15 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
 
   /** Adds labels by id and removes the ones the item carries; the rest stay. */
   private async writeIssueLabels(
-    owner: string,
-    repo: string,
-    issuePath: string,
+    {
+      issuePath,
+      current,
+      ...repository
+    }: Readonly<RepoRef & { issuePath: string; current: readonly GiteaLabel[] | null | undefined }>,
     input: UpdateIssueInput,
-    current: readonly GiteaLabel[] | null | undefined,
   ): Promise<void> {
     if (input.addLabels?.length) {
-      const ids = await this.resolveIssueLabelIds(owner, repo, input.addLabels);
+      const ids = await this.resolveIssueLabelIds(repository, input.addLabels);
       await this.client(`${issuePath}/labels`, { method: "POST", body: { labels: ids } });
     }
     const removed = new Set(input.removeLabels);
@@ -1970,9 +1951,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
    * instead of to the end; a pending next link then answers hasNextPage.
    */
   protected override async listIssueComments(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListCommentOptions>,
   ): Promise<NumberedPage<Comment>> {
     try {
@@ -2012,12 +1991,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
 
   /** Gitea indexes pull requests as issues, so their discussion shares this route. */
   protected override async listPullRequestComments(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListCommentOptions>,
   ): Promise<NumberedPage<Comment>> {
-    return this.listIssueComments(owner, repo, number, options);
+    return this.listIssueComments({ owner, repo, number }, options);
   }
 
   /**
@@ -2029,10 +2006,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
    * fail every read against a server that omits the association.
    */
   protected override async getIssueComment(
-    owner: string,
-    repo: string,
-    number: number,
-    commentId: string,
+    { owner, repo, number }: IssueRef,
+    { commentId }: { commentId: string },
   ): Promise<Comment> {
     try {
       const data = await this.client<GiteaComment>(
@@ -2054,18 +2029,14 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
 
   /** Pull-request discussion comments live on the issues endpoint too. */
   protected override async getPullRequestComment(
-    owner: string,
-    repo: string,
-    number: number,
-    commentId: string,
+    { owner, repo, number }: IssueRef,
+    { commentId }: { commentId: string },
   ): Promise<Comment> {
-    return this.getIssueComment(owner, repo, number, commentId);
+    return this.getIssueComment({ owner, repo, number }, { commentId });
   }
 
   protected override async createIssueComment(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     input: CreateCommentInput,
   ): Promise<Comment> {
     try {
@@ -2082,39 +2053,30 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
 
   /** Pulls share the issue index, so their conversation comments go through it. */
   protected override async createPullRequestComment(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     input: CreateCommentInput,
   ): Promise<Comment> {
-    return this.createIssueComment(owner, repo, number, input);
+    return this.createIssueComment({ owner, repo, number }, input);
   }
 
   protected override async listIssueReactions(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListReactionOptions>,
   ): Promise<NumberedPage<Reaction>> {
-    return this.listReactions(owner, repo, number, false, options);
+    return this.listReactions({ owner, repo, number, pullRequest: false }, options);
   }
 
   /** Gitea indexes pull requests as issues, so their reactions share these routes. */
   protected override async listPullRequestReactions(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListReactionOptions>,
   ): Promise<NumberedPage<Reaction>> {
-    return this.listReactions(owner, repo, number, true, options);
+    return this.listReactions({ owner, repo, number, pullRequest: true }, options);
   }
 
   /** Item reactions page by count like tags; a comment's come whole and ignore the issue. */
   private async listReactions(
-    owner: string,
-    repo: string,
-    number: number,
-    pullRequest: boolean,
+    { owner, repo, number, pullRequest }: KindedIssue,
     options?: WithPage<ListReactionOptions>,
   ): Promise<NumberedPage<Reaction>> {
     try {
@@ -2127,8 +2089,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
           this.client<GiteaReaction[] | null>(
             `${base}/comments/${encodePathSegment(commentId, "Comment id")}/reactions`,
           ),
-          this.assertIssueKind(owner, repo, number, pullRequest),
-          this.getIssueComment(owner, repo, number, commentId),
+          this.assertIssueKind({ owner, repo, number, pullRequest }),
+          this.getIssueComment({ owner, repo, number }, { commentId }),
         ]);
         return slicePage((reactions ?? []).map(mapReaction), { page, perPage });
       }
@@ -2138,13 +2100,13 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
           url: `${base}/${encodePathSegment(number, "Number")}/reactions`,
           query: { page: String(page), limit: String(perPage) },
         }),
-        this.assertIssueKind(owner, repo, number, pullRequest),
+        this.assertIssueKind({ owner, repo, number, pullRequest }),
       ]);
       const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
       const result = buildPageResult({ items: data ?? [], headers }, mapReaction);
       const hasNextPage =
         result.hasNextPage ||
-        (await this.#countedNextPage(page, perPage, result.items.length, total));
+        (await this.#countedNextPage({ page, perPage }, { served: result.items.length, total }));
       return {
         ...result,
         totalCount: Number.isFinite(total) ? total : undefined,
@@ -2157,12 +2119,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   /** An issue read tells the kinds apart, so the wrong one is a 404 as on GitLab. */
-  private async assertIssueKind(
-    owner: string,
-    repo: string,
-    number: number,
-    pullRequest: boolean,
-  ): Promise<void> {
+  private async assertIssueKind({ owner, repo, number, pullRequest }: KindedIssue): Promise<void> {
     const issue = await this.client<GiteaIssue>(
       `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`,
     );
@@ -2175,14 +2132,12 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   // --- Threads ---
 
   protected override async listThreads(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListThreadOptions>,
   ): Promise<NumberedPage<Thread>> {
     try {
       const threads = this.filterThreadsByState(
-        (await this.groupedReviewThreads(owner, repo, number)).map((thread) =>
+        (await this.groupedReviewThreads({ owner, repo, number })).map((thread) =>
           this.mapThread(thread),
         ),
         options?.state,
@@ -2203,13 +2158,11 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   protected override async getThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
+    { owner, repo, number }: IssueRef,
+    { threadId }: { threadId: string },
   ): Promise<Thread> {
     try {
-      return this.mapThread(await this.findReviewThread(owner, repo, number, threadId));
+      return this.mapThread(await this.findReviewThread({ owner, repo, number, threadId }));
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
@@ -2221,11 +2174,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
    * directly instead of rescanning every review on the pull request.
    */
   protected override async replyToThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
-    input: ReplyThreadInput,
+    { owner, repo, number }: IssueRef,
+    { threadId, ...input }: ReplyThreadInput & { threadId: string },
   ): Promise<ThreadComment> {
     try {
       const comment = await this.client<GiteaPullReviewComment>(
@@ -2248,35 +2198,28 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   protected override async resolveThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
+    { owner, repo, number }: IssueRef,
+    { threadId }: { threadId: string },
   ): Promise<Thread> {
-    return this.setReviewThreadResolved(owner, repo, number, threadId, true);
+    return this.setReviewThreadResolved({ owner, repo, number, threadId }, true);
   }
 
   protected override async unresolveThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
+    { owner, repo, number }: IssueRef,
+    { threadId }: { threadId: string },
   ): Promise<Thread> {
-    return this.setReviewThreadResolved(owner, repo, number, threadId, false);
+    return this.setReviewThreadResolved({ owner, repo, number, threadId }, false);
   }
 
   private async setReviewThreadResolved(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
+    { owner, repo, number, threadId }: ReviewThreadRef,
     resolved: boolean,
   ): Promise<Thread> {
     try {
       // Unlike the reply endpoint, resolve/unresolve is scoped only by repository
       // and comment id, so the comment must be confirmed to sit on this pull
       // request before it is mutated.
-      const thread = await this.findReviewThread(owner, repo, number, threadId);
+      const thread = await this.findReviewThread({ owner, repo, number, threadId });
       const action = resolved ? "resolve" : "unresolve";
       await this.client(
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/comments/${encodePathSegment(threadId, "Thread id")}/${action}`,
@@ -2288,13 +2231,13 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     }
   }
 
-  private async findReviewThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
-  ): Promise<GiteaReviewThread> {
-    const thread = (await this.groupedReviewThreads(owner, repo, number)).find(
+  private async findReviewThread({
+    owner,
+    repo,
+    number,
+    threadId,
+  }: ReviewThreadRef): Promise<GiteaReviewThread> {
+    const thread = (await this.groupedReviewThreads({ owner, repo, number })).find(
       (candidate) => String(candidate.comments[0]?.id) === threadId,
     );
     if (!thread) {
@@ -2307,9 +2250,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   private async reviewComments(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     reviewId: number,
   ): Promise<GiteaPullReviewComment[]> {
     const comments: GiteaPullReviewComment[] = [];
@@ -2332,11 +2273,11 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   }
 
   /** The reviews route sends no Link, so the walk ends when `x-total-count` reviews were read. */
-  private async groupedReviewThreads(
-    owner: string,
-    repo: string,
-    number: number,
-  ): Promise<GiteaReviewThread[]> {
+  private async groupedReviewThreads({
+    owner,
+    repo,
+    number,
+  }: IssueRef): Promise<GiteaReviewThread[]> {
     const comments: GiteaPullReviewComment[] = [];
     let page = 1;
     let seen = 0;
@@ -2354,7 +2295,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         if (review.comments_count === 0) {
           continue;
         }
-        comments.push(...(await this.reviewComments(owner, repo, number, review.id)));
+        comments.push(...(await this.reviewComments({ owner, repo, number }, review.id)));
       }
       seen += reviews.length;
       const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);

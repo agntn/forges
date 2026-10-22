@@ -22,7 +22,7 @@ class FactoryOnlyProvider extends ForgeBackedProvider {
   readonly #forge: ForgeProvider;
 
   constructor(forge: ForgeProvider) {
-    super("fake", "https://fake.test", "token");
+    super("fake", { apiBaseURL: "https://fake.test", token: "token" });
     this.#forge = forge;
   }
 

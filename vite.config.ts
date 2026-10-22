@@ -12,7 +12,14 @@ export default defineConfig({
   lint: {
     plugins: ["unicorn", "typescript", "oxc"],
     ignorePatterns: ["dist"],
+    overrides: [
+      {
+        files: ["src/provider.ts", "src/providers/**"],
+        rules: { "max-params": ["error", { max: 2 }] },
+      },
+    ],
   },
+
   test: {
     environment: "node",
     globals: true,

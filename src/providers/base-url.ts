@@ -111,8 +111,7 @@ export function encodeRevisionPathSegment(value: string, field = "Revision"): st
 
 export function normalizeApiBaseURL(
   baseURL: string | undefined,
-  fallbackBaseURL: string,
-  apiPath: string,
+  { fallbackBaseURL, apiPath }: Readonly<{ fallbackBaseURL: string; apiPath: string }>,
 ): string {
   if (!baseURL) {
     return fallbackBaseURL;
