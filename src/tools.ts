@@ -765,7 +765,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_threads_resolve",
       title: forgeToolTitle("forges_threads_resolve", "Resolve Review Thread"),
       description:
-        "Mark one review thread resolved. This writes to the hosted platform under the local credentials, so resolve a thread only after the point it raised has actually been addressed.",
+        "Mark one review thread resolved. This writes to the hosted platform under the local credentials, so resolve a thread only after the point it raised has actually been addressed. The answer is the thread's new state with a commentCount in place of the comments, which forges_threads_get reads in full.",
       snippet: "Resolve a review thread on GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_threads_resolve only when the user explicitly asks to resolve a thread.",
@@ -778,7 +778,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_threads_unresolve",
       title: forgeToolTitle("forges_threads_unresolve", "Unresolve Review Thread"),
       description:
-        "Reopen one resolved review thread. This writes to the hosted platform under the local credentials.",
+        "Reopen one resolved review thread. This writes to the hosted platform under the local credentials. The answer is the thread's new state with a commentCount in place of the comments, which forges_threads_get reads in full.",
       snippet: "Unresolve a review thread on GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_threads_unresolve only when the user explicitly asks to reopen a thread.",
