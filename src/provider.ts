@@ -340,7 +340,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         ),
       get: async (ref) => {
         assertRepoRef(ref, "repos.get");
-        return this.getRepo(ref.owner, ref.repo);
+        return this.getRepo(ref);
       },
       readContents: async (ref, request) => {
         assertRepoRef(ref, "repos.readContents");
@@ -348,14 +348,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         const { path, ...options } = request;
         assertRepositoryContentsOptions(options, this.#platform);
         const normalizedPath = normalizeRepositoryPath(path, this.#platform);
-        return this.readRepositoryContents(ref.owner, ref.repo, normalizedPath, options);
+        return this.readRepositoryContents(ref, { ...options, path: normalizedPath });
       },
       listTags: async (ref, options) => {
         assertRepoRef(ref, "repos.listTags");
-        const { owner, repo } = ref;
         return this.#paged(
-          { listing: "repos.listTags", subject: [owner, repo], options },
-          (positioned) => this.listTags(owner, repo, positioned),
+          { listing: "repos.listTags", subject: [ref.owner, ref.repo], options },
+          (positioned) => this.listTags(ref, positioned),
         );
       },
     };
@@ -369,7 +368,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           { listing: "contributionTemplates.list", subject: [owner, repo, kind], options },
           async (paged) => {
             const pagination = contributionTemplatePagination(paged, this.#platform);
-            const templates = await this.listContributionTemplates(owner, repo, kind);
+            const templates = await this.listContributionTemplates(ref, { kind });
             return paginateContributionTemplates(templates, pagination);
           },
         );
@@ -380,19 +379,18 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           call: "contributionTemplates.get",
           shape: { kind: "string", key: "string" },
         });
-        const { owner, repo } = ref;
         const { kind, key } = request;
         if (key.length === 0) {
           throw this.#refusal("Contribution template key must not be empty");
         }
-        const templates = await this.listContributionTemplates(owner, repo, kind);
+        const templates = await this.listContributionTemplates(ref, { kind });
         const template = templates.find((candidate) => candidate.key === key);
         if (!template) {
           throw new NotFoundError(`Contribution template not found: ${kind}/${key}`, {
             platform: this.#platform,
           });
         }
-        const content = await this.readContributionTemplate(owner, repo, template);
+        const content = await this.readContributionTemplate(ref, template);
         return { ...template, content };
       },
     };
@@ -412,10 +410,9 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     this.ciRuns = {
       list: async (ref, options) => {
         assertRepoRef(ref, "ciRuns.list");
-        const { owner, repo } = ref;
         return this.#paged(
-          { listing: "ciRuns.list", subject: [owner, repo], options },
-          (positioned) => this.listCiRuns(owner, repo, positioned),
+          { listing: "ciRuns.list", subject: [ref.owner, ref.repo], options },
+          (positioned) => this.listCiRuns(ref, positioned),
         );
       },
       listJobs: async (ref, request) => {
@@ -430,7 +427,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         });
         return this.#paged(
           { listing: "ciRuns.listJobs", subject: [owner, repo, runId], options },
-          (positioned) => this.listCiJobs(owner, repo, runId, { ...positioned, perPage }),
+          (positioned) => this.listCiJobs(ref, { ...positioned, perPage, runId }),
         );
       },
       readJobLog: async (ref, request) => {
@@ -439,7 +436,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         const { jobId, ...options } = request;
         assertCiId(jobId, { kind: "job", platform: this.#platform });
         assertCiJobLogOptions(options, this.#platform);
-        return this.readCiJobLog(ref.owner, ref.repo, jobId, options);
+        return this.readCiJobLog(ref, { ...options, jobId });
       },
     };
     this.commits = {
@@ -456,16 +453,15 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       },
       list: async (ref, options) => {
         assertRepoRef(ref, "commits.list");
-        const { owner, repo } = ref;
         return this.#paged(
-          { listing: "commits.list", subject: [owner, repo], options },
-          (positioned) => this.listCommits(owner, repo, positioned),
+          { listing: "commits.list", subject: [ref.owner, ref.repo], options },
+          (positioned) => this.listCommits(ref, positioned),
         );
       },
       get: async (ref, commit) => {
         assertRepoRef(ref, "commits.get");
         assertInput(commit, { call: "commits.get", shape: { sha: "string" } });
-        return this.getCommit(ref.owner, ref.repo, commit.sha);
+        return this.getCommit(ref, { sha: commit.sha });
       },
       listChecks: async (ref, request) => {
         assertRepoRef(ref, "commits.listChecks");
@@ -479,7 +475,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           { listing: "commits.listChecks", subject: [owner, repo, revision], options },
           (paged) => {
             this.#assertCheckPage(paged);
-            return this.listCommitChecks(owner, repo, revision, paged);
+            return this.listCommitChecks(ref, { ...paged, ref: revision });
           },
         );
       },
@@ -497,7 +493,9 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         return this.#paged(
           { listing: "commits.compare", subject: [owner, repo, base, head], options },
           (paged) =>
-            this.compareCommits(owner, repo, base, head, {
+            this.compareCommits(ref, {
+              base,
+              head,
               page: paged.page ?? 1,
               perPage: paginationPageValue(options.perPage, {
                 ...PER_PAGE,
@@ -511,29 +509,28 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         assertInput(request, { call: "commits.readPatch", shape: { sha: "string" } });
         const { sha, ...options } = request;
         assertCommitPatchOptions(options, this.#platform);
-        return this.readCommitPatch(ref.owner, ref.repo, sha, options);
+        return this.readCommitPatch(ref, { ...options, sha });
       },
     };
     this.releases = {
       list: async (ref, options) => {
         assertRepoRef(ref, "releases.list");
-        const { owner, repo } = ref;
         return this.#paged(
-          { listing: "releases.list", subject: [owner, repo], options },
-          (positioned) => this.listReleases(owner, repo, positioned),
+          { listing: "releases.list", subject: [ref.owner, ref.repo], options },
+          (positioned) => this.listReleases(ref, positioned),
         );
       },
       get: async (ref, release) => {
         assertRepoRef(ref, "releases.get");
         assertInput(release, { call: "releases.get", shape: { tag: "string" } });
         assertReleaseTag(release.tag, this.#platform);
-        return this.getRelease(ref.owner, ref.repo, release.tag);
+        return this.getRelease(ref, { tag: release.tag });
       },
       create: async (ref, input) => {
         assertRepoRef(ref, "releases.create");
         assertInput(input, { call: "releases.create", shape: { tag: "string" } });
         assertReleaseTag(input.tag, this.#platform);
-        return this.createRelease(ref.owner, ref.repo, input);
+        return this.createRelease(ref, input);
       },
       update: async (ref, request) => {
         assertRepoRef(ref, "releases.update");
@@ -543,7 +540,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         if (Object.values(input).every((value) => value === undefined)) {
           throw this.#refusal("Release update needs at least one field");
         }
-        return this.updateRelease(ref.owner, ref.repo, tag, input);
+        return this.updateRelease(ref, { ...input, tag });
       },
     };
     this.issues = {
@@ -556,10 +553,9 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       },
       list: async (ref, options) => {
         assertRepoRef(ref, "issues.list");
-        const { owner, repo } = ref;
         return this.#paged(
-          { listing: "issues.list", subject: [owner, repo], options },
-          (positioned) => this.listIssues(owner, repo, positioned),
+          { listing: "issues.list", subject: [ref.owner, ref.repo], options },
+          (positioned) => this.listIssues(ref, positioned),
         );
       },
       search: async (ref, request) => {
@@ -572,22 +568,22 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         }
         return this.#paged(
           { listing: "issues.search", subject: [owner, repo, query], options },
-          (paged) => this.searchIssues(owner, repo, query, paged),
+          (paged) => this.searchIssues(ref, { ...paged, query }),
         );
       },
       get: async (issue) => {
         this.#assertIssue(issue, "issues.get");
-        return this.getIssue(issue.owner, issue.repo, issue.number);
+        return this.getIssue(issue);
       },
       create: async (ref, input) => {
         assertRepoRef(ref, "issues.create");
         assertAssignees(input.assignees, this.#platform);
-        return this.createIssue(ref.owner, ref.repo, input);
+        return this.createIssue(ref, input);
       },
       update: async (issue, input) => {
         this.#assertIssue(issue, "issues.update");
         assertIssueUpdate(input, this.#platform);
-        return this.updateIssue(issue.owner, issue.repo, issue.number, input);
+        return this.updateIssue(issue, input);
       },
       listComments: async (issue, options) => {
         this.#assertIssue(issue, "issues.listComments");
@@ -596,19 +592,19 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           { listing: "issues.listComments", subject: [owner, repo, number], options },
           (paged) => {
             this.#assertListPage(paged);
-            return this.listIssueComments(owner, repo, number, paged);
+            return this.listIssueComments(issue, paged);
           },
         );
       },
       getComment: async (issue, comment) => {
         this.#assertIssue(issue, "issues.getComment");
         assertInput(comment, { call: "issues.getComment", shape: { commentId: "string" } });
-        return this.getIssueComment(issue.owner, issue.repo, issue.number, comment.commentId);
+        return this.getIssueComment(issue, { commentId: comment.commentId });
       },
       createComment: async (issue, input) => {
         this.#assertIssue(issue, "issues.createComment");
         assertCommentBody(input.body, this.#platform);
-        return this.createIssueComment(issue.owner, issue.repo, issue.number, input);
+        return this.createIssueComment(issue, input);
       },
       listReactions: async (issue, options) => {
         this.#assertIssue(issue, "issues.listReactions");
@@ -617,7 +613,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           { listing: "issues.listReactions", subject: [owner, repo, number], options },
           (paged) => {
             this.#assertListPage(paged);
-            return this.listIssueReactions(owner, repo, number, paged);
+            return this.listIssueReactions(issue, paged);
           },
         );
       },
@@ -633,11 +629,12 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         );
       },
       addSubIssue: async (issue, input) => {
-        this.#assertSubIssue(issue, input, "addSubIssue");
+        this.#assertSubIssue(issue, { input, call: "addSubIssue" });
         return this.addSubIssue(issue, input);
       },
       removeSubIssue: async (issue, input) => {
-        this.#assertSubIssue(issue, input, "removeSubIssue");
+        this.#assertSubIssue(issue, { input, call: "removeSubIssue" });
+
         return this.removeSubIssue(issue, input);
       },
     };
@@ -651,10 +648,9 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       },
       list: async (ref, options) => {
         assertRepoRef(ref, "pullRequests.list");
-        const { owner, repo } = ref;
         return this.#paged(
-          { listing: "pullRequests.list", subject: [owner, repo], options },
-          (paged) => this.listPullRequests(owner, repo, paged),
+          { listing: "pullRequests.list", subject: [ref.owner, ref.repo], options },
+          (paged) => this.listPullRequests(ref, paged),
         );
       },
       listFiles: async (pull, options) => {
@@ -662,7 +658,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         const { owner, repo, number } = pull;
         return this.#paged(
           { listing: "pullRequests.listFiles", subject: [owner, repo, number], options },
-          (paged) => this.listPullRequestFiles(owner, repo, number, paged),
+          (paged) => this.listPullRequestFiles(pull, paged),
         );
       },
       listChecks: async (pull, options) => {
@@ -672,7 +668,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           { listing: "pullRequests.listChecks", subject: [owner, repo, number], options },
           (paged) => {
             this.#assertCheckPage(paged);
-            return this.listPullRequestChecks(owner, repo, number, paged);
+            return this.listPullRequestChecks(pull, paged);
           },
         );
       },
@@ -681,13 +677,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         const { owner, repo, number } = pull;
         return this.#paged(
           { listing: "pullRequests.listReviews", subject: [owner, repo, number], options },
-          (paged) => this.listPullRequestReviews(owner, repo, number, paged),
+          (paged) => this.listPullRequestReviews(pull, paged),
         );
       },
       getReview: async (pull, review) => {
         this.#assertIssue(pull, "pullRequests.getReview");
         assertInput(review, { call: "pullRequests.getReview", shape: { reviewId: "string" } });
-        return this.getPullRequestReview(pull.owner, pull.repo, pull.number, review.reviewId);
+        return this.getPullRequestReview(pull, { reviewId: review.reviewId });
       },
       search: async (ref, request) => {
         assertRepoRef(ref, "pullRequests.search");
@@ -699,33 +695,32 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         }
         return this.#paged(
           { listing: "pullRequests.search", subject: [owner, repo, query], options },
-          (paged) => this.searchPullRequests(owner, repo, query, paged),
+          (paged) => this.searchPullRequests(ref, { ...paged, query }),
         );
       },
       get: async (pull, options) => {
         this.#assertIssue(pull, "pullRequests.get");
-        const { owner, repo, number } = pull;
-        if (options?.closingIssues !== true) return this.getPullRequest(owner, repo, number);
+        if (options?.closingIssues !== true) return this.getPullRequest(pull);
         const [pullRequest, closingIssues] = await Promise.all([
-          this.getPullRequest(owner, repo, number),
-          this.listClosingIssues(owner, repo, number),
+          this.getPullRequest(pull),
+          this.listClosingIssues(pull),
         ]);
         return { ...pullRequest, closingIssues };
       },
       create: async (ref, input) => {
         assertRepoRef(ref, "pullRequests.create");
         assertAssignees(input.assignees, this.#platform);
-        return this.createPullRequest(ref.owner, ref.repo, input);
+        return this.createPullRequest(ref, input);
       },
       update: async (pull, input) => {
         this.#assertIssue(pull, "pullRequests.update");
         assertPullRequestUpdate(input, this.#platform);
-        return this.updatePullRequest(pull.owner, pull.repo, pull.number, input);
+        return this.updatePullRequest(pull, input);
       },
       merge: async (pull, input = {}) => {
         this.#assertIssue(pull, "pullRequests.merge");
         assertMergeInput(input, this.#platform);
-        return this.mergePullRequest(pull.owner, pull.repo, pull.number, input);
+        return this.mergePullRequest(pull, input);
       },
       listComments: async (pull, options) => {
         this.#assertIssue(pull, "pullRequests.listComments");
@@ -734,19 +729,19 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           { listing: "pullRequests.listComments", subject: [owner, repo, number], options },
           (paged) => {
             this.#assertListPage(paged);
-            return this.listPullRequestComments(owner, repo, number, paged);
+            return this.listPullRequestComments(pull, paged);
           },
         );
       },
       getComment: async (pull, comment) => {
         this.#assertIssue(pull, "pullRequests.getComment");
         assertInput(comment, { call: "pullRequests.getComment", shape: { commentId: "string" } });
-        return this.getPullRequestComment(pull.owner, pull.repo, pull.number, comment.commentId);
+        return this.getPullRequestComment(pull, { commentId: comment.commentId });
       },
       createComment: async (pull, input) => {
         this.#assertIssue(pull, "pullRequests.createComment");
         assertCommentBody(input.body, this.#platform);
-        return this.createPullRequestComment(pull.owner, pull.repo, pull.number, input);
+        return this.createPullRequestComment(pull, input);
       },
       listReactions: async (pull, options) => {
         this.#assertIssue(pull, "pullRequests.listReactions");
@@ -755,7 +750,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           { listing: "pullRequests.listReactions", subject: [owner, repo, number], options },
           (paged) => {
             this.#assertListPage(paged);
-            return this.listPullRequestReactions(owner, repo, number, paged);
+            return this.listPullRequestReactions(pull, paged);
           },
         );
       },
@@ -770,29 +765,28 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         const { owner, repo, number } = pull;
         return this.#paged(
           { listing: "threads.list", subject: [owner, repo, number], options },
-          (paged) => this.listThreads(owner, repo, number, paged),
+          (paged) => this.listThreads(pull, paged),
         );
       },
       get: async (pull, thread) => {
         this.#assertIssue(pull, "threads.get");
         assertInput(thread, { call: "threads.get", shape: { threadId: "string" } });
-        return this.getThread(pull.owner, pull.repo, pull.number, thread.threadId);
+        return this.getThread(pull, { threadId: thread.threadId });
       },
       reply: async (pull, request) => {
         this.#assertIssue(pull, "threads.reply");
         assertInput(request, { call: "threads.reply", shape: { threadId: "string" } });
-        const { threadId, ...input } = request;
-        return this.replyToThread(pull.owner, pull.repo, pull.number, threadId, input);
+        return this.replyToThread(pull, request);
       },
       resolve: async (pull, thread) => {
         this.#assertIssue(pull, "threads.resolve");
         assertInput(thread, { call: "threads.resolve", shape: { threadId: "string" } });
-        return this.resolveThread(pull.owner, pull.repo, pull.number, thread.threadId);
+        return this.resolveThread(pull, { threadId: thread.threadId });
       },
       unresolve: async (pull, thread) => {
         this.#assertIssue(pull, "threads.unresolve");
         assertInput(thread, { call: "threads.unresolve", shape: { threadId: "string" } });
-        return this.unresolveThread(pull.owner, pull.repo, pull.number, thread.threadId);
+        return this.unresolveThread(pull, { threadId: thread.threadId });
       },
     };
   }
@@ -877,7 +871,10 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   }
 
   /** An issue can't be its own child, so that call never needs the network to fail. */
-  #assertSubIssue(issue: IssueRef, input: SubIssueInput, call: string): void {
+  #assertSubIssue(
+    issue: IssueRef,
+    { input, call }: Readonly<{ input: SubIssueInput; call: string }>,
+  ): void {
     this.#assertIssue(issue, `issues.${call}`);
     assertInput(input, { call: `issues.${call}`, shape: { subIssue: "number" } });
     this.#assertPositive(input.subIssue, "Sub-issue");
@@ -902,32 +899,27 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     owner: string,
     options?: Positioned<ListOptions>,
   ): Promise<ContinuedPage<Repository>>;
-  protected abstract getRepo(owner: string, repo: string): Promise<Repository>;
+  protected abstract getRepo(repo: RepoRef): Promise<Repository>;
   protected listContributionTemplates(
-    _owner: string,
-    _repo: string,
-    _kind: ContributionTemplateKind,
+    _repo: RepoRef,
+    _templates: { kind: ContributionTemplateKind },
   ): Promise<ContributionTemplateSummary[]> {
     return this.#unsupported("Contribution template discovery is not supported by this provider");
   }
   protected readRepositoryContents(
-    _owner: string,
-    _repo: string,
-    _path: string,
-    _options?: RepositoryContentsOptions,
+    _repo: RepoRef,
+    _request: RepositoryContentsOptions & { path: string },
   ): Promise<RepositoryContents> {
     return this.#unsupported("Repository contents reads are not supported by this provider");
   }
   protected listTags(
-    _owner: string,
-    _repo: string,
+    _repo: RepoRef,
     _options?: Positioned<ListTagsOptions>,
   ): Promise<ContinuedPage<Tag>> {
     return this.#unsupported("Tag listing is not supported by this provider");
   }
   protected readContributionTemplate(
-    _owner: string,
-    _repo: string,
+    _repo: RepoRef,
     _template: ContributionTemplateSummary,
   ): Promise<ContributionTemplate["content"]> {
     return this.#unsupported("Contribution template reads are not supported by this provider");
@@ -939,25 +931,20 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     return this.#unsupported("Code search is not supported by this provider");
   }
   protected listCiRuns(
-    _owner: string,
-    _repo: string,
+    _repo: RepoRef,
     _options?: Positioned<ListCiRunsOptions>,
   ): Promise<ContinuedPage<CiRun>> {
     return this.#unsupported("CI-run listing is not supported by this provider");
   }
   protected listCiJobs(
-    _owner: string,
-    _repo: string,
-    _runId: string,
-    _options?: Positioned<ListCiJobsOptions>,
+    _repo: RepoRef,
+    _request: Positioned<ListCiJobsOptions> & { runId: string },
   ): Promise<ContinuedPage<CiJob>> {
     return this.#unsupported("CI-job listing is not supported by this provider");
   }
   protected readCiJobLog(
-    _owner: string,
-    _repo: string,
-    _jobId: string,
-    _options?: CiJobLogOptions,
+    _repo: RepoRef,
+    _request: CiJobLogOptions & { jobId: string },
   ): Promise<CiJobLog> {
     return this.#unsupported("CI-job log reads are not supported by this provider");
   }
@@ -980,214 +967,143 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     return this.#unsupported("Commit search is not supported by this provider");
   }
   protected listCommits(
-    _owner: string,
-    _repo: string,
+    _repo: RepoRef,
     _options?: Positioned<ListCommitOptions>,
   ): Promise<ContinuedPage<CommitSummary>> {
     return this.#unsupported("Commit listing is not supported by this provider");
   }
-  protected abstract getCommit(owner: string, repo: string, sha: string): Promise<Commit>;
+  protected abstract getCommit(repo: RepoRef, commit: { sha: string }): Promise<Commit>;
   protected listCommitChecks(
-    _owner: string,
-    _repo: string,
-    _ref: string,
-    _options?: WithPage<ListCommitChecksOptions>,
+    _repo: RepoRef,
+    _request: WithPage<ListCommitChecksOptions> & { ref: string },
   ): Promise<NumberedPage<PullRequestCheck>> {
     return this.#unsupported("Commit checks are not supported by this provider");
   }
   protected compareCommits(
-    _owner: string,
-    _repo: string,
-    _base: string,
-    _head: string,
-    _options?: WithPage<CompareCommitsOptions>,
+    _repo: RepoRef,
+    _request: WithPage<CompareCommitsOptions> & { base: string; head: string },
   ): Promise<Numbered<CommitComparison>> {
     return this.#unsupported("Commit comparison is not supported by this provider");
   }
   protected readCommitPatch(
-    _owner: string,
-    _repo: string,
-    _sha: string,
-    _options?: CommitPatchOptions,
+    _repo: RepoRef,
+    _request: CommitPatchOptions & { sha: string },
   ): Promise<CommitPatch> {
     return this.#unsupported("Commit patch reads are not supported by this provider");
   }
   protected listReleases(
-    _owner: string,
-    _repo: string,
+    _repo: RepoRef,
     _options?: Positioned<ListReleasesOptions>,
   ): Promise<ContinuedPage<Release>> {
     return this.#unsupported("Releases are not supported by this provider");
   }
-  protected getRelease(_owner: string, _repo: string, _tag: string): Promise<Release> {
+  protected getRelease(_repo: RepoRef, _release: { tag: string }): Promise<Release> {
     return this.#unsupported("Releases are not supported by this provider");
   }
-  protected createRelease(
-    _owner: string,
-    _repo: string,
-    _input: CreateReleaseInput,
-  ): Promise<Release> {
+  protected createRelease(_repo: RepoRef, _input: CreateReleaseInput): Promise<Release> {
     return this.#unsupported("Release creation is not supported by this provider");
   }
   protected updateRelease(
-    _owner: string,
-    _repo: string,
-    _tag: string,
-    _input: UpdateReleaseInput,
+    _repo: RepoRef,
+    _input: UpdateReleaseInput & { tag: string },
   ): Promise<Release> {
     return this.#unsupported("Release updates are not supported by this provider");
   }
   protected abstract listIssues(
-    owner: string,
-    repo: string,
+    repo: RepoRef,
     options?: Positioned<ListOptions>,
   ): Promise<ContinuedPage<Issue>>;
   protected searchIssues(
-    _owner: string,
-    _repo: string,
-    _query: string,
-    _options?: WithPage<ListOptions>,
+    _repo: RepoRef,
+    _request: WithPage<ListOptions> & { query: string },
   ): Promise<NumberedSearchPage<Issue>> {
     return this.#unsupported("Issue search is not supported by this provider");
   }
-  protected abstract getIssue(owner: string, repo: string, number: number): Promise<Issue>;
-  protected abstract createIssue(
-    owner: string,
-    repo: string,
-    input: CreateIssueInput,
-  ): Promise<Issue>;
-  protected updateIssue(
-    _owner: string,
-    _repo: string,
-    _number: number,
-    _input: UpdateIssueInput,
-  ): Promise<Issue> {
+  protected abstract getIssue(issue: IssueRef): Promise<Issue>;
+  protected abstract createIssue(repo: RepoRef, input: CreateIssueInput): Promise<Issue>;
+  protected updateIssue(_issue: IssueRef, _input: UpdateIssueInput): Promise<Issue> {
     return this.#unsupported("Issue updates are not supported by this provider");
   }
   /** A provider that counts pages reads `page`; one that follows the forge's own cursor reads `at`. */
   protected abstract listPullRequests(
-    owner: string,
-    repo: string,
+    repo: RepoRef,
     options?: Positioned<ListOptions>,
   ): Promise<NumberedPage<PullRequest> | ContinuedPage<PullRequest>>;
   protected listPullRequestFiles(
-    _owner: string,
-    _repo: string,
-    _number: number,
+    _pull: IssueRef,
     _options?: Positioned<ListPullRequestFilesOptions>,
   ): Promise<ContinuedPage<PullRequestFile>> {
     return this.#unsupported("Pull request file listing is not supported by this provider");
   }
   protected listPullRequestChecks(
-    _owner: string,
-    _repo: string,
-    _number: number,
+    _pull: IssueRef,
     _options?: WithPage<ListPullRequestChecksOptions>,
   ): Promise<NumberedPage<PullRequestCheck>> {
     return this.#unsupported("Pull request checks are not supported by this provider");
   }
   protected listPullRequestReviews(
-    _owner: string,
-    _repo: string,
-    _number: number,
+    _pull: IssueRef,
     _options?: WithPage<ListPullRequestReviewsOptions>,
   ): Promise<NumberedPage<PullRequestReview>> {
     return this.#unsupported("Pull request reviews are not supported by this provider");
   }
   protected getPullRequestReview(
-    _owner: string,
-    _repo: string,
-    _number: number,
-    _reviewId: string,
+    _pull: IssueRef,
+    _review: { reviewId: string },
   ): Promise<PullRequestReview> {
     return this.#unsupported("Individual pull request reviews are not supported by this provider");
   }
   protected searchPullRequests(
-    _owner: string,
-    _repo: string,
-    _query: string,
-    _options?: WithPage<ListOptions>,
+    _repo: RepoRef,
+    _request: WithPage<ListOptions> & { query: string },
   ): Promise<NumberedSearchPage<PullRequestSearchItem>> {
     return this.#unsupported("Pull-request search is not supported by this provider");
   }
-  protected abstract getPullRequest(
-    owner: string,
-    repo: string,
-    number: number,
-  ): Promise<PullRequest>;
+  protected abstract getPullRequest(pull: IssueRef): Promise<PullRequest>;
   /** Null means the provider cannot tell which issues a pull request closes. */
-  protected listClosingIssues(
-    _owner: string,
-    _repo: string,
-    _number: number,
-  ): Promise<ClosingIssue[] | null> {
+  protected listClosingIssues(_pull: IssueRef): Promise<ClosingIssue[] | null> {
     return Promise.resolve(null);
   }
   protected abstract createPullRequest(
-    owner: string,
-    repo: string,
+    repo: RepoRef,
     input: CreatePullRequestInput,
   ): Promise<PullRequest>;
   protected updatePullRequest(
-    _owner: string,
-    _repo: string,
-    _number: number,
+    _pull: IssueRef,
     _input: UpdatePullRequestInput,
   ): Promise<PullRequest> {
     return this.#unsupported("Pull request updates are not supported by this provider");
   }
-  protected mergePullRequest(
-    _owner: string,
-    _repo: string,
-    _number: number,
-    _input: MergePullRequestInput,
-  ): Promise<PullRequest> {
+  protected mergePullRequest(_pull: IssueRef, _input: MergePullRequestInput): Promise<PullRequest> {
     return this.#unsupported("Pull request merges are not supported by this provider");
   }
   protected abstract listIssueComments(
-    owner: string,
-    repo: string,
-    number: number,
+    issue: IssueRef,
     options?: Positioned<ListCommentOptions>,
   ): Promise<ContinuedPage<Comment>>;
   protected abstract listPullRequestComments(
-    owner: string,
-    repo: string,
-    number: number,
+    pull: IssueRef,
     options?: Positioned<ListCommentOptions>,
   ): Promise<ContinuedPage<Comment>>;
   protected abstract getIssueComment(
-    owner: string,
-    repo: string,
-    number: number,
-    commentId: string,
+    issue: IssueRef,
+    comment: { commentId: string },
   ): Promise<Comment>;
   protected abstract getPullRequestComment(
-    owner: string,
-    repo: string,
-    number: number,
-    commentId: string,
+    pull: IssueRef,
+    comment: { commentId: string },
   ): Promise<Comment>;
-  protected createIssueComment(
-    _owner: string,
-    _repo: string,
-    _number: number,
-    _input: CreateCommentInput,
-  ): Promise<Comment> {
+  protected createIssueComment(_issue: IssueRef, _input: CreateCommentInput): Promise<Comment> {
     return this.#unsupported("Issue comments are not supported by this provider");
   }
   protected createPullRequestComment(
-    _owner: string,
-    _repo: string,
-    _number: number,
+    _pull: IssueRef,
     _input: CreateCommentInput,
   ): Promise<Comment> {
     return this.#unsupported("Pull request comments are not supported by this provider");
   }
   protected listIssueReactions(
-    _owner: string,
-    _repo: string,
-    _number: number,
+    _issue: IssueRef,
     _options?: WithPage<ListReactionOptions>,
   ): Promise<NumberedPage<Reaction>> {
     return this.#unsupported("Issue reactions are not supported by this provider");
@@ -1205,9 +1121,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     return this.#unsupported("Sub-issues are not supported by this provider");
   }
   protected listPullRequestReactions(
-    _owner: string,
-    _repo: string,
-    _number: number,
+    _pull: IssueRef,
     _options?: WithPage<ListReactionOptions>,
   ): Promise<NumberedPage<Reaction>> {
     return this.#unsupported("Pull request reactions are not supported by this provider");
@@ -1215,36 +1129,16 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   protected abstract getUser(username: string): Promise<User>;
   protected abstract getAuthenticatedUser(): Promise<User>;
   protected abstract listThreads(
-    owner: string,
-    repo: string,
-    number: number,
+    pull: IssueRef,
     options?: WithPage<ListThreadOptions>,
   ): Promise<NumberedPage<Thread>>;
-  protected abstract getThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
-  ): Promise<Thread>;
+  protected abstract getThread(pull: IssueRef, thread: { threadId: string }): Promise<Thread>;
   protected abstract replyToThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
-    input: ReplyThreadInput,
+    pull: IssueRef,
+    input: ReplyThreadInput & { threadId: string },
   ): Promise<ThreadComment>;
-  protected abstract resolveThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
-  ): Promise<Thread>;
-  protected abstract unresolveThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
-  ): Promise<Thread>;
+  protected abstract resolveThread(pull: IssueRef, thread: { threadId: string }): Promise<Thread>;
+  protected abstract unresolveThread(pull: IssueRef, thread: { threadId: string }): Promise<Thread>;
 
   protected filterThreadsByState(threads: Thread[], state?: ThreadState): Thread[] {
     if (state === undefined || state === "all") {

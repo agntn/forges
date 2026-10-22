@@ -14,7 +14,13 @@
 import type { ForgeProvider as Forge, ReleaseRef } from "forges";
 import { gitlab } from "forges/gitlab";
 
-import { ForgeBackedProvider, type ForgeOptions } from "./forge.ts";
+import {
+  ForgeBackedProvider,
+  type ForgeOptions,
+  type ReleaseTag,
+  type ReviewThreadRef,
+} from "./forge.ts";
+
 import {
   type ContinuedPage,
   type Positioned,
@@ -29,6 +35,7 @@ import type {
   RepositoryContentsOptions,
   RepositoryEntry,
   ProviderConfig,
+  RepoRef,
   Repository,
   RepositoryMergeSettings,
   RepositoryPermission,
@@ -51,6 +58,7 @@ import type {
   ContributionTemplateKind,
   ContributionTemplateSummary,
   Issue,
+  IssueRef,
   PullRequest,
   ClosingIssue,
   PullRequestCheck,
@@ -564,8 +572,12 @@ function assertNoCommaLabels(input: UpdateIssueInput): void {
   }
 }
 
+/** An issue or merge request, with the route GitLab files its notes under. */
+type Noteable = Readonly<IssueRef & { resource: "issues" | "merge_requests" }>;
+
 /**
  * GitLab provider — implements the unified Provider base class for GitLab API v4.
+
  *
  * Handles the fundamental differences between GitLab and GitHub:
  * - Private-Token authentication
@@ -582,8 +594,11 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   private readonly projectIdCacheTtl: number;
 
   constructor(config: ProviderConfig) {
-    const apiBaseURL = normalizeApiBaseURL(config.baseURL, "https://gitlab.com/api/v4", "/api/v4");
-    super("gitlab", apiBaseURL, config.token ?? "");
+    const apiBaseURL = normalizeApiBaseURL(config.baseURL, {
+      fallbackBaseURL: "https://gitlab.com/api/v4",
+      apiPath: "/api/v4",
+    });
+    super("gitlab", { apiBaseURL, token: config.token ?? "" });
     this.apiBaseURL = apiBaseURL;
 
     this.projectIdCacheMax = normalizePositiveInteger(
@@ -601,9 +616,9 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   /** The project id comes along, so later reads by path skip their lookup. */
-  protected override async getRepo(owner: string, repo: string): Promise<Repository> {
-    const repository = await super.getRepo(owner, repo);
-    this.setCachedProjectId(`${owner}/${repo}`, Number(repository.id));
+  protected override async getRepo(ref: RepoRef): Promise<Repository> {
+    const repository = await super.getRepo(ref);
+    this.setCachedProjectId(`${ref.owner}/${ref.repo}`, Number(repository.id));
     return repository;
   }
 
@@ -617,29 +632,22 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   /** GitLab keys a release by its tag, so the update needs no read first. */
-  protected override releaseRef(
-    forge: Forge,
-    owner: string,
-    repo: string,
-    tag: string,
-  ): Promise<ReleaseRef> {
-    const ref = this.repoRef(forge, owner, repo);
+  protected override releaseRef(forge: Forge, release: ReleaseTag): Promise<ReleaseRef> {
     return Promise.resolve({
       forge: forge.forge,
       instance: forge.instance,
-      repo: ref,
-      id: tag,
-      tag,
+      repo: this.repoRef(forge, release),
+      id: release.tag,
+      tag: release.tag,
     });
   }
 
   /** GitLab answered every state when none was named, and keeps doing so. */
   protected override listIssues(
-    owner: string,
-    repo: string,
+    ref: RepoRef,
     options?: Positioned<ListOptions>,
   ): Promise<ContinuedPage<Issue>> {
-    return super.listIssues(owner, repo, { ...options, state: options?.state ?? "all" });
+    return super.listIssues(ref, { ...options, state: options?.state ?? "all" });
   }
 
   protected override mapOwner(raw: GitLabProject): Owner {
@@ -1012,8 +1020,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
 
   /** Version order, newest first, as GitHub lists them; `forges` doesn't ask for it. */
   protected override async listTags(
-    owner: string,
-    repo: string,
+    { owner, repo }: RepoRef,
     options?: WithPage<ListTagsOptions>,
   ): Promise<NumberedPage<Tag>> {
     try {
@@ -1057,16 +1064,14 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   protected override async readRepositoryContents(
-    owner: string,
-    repo: string,
-    path: string,
-    options?: RepositoryContentsOptions,
+    { owner, repo }: RepoRef,
+    { path, ...options }: RepositoryContentsOptions & { path: string },
   ): Promise<RepositoryContents> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const ref = options?.ref ?? "HEAD";
       if (path !== "") {
-        const file = await this.tryRepositoryFile(projectId, path, ref);
+        const file = await this.tryRepositoryFile(projectId, { path, ref });
         if (file !== null) {
           assertContinuationRef(options, file.commit_id);
           assertFileSize(path, file.size);
@@ -1114,8 +1119,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   /** The files API answers 404 for a directory too, so null means "try the tree". */
   private async tryRepositoryFile(
     projectId: number,
-    path: string,
-    ref: string,
+    { path, ref }: Readonly<{ path: string; ref: string }>,
   ): Promise<GitLabRepositoryFile | null> {
     try {
       return await this.client<GitLabRepositoryFile>(
@@ -1183,8 +1187,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
 
   private async collectLocalContributionTemplates(
     projectId: number,
-    directory: string,
-    ref: string,
+    { directory, ref }: Readonly<{ directory: string; ref: string }>,
   ): Promise<Map<string, string>> {
     const local = new Map<string, string>();
     let page = 1;
@@ -1211,9 +1214,8 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   protected override async listContributionTemplates(
-    owner: string,
-    repo: string,
-    kind: ContributionTemplateKind,
+    { owner, repo }: RepoRef,
+    { kind }: { kind: ContributionTemplateKind },
   ): Promise<ContributionTemplateSummary[]> {
     try {
       const project = await this.client<GitLabProject>(
@@ -1225,7 +1227,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       const directory = this.contributionTemplateDirectory(kind);
       const [rows, local] = await Promise.all([
         this.collectContributionTemplateRows(project.id, apiType),
-        this.collectLocalContributionTemplates(project.id, directory, sourceRef),
+        this.collectLocalContributionTemplates(project.id, { directory, ref: sourceRef }),
       ]);
       const seen = new Set<string>();
       return rows.flatMap((row): ContributionTemplateSummary[] => {
@@ -1252,8 +1254,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   protected override async readContributionTemplate(
-    owner: string,
-    repo: string,
+    { owner, repo }: RepoRef,
     template: ContributionTemplateSummary,
   ): Promise<string> {
     try {
@@ -1275,10 +1276,8 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   protected override async readCiJobLog(
-    owner: string,
-    repo: string,
-    jobId: string,
-    options?: CiJobLogOptions,
+    { owner, repo }: RepoRef,
+    { jobId, ...options }: CiJobLogOptions & { jobId: string },
   ): Promise<CiJobLog> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
@@ -1301,7 +1300,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     }
   }
 
-  protected override async getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
+  protected override async getCommit(
+    { owner, repo }: RepoRef,
+    { sha }: { sha: string },
+  ): Promise<Commit> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const encodedSha = encodePathSegment(sha, "Commit SHA");
@@ -1342,11 +1344,8 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
    * neither what base has that head lacks nor whether it cut the file list.
    */
   protected override async compareCommits(
-    owner: string,
-    repo: string,
-    base: string,
-    head: string,
-    options?: WithPage<CompareCommitsOptions>,
+    { owner, repo }: RepoRef,
+    { base, head, ...options }: WithPage<CompareCommitsOptions> & { base: string; head: string },
   ): Promise<Numbered<CommitComparison>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
@@ -1372,10 +1371,8 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   protected override async readCommitPatch(
-    owner: string,
-    repo: string,
-    sha: string,
-    options?: CommitPatchOptions,
+    { owner, repo }: RepoRef,
+    { sha, ...options }: CommitPatchOptions & { sha: string },
   ): Promise<CommitPatch> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
@@ -1588,10 +1585,8 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   // --- Issues ---
 
   protected override async searchIssues(
-    owner: string,
-    repo: string,
-    search: string,
-    options?: WithPage<ListOptions>,
+    { owner, repo }: RepoRef,
+    { query: search, ...options }: WithPage<ListOptions> & { query: string },
   ): Promise<NumberedSearchPage<Issue>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
@@ -1620,7 +1615,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     }
   }
 
-  protected override async getIssue(owner: string, repo: string, iid: number): Promise<Issue> {
+  protected override async getIssue({ owner, repo, number: iid }: IssueRef): Promise<Issue> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const issue = await this.client<GitLabIssue>(
@@ -1633,8 +1628,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   protected override async createIssue(
-    owner: string,
-    repo: string,
+    { owner, repo }: RepoRef,
     input: CreateIssueInput,
   ): Promise<Issue> {
     try {
@@ -1658,8 +1652,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   // --- Merge Requests (mapped to Pull Requests) ---
 
   protected override async listPullRequests(
-    owner: string,
-    repo: string,
+    { owner, repo }: RepoRef,
     options?: WithPage<ListOptions>,
   ): Promise<NumberedPage<PullRequest>> {
     try {
@@ -1687,9 +1680,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   protected override async listPullRequestFiles(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListPullRequestFilesOptions>,
   ): Promise<NumberedPage<PullRequestFile>> {
     try {
@@ -1715,9 +1706,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
    * GraphQL names that one, while REST can still point at the previous head's after a push.
    */
   protected override async listPullRequestChecks(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListPullRequestChecksOptions>,
   ): Promise<NumberedPage<PullRequestCheck>> {
     try {
@@ -1768,10 +1757,8 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
 
   /** Pipelines filter on an exact SHA, so a branch or tag is resolved to its commit first. */
   protected override async listCommitChecks(
-    owner: string,
-    repo: string,
-    ref: string,
-    options?: WithPage<ListCommitChecksOptions>,
+    { owner, repo }: RepoRef,
+    { ref, ...options }: WithPage<ListCommitChecksOptions> & { ref: string },
   ): Promise<NumberedPage<PullRequestCheck>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
@@ -1822,10 +1809,8 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   protected override getPullRequestReview(
-    _owner: string,
-    _repo: string,
-    _number: number,
-    _reviewId: string,
+    _pull: IssueRef,
+    _request: { reviewId: string },
   ): Promise<PullRequestReview> {
     return Promise.reject(
       new ForgesError("GitLab exposes reviewer stances, not individual review bodies", {
@@ -1841,9 +1826,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
    * first. Neither endpoint paginates, so the page is cut here.
    */
   protected override async listPullRequestReviews(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListPullRequestReviewsOptions>,
   ): Promise<NumberedPage<PullRequestReview>> {
     try {
@@ -1858,14 +1841,17 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       for (const approval of approvals.approved_by ?? []) {
         approved.add(approval.user.id);
         reviews.push(
-          this.mapPullRequestReview(approval.user, "approved", approval.approved_at ?? ""),
+          this.mapPullRequestReview(approval.user, {
+            state: "approved",
+            submittedAt: approval.approved_at ?? "",
+          }),
         );
       }
       for (const reviewer of reviewers ?? []) {
         if (approved.has(reviewer.user.id) || reviewer.state == null) continue;
         const state = normalizeReviewState(reviewer.state);
         if (state === null) continue;
-        reviews.push(this.mapPullRequestReview(reviewer.user, state, ""));
+        reviews.push(this.mapPullRequestReview(reviewer.user, { state, submittedAt: "" }));
       }
 
       const page = options?.page ?? 1;
@@ -1886,8 +1872,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
 
   private mapPullRequestReview(
     user: GitLabReviewUser,
-    state: PullRequestReviewState,
-    submittedAt: string,
+    { state, submittedAt }: Readonly<{ state: PullRequestReviewState; submittedAt: string }>,
   ): PullRequestReview {
     return {
       id: String(user.id),
@@ -1919,13 +1904,9 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
 
   /** A draft or pre-release asked of GitLab would silently publish, so it is refused instead. */
   /** GitLab has no drafts or pre-releases, so only the name and notes go out. */
-  protected override createRelease(
-    owner: string,
-    repo: string,
-    input: CreateReleaseInput,
-  ): Promise<Release> {
+  protected override createRelease(ref: RepoRef, input: CreateReleaseInput): Promise<Release> {
     this.assertReleaseFlags(input);
-    return super.createRelease(owner, repo, {
+    return super.createRelease(ref, {
       tag: input.tag,
       ref: input.ref,
       name: input.name,
@@ -1935,16 +1916,14 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
 
   /** Clearing a flag GitLab never had leaves nothing to send, so that update is a read. */
   protected override updateRelease(
-    owner: string,
-    repo: string,
-    tag: string,
-    input: UpdateReleaseInput,
+    ref: RepoRef,
+    { tag, ...input }: UpdateReleaseInput & { tag: string },
   ): Promise<Release> {
     this.assertReleaseFlags(input);
     if (input.name === undefined && input.body === undefined) {
-      return this.getRelease(owner, repo, tag);
+      return this.getRelease(ref, { tag });
     }
-    return super.updateRelease(owner, repo, tag, { name: input.name, body: input.body });
+    return super.updateRelease(ref, { tag, name: input.name, body: input.body });
   }
 
   private assertReleaseFlags(input: { draft?: boolean; prerelease?: boolean }): void {
@@ -1963,10 +1942,8 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   protected override async searchPullRequests(
-    owner: string,
-    repo: string,
-    search: string,
-    options?: WithPage<ListOptions>,
+    { owner, repo }: RepoRef,
+    { query: search, ...options }: WithPage<ListOptions> & { query: string },
   ): Promise<NumberedSearchPage<PullRequestSearchItem>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
@@ -1999,21 +1976,22 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     searchQuery: string,
     options?: WithPage<GlobalPullRequestSearchOptions>,
   ): Promise<Numbered<GlobalPullRequestSearchResult>> {
-    return this.searchAcrossProjects<GitLabMergeRequest, PullRequestSearchItem>(
-      "merge_requests",
-      searchQuery,
+    return this.searchAcrossProjects<GitLabMergeRequest, PullRequestSearchItem>(searchQuery, {
+      route: "merge_requests",
       options,
-      (raw) => this.mapPullRequestSearchItem(raw),
-    );
+      map: (raw) => this.mapPullRequestSearchItem(raw),
+    });
   }
 
   protected override async searchIssuesGlobal(
     searchQuery: string,
     options?: WithPage<GlobalIssueSearchOptions>,
   ): Promise<Numbered<GlobalIssueSearchResult>> {
-    return this.searchAcrossProjects<GitLabIssue, Issue>("issues", searchQuery, options, (raw) =>
-      this.mapIssue(raw),
-    );
+    return this.searchAcrossProjects<GitLabIssue, Issue>(searchQuery, {
+      route: "issues",
+      options,
+      map: (raw) => this.mapIssue(raw),
+    });
   }
 
   /** Without `scope=all`, GitLab's `/merge_requests` and `/issues` list only the caller's own. */
@@ -2021,10 +1999,16 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     TRaw extends { references?: { full?: string | null } | null },
     T extends Issue,
   >(
-    route: "merge_requests" | "issues",
     searchQuery: string,
-    options: WithPage<GlobalIssueSearchOptions> | undefined,
-    map: (raw: TRaw) => T,
+    {
+      route,
+      options,
+      map,
+    }: Readonly<{
+      route: "merge_requests" | "issues";
+      options: WithPage<GlobalIssueSearchOptions> | undefined;
+      map: (raw: TRaw) => T;
+    }>,
   ): Promise<NumberedSearchPage<T & { repository: string }> & { resultLimit: null }> {
     const noun = route === "issues" ? "Issue" : "Pull-request";
     const plural = route === "issues" ? "issues" : "merge requests";
@@ -2113,11 +2097,11 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     }
   }
 
-  protected override async getPullRequest(
-    owner: string,
-    repo: string,
-    iid: number,
-  ): Promise<PullRequest> {
+  protected override async getPullRequest({
+    owner,
+    repo,
+    number: iid,
+  }: IssueRef): Promise<PullRequest> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const mr = await this.client<GitLabMergeRequest>(
@@ -2129,11 +2113,11 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     }
   }
 
-  protected override async listClosingIssues(
-    owner: string,
-    repo: string,
-    iid: number,
-  ): Promise<ClosingIssue[]> {
+  protected override async listClosingIssues({
+    owner,
+    repo,
+    number: iid,
+  }: IssueRef): Promise<ClosingIssue[]> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const issues: ClosingIssue[] = [];
@@ -2165,8 +2149,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   protected override async createPullRequest(
-    owner: string,
-    repo: string,
+    { owner, repo }: RepoRef,
     input: CreatePullRequestInput,
   ): Promise<PullRequest> {
     try {
@@ -2200,9 +2183,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
    * list goes out as `assignee_id: 0`, GitLab's way to unassign everyone.
    */
   protected override async updatePullRequest(
-    owner: string,
-    repo: string,
-    iid: number,
+    { owner, repo, number: iid }: IssueRef,
     input: UpdatePullRequestInput,
   ): Promise<PullRequest> {
     assertNoCommaLabels(input);
@@ -2223,9 +2204,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
    * so a request for `rebase` is refused before anything is sent.
    */
   protected override async mergePullRequest(
-    owner: string,
-    repo: string,
-    iid: number,
+    { owner, repo, number: iid }: IssueRef,
     input: MergePullRequestInput,
   ): Promise<PullRequest> {
     if (input.method === "rebase") {
@@ -2272,9 +2251,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
 
   /** The same single PUT as a merge request update, on the issue route. */
   protected override async updateIssue(
-    owner: string,
-    repo: string,
-    iid: number,
+    { owner, repo, number: iid }: IssueRef,
     input: UpdateIssueInput,
   ): Promise<Issue> {
     assertNoCommaLabels(input);
@@ -2330,21 +2307,17 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   // --- Comments ---
 
   protected override async listIssueComments(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListCommentOptions>,
   ): Promise<NumberedPage<Comment>> {
-    return this.listNotes(owner, repo, "issues", number, options);
+    return this.listNotes({ owner, repo, number, resource: "issues" }, options);
   }
 
   protected override async listPullRequestComments(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListCommentOptions>,
   ): Promise<NumberedPage<Comment>> {
-    return this.listNotes(owner, repo, "merge_requests", number, options);
+    return this.listNotes({ owner, repo, number, resource: "merge_requests" }, options);
   }
 
   /**
@@ -2361,10 +2334,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
    * not describe the returned items.
    */
   private async listNotes(
-    owner: string,
-    repo: string,
-    resource: "issues" | "merge_requests",
-    number: number,
+    { owner, repo, resource, number }: Noteable,
     options?: WithPage<ListCommentOptions>,
   ): Promise<NumberedPage<Comment>> {
     try {
@@ -2391,65 +2361,50 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   protected override async getIssueComment(
-    owner: string,
-    repo: string,
-    number: number,
-    commentId: string,
+    { owner, repo, number }: IssueRef,
+    { commentId }: { commentId: string },
   ): Promise<Comment> {
-    return this.getNote(owner, repo, "issues", number, commentId);
+    return this.getNote({ owner, repo, number, resource: "issues" }, commentId);
   }
 
   protected override async getPullRequestComment(
-    owner: string,
-    repo: string,
-    number: number,
-    commentId: string,
+    { owner, repo, number }: IssueRef,
+    { commentId }: { commentId: string },
   ): Promise<Comment> {
-    return this.getNote(owner, repo, "merge_requests", number, commentId);
+    return this.getNote({ owner, repo, number, resource: "merge_requests" }, commentId);
   }
 
   protected override async createIssueComment(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     input: CreateCommentInput,
   ): Promise<Comment> {
-    return this.createNote(owner, repo, "issues", number, input);
+    return this.createNote({ owner, repo, number, resource: "issues" }, input);
   }
 
   protected override async createPullRequestComment(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     input: CreateCommentInput,
   ): Promise<Comment> {
-    return this.createNote(owner, repo, "merge_requests", number, input);
+    return this.createNote({ owner, repo, number, resource: "merge_requests" }, input);
   }
 
   protected override async listIssueReactions(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListReactionOptions>,
   ): Promise<NumberedPage<Reaction>> {
-    return this.listAwardEmoji(owner, repo, "issues", number, options);
+    return this.listAwardEmoji({ owner, repo, number, resource: "issues" }, options);
   }
 
   protected override async listPullRequestReactions(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListReactionOptions>,
   ): Promise<NumberedPage<Reaction>> {
-    return this.listAwardEmoji(owner, repo, "merge_requests", number, options);
+    return this.listAwardEmoji({ owner, repo, number, resource: "merge_requests" }, options);
   }
 
   /** Oldest first, and a note's route already sits under its issue or merge request. */
   private async listAwardEmoji(
-    owner: string,
-    repo: string,
-    resource: "issues" | "merge_requests",
-    number: number,
+    { owner, repo, resource, number }: Noteable,
     options?: WithPage<ListReactionOptions>,
   ): Promise<NumberedPage<Reaction>> {
     try {
@@ -2474,10 +2429,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   private async createNote(
-    owner: string,
-    repo: string,
-    resource: "issues" | "merge_requests",
-    number: number,
+    { owner, repo, resource, number }: Noteable,
     input: CreateCommentInput,
   ): Promise<Comment> {
     try {
@@ -2504,10 +2456,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
    * a discussion comment.
    */
   private async getNote(
-    owner: string,
-    repo: string,
-    resource: "issues" | "merge_requests",
-    number: number,
+    { owner, repo, resource, number }: Noteable,
     commentId: string,
   ): Promise<Comment> {
     try {
@@ -2529,9 +2478,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   // --- Threads ---
 
   protected override async listThreads(
-    owner: string,
-    repo: string,
-    number: number,
+    { owner, repo, number }: IssueRef,
     options?: WithPage<ListThreadOptions>,
   ): Promise<NumberedPage<Thread>> {
     try {
@@ -2584,13 +2531,11 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   protected override async getThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
+    { owner, repo, number }: IssueRef,
+    { threadId }: { threadId: string },
   ): Promise<Thread> {
     try {
-      const discussion = await this.fetchDiscussion(owner, repo, number, threadId);
+      const discussion = await this.fetchDiscussion({ owner, repo, number, threadId });
       return this.mapThread(discussion);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
@@ -2598,14 +2543,11 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   protected override async replyToThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
-    input: ReplyThreadInput,
+    { owner, repo, number }: IssueRef,
+    { threadId, ...input }: ReplyThreadInput & { threadId: string },
   ): Promise<ThreadComment> {
     try {
-      const url = await this.discussionUrl(owner, repo, number, threadId);
+      const url = await this.discussionUrl({ owner, repo, number, threadId });
       const note = await this.client<GitLabDiscussionNote>(`${url}/notes`, {
         method: "POST",
         body: { body: input.body },
@@ -2624,21 +2566,17 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   protected override async resolveThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
+    { owner, repo, number }: IssueRef,
+    { threadId }: { threadId: string },
   ): Promise<Thread> {
-    return this.setDiscussionResolved(owner, repo, number, threadId, true);
+    return this.setDiscussionResolved({ owner, repo, number, threadId }, true);
   }
 
   protected override async unresolveThread(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
+    { owner, repo, number }: IssueRef,
+    { threadId }: { threadId: string },
   ): Promise<Thread> {
-    return this.setDiscussionResolved(owner, repo, number, threadId, false);
+    return this.setDiscussionResolved({ owner, repo, number, threadId }, false);
   }
 
   /**
@@ -2654,36 +2592,28 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     }
   }
 
-  private async discussionUrl(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
-  ): Promise<string> {
+  private async discussionUrl({ owner, repo, number, threadId }: ReviewThreadRef): Promise<string> {
     const projectId = await this.resolveProjectId(owner, repo);
     return `/projects/${projectId}/merge_requests/${encodePathSegment(number, "Number")}/discussions/${encodePathSegment(threadId, "Thread id")}`;
   }
 
-  private async fetchDiscussion(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
-  ): Promise<GitLabDiscussion> {
+  private async fetchDiscussion({
+    owner,
+    repo,
+    number,
+    threadId,
+  }: ReviewThreadRef): Promise<GitLabDiscussion> {
     return cachedFetch<GitLabDiscussion>(this.client, {
-      url: await this.discussionUrl(owner, repo, number, threadId),
+      url: await this.discussionUrl({ owner, repo, number, threadId }),
     });
   }
 
   private async setDiscussionResolved(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
+    { owner, repo, number, threadId }: ReviewThreadRef,
     resolved: boolean,
   ): Promise<Thread> {
     try {
-      const url = await this.discussionUrl(owner, repo, number, threadId);
+      const url = await this.discussionUrl({ owner, repo, number, threadId });
       const discussion = await this.client<GitLabDiscussion>(url, {
         method: "PUT",
         body: { resolved },
