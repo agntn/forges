@@ -69,7 +69,7 @@ vi.mock("forges/forgejo", async () => {
 import { rawFetch } from "../src/http.ts";
 import { cachedFetch } from "../src/cache.ts";
 import { cursorFor } from "./support/cursor.ts";
-import { forgeOptions, listing, raws, repoRef, sharedForge } from "./support/forge.ts";
+import { forgeOptions, listing, raws, ownerRef, repoRef, sharedForge } from "./support/forge.ts";
 import { FetchError } from "../src/errors.ts";
 
 const forge = sharedForge("gitea", "gitea.com");
@@ -310,12 +310,9 @@ describe("Gitea Provider", () => {
 
       const result = await provider.repos.list("testowner", { perPage: 50 });
 
-      expect(forge.repos.byOwner).toHaveBeenCalledWith(
-        repoRef(forge, { owner: "testowner", name: "" }),
-        {
-          perPage: 50,
-        },
-      );
+      expect(forge.repos.byOwner).toHaveBeenCalledWith(ownerRef(forge, "testowner"), {
+        perPage: 50,
+      });
       expect(result.items[0]).toEqual({
         id: "100",
         name: "test-repo",
@@ -348,13 +345,10 @@ describe("Gitea Provider", () => {
       const first = await provider.repos.list("testowner");
       await provider.repos.list("testowner", { cursor: first.nextCursor });
 
-      expect(forge.repos.byOwner).toHaveBeenLastCalledWith(
-        repoRef(forge, { owner: "testowner", name: "" }),
-        {
-          perPage: 30,
-          cursor: { nextUrl: "https://gitea.com/api/v1/users/testowner/repos?page=2" },
-        },
-      );
+      expect(forge.repos.byOwner).toHaveBeenLastCalledWith(ownerRef(forge, "testowner"), {
+        perPage: 30,
+        cursor: { nextUrl: "https://gitea.com/api/v1/users/testowner/repos?page=2" },
+      });
     });
 
     it("hands the next page URL back as a cursor", async () => {

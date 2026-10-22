@@ -46,7 +46,15 @@ vi.mock("forges/gitlab", async () => {
 });
 
 import { GitLabProvider } from "../src/providers/gitlab.ts";
-import { failing, forgeOptions, listing, raws, repoRef, sharedForge } from "./support/forge.ts";
+import {
+  failing,
+  forgeOptions,
+  listing,
+  raws,
+  ownerRef,
+  repoRef,
+  sharedForge,
+} from "./support/forge.ts";
 import { cursorFor } from "./support/cursor.ts";
 
 // --- Fixtures (matching real GitLab API v4 responses) ---
@@ -624,12 +632,9 @@ describe("GitLabProvider", () => {
 
       const result = await gl.repos.list("parent/child", { perPage: 10 });
 
-      expect(forge.repos.byOwner).toHaveBeenCalledWith(
-        repoRef(forge, { owner: "parent/child", name: "" }),
-        {
-          perPage: 10,
-        },
-      );
+      expect(forge.repos.byOwner).toHaveBeenCalledWith(ownerRef(forge, "parent/child"), {
+        perPage: 10,
+      });
       expect(result.totalCount).toBe(42);
       expect(result.items[0]).toMatchObject({
         id: "278964",

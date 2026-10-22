@@ -96,7 +96,7 @@
     "@agntn/hashes": "0.6.7",
     "@agntn/tools": "0.2.1",
     "@modelcontextprotocol/server": "2.2.0",
-    "forges": "https://pkg.pr.new/forges@13a3007",
+    "forges": "0.2.0",
     "unstorage": "1.17.5"
   },
   "devDependencies": {

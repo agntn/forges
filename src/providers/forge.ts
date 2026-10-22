@@ -465,6 +465,7 @@ export abstract class ForgeBackedProvider<
     };
   }
 
+  /** `forges` tells a namespace ref by `kind` alone; an empty name would still read as a repo. */
   protected listOwnerRepos(
     owner: string,
     options?: Positioned<ListOptions>,
@@ -473,7 +474,7 @@ export abstract class ForgeBackedProvider<
     return this.forgeCall((forge) =>
       this.forgePage(
         forge.repos.byOwner(
-          { forge: forge.forge, instance: forge.instance, owner, name: "" },
+          { forge: forge.forge, instance: forge.instance, owner, name: "", kind: "namespace" },
           this.forgePageOptions(options),
         ),
         (repo) => this.mapRepository(repo.raw as never),

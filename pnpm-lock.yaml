@@ -33,8 +33,8 @@ importers:
         specifier: 2.2.0
         version: 2.2.0
       forges:
-        specifier: https://pkg.pr.new/forges@13a3007
-        version: https://pkg.pr.new/forges@13a3007
+        specifier: 0.2.0
+        version: 0.2.0
       unstorage:
         specifier: 1.17.5
         version: 1.17.5
@@ -2152,9 +2152,8 @@ packages:
   flatted@3.4.4:
     resolution: {integrity: sha512-5+ybhBZANEJxaH3X5evAFatUxLfEHSr7n6kYJ+1Qd0mUqr4eu9gIf6GDbWHf8RJijHrjjO8G+la14SlL2SeS1Q==}
 
-  forges@https://pkg.pr.new/forges@13a3007:
-    resolution: {integrity: sha512-TyuGkYR+yxDPToOzxDc8qtX+AwSSvOBbx5iPckHTuP0E7PFfa9apH3JTgkyW1fiAR+LMS1Mn8RLBSXluVLhS7w==, tarball: https://pkg.pr.new/forges@13a3007}
-    version: 0.1.0
+  forges@0.2.0:
+    resolution: {integrity: sha512-n7r9408sEp5U53P7JalJ0bPxqUO7uR0WXQ3HyWTcJc/M2ItXL+mDSUALU7cz4Uig0zNWBAOE68ITPjSVoFktww==}
     engines: {node: '>=22.18'}
 
   formdata-polyfill@4.0.10:
@@ -4984,7 +4983,7 @@ snapshots:
 
   flatted@3.4.4: {}
 
-  forges@https://pkg.pr.new/forges@13a3007: {}
+  forges@0.2.0: {}
 
   formdata-polyfill@4.0.10:
     dependencies:
