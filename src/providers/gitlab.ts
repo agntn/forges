@@ -612,6 +612,11 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     return gitlab(options) as Forge;
   }
 
+  /** The mappers here read GitLab's own payload. */
+  protected override forgePayload(item: Readonly<{ raw: unknown }>): unknown {
+    return item.raw;
+  }
+
   /** GitLab keys a release by its tag, so the update needs no read first. */
   protected override releaseRef(
     forge: Forge,
@@ -636,13 +641,6 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     options?: Positioned<ListOptions>,
   ): Promise<ContinuedPage<Issue>> {
     return super.listIssues(owner, repo, { ...options, state: options?.state ?? "all" });
-  }
-
-  protected override listRepos(
-    owner: string,
-    options?: Positioned<ListOptions>,
-  ): Promise<ContinuedPage<Repository>> {
-    return this.listOwnerRepos(owner, options);
   }
 
   protected override mapOwner(raw: GitLabProject): Owner {
@@ -1037,7 +1035,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       const tags: Tag[] = [];
       for (let offset = 0; offset < rows.length; offset += MAX_TAG_TARGET_REQUESTS) {
         const batch = rows.slice(offset, offset + MAX_TAG_TARGET_REQUESTS);
-        tags.push(...(await Promise.all(batch.map((raw) => this.mapTag(projectId, raw)))));
+        tags.push(...(await Promise.all(batch.map((raw) => this.peelTag(projectId, raw)))));
       }
       return this.parsePagination(tags, headers);
     } catch (error: unknown) {
@@ -1046,7 +1044,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   /** Reads the target of a tag GitLab can't date after its commit. A 404 means a tree. */
-  private async mapTag(projectId: number, raw: GitLabTag): Promise<Tag> {
+  private async peelTag(projectId: number, raw: GitLabTag): Promise<Tag> {
     const sha = raw.commit?.id ?? null;
     if (sha === null || raw.target === sha || !tagPredatesCommit(raw))
       return { name: raw.name, sha };

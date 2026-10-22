@@ -7,7 +7,7 @@ import { Buffer } from "node:buffer";
 import type { ForgeProvider as Forge, ReleaseRef } from "forges";
 import { github } from "forges/github";
 
-import { ForgeBackedProvider, type ForgeOptions } from "./forge.ts";
+import { commitTag, ForgeBackedProvider, type CommitTag, type ForgeOptions } from "./forge.ts";
 import {
   type ContinuedPage,
   type Positioned,
@@ -80,6 +80,7 @@ import type {
   UpdateIssueInput,
   UpdatePullRequestInput,
   MergePullRequestInput,
+  Tag,
 } from "../types.ts";
 import {
   FetchError,
@@ -934,11 +935,13 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     return github(options) as Forge;
   }
 
-  protected override listRepos(
-    owner: string,
-    options?: Positioned<ListOptions>,
-  ): Promise<ContinuedPage<Repository>> {
-    return this.listOwnerRepos(owner, options);
+  /** The mappers here read GitHub's own payload. */
+  protected override forgePayload(item: Readonly<{ raw: unknown }>): unknown {
+    return item.raw;
+  }
+
+  protected override mapTag(raw: CommitTag): Tag {
+    return commitTag(raw);
   }
 
   protected override mapOwner(raw: GitHubOwner): Owner {
