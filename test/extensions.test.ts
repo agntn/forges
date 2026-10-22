@@ -131,6 +131,9 @@ const toolNames = [
   "forges_issues_comments_create",
   "forges_issues_create",
   "forges_issues_update",
+  "forges_issues_sub_issues",
+  "forges_issues_sub_issues_add",
+  "forges_issues_sub_issues_remove",
   "forges_pull_requests_list",
   "forges_pull_requests_search_global",
   "forges_pull_requests_search",
@@ -1718,6 +1721,8 @@ describe("Forges OMP extension", () => {
     const mutationTools: Record<string, true> = {
       forges_issues_create: true,
       forges_issues_update: true,
+      forges_issues_sub_issues_add: true,
+      forges_issues_sub_issues_remove: true,
       forges_issues_comments_create: true,
       forges_pull_requests_create: true,
       forges_pull_requests_comments_create: true,

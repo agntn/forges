@@ -120,6 +120,9 @@ const toolNames = [
   "forges_issues_comments_create",
   "forges_issues_create",
   "forges_issues_update",
+  "forges_issues_sub_issues",
+  "forges_issues_sub_issues_add",
+  "forges_issues_sub_issues_remove",
   "forges_pull_requests_list",
   "forges_pull_requests_search_global",
   "forges_pull_requests_search",
@@ -150,6 +153,8 @@ const toolNames = [
 const writingTools = new Set([
   "forges_issues_create",
   "forges_issues_update",
+  "forges_issues_sub_issues_add",
+  "forges_issues_sub_issues_remove",
   "forges_issues_comments_create",
   "forges_pull_requests_comments_create",
   "forges_pull_requests_create",

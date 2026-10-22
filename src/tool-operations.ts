@@ -82,6 +82,7 @@ import type {
   RepositoryContents,
   RepositoryContentsOptions,
   SearchPageResult,
+  SubIssue,
   Tag,
   Thread,
   ThreadComment,
@@ -691,6 +692,16 @@ export interface GetPullRequestReviewParams extends GetRepositoryItemParams {
 
 export interface ListReactionsParams extends ListCommentsParams {
   commentId?: string;
+}
+
+export type ListSubIssuesParams = ListCommentsParams;
+
+export interface SubIssueParams extends GetRepositoryItemParams, AccountParams {
+  subIssue: number;
+}
+
+export interface AddSubIssueParams extends SubIssueParams {
+  replaceParent?: boolean;
 }
 
 export interface GetCommentParams extends RepositoryParams {
@@ -1318,6 +1329,45 @@ export async function listIssueReactions(
     reactionListOptions(params),
   );
   return result(reactions, { platform: params.platform });
+}
+
+export async function listSubIssues(
+  args: ListSubIssuesParams,
+): Promise<ForgesToolResult<PageResult<Omit<SubIssue, "body">>>> {
+  const params = repositoryTarget(args);
+  const provider = await readProvider(params.platform);
+  const subIssues = await provider.issues.listSubIssues(
+    { owner: params.owner, repo: params.repo, number: params.number },
+    { cursor: params.cursor, perPage: params.perPage },
+  );
+  return result(summarizeIssuePage(subIssues), {
+    platform: params.platform,
+    note: "Issue bodies are omitted from list output; use forges_issues_get to read one body.",
+  });
+}
+
+export async function addSubIssue(args: AddSubIssueParams): Promise<ForgesToolResult<Issue>> {
+  const params = repositoryTarget(args);
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform, params.account);
+    const parent = await provider.issues.addSubIssue(
+      { owner: params.owner, repo: params.repo, number: params.number },
+      { subIssue: params.subIssue, replaceParent: params.replaceParent },
+    );
+    return result(parent, { platform: params.platform });
+  });
+}
+
+export async function removeSubIssue(args: SubIssueParams): Promise<ForgesToolResult<Issue>> {
+  const params = repositoryTarget(args);
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform, params.account);
+    const parent = await provider.issues.removeSubIssue(
+      { owner: params.owner, repo: params.repo, number: params.number },
+      { subIssue: params.subIssue },
+    );
+    return result(parent, { platform: params.platform });
+  });
 }
 
 export async function createIssue(args: CreateIssueParams): Promise<ForgesToolResult<Issue>> {

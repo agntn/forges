@@ -2417,6 +2417,183 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("sub-issues", () => {
+    const parent = { owner: "agntn", repo: "web", number: 292 };
+    /** Trimmed from GET /repos/agntn/web/issues/292/sub_issues?per_page=2, 2026-10-22. */
+    const ghSubIssue = {
+      id: 5854994243,
+      number: 303,
+      title: "Validate CSS values per property in web_reveal",
+      body: "`web_reveal` takes whatever value a declaration gives it.",
+      state: "open",
+      labels: [{ name: "enhancement" }],
+      user: { login: "oritwoen" },
+      assignees: [],
+      created_at: "2026-10-14T20:19:26Z",
+      updated_at: "2026-10-14T20:19:26Z",
+      html_url: "https://github.com/agntn/web/issues/303",
+      repository_url: "https://api.github.com/repos/agntn/web",
+      parent_issue_url: "https://api.github.com/repos/agntn/web/issues/292",
+    };
+    const ghParent = {
+      ...ghSubIssue,
+      id: 5819964898,
+      number: 292,
+      title: "Harden web_reveal",
+      html_url: "https://github.com/agntn/web/issues/292",
+      parent_issue_url: null,
+    };
+    const gitbucket = () =>
+      new GitHubProvider({ baseURL: "https://gitbucket.example.com/api/v3", token: "gb_test" });
+    /** Answers issue reads by number and both writes with the parent, the way GitHub does. */
+    const serve = (child: object = ghSubIssue, parentIssue: object = ghParent) =>
+      mocks.client.mockImplementation(async (url: string, options?: { method?: string }) =>
+        options?.method !== undefined || url.endsWith("/issues/292") ? parentIssue : child,
+      );
+
+    it("lists the children with their repository and pages", async () => {
+      serve();
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          ghSubIssue,
+          {
+            ...ghSubIssue,
+            id: 5854994244,
+            number: 12,
+            html_url: "https://github.com/agntn/tools/issues/12",
+            repository_url: "https://api.github.com/repos/agntn/tools",
+          },
+        ],
+        headers: makeHeaders(
+          '<https://api.github.com/repositories/1174766625/issues/292/sub_issues?per_page=2&page=2>; rel="next"',
+        ),
+      });
+
+      const result = await gh.issues.listSubIssues(parent, { perPage: 2 });
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(
+        mocks.client,
+        "/repos/agntn/web/issues/292/sub_issues",
+        { query: { per_page: "2" } },
+      );
+      expect(result.items.map(({ number, repository }) => ({ number, repository }))).toEqual([
+        { number: 303, repository: "agntn/web" },
+        { number: 12, repository: "agntn/tools" },
+      ]);
+      expect(result.items[0]).toMatchObject({ id: "5854994243", labels: ["enhancement"] });
+      expect(result.nextCursor).toBe(
+        cursorFor("issues.listSubIssues", {
+          page: 2,
+          subject: ["agntn", "web", 292],
+          filters: { perPage: 2 },
+        }),
+      );
+    });
+
+    it("hangs a child under the parent by its REST id, not its number", async () => {
+      serve();
+
+      const result = await gh.issues.addSubIssue(parent, { subIssue: 303 });
+
+      expect(mocks.client).toHaveBeenCalledWith("/repos/agntn/web/issues/303");
+      expect(mocks.client).toHaveBeenCalledWith("/repos/agntn/web/issues/292");
+      expect(mocks.client).toHaveBeenLastCalledWith("/repos/agntn/web/issues/292/sub_issues", {
+        method: "POST",
+        body: { sub_issue_id: 5854994243 },
+      });
+      expect(result).toMatchObject({ number: 292, title: "Harden web_reveal" });
+    });
+
+    it("moves a child from another parent only when asked", async () => {
+      serve();
+
+      await gh.issues.addSubIssue(parent, { subIssue: 303, replaceParent: true });
+
+      expect(mocks.client).toHaveBeenLastCalledWith("/repos/agntn/web/issues/292/sub_issues", {
+        method: "POST",
+        body: { sub_issue_id: 5854994243, replace_parent: true },
+      });
+    });
+
+    it("takes a child off the parent", async () => {
+      serve();
+
+      const result = await gh.issues.removeSubIssue(parent, { subIssue: 303 });
+
+      expect(mocks.client).toHaveBeenLastCalledWith("/repos/agntn/web/issues/292/sub_issue", {
+        method: "DELETE",
+        body: { sub_issue_id: 5854994243 },
+      });
+      expect(result.number).toBe(292);
+    });
+
+    it.each([
+      ["listSubIssues", ["agntn", "web", 292], "takes { owner, repo, number } as its first"],
+      ["addSubIssue", ["agntn", "web", 292, 303], "takes { owner, repo, number } as its first"],
+      ["removeSubIssue", [parent, 303], "takes { subIssue } as its second"],
+    ])("refuses the positional shape on %s before any request", async (method, args, message) => {
+      const call: unknown = Reflect.get(gh.issues, method);
+      if (typeof call !== "function") throw new Error(`${method} is missing`);
+
+      await expect(Reflect.apply(call, gh.issues, args)).rejects.toThrow(TypeError);
+      await expect(Reflect.apply(call, gh.issues, args)).rejects.toThrow(message);
+      expect(mocks.client).not.toHaveBeenCalled();
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    });
+
+    it("refuses an issue as its own child before any request", async () => {
+      await expect(gh.issues.addSubIssue(parent, { subIssue: 292 })).rejects.toMatchObject({
+        status: 400,
+        message: "Issue 292 cannot be a sub-issue of itself",
+      });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("answers not found for a pull request number and never links it", async () => {
+      serve({ ...ghSubIssue, pull_request: {} });
+
+      await expect(gh.issues.addSubIssue(parent, { subIssue: 303 })).rejects.toThrow(
+        "Issue not found: 303",
+      );
+      expect(mocks.client.mock.calls.some(([, options]) => options !== undefined)).toBe(false);
+    });
+
+    it("answers not found for a pull request as parent instead of an empty list", async () => {
+      serve(ghSubIssue, { ...ghParent, pull_request: {} });
+      mocks.rawFetch.mockResolvedValueOnce({ data: [], headers: makeHeaders() });
+
+      await expect(gh.issues.listSubIssues(parent)).rejects.toThrow("Issue not found: 292");
+      await expect(gh.issues.addSubIssue(parent, { subIssue: 303 })).rejects.toThrow(
+        "Issue not found: 292",
+      );
+      expect(mocks.client.mock.calls.some(([, options]) => options !== undefined)).toBe(false);
+    });
+
+    it("keeps a missing parent a 404 on GitHub", async () => {
+      mocks.client.mockRejectedValue(makeFetchError(404));
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(gh.issues.listSubIssues(parent)).rejects.toThrow(NotFoundError);
+    });
+
+    it("reports sub-issues as unsupported on a GitHub-compatible host that 404s them", async () => {
+      serve();
+      mocks.rawFetch
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce({ data: ghRepo, headers: new Headers(), status: 200 });
+
+      const error = await gitbucket()
+        .issues.listSubIssues(parent)
+        .catch((e: unknown) => e);
+
+      expect(error).not.toBeInstanceOf(NotFoundError);
+      expect(error).toMatchObject({
+        status: 501,
+        message: "Sub-issues are not supported by this GitHub-compatible host",
+      });
+    });
+  });
+
   // --- Pull Requests ---
 
   describe("pullRequests.list", () => {

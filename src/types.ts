@@ -719,6 +719,31 @@ export interface CreateCommentInput {
   body: string;
 }
 
+/** One issue by its repository and number, the parent in the sub-issue calls. */
+export interface IssueRef {
+  owner: string;
+  repo: string;
+  number: number;
+}
+
+/** A child of a parent issue, which may live in another repository of the same owner. */
+export interface SubIssue extends Issue {
+  /** `owner/name` of the repository the child lives in. */
+  repository: string;
+}
+
+/** Which issue of the parent's repository to hang under it or take off it. */
+export interface SubIssueInput {
+  /** The child's number, never the platform's internal id. */
+  subIssue: number;
+}
+
+/** Hanging a child under a parent. */
+export interface AddSubIssueInput extends SubIssueInput {
+  /** Move a child that already has another parent instead of refusing it. */
+  replaceParent?: boolean;
+}
+
 /** One emoji reaction on an issue, a pull request or one of their discussion comments. */
 export interface Reaction {
   /** GitHub's name, `+1` to `eyes`. An emoji GitHub can't react with keeps the forge's own. */
@@ -953,6 +978,12 @@ export interface IssueResource {
     number: number,
     options?: ListReactionOptions,
   ): Promise<PageResult<Reaction>>;
+  /** The children of one issue, in the parent's order. */
+  listSubIssues(issue: IssueRef, options?: ListCommentOptions): Promise<PageResult<SubIssue>>;
+  /** Hangs an issue of the same repository under `issue` and returns the parent. */
+  addSubIssue(issue: IssueRef, input: AddSubIssueInput): Promise<Issue>;
+  /** Takes a child off `issue`, leaving it an ordinary issue, and returns the parent. */
+  removeSubIssue(issue: IssueRef, input: SubIssueInput): Promise<Issue>;
 }
 
 /**

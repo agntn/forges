@@ -65,6 +65,9 @@ describe("createProvider factory", () => {
     ["createPullRequestComment", "Pull request comments are not supported by this provider"],
     ["listIssueReactions", "Issue reactions are not supported by this provider"],
     ["listPullRequestReactions", "Pull request reactions are not supported by this provider"],
+    ["listSubIssues", "Sub-issues are not supported by this provider"],
+    ["addSubIssue", "Sub-issues are not supported by this provider"],
+    ["removeSubIssue", "Sub-issues are not supported by this provider"],
     ["searchIssues", "Issue search is not supported by this provider"],
     ["searchPullRequests", "Pull-request search is not supported by this provider"],
   ])("keeps a default %s fallback for custom providers", async (method, message) => {

@@ -44,7 +44,7 @@ async function call<T>(run: (operations: Operations) => Promise<T>): Promise<T> 
 
 let tools: readonly ToolDefinition[] | undefined;
 
-/** The 54 tools for every surface, built on the first call so an import parses nothing. */
+/** Every tool for every surface, built on the first call so an import parses nothing. */
 export function forgesTools(): readonly ToolDefinition[] {
   tools ??= defineTools();
   return tools;
@@ -447,6 +447,45 @@ function defineTools(): ToolDefinition[] {
       ...effect("forges_issues_update"),
       input: schemas.updateIssueParameters,
       execute: (args) => call((operations) => operations.updateIssue(args)),
+    }),
+    defineTool({
+      name: "forges_issues_sub_issues",
+      title: forgeToolTitle("forges_issues_sub_issues", "List Sub-issues"),
+      description:
+        "List the sub-issues hanging under one parent issue, in the parent's own order. Each row carries repository as owner/name, since a child can live in another repository of the same owner; bodies are omitted, read one with forges_issues_get. GitHub only: GitLab, Gitea, Forgejo and GitBucket answer that sub-issues are not supported. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.",
+      snippet: "Read the sub-issues of a GitHub issue.",
+      guidelines: [
+        "Use forges_issues_sub_issues instead of gh api .../sub_issues to see how a parent issue was split.",
+      ],
+      ...effect("forges_issues_sub_issues"),
+      input: schemas.listSubIssuesParameters,
+      execute: (args) => call((operations) => operations.listSubIssues(args)),
+    }),
+    defineTool({
+      name: "forges_issues_sub_issues_add",
+      title: forgeToolTitle("forges_issues_sub_issues_add", "Add Sub-issue"),
+      description:
+        "Hang an existing issue of the same repository under a parent issue, by both numbers; the internal id GitHub wants is looked up for you. A child that already has another parent is refused unless replaceParent moves it. This writes as the account the local credentials belong to, so confirm the pair with the user first. Returns the parent issue. GitHub only.",
+      snippet: "Hang a GitHub issue under a parent issue.",
+      guidelines: [
+        "Use forges_issues_sub_issues_add when the user asks to split an issue into sub-issues, after creating the children with forges_issues_create.",
+      ],
+      ...effect("forges_issues_sub_issues_add"),
+      input: schemas.addSubIssueParameters,
+      execute: (args) => call((operations) => operations.addSubIssue(args)),
+    }),
+    defineTool({
+      name: "forges_issues_sub_issues_remove",
+      title: forgeToolTitle("forges_issues_sub_issues_remove", "Remove Sub-issue"),
+      description:
+        "Take a sub-issue off its parent by both numbers. The child stays an ordinary open or closed issue, nothing is deleted. This writes as the account the local credentials belong to, so confirm it with the user first. Returns the parent issue. GitHub only.",
+      snippet: "Take a sub-issue off its GitHub parent.",
+      guidelines: [
+        "Use forges_issues_sub_issues_remove only when the user asks to unlink a sub-issue; it never deletes the child.",
+      ],
+      ...effect("forges_issues_sub_issues_remove"),
+      input: schemas.removeSubIssueParameters,
+      execute: (args) => call((operations) => operations.removeSubIssue(args)),
     }),
     defineTool({
       name: "forges_pull_requests_list",
