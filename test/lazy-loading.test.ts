@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { ForgesError } from "../src/errors.ts";
 import { createProvider } from "../src/index.ts";
-import { lazy } from "../extensions/shared/lazy.ts";
+import { lazy, oneAtATime } from "../extensions/shared/lazy.ts";
 
 /**
  * Each provider module records its own evaluation. vitest runs a mock factory
@@ -92,6 +92,41 @@ describe("lazy", () => {
     });
 
     await expect(get()).rejects.toThrow("threw before returning a promise");
+  });
+});
+
+describe("oneAtATime", () => {
+  it("starts a load only once the one before it settles", async () => {
+    const queued = oneAtATime();
+    const order: string[] = [];
+    const { promise: gate, resolve } = Promise.withResolvers<void>();
+    const first = queued(async () => {
+      order.push("first started");
+      await gate;
+      order.push("first done");
+    });
+    const second = queued(async () => {
+      order.push("second started");
+    });
+
+    const done = Promise.all([first(), second()]);
+    await Promise.resolve();
+    expect(order).toEqual(["first started"]);
+    resolve();
+    await done;
+
+    expect(order).toEqual(["first started", "first done", "second started"]);
+  });
+
+  it("runs the next load after one rejects", async () => {
+    const queued = oneAtATime();
+    const failing = queued(() => Promise.reject(new Error("load failed")));
+    const next = queued(async () => "loaded");
+
+    const [failed, loaded] = await Promise.allSettled([failing(), next()]);
+
+    expect(failed).toMatchObject({ status: "rejected", reason: { message: "load failed" } });
+    expect(loaded).toEqual({ status: "fulfilled", value: "loaded" });
   });
 });
 
