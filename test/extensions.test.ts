@@ -419,10 +419,8 @@ describe("Forges Pi extension", () => {
     );
 
     expect(mocks.contributionTemplates.list).toHaveBeenCalledWith(
-      "agntn",
-      "forges",
-      "pull_request",
-      { cursor: "page-2", perPage: 10 },
+      { owner: "agntn", repo: "forges" },
+      { kind: "pull_request", cursor: "page-2", perPage: 10 },
     );
     expect(result.content[0]?.text).toContain("forges_contribution_templates_get");
   });
@@ -473,11 +471,14 @@ describe("Forges Pi extension", () => {
       unusedPiContext,
     );
 
-    expect(mocks.ciRuns.list).toHaveBeenCalledWith("agntn", "forges", {
-      branch: "main",
-      cursor: "page-2",
-      perPage: 10,
-    });
+    expect(mocks.ciRuns.list).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      {
+        branch: "main",
+        cursor: "page-2",
+        perPage: 10,
+      },
+    );
     expect(result.details.result).toEqual({ items: [], hasNextPage: false });
   });
 
@@ -501,14 +502,17 @@ describe("Forges Pi extension", () => {
       unusedPiContext,
     );
 
-    expect(mocks.commits.list).toHaveBeenCalledWith("agntn", "forges", {
-      ref: "main",
-      path: "src/provider.ts",
-      since: "2026-08-01T00:00:00Z",
-      until: "2026-08-29T23:59:59Z",
-      cursor: "page-2",
-      perPage: 10,
-    });
+    expect(mocks.commits.list).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      {
+        ref: "main",
+        path: "src/provider.ts",
+        since: "2026-08-01T00:00:00Z",
+        until: "2026-08-29T23:59:59Z",
+        cursor: "page-2",
+        perPage: 10,
+      },
+    );
     expect(result.details.result).toEqual({ items: [], hasNextPage: false });
   });
 
@@ -528,9 +532,8 @@ describe("Forges Pi extension", () => {
     );
 
     expect(mocks.commits.get).toHaveBeenCalledWith(
-      "agntn",
-      "forges",
-      "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+      { owner: "agntn", repo: "forges" },
+      { sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38" },
     );
     expect(result.details.result).toEqual({ sha: "abc", files: [], filesComplete: true });
   });
@@ -563,11 +566,15 @@ describe("Forges Pi extension", () => {
       unusedPiContext,
     );
 
-    expect(mocks.repos.readContents).toHaveBeenCalledWith("agntn", "forges", "README.md", {
-      ref: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
-      offset: 20,
-      maxChars: undefined,
-    });
+    expect(mocks.repos.readContents).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      {
+        path: "README.md",
+        ref: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+        offset: 20,
+        maxChars: undefined,
+      },
+    );
     expect(result.details.result).toMatchObject({ type: "file", path: "README.md" });
   });
 
@@ -592,14 +599,14 @@ describe("Forges Pi extension", () => {
       unusedPiContext,
     );
 
-    expect(mocks.ciRuns.listJobs).toHaveBeenCalledWith("agntn", "forges", "35448775016", {
-      cursor: "page-2",
-      perPage: undefined,
-    });
-    expect(mocks.ciRuns.readJobLog).toHaveBeenCalledWith("agntn", "forges", "105912189006", {
-      offset: undefined,
-      maxChars: 1000,
-    });
+    expect(mocks.ciRuns.listJobs).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { runId: "35448775016", cursor: "page-2", perPage: undefined },
+    );
+    expect(mocks.ciRuns.readJobLog).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { jobId: "105912189006", offset: undefined, maxChars: 1000 },
+    );
     expect(result.details.result).toMatchObject({ jobId: "105912189006", started: true });
   });
 
@@ -621,11 +628,10 @@ describe("Forges Pi extension", () => {
       unusedPiContext,
     );
 
-    expect(mocks.commits.readPatch).toHaveBeenCalledWith("agntn", "forges", "abc", {
-      path: "src/provider.ts",
-      offset: 20,
-      maxChars: 1000,
-    });
+    expect(mocks.commits.readPatch).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { sha: "abc", path: "src/provider.ts", offset: 20, maxChars: 1000 },
+    );
     expect(result.details.result).toMatchObject({ sha: "abc", offset: 20 });
   });
 
@@ -647,11 +653,10 @@ describe("Forges Pi extension", () => {
       unusedPiContext,
     );
 
-    expect(mocks.issues.search).toHaveBeenCalledWith("agntn", "forges", "credential", {
-      cursor: "page-2",
-      perPage: 10,
-      state: "closed",
-    });
+    expect(mocks.issues.search).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { query: "credential", cursor: "page-2", perPage: 10, state: "closed" },
+    );
     expect(result.details.result).toEqual({
       items: [],
       incomplete: false,
@@ -677,11 +682,10 @@ describe("Forges Pi extension", () => {
       unusedPiContext,
     );
 
-    expect(mocks.pullRequests.search).toHaveBeenCalledWith("agntn", "forges", "credential", {
-      cursor: "page-2",
-      perPage: 10,
-      state: "closed",
-    });
+    expect(mocks.pullRequests.search).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { query: "credential", cursor: "page-2", perPage: 10, state: "closed" },
+    );
     expect(result.details.result).toEqual({
       items: [],
       incomplete: false,
@@ -706,10 +710,13 @@ describe("Forges Pi extension", () => {
       unusedPiContext,
     );
 
-    expect(mocks.pullRequests.listFiles).toHaveBeenCalledWith("agntn", "forges", 53, {
-      cursor: "page-2",
-      perPage: 10,
-    });
+    expect(mocks.pullRequests.listFiles).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 53 },
+      {
+        cursor: "page-2",
+        perPage: 10,
+      },
+    );
     expect(result.details.result).toEqual({ items: [], hasNextPage: false });
   });
 
@@ -730,10 +737,13 @@ describe("Forges Pi extension", () => {
       unusedPiContext,
     );
 
-    expect(mocks.pullRequests.listChecks).toHaveBeenCalledWith("agntn", "forges", 53, {
-      cursor: "page-2",
-      perPage: 10,
-    });
+    expect(mocks.pullRequests.listChecks).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 53 },
+      {
+        cursor: "page-2",
+        perPage: 10,
+      },
+    );
     expect(result.details.result).toEqual({ items: [], hasNextPage: false });
   });
 
@@ -783,7 +793,10 @@ describe("Forges Pi extension", () => {
       if (content?.type !== "text") throw new Error("Expected review text");
       expect(JSON.parse(content.text).result.body).toBe(review.body);
     }
-    expect(mocks.pullRequests.getReview).toHaveBeenCalledWith("agntn", "forges", 5, "123");
+    expect(mocks.pullRequests.getReview).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 5 },
+      { reviewId: "123" },
+    );
   });
 
   it("passes closingIssues through both extensions", async () => {
@@ -805,9 +818,12 @@ describe("Forges Pi extension", () => {
       expect(result.details).toMatchObject({ result: { closingIssues: null } });
     }
     expect(mocks.pullRequests.get).toHaveBeenCalledTimes(2);
-    expect(mocks.pullRequests.get).toHaveBeenCalledWith("agntn", "forges", 5, {
-      closingIssues: true,
-    });
+    expect(mocks.pullRequests.get).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 5 },
+      {
+        closingIssues: true,
+      },
+    );
   });
 
   it("keeps the endpoint out of Pi and OMP failures and names the retry window", async () => {
@@ -824,7 +840,7 @@ describe("Forges Pi extension", () => {
       mocks.repos.get.mockRejectedValueOnce(
         new NotFoundError(
           'Resource not found: [GET] "https://ci:s3cret@git.internal.example:8443/api/v1/repos/agntn/forges": 404 Not Found',
-          "gitea",
+          { platform: "gitea" },
         ),
       );
       await expect(run()).rejects.toThrow(/^Resource not found: 404 Not Found$/);
@@ -832,8 +848,7 @@ describe("Forges Pi extension", () => {
       mocks.repos.get.mockRejectedValueOnce(
         new RateLimitError(
           'Rate limit exceeded: [GET] "https://ci:s3cret@git.internal.example:8443/api/v1/repos/agntn/forges": 429 Too Many Requests',
-          42,
-          "gitea",
+          { retryAfter: 42, platform: "gitea" },
         ),
       );
       await expect(run()).rejects.toThrow(
@@ -841,11 +856,10 @@ describe("Forges Pi extension", () => {
       );
 
       mocks.repos.get.mockRejectedValueOnce(
-        new ForgesError(
-          '[GET] "https://git.internal.example:8443/api/v1/repos/agntn/forges": ',
-          502,
-          "gitea",
-        ),
+        new ForgesError('[GET] "https://git.internal.example:8443/api/v1/repos/agntn/forges": ', {
+          status: 502,
+          platform: "gitea",
+        }),
       );
       await expect(run()).rejects.toThrow(/^HTTP 502$/);
     }
@@ -867,10 +881,13 @@ describe("Forges Pi extension", () => {
       unusedPiContext,
     );
 
-    expect(mocks.pullRequests.listReviews).toHaveBeenCalledWith("gitea", "tea", 1113, {
-      cursor: undefined,
-      perPage: 5,
-    });
+    expect(mocks.pullRequests.listReviews).toHaveBeenCalledWith(
+      { owner: "gitea", repo: "tea", number: 1113 },
+      {
+        cursor: undefined,
+        perPage: 5,
+      },
+    );
     expect(result.details.result).toEqual({ items: [], hasNextPage: false });
   });
 
@@ -914,12 +931,18 @@ describe("Forges Pi extension", () => {
       approvalPiContext(vi.fn().mockResolvedValue(true)),
     );
 
-    expect(mocks.releases.list).toHaveBeenCalledWith("agntn", "forges", {
-      cursor: undefined,
-      perPage: 5,
-    });
+    expect(mocks.releases.list).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      {
+        cursor: undefined,
+        perPage: 5,
+      },
+    );
     expect(listed.details.result.items[0]).not.toHaveProperty("body");
-    expect(mocks.releases.get).toHaveBeenCalledWith("agntn", "forges", "v0.3.1");
+    expect(mocks.releases.get).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { tag: "v0.3.1" },
+    );
     expect(read.details.result).toEqual({
       ...release,
       offset: 0,
@@ -928,12 +951,10 @@ describe("Forges Pi extension", () => {
       length: release.body.length,
       notesHash: hashReleaseNotes(release.body),
     });
-    expect(mocks.releases.update).toHaveBeenCalledWith("agntn", "forges", "v0.3.1", {
-      name: undefined,
-      body: "edited",
-      draft: undefined,
-      prerelease: undefined,
-    });
+    expect(mocks.releases.update).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { tag: "v0.3.1", name: undefined, body: "edited", draft: undefined, prerelease: undefined },
+    );
     expect(updated.details.result).toMatchObject({ body: "edited" });
   });
 
@@ -1037,12 +1058,10 @@ describe("Forges Pi extension", () => {
       ].join("\n"),
       { signal: undefined },
     );
-    expect(mocks.releases.update).toHaveBeenCalledWith("gitea", "tea", "v0.4.0", {
-      name: undefined,
-      body: "edited",
-      draft: false,
-      prerelease: undefined,
-    });
+    expect(mocks.releases.update).toHaveBeenCalledWith(
+      { owner: "gitea", repo: "tea" },
+      { tag: "v0.4.0", name: undefined, body: "edited", draft: false, prerelease: undefined },
+    );
     expect(result.details.result).toMatchObject({ body: "edited" });
   });
 
@@ -1086,15 +1105,18 @@ describe("Forges Pi extension", () => {
       ].join("\n"),
       { signal: undefined },
     );
-    expect(mocks.pullRequests.update).toHaveBeenCalledWith("agntn", "forges", 5, {
-      title: undefined,
-      body: undefined,
-      state: "closed",
-      addAssignees: ["reviewer"],
-      removeAssignees: undefined,
-      addLabels: ["docs"],
-      removeLabels: ["stale"],
-    });
+    expect(mocks.pullRequests.update).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 5 },
+      {
+        title: undefined,
+        body: undefined,
+        state: "closed",
+        addAssignees: ["reviewer"],
+        removeAssignees: undefined,
+        addLabels: ["docs"],
+        removeLabels: ["stale"],
+      },
+    );
   });
 
   it("shows an issue update in the approval dialog before it goes out", async () => {
@@ -1127,15 +1149,18 @@ describe("Forges Pi extension", () => {
       ].join("\n"),
       { signal: undefined },
     );
-    expect(mocks.issues.update).toHaveBeenCalledWith("agntn", "forges", 174, {
-      title: undefined,
-      body: undefined,
-      state: "closed",
-      addAssignees: undefined,
-      removeAssignees: undefined,
-      addLabels: undefined,
-      removeLabels: ["needs-triage"],
-    });
+    expect(mocks.issues.update).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 174 },
+      {
+        title: undefined,
+        body: undefined,
+        state: "closed",
+        addAssignees: undefined,
+        removeAssignees: undefined,
+        addLabels: undefined,
+        removeLabels: ["needs-triage"],
+      },
+    );
   });
 
   it("fails closed when an issue update is declined", async () => {
@@ -1201,12 +1226,15 @@ describe("Forges Pi extension", () => {
       ].join("\n"),
       { signal: undefined },
     );
-    expect(mocks.pullRequests.merge).toHaveBeenCalledWith("agntn", "forges", 5, {
-      method: "squash",
-      headSha: "abc123",
-      title: "feat: x",
-      message: undefined,
-    });
+    expect(mocks.pullRequests.merge).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 5 },
+      {
+        method: "squash",
+        headSha: "abc123",
+        title: "feat: x",
+        message: undefined,
+      },
+    );
     expect(result.details.result).toMatchObject({ merged: true });
   });
 
@@ -1249,12 +1277,18 @@ describe("Forges Pi extension", () => {
       approvalPiContext(vi.fn()),
     );
 
-    expect(mocks.issues.createComment).toHaveBeenCalledWith("agntn", "forges", 42, {
-      body: "Fixed in #43.",
-    });
-    expect(mocks.pullRequests.createComment).toHaveBeenCalledWith("gitlab-org", "gitlab-foss", 7, {
-      body: "Rebased.",
-    });
+    expect(mocks.issues.createComment).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 42 },
+      {
+        body: "Fixed in #43.",
+      },
+    );
+    expect(mocks.pullRequests.createComment).toHaveBeenCalledWith(
+      { owner: "gitlab-org", repo: "gitlab-foss", number: 7 },
+      {
+        body: "Rebased.",
+      },
+    );
     expect(issue.details.result).toMatchObject({ id: "31" });
   });
 
@@ -1356,14 +1390,17 @@ describe("Forges Pi extension", () => {
       ].join("\n"),
       { signal: undefined },
     );
-    expect(mocks.pullRequests.create).toHaveBeenCalledWith("agntn", "forges", {
-      title: "Add approval",
-      body: "Require confirmation before creation.",
-      sourceBranch: "feat/pr-approval",
-      targetBranch: "main",
-      draft: true,
-      assignees: ["reviewer"],
-    });
+    expect(mocks.pullRequests.create).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      {
+        title: "Add approval",
+        body: "Require confirmation before creation.",
+        sourceBranch: "feat/pr-approval",
+        targetBranch: "main",
+        draft: true,
+        assignees: ["reviewer"],
+      },
+    );
     expect(result.details.result).toMatchObject({ number: 43 });
   });
 
@@ -1588,11 +1625,14 @@ describe("Forges Pi extension", () => {
     expect(text).toContain("line 0");
     expect(text).not.toContain("line 20");
     expect(JSON.stringify(result.details)).not.toContain("line 20");
-    expect(mocks.threads.list).toHaveBeenCalledWith("agntn", "forges", 31, {
-      cursor: undefined,
-      perPage: undefined,
-      state: undefined,
-    });
+    expect(mocks.threads.list).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 31 },
+      {
+        cursor: undefined,
+        perPage: undefined,
+        state: undefined,
+      },
+    );
   });
 
   it("bounds model-facing discussion comment bodies and names the full read", async () => {
@@ -1779,11 +1819,15 @@ describe("Forges OMP extension", () => {
       unusedOmpContext,
     );
 
-    expect(mocks.repos.readContents).toHaveBeenCalledWith("agntn", "forges", "README.md", {
-      ref: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
-      offset: 20,
-      maxChars: undefined,
-    });
+    expect(mocks.repos.readContents).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      {
+        path: "README.md",
+        ref: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+        offset: 20,
+        maxChars: undefined,
+      },
+    );
     expect(result.details.result).toMatchObject({ type: "file", path: "README.md" });
   });
 
@@ -1808,14 +1852,14 @@ describe("Forges OMP extension", () => {
       unusedOmpContext,
     );
 
-    expect(mocks.ciRuns.listJobs).toHaveBeenCalledWith("agntn", "forges", "35448775016", {
-      cursor: "page-2",
-      perPage: undefined,
-    });
-    expect(mocks.ciRuns.readJobLog).toHaveBeenCalledWith("agntn", "forges", "105912189006", {
-      offset: undefined,
-      maxChars: 1000,
-    });
+    expect(mocks.ciRuns.listJobs).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { runId: "35448775016", cursor: "page-2", perPage: undefined },
+    );
+    expect(mocks.ciRuns.readJobLog).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { jobId: "105912189006", offset: undefined, maxChars: 1000 },
+    );
     expect(result.details.result).toMatchObject({ jobId: "105912189006", started: true });
   });
 
@@ -1836,11 +1880,10 @@ describe("Forges OMP extension", () => {
       unusedOmpContext,
     );
 
-    expect(mocks.commits.readPatch).toHaveBeenCalledWith("agntn", "forges", "abc", {
-      path: undefined,
-      offset: 20,
-      maxChars: 1000,
-    });
+    expect(mocks.commits.readPatch).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { sha: "abc", path: undefined, offset: 20, maxChars: 1000 },
+    );
     expect(result.details.result).toMatchObject({ sha: "abc", offset: 20 });
   });
 
@@ -1877,14 +1920,17 @@ describe("Forges OMP extension", () => {
     );
 
     expect(mocks.createProvider).toHaveBeenCalledWith("gitea", { token: "test-token" });
-    expect(mocks.releases.create).toHaveBeenCalledWith("gitea", "tea", {
-      tag: "v0.17.0",
-      name: "v0.17.0",
-      body: "notes",
-      ref: "main",
-      draft: true,
-      prerelease: undefined,
-    });
+    expect(mocks.releases.create).toHaveBeenCalledWith(
+      { owner: "gitea", repo: "tea" },
+      {
+        tag: "v0.17.0",
+        name: "v0.17.0",
+        body: "notes",
+        ref: "main",
+        draft: true,
+        prerelease: undefined,
+      },
+    );
     expect(result.details).toEqual({ platform: "gitea", result: release });
   });
 
@@ -1907,12 +1953,15 @@ describe("Forges OMP extension", () => {
     );
 
     expect(mocks.createProvider).toHaveBeenCalledWith("gitlab", { token: "test-token" });
-    expect(mocks.issues.create).toHaveBeenCalledWith("agntn", "forges", {
-      title: "Bug",
-      body: "Details",
-      labels: ["bug"],
-      assignees: ["triager"],
-    });
+    expect(mocks.issues.create).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      {
+        title: "Bug",
+        body: "Details",
+        labels: ["bug"],
+        assignees: ["triager"],
+      },
+    );
     expect(result.details).toMatchObject({ platform: "gitlab", result: { number: 42 } });
   });
 });

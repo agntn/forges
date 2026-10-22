@@ -54,7 +54,8 @@ describe("GitHub global issue search", () => {
       labels: ["bug", "good first issue"],
       author: "aeitwoen",
     });
-    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/search/issues", {
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+      url: "/search/issues",
       query: {
         q: 'is:issue is:open label:"bug" label:"good first issue" author:aeitwoen user:agntn',
         page: "1",
@@ -86,7 +87,7 @@ describe("GitHub global issue search", () => {
       owner: "agntn",
       repo: "forges",
     });
-    expect(mocks.rawFetch.mock.calls[0]?.[2].query.q).toBe("search is:issue repo:agntn/forges");
+    expect(mocks.rawFetch.mock.calls[0]?.[1].query.q).toBe("search is:issue repo:agntn/forges");
     expect(result.items.map((item) => item.repository)).toEqual(["agntn/forges"]);
     expect(result.incomplete).toBe(true);
   });
@@ -100,7 +101,7 @@ describe("GitHub global issue search", () => {
       labels: ["bug"],
       state: "all",
     });
-    expect(mocks.rawFetch.mock.calls[0]?.[2].query.q).toBe('is:issue label:"bug"');
+    expect(mocks.rawFetch.mock.calls[0]?.[1].query.q).toBe('is:issue label:"bug"');
   });
 
   it("rejects bad filters, scope and pagination before transport", async () => {
@@ -155,15 +156,15 @@ describe("issue filters on pull-request search", () => {
     const filters = { state: "bogus", labels: ["bug"] } as never;
     mocks.rawFetch.mockResolvedValueOnce({ data: { items: [] }, headers: new Headers() });
     await new GitHubProvider({ token: "" }).pullRequests.searchGlobal("fix", filters);
-    expect(mocks.rawFetch.mock.calls[0]?.[2].query.q).toBe("fix is:pr");
+    expect(mocks.rawFetch.mock.calls[0]?.[1].query.q).toBe("fix is:pr");
     mocks.rawFetch.mockResolvedValueOnce({ data: [], headers: new Headers() });
     await new GiteaProvider({ token: "" }).pullRequests.searchGlobal("fix", filters);
-    expect(mocks.rawFetch.mock.calls[1]?.[2].query).toMatchObject({ state: "all" });
-    expect(mocks.rawFetch.mock.calls[1]?.[2].query).not.toHaveProperty("labels");
+    expect(mocks.rawFetch.mock.calls[1]?.[1].query).toMatchObject({ state: "all" });
+    expect(mocks.rawFetch.mock.calls[1]?.[1].query).not.toHaveProperty("labels");
     mocks.rawFetch.mockResolvedValueOnce({ data: [], headers: new Headers() });
     await new GitLabProvider({ token: "" }).pullRequests.searchGlobal("fix", filters);
-    expect(mocks.rawFetch.mock.calls[2]?.[2].query).toMatchObject({ state: "all" });
-    expect(mocks.rawFetch.mock.calls[2]?.[2].query).not.toHaveProperty("labels");
+    expect(mocks.rawFetch.mock.calls[2]?.[1].query).toMatchObject({ state: "all" });
+    expect(mocks.rawFetch.mock.calls[2]?.[1].query).not.toHaveProperty("labels");
     await expect(
       new GitHubProvider({ token: "" }).pullRequests.searchGlobal("", { labels: ["bug"] } as never),
     ).rejects.toMatchObject({ status: 400 });
@@ -197,7 +198,8 @@ describe("Gitea global issue search", () => {
       labels: ["Kind/Bug"],
       state: "open",
     });
-    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/repos/issues/search", {
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+      url: "/repos/issues/search",
       query: {
         q: "crash",
         labels: "Kind/Bug",
@@ -275,7 +277,7 @@ describe("Gitea global issue search", () => {
       repo: "runner",
       labels: ["kind/bug", "kind/breaking"],
     });
-    expect(mocks.rawFetch.mock.calls[0]?.[1]).toBe("/repos/gitea/runner/issues");
+    expect(mocks.rawFetch.mock.calls[0]?.[1]?.url).toBe("/repos/gitea/runner/issues");
     expect(result).toMatchObject({ totalCount: 1, incomplete: false });
     expect(result.items).toHaveLength(1);
   });
@@ -320,7 +322,8 @@ describe("GitLab global issue search", () => {
       state: "open",
       author: "fdroid-bot",
     });
-    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/issues", {
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+      url: "/issues",
       query: {
         scope: "all",
         search: "app",
@@ -346,9 +349,9 @@ describe("GitLab global issue search", () => {
   ])("scopes %j through %s and leaves state out for all", async (scope, path) => {
     mocks.rawFetch.mockResolvedValue({ data: [], headers: new Headers() });
     await new GitLabProvider({ token: "" }).issues.searchGlobal("app", { ...scope, state: "all" });
-    expect(mocks.rawFetch.mock.calls[0]?.[1]).toBe(path);
-    expect(mocks.rawFetch.mock.calls[0]?.[2].query).not.toHaveProperty("state");
-    expect(mocks.rawFetch.mock.calls[0]?.[2].query).not.toHaveProperty("scope");
+    expect(mocks.rawFetch.mock.calls[0]?.[1]?.url).toBe(path);
+    expect(mocks.rawFetch.mock.calls[0]?.[1].query).not.toHaveProperty("state");
+    expect(mocks.rawFetch.mock.calls[0]?.[1].query).not.toHaveProperty("scope");
   });
 
   it("names issues when it refuses comment ordering or misses a group", async () => {
@@ -388,8 +391,8 @@ describe("issue search scoped to an owner, without a query", () => {
   ] as const)("lists every open issue of the owner on %s", async (_, provider, path, query) => {
     mocks.rawFetch.mockResolvedValue({ data: [], headers: new Headers() });
     await provider().issues.searchGlobal("", { owner: "agntn", state: "open" });
-    expect(mocks.rawFetch.mock.calls[0]?.[1]).toBe(path);
-    expect(mocks.rawFetch.mock.calls[0]?.[2].query).toEqual(query);
+    expect(mocks.rawFetch.mock.calls[0]?.[1]?.url).toBe(path);
+    expect(mocks.rawFetch.mock.calls[0]?.[1].query).toEqual(query);
   });
 
   it("still refuses a search with no scope at all and says how to narrow it", async () => {

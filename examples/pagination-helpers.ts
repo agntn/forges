@@ -23,11 +23,10 @@ async function githubFetcher(url: string): Promise<{ data: Repo[]; headers: Head
   });
 
   if (!response.ok) {
-    throw new ForgesError(
-      `GitHub request failed with status ${response.status}`,
-      response.status,
-      "github",
-    );
+    throw new ForgesError(`GitHub request failed with status ${response.status}`, {
+      status: response.status,
+      platform: "github",
+    });
   }
 
   const payload = await response.json();
@@ -42,7 +41,8 @@ async function githubFetcher(url: string): Promise<{ data: Repo[]; headers: Head
 async function main(): Promise<void> {
   const firstThreePages: Repo[] = [];
 
-  for await (const page of paginate(githubFetcher, "https://api.github.com/orgs/unjs/repos", {
+  for await (const page of paginate(githubFetcher, {
+    url: "https://api.github.com/orgs/unjs/repos",
     perPage: 10,
     maxPages: 3,
   })) {
@@ -51,7 +51,8 @@ async function main(): Promise<void> {
 
   console.log("paged count", firstThreePages.length);
 
-  const cappedAll = await fetchAllPages(githubFetcher, "https://api.github.com/orgs/unjs/repos", {
+  const cappedAll = await fetchAllPages(githubFetcher, {
+    url: "https://api.github.com/orgs/unjs/repos",
     perPage: 20,
     maxPages: 2,
   });

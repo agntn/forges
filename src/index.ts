@@ -28,6 +28,8 @@ export {
   PermissionError,
   RateLimitError,
   normalizeError,
+  type FixedStatusErrorOptions,
+  type ForgesErrorOptions,
 } from "./errors.ts";
 
 // --- Utility exports ---
@@ -37,6 +39,7 @@ export {
   fetchAllPages,
   type LinkHeaderEntry,
   type PaginationOptions,
+  type PaginationRequest,
 } from "./pagination.ts";
 
 export {
@@ -46,6 +49,7 @@ export {
   type ForgeClientOptions,
   type HttpClient,
   type RawFetchResult,
+  type RawRequest,
   type RequestOptions,
   type ResponseData,
   type ResponseType,
@@ -59,6 +63,7 @@ export {
   invalidateCache,
   type CacheOptions,
   type CachedFetchOptions,
+  type CachedRequest,
 } from "./cache.ts";
 
 type ProviderConstructor = new (config: ProviderConfig) => Provider;
@@ -115,8 +120,7 @@ export async function createProvider(
   if (!Object.hasOwn(providers, platform)) {
     throw new ForgesError(
       `Unsupported platform: ${platform}. Supported: github, gitlab, gitea, artifacts`,
-      undefined,
-      platform,
+      { platform },
     );
   }
 
@@ -139,7 +143,7 @@ export async function createProvider(
       `No auth token found for ${platform}. ` +
         `Set ${envHint(platform)}, pass { token: '...' }, ` +
         `or log in with ${cliHint(platform)}.`,
-      platform,
+      { platform },
     );
   }
 

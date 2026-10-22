@@ -87,7 +87,10 @@ describe("paginate", () => {
     };
 
     const pages: any[][] = [];
-    for await (const page of paginate(fetcher, "https://api.github.com/repos", { perPage: 2 })) {
+    for await (const page of paginate(fetcher, {
+      url: "https://api.github.com/repos",
+      perPage: 2,
+    })) {
       pages.push(page);
     }
 
@@ -105,7 +108,10 @@ describe("paginate", () => {
     });
 
     const pages: any[][] = [];
-    for await (const page of paginate(fetcher, "https://api.github.com/repos", { maxPages: 2 })) {
+    for await (const page of paginate(fetcher, {
+      url: "https://api.github.com/repos",
+      maxPages: 2,
+    })) {
       pages.push(page);
     }
 
@@ -119,7 +125,7 @@ describe("paginate", () => {
     });
 
     const pages: any[][] = [];
-    for await (const page of paginate(fetcher, "https://api.github.com/repos")) {
+    for await (const page of paginate(fetcher, { url: "https://api.github.com/repos" })) {
       pages.push(page);
     }
 
@@ -133,7 +139,8 @@ describe("paginate", () => {
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+      for await (const _page of paginate(fetcher, {
+        url: "https://api.github.com/repos",
         perPageParam: "",
       })) {
         /* drain */
@@ -148,7 +155,8 @@ describe("paginate", () => {
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+      for await (const _page of paginate(fetcher, {
+        url: "https://api.github.com/repos",
         perPageParam: "  ",
       })) {
         /* drain */
@@ -167,7 +175,8 @@ describe("paginate", () => {
     };
 
     const pages: any[][] = [];
-    for await (const page of paginate(fetcher, "https://gitea.com/api/v1/repos", {
+    for await (const page of paginate(fetcher, {
+      url: "https://gitea.com/api/v1/repos",
       perPage: 50,
       perPageParam: "limit",
     })) {
@@ -201,10 +210,9 @@ describe("paginate", () => {
     };
 
     const pages: Array<Array<{ id: number }>> = [];
-    for await (const page of paginate(
-      fetcher,
-      "https://gitlab.selfhosted.example/api/v4/projects",
-    )) {
+    for await (const page of paginate(fetcher, {
+      url: "https://gitlab.selfhosted.example/api/v4/projects",
+    })) {
       pages.push(page);
     }
 
@@ -222,7 +230,8 @@ describe("paginate", () => {
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+      for await (const _page of paginate(fetcher, {
+        url: "https://api.github.com/repos",
         maxPages: 5,
       })) {
       }
@@ -251,7 +260,10 @@ describe("paginate", () => {
     };
 
     const pages: Array<Array<{ id: number }>> = [];
-    for await (const page of paginate(fetcher, "https://api.github.com/repos", { maxPages: 5 })) {
+    for await (const page of paginate(fetcher, {
+      url: "https://api.github.com/repos",
+      maxPages: 5,
+    })) {
       pages.push(page);
     }
 
@@ -272,7 +284,9 @@ describe("paginate", () => {
       };
     };
 
-    expect(await fetchAllPages(fetcher, "https://forge.example/api/v1/repos")).toEqual([1, 2]);
+    expect(await fetchAllPages(fetcher, { url: "https://forge.example/api/v1/repos" })).toEqual([
+      1, 2,
+    ]);
     expect(seen[1]).toBe(expected);
   });
 
@@ -288,7 +302,9 @@ describe("paginate", () => {
       };
     };
 
-    expect(await fetchAllPages(fetcher, "https://forge.example/api/v1/repos")).toEqual([1, 2, 3]);
+    expect(await fetchAllPages(fetcher, { url: "https://forge.example/api/v1/repos" })).toEqual([
+      1, 2, 3,
+    ]);
     expect(seen).toEqual([
       "https://forge.example/api/v1/repos?per_page=30",
       "https://forge.example/api/other/repos?page=2&per_page=30",
@@ -309,7 +325,8 @@ describe("paginate", () => {
     };
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, "https://api.github.com/repos?a=1&page=1&b=2", {
+      for await (const _page of paginate(fetcher, {
+        url: "https://api.github.com/repos?a=1&page=1&b=2",
         maxPages: 5,
       })) {
       }
@@ -323,7 +340,8 @@ describe("paginate", () => {
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, "https://gitlab.example.com/api/v4/projects", {
+      for await (const _page of paginate(fetcher, {
+        url: "https://gitlab.example.com/api/v4/projects",
         maxPages: 5,
       })) {
       }
@@ -337,7 +355,8 @@ describe("paginate", () => {
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+      for await (const _page of paginate(fetcher, {
+        url: "https://api.github.com/repos",
         maxPages: 0,
       })) {
       }
@@ -351,7 +370,8 @@ describe("paginate", () => {
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+      for await (const _page of paginate(fetcher, {
+        url: "https://api.github.com/repos",
         maxPages: Number.NaN,
       })) {
       }
@@ -365,7 +385,8 @@ describe("paginate", () => {
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+      for await (const _page of paginate(fetcher, {
+        url: "https://api.github.com/repos",
         maxPages: -1,
       })) {
       }
@@ -379,7 +400,8 @@ describe("paginate", () => {
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+      for await (const _page of paginate(fetcher, {
+        url: "https://api.github.com/repos",
         maxPages: Number.NEGATIVE_INFINITY,
       })) {
       }
@@ -393,7 +415,8 @@ describe("paginate", () => {
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+      for await (const _page of paginate(fetcher, {
+        url: "https://api.github.com/repos",
         maxPages: 0.5,
       })) {
       }
@@ -409,7 +432,10 @@ describe("paginate", () => {
     });
 
     const pages: Array<Array<{ id: number }>> = [];
-    for await (const page of paginate(fetcher, "https://api.github.com/repos", { maxPages: 1.5 })) {
+    for await (const page of paginate(fetcher, {
+      url: "https://api.github.com/repos",
+      maxPages: 1.5,
+    })) {
       pages.push(page);
     }
 
@@ -437,7 +463,8 @@ describe("paginate", () => {
     };
 
     const pages: Array<Array<{ id: number }>> = [];
-    for await (const page of paginate(fetcher, "https://api.github.com/repos", {
+    for await (const page of paginate(fetcher, {
+      url: "https://api.github.com/repos",
       maxPages: Infinity,
     })) {
       pages.push(page);
@@ -453,7 +480,7 @@ describe("paginate", () => {
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, "://invalid-url")) {
+      for await (const _page of paginate(fetcher, { url: "://invalid-url" })) {
       }
     }).rejects.toThrow("Invalid pagination URL");
   });
@@ -467,7 +494,8 @@ describe("paginate", () => {
     });
 
     await expect(async () => {
-      for await (const _page of paginate(fetcher, "https://api.github.com/repos", {
+      for await (const _page of paginate(fetcher, {
+        url: "https://api.github.com/repos",
         maxPages: 5,
       })) {
       }
@@ -494,7 +522,7 @@ describe("fetchAllPages", () => {
       };
     };
 
-    const result = await fetchAllPages(fetcher, "https://api.github.com/repos");
+    const result = await fetchAllPages(fetcher, { url: "https://api.github.com/repos" });
 
     expect(result).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
   });
@@ -508,7 +536,7 @@ describe("fetchAllPages", () => {
     });
 
     await expect(
-      fetchAllPages(fetcher, "https://api.github.com/repos", { maxPages: 5 }),
+      fetchAllPages(fetcher, { url: "https://api.github.com/repos", maxPages: 5 }),
     ).rejects.toThrow("Pagination loop detected");
   });
 
@@ -522,7 +550,8 @@ describe("fetchAllPages", () => {
       };
     };
 
-    await fetchAllPages(fetcher, "https://gitea.com/api/v1/repos", {
+    await fetchAllPages(fetcher, {
+      url: "https://gitea.com/api/v1/repos",
       perPage: 20,
       perPageParam: "limit",
     });

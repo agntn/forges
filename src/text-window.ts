@@ -29,17 +29,22 @@ export function readTextWindow(options: TextWindowOptions, about: TextWindowSubj
   const offset = options.offset ?? 0;
   const maxChars = options.maxChars ?? DEFAULT_WINDOW_CHARS;
   if (!Number.isSafeInteger(offset) || offset < 0) {
-    throw new ForgesError(`${subject} offset must be a non-negative integer`, 400, platform);
+    throw new ForgesError(`${subject} offset must be a non-negative integer`, {
+      status: 400,
+      platform,
+    });
   }
   if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > MAX_WINDOW_CHARS) {
-    throw new ForgesError(
-      `${subject} maxChars must be an integer from 1 to ${MAX_WINDOW_CHARS}`,
-      400,
+    throw new ForgesError(`${subject} maxChars must be an integer from 1 to ${MAX_WINDOW_CHARS}`, {
+      status: 400,
       platform,
-    );
+    });
   }
   if (!Number.isSafeInteger(offset + maxChars)) {
-    throw new ForgesError(`${subject} range exceeds the safe integer limit`, 400, platform);
+    throw new ForgesError(`${subject} range exceeds the safe integer limit`, {
+      status: 400,
+      platform,
+    });
   }
   return { offset, maxChars };
 }
@@ -57,7 +62,7 @@ export function textWindowEnd(
   text: TextLength,
 ): { end: number; nextOffset: number | null; truncated: boolean } {
   const { length, pastEnd, platform } = text;
-  if (window.offset > length) throw new ForgesError(pastEnd, 400, platform);
+  if (window.offset > length) throw new ForgesError(pastEnd, { status: 400, platform });
   const end = Math.min(window.offset + window.maxChars, length);
   return { end, nextOffset: end < length ? end : null, truncated: end < length };
 }

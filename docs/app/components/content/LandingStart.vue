@@ -23,7 +23,9 @@ const LINES: readonly Line[] = [
   { text: 'import { createProvider } from "@agntn/forges";' },
   { text: "" },
   { text: `const forge = await createProvider("${FIRST.platform}");` },
-  { text: `const repo = await forge.repos.get("${FIRST.owner}", "${FIRST.repo}");` },
+  {
+    text: `const repo = await forge.repos.get({ owner: "${FIRST.owner}", repo: "${FIRST.repo}" });`,
+  },
   { text: `repo.id;             // "${FIRST.repository.id}"` },
   { text: `repo.defaultBranch;  // "${FIRST.repository.defaultBranch}"` },
 ];

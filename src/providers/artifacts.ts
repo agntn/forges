@@ -118,7 +118,9 @@ interface ArtifactsRawTypes extends ProviderRawTypes {
 
 /** Artifacts keeps Git data only, so the forge side of the contract answers 501. */
 function missing(feature: string): Promise<never> {
-  return Promise.reject(new ForgesError(`Cloudflare Artifacts has no ${feature}`, 501, PLATFORM));
+  return Promise.reject(
+    new ForgesError(`Cloudflare Artifacts has no ${feature}`, { status: 501, platform: PLATFORM }),
+  );
 }
 
 function repositoryURL(accountURL: string, namespace: string, repo: string): string {
@@ -228,7 +230,10 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     try {
       const at = options?.at;
       if (at !== undefined && !("token" in at)) {
-        throw new ForgesError("cursor is not one this listing returned", 400, PLATFORM);
+        throw new ForgesError("cursor is not one this listing returned", {
+          status: 400,
+          platform: PLATFORM,
+        });
       }
       const response = await this.withCredential((client) =>
         client<ArtifactsEnvelope<ArtifactsRepository[]>>(`${this.namespacePath(owner)}/repos`, {
@@ -310,8 +315,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
       return Promise.reject(
         new ForgesError(
           "Cloudflare Artifacts reads the log by ref only. Drop path, since and until",
-          501,
-          PLATFORM,
+          { status: 501, platform: PLATFORM },
         ),
       );
     }
@@ -320,7 +324,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     try {
       const commits = await this.log(owner, repo, options?.ref, (page - 1) * perPage, perPage + 1);
       if (commits.length === 0 && page === 1 && options?.ref !== undefined) {
-        throw new NotFoundError(`No commits at ref ${options.ref}`, PLATFORM);
+        throw new NotFoundError(`No commits at ref ${options.ref}`, { platform: PLATFORM });
       }
       const hasNextPage = commits.length > perPage;
       const url = repositoryURL(await this.accountURL(), owner, repo);
@@ -471,7 +475,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     if (commit === undefined) {
       throw new NotFoundError(
         ref === undefined ? "The repository has no commits yet" : `No commits at ref ${ref}`,
-        PLATFORM,
+        { platform: PLATFORM },
       );
     }
     return commit;
@@ -486,11 +490,10 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     limit: number,
   ): Promise<ArtifactsCommit[]> {
     if (limit > LOG_LIMIT) {
-      throw new ForgesError(
-        `Cloudflare Artifacts reads at most ${LOG_LIMIT - 1} commits a page`,
-        400,
-        PLATFORM,
-      );
+      throw new ForgesError(`Cloudflare Artifacts reads at most ${LOG_LIMIT - 1} commits a page`, {
+        status: 400,
+        platform: PLATFORM,
+      });
     }
     const response = await this.withCredential((client) =>
       client<ArtifactsEnvelope<ArtifactsCommit[]>>(`${this.repoPath(owner, repo)}/log`, {
@@ -525,7 +528,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
     for (const [index, segment] of segments.entries()) {
       const entry = entries.find((candidate) => candidate.name === segment);
       if (entry === undefined || (entry.type !== "tree" && index < segments.length - 1)) {
-        throw new NotFoundError(`Repository path not found: ${path}`, PLATFORM);
+        throw new NotFoundError(`Repository path not found: ${path}`, { platform: PLATFORM });
       }
       if (entry.type !== "tree") throw unreadableEntry(path, entry.type);
       entries = await this.readTree(route, entry.hash);

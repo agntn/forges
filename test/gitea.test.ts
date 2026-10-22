@@ -238,8 +238,8 @@ describe("Gitea Provider", () => {
     mockClient.mockReset();
     mockClient.mockResolvedValue({});
     mockedCachedFetch.mockReset();
-    mockedCachedFetch.mockImplementation(async (client, url, options) =>
-      options ? client(url, options) : client(url),
+    mockedCachedFetch.mockImplementation(async (client, { url, ...options }) =>
+      Object.keys(options).length > 0 ? client(url, options) : client(url),
     );
     provider = new GiteaProvider({ token: "test-token" });
   });
@@ -255,7 +255,10 @@ describe("Gitea Provider", () => {
   describe("provider setup", () => {
     async function openedWith(baseURL: string | undefined): Promise<unknown> {
       forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo() });
-      await new GiteaProvider({ baseURL, token: "test-token" }).repos.get("o", "r");
+      await new GiteaProvider({ baseURL, token: "test-token" }).repos.get({
+        owner: "o",
+        repo: "r",
+      });
       return forgeOptions.at(-1);
     }
 
@@ -284,7 +287,10 @@ describe("Gitea Provider", () => {
       const codeberg = sharedForge("forgejo", "codeberg.org");
       codeberg.repos.get.mockResolvedValueOnce({ raw: giteaRepo() });
 
-      await new GiteaProvider({ baseURL: "https://codeberg.org", token: "" }).repos.get("o", "r");
+      await new GiteaProvider({ baseURL: "https://codeberg.org", token: "" }).repos.get({
+        owner: "o",
+        repo: "r",
+      });
 
       expect(codeberg.repos.get).toHaveBeenCalledOnce();
       expect(forgeOptions.at(-1)).toMatchObject({
@@ -468,7 +474,10 @@ describe("Gitea Provider", () => {
         throw new Error(`Unexpected URL: ${url}`);
       });
 
-      const page = await provider.contributionTemplates.list("testowner", "test-repo", "issue");
+      const page = await provider.contributionTemplates.list(
+        { owner: "testowner", repo: "test-repo" },
+        { kind: "issue" },
+      );
 
       expect(page.items.map(({ key }) => key)).toEqual([
         "ISSUE_TEMPLATE/bug.md",
@@ -477,10 +486,8 @@ describe("Gitea Provider", () => {
       expect(page.items.every(({ inherited }) => !inherited)).toBe(true);
 
       const template = await provider.contributionTemplates.get(
-        "testowner",
-        "test-repo",
-        "issue",
-        page.items[0]!.key,
+        { owner: "testowner", repo: "test-repo" },
+        { kind: "issue", key: page.items[0]!.key },
       );
       expect(template.content).toBe(first);
     });
@@ -495,9 +502,8 @@ describe("Gitea Provider", () => {
       });
 
       const page = await provider.contributionTemplates.list(
-        "testowner",
-        "test-repo",
-        "pull_request",
+        { owner: "testowner", repo: "test-repo" },
+        { kind: "pull_request" },
       );
 
       expect(page.items).toEqual([]);
@@ -522,9 +528,8 @@ describe("Gitea Provider", () => {
       });
 
       const page = await provider.contributionTemplates.list(
-        "testowner",
-        "test-repo",
-        "pull_request",
+        { owner: "testowner", repo: "test-repo" },
+        { kind: "pull_request" },
       );
 
       expect(page.items).toEqual([
@@ -565,8 +570,8 @@ describe("Gitea Provider", () => {
         .mockResolvedValueOnce({ raw: giteaRepo() });
 
       const both = Promise.all([
-        provider.repos.get("testowner", "test-repo"),
-        provider.repos.get("testowner", "test-repo"),
+        provider.repos.get({ owner: "testowner", repo: "test-repo" }),
+        provider.repos.get({ owner: "testowner", repo: "test-repo" }),
       ]);
       await vi.waitFor(() => expect(forge.repos.get).toHaveBeenCalledTimes(2));
       finish();
@@ -579,10 +584,12 @@ describe("Gitea Provider", () => {
       forge.repos.get
         .mockRejectedValueOnce(unsupported())
         .mockResolvedValueOnce({ raw: giteaRepo() });
-      await provider.repos.get("testowner", "test-repo");
+      await provider.repos.get({ owner: "testowner", repo: "test-repo" });
       forge.repos.get.mockRejectedValueOnce(unsupported());
 
-      await expect(provider.repos.get("testowner", "test-repo")).rejects.toMatchObject({
+      await expect(
+        provider.repos.get({ owner: "testowner", repo: "test-repo" }),
+      ).rejects.toMatchObject({
         status: 501,
       });
       expect(forge.refreshCapabilities).toHaveBeenCalledTimes(1);
@@ -591,7 +598,7 @@ describe("Gitea Provider", () => {
     it("returns a mapped repository", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo() });
 
-      const result = await provider.repos.get("testowner", "test-repo");
+      const result = await provider.repos.get({ owner: "testowner", repo: "test-repo" });
 
       expect(result.id).toBe("100");
       expect(result.fullName).toBe("testowner/test-repo");
@@ -616,7 +623,7 @@ describe("Gitea Provider", () => {
         }),
       });
 
-      const result = await provider.repos.get("testowner", "test-repo");
+      const result = await provider.repos.get({ owner: "testowner", repo: "test-repo" });
 
       expect(result).toMatchObject({
         isFork: true,
@@ -631,7 +638,7 @@ describe("Gitea Provider", () => {
     it("keeps omitted viewer permissions unknown", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo({ permissions: undefined }) });
 
-      const result = await provider.repos.get("testowner", "test-repo");
+      const result = await provider.repos.get({ owner: "testowner", repo: "test-repo" });
 
       expect(result.viewerPermission).toBeNull();
     });
@@ -650,7 +657,7 @@ describe("Gitea Provider", () => {
         }),
       });
 
-      const result = await provider.repos.get("gitea", "helm-gitea");
+      const result = await provider.repos.get({ owner: "gitea", repo: "helm-gitea" });
 
       expect(result.merge).toEqual({
         methods: ["squash"],
@@ -682,8 +689,8 @@ describe("Gitea Provider", () => {
           }),
         });
 
-      const forgejo = await provider.repos.get("forgejo", "forgejo");
-      const rebaseMerge = await provider.repos.get("forgejo", "forgejo");
+      const forgejo = await provider.repos.get({ owner: "forgejo", repo: "forgejo" });
+      const rebaseMerge = await provider.repos.get({ owner: "forgejo", repo: "forgejo" });
 
       expect(forgejo.merge).toMatchObject({
         methods: ["merge", "squash", "rebase"],
@@ -707,7 +714,7 @@ describe("Gitea Provider", () => {
         }),
       });
 
-      const result = await provider.repos.get("testowner", "test-repo");
+      const result = await provider.repos.get({ owner: "testowner", repo: "test-repo" });
 
       expect(result.merge).toMatchObject({ methods: [], defaultMethod: null });
     });
@@ -715,7 +722,7 @@ describe("Gitea Provider", () => {
     it("keeps merge settings unknown when a server leaves the flags out", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo({ allow_squash_merge: true }) });
 
-      const result = await provider.repos.get("testowner", "test-repo");
+      const result = await provider.repos.get({ owner: "testowner", repo: "test-repo" });
 
       expect(result.merge).toBeNull();
     });
@@ -726,8 +733,8 @@ describe("Gitea Provider", () => {
         raw: giteaRepo({ permissions: { admin: false, push: true, pull: true } }),
       });
 
-      await provider.repos.get("testowner", "test-repo");
-      const repository = await provider.repos.get("testowner", "test-repo");
+      await provider.repos.get({ owner: "testowner", repo: "test-repo" });
+      const repository = await provider.repos.get({ owner: "testowner", repo: "test-repo" });
 
       expect(repository.viewerPermission).toBe("write");
       expect(forge.repos.get).toHaveBeenCalledTimes(2);
@@ -737,7 +744,7 @@ describe("Gitea Provider", () => {
     it("hands names with spaces and hashes to forges, which encodes them", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo() });
 
-      await provider.repos.get("test owner", "test#repo");
+      await provider.repos.get({ owner: "test owner", repo: "test#repo" });
 
       expect(forge.repos.get).toHaveBeenCalledWith(
         repoRef(forge, { owner: "test owner", name: "test#repo" }),
@@ -747,7 +754,9 @@ describe("Gitea Provider", () => {
     it.each(["", ".", "..", "../admin", "team/admin", "team\\admin", "%2e%2e", "%2Fadmin"])(
       "rejects unsafe repository path segment %j before transport",
       async (segment) => {
-        await expect(provider.repos.get(segment, "test-repo")).rejects.toMatchObject({
+        await expect(
+          provider.repos.get({ owner: segment, repo: "test-repo" }),
+        ).rejects.toMatchObject({
           status: 400,
           message: expect.stringContaining("Owner must be one path segment"),
         });
@@ -785,7 +794,10 @@ describe("Gitea Provider", () => {
         }),
       );
 
-      const result = await provider.repos.listTags("Codeberg", "pages-server", { perPage: 1 });
+      const result = await provider.repos.listTags(
+        { owner: "Codeberg", repo: "pages-server" },
+        { perPage: 1 },
+      );
 
       expect(forge.contents.tags).toHaveBeenCalledWith(
         repoRef(forge, { owner: "Codeberg", name: "pages-server" }),
@@ -815,7 +827,10 @@ describe("Gitea Provider", () => {
     it("resolves HEAD without commit stats and reads the file at that commit", async () => {
       mockClient.mockResolvedValueOnce({ sha }).mockResolvedValueOnce(giteaFile("Forgejo\n"));
 
-      const file = await provider.repos.readContents("forgejo", "forgejo", "README.md");
+      const file = await provider.repos.readContents(
+        { owner: "forgejo", repo: "forgejo" },
+        { path: "README.md" },
+      );
 
       expect(mockClient).toHaveBeenNthCalledWith(1, "/repos/forgejo/forgejo/git/commits/HEAD", {
         query: { stat: "false", files: "false", verification: "false" },
@@ -832,7 +847,7 @@ describe("Gitea Provider", () => {
         .mockResolvedValueOnce(giteaFile(Uint8Array.from([0xff, 0xfe, 0x41])));
 
       await expect(
-        provider.repos.readContents("forgejo", "forgejo", "README.md"),
+        provider.repos.readContents({ owner: "forgejo", repo: "forgejo" }, { path: "README.md" }),
       ).resolves.toMatchObject({ binary: true, content: "", size: 3 });
     });
 
@@ -843,7 +858,10 @@ describe("Gitea Provider", () => {
       ]);
 
       await expect(
-        provider.repos.readContents("forgejo", "forgejo", "modules/log", { ref: sha }),
+        provider.repos.readContents(
+          { owner: "forgejo", repo: "forgejo" },
+          { path: "modules/log", ref: sha },
+        ),
       ).resolves.toEqual({
         type: "directory",
         path: "modules/log",
@@ -861,7 +879,10 @@ describe("Gitea Provider", () => {
       mockClient.mockResolvedValueOnce({ type: "submodule", name: "sub", path: "sub", size: 0 });
 
       await expect(
-        provider.repos.readContents("forgejo", "forgejo", "sub", { ref: sha }),
+        provider.repos.readContents(
+          { owner: "forgejo", repo: "forgejo" },
+          { path: "sub", ref: sha },
+        ),
       ).rejects.toMatchObject({ status: 422 });
     });
   });
@@ -909,22 +930,25 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.ciRuns.listJobs("testowner", "test-repo", "9876", {
-        cursor: cursorFor("ciRuns.listJobs", {
-          page: 2,
-          subject: ["testowner", "test-repo", "9876"],
-          filters: {
-            perPage: 10,
-          },
-        }),
-        perPage: 10,
-      });
-
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/testowner/test-repo/actions/runs/9876/jobs",
-        { query: { page: "2", limit: "10" } },
+      const result = await provider.ciRuns.listJobs(
+        { owner: "testowner", repo: "test-repo" },
+        {
+          runId: "9876",
+          cursor: cursorFor("ciRuns.listJobs", {
+            page: 2,
+            subject: ["testowner", "test-repo", "9876"],
+            filters: {
+              perPage: 10,
+            },
+          }),
+          perPage: 10,
+        },
       );
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(expect.anything(), {
+        url: "/repos/testowner/test-repo/actions/runs/9876/jobs",
+        query: { page: "2", limit: "10" },
+      });
       expect(result.items).toEqual([
         {
           id: "105912189006",
@@ -962,10 +986,10 @@ describe("Gitea Provider", () => {
         first || cursor !== undefined;
         first = false
       ) {
-        const result = await provider.ciRuns.listJobs("testowner", "test-repo", "9876", {
-          cursor,
-          perPage: 100,
-        });
+        const result = await provider.ciRuns.listJobs(
+          { owner: "testowner", repo: "test-repo" },
+          { runId: "9876", cursor, perPage: 100 },
+        );
         pages.push(result.items.length);
         cursor = result.nextCursor;
       }
@@ -1011,7 +1035,10 @@ describe("Gitea Provider", () => {
           status: 200,
         });
 
-        const result = await provider.ciRuns.listJobs("forgejo", "website", "7529583");
+        const result = await provider.ciRuns.listJobs(
+          { owner: "forgejo", repo: "website" },
+          { runId: "7529583" },
+        );
 
         expect(result).toEqual({
           items: [
@@ -1047,19 +1074,24 @@ describe("Gitea Provider", () => {
           .mockResolvedValueOnce({ data: forgejoJobs, headers: makeHeaders(), status: 200 })
           .mockResolvedValueOnce({ data: forgejoJobs, headers: makeHeaders(), status: 200 });
 
-        const first = await provider.ciRuns.listJobs("forgejo", "website", "7529583", {
-          perPage: 1,
-        });
-        const second = await provider.ciRuns.listJobs("forgejo", "website", "7529583", {
-          cursor: cursorFor("ciRuns.listJobs", {
-            page: 2,
-            subject: ["forgejo", "website", "7529583"],
-            filters: {
-              perPage: 1,
-            },
-          }),
-          perPage: 1,
-        });
+        const first = await provider.ciRuns.listJobs(
+          { owner: "forgejo", repo: "website" },
+          { runId: "7529583", perPage: 1 },
+        );
+        const second = await provider.ciRuns.listJobs(
+          { owner: "forgejo", repo: "website" },
+          {
+            runId: "7529583",
+            cursor: cursorFor("ciRuns.listJobs", {
+              page: 2,
+              subject: ["forgejo", "website", "7529583"],
+              filters: {
+                perPage: 1,
+              },
+            }),
+            perPage: 1,
+          },
+        );
 
         expect(first.items.map((job) => job.name)).toEqual(["publish"]);
         expect(first).toMatchObject({
@@ -1087,7 +1119,10 @@ describe("Gitea Provider", () => {
         ],
       ])("refuses %o before the local cut pages forever", async (options, message) => {
         await expect(
-          provider.ciRuns.listJobs("forgejo", "website", "7529583", options),
+          provider.ciRuns.listJobs(
+            { owner: "forgejo", repo: "website" },
+            { runId: "7529583", ...options },
+          ),
         ).rejects.toMatchObject({ status: 400, message });
         expect(mockedRawFetch).not.toHaveBeenCalled();
       });
@@ -1101,16 +1136,20 @@ describe("Gitea Provider", () => {
           status: 200,
         });
 
-        const result = await provider.ciRuns.listJobs("forgejo", "website", "7529583", {
-          cursor: cursorFor("ciRuns.listJobs", {
-            page: 2,
-            subject: ["forgejo", "website", "7529583"],
-            filters: {
-              perPage: 1,
-            },
-          }),
-          perPage: 1,
-        });
+        const result = await provider.ciRuns.listJobs(
+          { owner: "forgejo", repo: "website" },
+          {
+            runId: "7529583",
+            cursor: cursorFor("ciRuns.listJobs", {
+              page: 2,
+              subject: ["forgejo", "website", "7529583"],
+              filters: {
+                perPage: 1,
+              },
+            }),
+            perPage: 1,
+          },
+        );
 
         expect(result.items.map((job) => job.name)).toEqual(["sync"]);
         expect(result.nextCursor).toBeUndefined();
@@ -1120,7 +1159,10 @@ describe("Gitea Provider", () => {
     it("reads a job log with the failing step first", async () => {
       mockClient.mockResolvedValueOnce(rawJob).mockResolvedValueOnce(new Response(jobLog).body);
 
-      const log = await provider.ciRuns.readJobLog("testowner", "test-repo", "105912189006");
+      const log = await provider.ciRuns.readJobLog(
+        { owner: "testowner", repo: "test-repo" },
+        { jobId: "105912189006" },
+      );
 
       expect(mockClient).toHaveBeenNthCalledWith(
         1,
@@ -1152,7 +1194,10 @@ describe("Gitea Provider", () => {
         steps: [],
       });
 
-      const log = await provider.ciRuns.readJobLog("testowner", "test-repo", "105912189006");
+      const log = await provider.ciRuns.readJobLog(
+        { owner: "testowner", repo: "test-repo" },
+        { jobId: "105912189006" },
+      );
 
       expect(mockClient).toHaveBeenCalledTimes(1);
       expect(log).toMatchObject({ started: false, status: "queued", content: "", length: 0 });
@@ -1160,7 +1205,10 @@ describe("Gitea Provider", () => {
 
     it("rejects a job id that is not a number before any request", async () => {
       await expect(
-        provider.ciRuns.readJobLog("testowner", "test-repo", "1/../../hooks"),
+        provider.ciRuns.readJobLog(
+          { owner: "testowner", repo: "test-repo" },
+          { jobId: "1/../../hooks" },
+        ),
       ).rejects.toMatchObject({ status: 400 });
       expect(mockClient).not.toHaveBeenCalled();
     });
@@ -1171,7 +1219,10 @@ describe("Gitea Provider", () => {
         .mockRejectedValueOnce(makeFetchError(404));
 
       await expect(
-        provider.ciRuns.readJobLog("testowner", "test-repo", "105912189006"),
+        provider.ciRuns.readJobLog(
+          { owner: "testowner", repo: "test-repo" },
+          { jobId: "105912189006" },
+        ),
       ).rejects.toBeInstanceOf(NotFoundError);
       expect(mockClient).toHaveBeenLastCalledWith(
         "/repos/testowner/test-repo/actions/jobs/105912189006/logs",
@@ -1245,9 +1296,8 @@ describe("Gitea Provider", () => {
           .mockResolvedValueOnce(new Response(forgejoLog).body);
 
         const log = await provider.ciRuns.readJobLog(
-          "forgejo",
-          "release-notes-assistant",
-          "404651",
+          { owner: "forgejo", repo: "release-notes-assistant" },
+          { jobId: "404651" },
         );
 
         expect(log).toMatchObject({
@@ -1274,9 +1324,8 @@ describe("Gitea Provider", () => {
         });
 
         const log = await provider.ciRuns.readJobLog(
-          "forgejo",
-          "release-notes-assistant",
-          "404651",
+          { owner: "forgejo", repo: "release-notes-assistant" },
+          { jobId: "404651" },
         );
 
         expect(mockClient).toHaveBeenCalledTimes(1);
@@ -1290,9 +1339,8 @@ describe("Gitea Provider", () => {
           .mockResolvedValueOnce(new Response(forgejoLog).body);
 
         const log = await provider.ciRuns.readJobLog(
-          "forgejo",
-          "release-notes-assistant",
-          "404651",
+          { owner: "forgejo", repo: "release-notes-assistant" },
+          { jobId: "404651" },
         );
 
         expect(log).toMatchObject({ started: true, conclusion: "cancelled" });
@@ -1305,9 +1353,8 @@ describe("Gitea Provider", () => {
           .mockRejectedValueOnce(makeFetchError(404));
 
         const log = await provider.ciRuns.readJobLog(
-          "forgejo",
-          "release-notes-assistant",
-          "404651",
+          { owner: "forgejo", repo: "release-notes-assistant" },
+          { jobId: "404651" },
         );
 
         expect(log).toMatchObject({ started: true, status: "in_progress", content: "" });
@@ -1317,7 +1364,10 @@ describe("Gitea Provider", () => {
         mockClient.mockResolvedValueOnce(forgejoJob).mockRejectedValueOnce(makeFetchError(404));
 
         await expect(
-          provider.ciRuns.readJobLog("forgejo", "release-notes-assistant", "404651"),
+          provider.ciRuns.readJobLog(
+            { owner: "forgejo", repo: "release-notes-assistant" },
+            { jobId: "404651" },
+          ),
         ).rejects.toBeInstanceOf(NotFoundError);
       });
 
@@ -1326,7 +1376,10 @@ describe("Gitea Provider", () => {
           .mockRejectedValueOnce(makeFetchError(404))
           .mockResolvedValueOnce(new Response(codebergLog).body);
 
-        const log = await provider.ciRuns.readJobLog("forgejo", "website", "13806279");
+        const log = await provider.ciRuns.readJobLog(
+          { owner: "forgejo", repo: "website" },
+          { jobId: "13806279" },
+        );
 
         expect(mockClient).toHaveBeenLastCalledWith(
           "/repos/forgejo/website/actions/jobs/13806279/logs",
@@ -1361,7 +1414,10 @@ describe("Gitea Provider", () => {
           .mockRejectedValueOnce(makeFetchError(404))
           .mockResolvedValueOnce(new Response(failed).body);
 
-        const log = await provider.ciRuns.readJobLog("forgejo", "website", "14053326");
+        const log = await provider.ciRuns.readJobLog(
+          { owner: "forgejo", repo: "website" },
+          { jobId: "14053326" },
+        );
 
         expect(log).toMatchObject({ status: "completed", conclusion: "failure" });
       });
@@ -1380,7 +1436,10 @@ describe("Gitea Provider", () => {
           .mockRejectedValueOnce(makeFetchError(404))
           .mockResolvedValueOnce(new Response(actRunner).body);
 
-        const log = await provider.ciRuns.readJobLog("forgejo", "website", "13806279");
+        const log = await provider.ciRuns.readJobLog(
+          { owner: "forgejo", repo: "website" },
+          { jobId: "13806279" },
+        );
 
         expect(log).toMatchObject({ name: "publish", conclusion: "cancelled" });
       });
@@ -1398,7 +1457,10 @@ describe("Gitea Provider", () => {
             textStream(`${header}\n`, filler.repeat(8_000_000 / filler.length), rest.join("\n")),
           );
 
-        const log = await provider.ciRuns.readJobLog("forgejo", "website", "13806279");
+        const log = await provider.ciRuns.readJobLog(
+          { owner: "forgejo", repo: "website" },
+          { jobId: "13806279" },
+        );
 
         expect(log).toMatchObject({ name: "publish", conclusion: "success", logComplete: false });
       });
@@ -1413,7 +1475,10 @@ describe("Gitea Provider", () => {
           .mockRejectedValueOnce(makeFetchError(404))
           .mockResolvedValueOnce(new Response(running.join("\n")).body);
 
-        const log = await provider.ciRuns.readJobLog("forgejo", "website", "13806279");
+        const log = await provider.ciRuns.readJobLog(
+          { owner: "forgejo", repo: "website" },
+          { jobId: "13806279" },
+        );
 
         expect(log).toMatchObject({ status: "in_progress", conclusion: null, started: true });
       });
@@ -1445,10 +1510,13 @@ describe("Gitea Provider", () => {
         }),
       );
 
-      const result = await provider.ciRuns.list("testowner", "test-repo", {
-        branch: "main",
-        perPage: 10,
-      });
+      const result = await provider.ciRuns.list(
+        { owner: "testowner", repo: "test-repo" },
+        {
+          branch: "main",
+          perPage: 10,
+        },
+      );
 
       expect(forge.ci.runs).toHaveBeenCalledWith(
         repoRef(forge, { owner: "testowner", name: "test-repo" }),
@@ -1487,18 +1555,21 @@ describe("Gitea Provider", () => {
       mockClient.mockResolvedValueOnce({ version: "1.27.0+dev-954-g1f3981a301" });
 
       await expect(
-        provider.commits.list("testowner", "test-repo", {
-          path: "src/provider.ts",
-          cursor: cursorFor("commits.list", {
-            page: 2,
-            subject: ["testowner", "test-repo"],
-            filters: {
-              path: "src/provider.ts",
-              perPage: 1,
-            },
-          }),
-          perPage: 1,
-        }),
+        provider.commits.list(
+          { owner: "testowner", repo: "test-repo" },
+          {
+            path: "src/provider.ts",
+            cursor: cursorFor("commits.list", {
+              page: 2,
+              subject: ["testowner", "test-repo"],
+              filters: {
+                path: "src/provider.ts",
+                perPage: 1,
+              },
+            }),
+            perPage: 1,
+          },
+        ),
       ).rejects.toMatchObject({
         message:
           "Path-filtered commit listing is not supported by Gitea because its API ignores pagination limits",
@@ -1513,7 +1584,7 @@ describe("Gitea Provider", () => {
       mockClient.mockRejectedValueOnce(new Error("version unavailable"));
 
       await expect(
-        provider.commits.list("testowner", "test-repo", { path: "README.md" }),
+        provider.commits.list({ owner: "testowner", repo: "test-repo" }, { path: "README.md" }),
       ).rejects.toMatchObject({
         status: 501,
         platform: "gitea",
@@ -1547,26 +1618,26 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.commits.list("forgejo", "forgejo", {
-        path: "README.md",
-        perPage: 2,
-      });
-
-      expect(mockClient).toHaveBeenCalledWith("/version");
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/forgejo/forgejo/commits",
+      const result = await provider.commits.list(
+        { owner: "forgejo", repo: "forgejo" },
         {
-          query: {
-            path: "README.md",
-            stat: "false",
-            verification: "false",
-            files: "false",
-            page: "1",
-            limit: "2",
-          },
+          path: "README.md",
+          perPage: 2,
         },
       );
+
+      expect(mockClient).toHaveBeenCalledWith("/version");
+      expect(mockedRawFetch).toHaveBeenCalledWith(expect.anything(), {
+        url: "/repos/forgejo/forgejo/commits",
+        query: {
+          path: "README.md",
+          stat: "false",
+          verification: "false",
+          files: "false",
+          page: "1",
+          limit: "2",
+        },
+      });
       expect(result).toMatchObject({
         totalCount: 546,
         nextCursor: cursorFor("commits.list", {
@@ -1599,39 +1670,39 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.commits.list("testowner", "test-repo", {
-        ref: "main",
-        since: "2026-08-01T00:00:00Z",
-        until: "2026-08-29T23:59:59Z",
-        cursor: cursorFor("commits.list", {
-          page: 2,
-          subject: ["testowner", "test-repo"],
-          filters: {
-            ref: "main",
-            since: "2026-08-01T00:00:00Z",
-            until: "2026-08-29T23:59:59Z",
-            perPage: 10,
-          },
-        }),
-        perPage: 10,
-      });
-
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/testowner/test-repo/commits",
+      const result = await provider.commits.list(
+        { owner: "testowner", repo: "test-repo" },
         {
-          query: {
-            sha: "main",
-            since: "2026-08-01T00:00:00Z",
-            until: "2026-08-29T23:59:59Z",
-            stat: "false",
-            verification: "false",
-            files: "false",
-            page: "2",
-            limit: "10",
-          },
+          ref: "main",
+          since: "2026-08-01T00:00:00Z",
+          until: "2026-08-29T23:59:59Z",
+          cursor: cursorFor("commits.list", {
+            page: 2,
+            subject: ["testowner", "test-repo"],
+            filters: {
+              ref: "main",
+              since: "2026-08-01T00:00:00Z",
+              until: "2026-08-29T23:59:59Z",
+              perPage: 10,
+            },
+          }),
+          perPage: 10,
         },
       );
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(expect.anything(), {
+        url: "/repos/testowner/test-repo/commits",
+        query: {
+          sha: "main",
+          since: "2026-08-01T00:00:00Z",
+          until: "2026-08-29T23:59:59Z",
+          stat: "false",
+          verification: "false",
+          files: "false",
+          page: "2",
+          limit: "10",
+        },
+      });
       expect(result).toMatchObject({
         totalCount: 31,
         nextCursor: cursorFor("commits.list", {
@@ -1671,9 +1742,10 @@ describe("Gitea Provider", () => {
         ],
       });
 
-      const result = await provider.commits.compare("gitea", "tea", "v0.10.0", "release/v0.10", {
-        perPage: 2,
-      });
+      const result = await provider.commits.compare(
+        { owner: "gitea", repo: "tea" },
+        { base: "v0.10.0", head: "release/v0.10", perPage: 2 },
+      );
 
       expect(mockClient).toHaveBeenCalledWith(
         "/repos/gitea/tea/compare/v0.10.0...release%2Fv0.10",
@@ -1701,7 +1773,10 @@ describe("Gitea Provider", () => {
     it("steps back from a ref with ~N and ^N", async () => {
       mockClient.mockResolvedValueOnce({ total_commits: 1, commits: [commit("bcd62a1", "x")] });
 
-      await provider.commits.compare("gitea", "tea", "main~1", "bcd62a1^");
+      await provider.commits.compare(
+        { owner: "gitea", repo: "tea" },
+        { base: "main~1", head: "bcd62a1^" },
+      );
 
       expect(mockClient).toHaveBeenCalledWith("/repos/gitea/tea/compare/main~1...bcd62a1%5E", {
         query: { files: "false", verification: "false" },
@@ -1729,7 +1804,7 @@ describe("Gitea Provider", () => {
         ],
       });
 
-      const result = await provider.commits.get("testowner", "test-repo", sha);
+      const result = await provider.commits.get({ owner: "testowner", repo: "test-repo" }, { sha });
 
       expect(mockClient).toHaveBeenCalledWith(`/repos/testowner/test-repo/git/commits/${sha}`);
       expect(result).toEqual({
@@ -1782,7 +1857,10 @@ describe("Gitea Provider", () => {
           ),
         );
 
-      const result = await provider.commits.readPatch("testowner", "test-repo", ref);
+      const result = await provider.commits.readPatch(
+        { owner: "testowner", repo: "test-repo" },
+        { sha: ref },
+      );
 
       expect(mockClient).toHaveBeenNthCalledWith(
         1,
@@ -1844,7 +1922,10 @@ describe("Gitea Provider", () => {
           ),
         );
 
-      const result = await provider.commits.readPatch("testowner", "test-repo", sha);
+      const result = await provider.commits.readPatch(
+        { owner: "testowner", repo: "test-repo" },
+        { sha },
+      );
 
       expect(result.states).toEqual({ included: 2, binary: 0, unavailable: 0 });
       expect(result.content).toContain("--- renamed newname\n");
@@ -1871,15 +1952,18 @@ describe("Gitea Provider", () => {
         .mockResolvedValueOnce(commit)
         .mockResolvedValueOnce(textStream("x".repeat(2_000_001)));
 
-      const accepted = await provider.commits.readPatch("testowner", "test-repo", sha);
+      const accepted = await provider.commits.readPatch(
+        { owner: "testowner", repo: "test-repo" },
+        { sha },
+      );
       expect(accepted.states).toEqual({ included: 0, binary: 0, unavailable: 1 });
 
-      await expect(provider.commits.readPatch("testowner", "test-repo", sha)).rejects.toMatchObject(
-        {
-          status: 413,
-          message: "Gitea commit diff exceeds the 2000000 character input limit",
-        },
-      );
+      await expect(
+        provider.commits.readPatch({ owner: "testowner", repo: "test-repo" }, { sha }),
+      ).rejects.toMatchObject({
+        status: 413,
+        message: "Gitea commit diff exceeds the 2000000 character input limit",
+      });
     });
   });
 
@@ -1889,7 +1973,7 @@ describe("Gitea Provider", () => {
     it("returns mapped issues", async () => {
       forge.threads.list.mockReturnValueOnce(listing({ items: raws(giteaIssue()) }));
 
-      const result = await provider.issues.list("testowner", "test-repo");
+      const result = await provider.issues.list({ owner: "testowner", repo: "test-repo" });
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0]).toEqual({
@@ -1910,7 +1994,10 @@ describe("Gitea Provider", () => {
     it("asks forges for issues in the given state", async () => {
       forge.threads.list.mockReturnValueOnce(listing({ items: [] }));
 
-      await provider.issues.list("testowner", "test-repo", { state: "closed", perPage: 25 });
+      await provider.issues.list(
+        { owner: "testowner", repo: "test-repo" },
+        { state: "closed", perPage: 25 },
+      );
 
       expect(forge.threads.list).toHaveBeenCalledWith(
         repoRef(forge, { owner: "testowner", name: "test-repo" }),
@@ -1933,32 +2020,33 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.issues.search("testowner", "test-repo", "runner timeout", {
-        state: "closed",
-        cursor: cursorFor("issues.search", {
-          page: 2,
-          subject: ["testowner", "test-repo", "runner timeout"],
-          filters: {
-            state: "closed",
-            perPage: 1,
-          },
-        }),
-        perPage: 1,
-      });
-
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/testowner/test-repo/issues",
+      const result = await provider.issues.search(
+        { owner: "testowner", repo: "test-repo" },
         {
-          query: {
-            q: "runner timeout",
-            state: "closed",
-            type: "issues",
-            page: "2",
-            limit: "1",
-          },
+          query: "runner timeout",
+          state: "closed",
+          cursor: cursorFor("issues.search", {
+            page: 2,
+            subject: ["testowner", "test-repo", "runner timeout"],
+            filters: {
+              state: "closed",
+              perPage: 1,
+            },
+          }),
+          perPage: 1,
         },
       );
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(expect.anything(), {
+        url: "/repos/testowner/test-repo/issues",
+        query: {
+          q: "runner timeout",
+          state: "closed",
+          type: "issues",
+          page: "2",
+          limit: "1",
+        },
+      });
       expect(result).toMatchObject({
         items: [expect.objectContaining({ number: 1 })],
         incomplete: false,
@@ -1976,13 +2064,15 @@ describe("Gitea Provider", () => {
     it("searches every state when none is given, like GitHub and GitLab", async () => {
       mockedRawFetch.mockResolvedValueOnce({ data: [], headers: makeHeaders(), status: 200 });
 
-      await provider.issues.search("testowner", "test-repo", "runner timeout");
-
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/testowner/test-repo/issues",
-        { query: { q: "runner timeout", state: "all", type: "issues" } },
+      await provider.issues.search(
+        { owner: "testowner", repo: "test-repo" },
+        { query: "runner timeout" },
       );
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(expect.anything(), {
+        url: "/repos/testowner/test-repo/issues",
+        query: { q: "runner timeout", state: "all", type: "issues" },
+      });
     });
   });
 
@@ -1990,7 +2080,11 @@ describe("Gitea Provider", () => {
     it("returns a mapped issue", async () => {
       mockClient.mockResolvedValueOnce(giteaIssue());
 
-      const result = await provider.issues.get("testowner", "test-repo", 1);
+      const result = await provider.issues.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 1,
+      });
 
       expect(result.id).toBe("200");
       expect(result.number).toBe(1);
@@ -2006,7 +2100,9 @@ describe("Gitea Provider", () => {
         giteaIssue({ pull_request: { merged: false, draft: false } }),
       );
 
-      await expect(provider.issues.get("testowner", "test-repo", 1)).rejects.toThrow(NotFoundError);
+      await expect(
+        provider.issues.get({ owner: "testowner", repo: "test-repo", number: 1 }),
+      ).rejects.toThrow(NotFoundError);
     });
 
     it("reads current state on every call", async () => {
@@ -2014,8 +2110,8 @@ describe("Gitea Provider", () => {
       mockedCachedFetch.mockResolvedValue(giteaIssue());
       mockClient.mockResolvedValueOnce(giteaIssue()).mockResolvedValueOnce(closed);
 
-      await provider.issues.get("testowner", "test-repo", 1);
-      const issue = await provider.issues.get("testowner", "test-repo", 1);
+      await provider.issues.get({ owner: "testowner", repo: "test-repo", number: 1 });
+      const issue = await provider.issues.get({ owner: "testowner", repo: "test-repo", number: 1 });
 
       expect(issue.state).toBe("closed");
       expect(issue.updatedAt).toBe("2024-01-03T00:00:00Z");
@@ -2035,11 +2131,14 @@ describe("Gitea Provider", () => {
         }),
       );
 
-      const result = await provider.issues.create("testowner", "test-repo", {
-        title: "New issue",
-        body: "Issue body",
-        assignees: ["triager"],
-      });
+      const result = await provider.issues.create(
+        { owner: "testowner", repo: "test-repo" },
+        {
+          title: "New issue",
+          body: "Issue body",
+          assignees: ["triager"],
+        },
+      );
 
       expect(result.id).toBe("201");
       expect(result.number).toBe(2);
@@ -2086,24 +2185,23 @@ describe("Gitea Provider", () => {
         }),
       );
 
-      await provider.issues.create("testowner", "test-repo", {
-        title: "Bug report",
-        body: "Critical bug",
-        labels: ["bug", "urgent"],
-      });
+      await provider.issues.create(
+        { owner: "testowner", repo: "test-repo" },
+        {
+          title: "Bug report",
+          body: "Critical bug",
+          labels: ["bug", "urgent"],
+        },
+      );
 
-      expect(mockedRawFetch).toHaveBeenNthCalledWith(
-        1,
-        mockClient,
-        "/repos/testowner/test-repo/labels",
-        { query: { page: "1", limit: "50" } },
-      );
-      expect(mockedRawFetch).toHaveBeenNthCalledWith(
-        2,
-        mockClient,
-        "/repos/testowner/test-repo/labels",
-        { query: { page: "2", limit: "50" } },
-      );
+      expect(mockedRawFetch).toHaveBeenNthCalledWith(1, mockClient, {
+        url: "/repos/testowner/test-repo/labels",
+        query: { page: "1", limit: "50" },
+      });
+      expect(mockedRawFetch).toHaveBeenNthCalledWith(2, mockClient, {
+        url: "/repos/testowner/test-repo/labels",
+        query: { page: "2", limit: "50" },
+      });
       expect(mockClient).toHaveBeenCalledWith(
         "/repos/testowner/test-repo/issues",
         expect.objectContaining({
@@ -2122,13 +2220,17 @@ describe("Gitea Provider", () => {
         });
       mockClient.mockResolvedValueOnce(giteaIssue());
 
-      await provider.issues.create("testowner", "test-repo", {
-        title: "Bug report",
-        body: "Critical bug",
-        labels: ["org-label"],
-      });
+      await provider.issues.create(
+        { owner: "testowner", repo: "test-repo" },
+        {
+          title: "Bug report",
+          body: "Critical bug",
+          labels: ["org-label"],
+        },
+      );
 
-      expect(mockedRawFetch).toHaveBeenNthCalledWith(2, mockClient, "/orgs/testowner/labels", {
+      expect(mockedRawFetch).toHaveBeenNthCalledWith(2, mockClient, {
+        url: "/orgs/testowner/labels",
         query: { page: "1", limit: "50" },
       });
       expect(mockClient).toHaveBeenCalledWith(
@@ -2149,11 +2251,14 @@ describe("Gitea Provider", () => {
         .mockResolvedValueOnce({ data: [], headers: makeHeaders(), status: 200 });
 
       await expect(
-        provider.issues.create("testowner", "test-repo", {
-          title: "Bug report",
-          body: "Critical bug",
-          labels: ["missing"],
-        }),
+        provider.issues.create(
+          { owner: "testowner", repo: "test-repo" },
+          {
+            title: "Bug report",
+            body: "Critical bug",
+            labels: ["missing"],
+          },
+        ),
       ).rejects.toMatchObject({ status: 404, platform: "gitea" });
       expect(mockClient).not.toHaveBeenCalled();
     });
@@ -2169,11 +2274,14 @@ describe("Gitea Provider", () => {
       });
 
       await expect(
-        provider.issues.create("testowner", "test-repo", {
-          title: "Bug report",
-          body: "Critical bug",
-          labels: ["missing"],
-        }),
+        provider.issues.create(
+          { owner: "testowner", repo: "test-repo" },
+          {
+            title: "Bug report",
+            body: "Critical bug",
+            labels: ["missing"],
+          },
+        ),
       ).rejects.toMatchObject({ status: 502, platform: "gitea" });
       expect(mockedRawFetch).toHaveBeenCalledTimes(100);
       expect(mockClient).not.toHaveBeenCalled();
@@ -2190,7 +2298,7 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.pullRequests.list("testowner", "test-repo");
+      const result = await provider.pullRequests.list({ owner: "testowner", repo: "test-repo" });
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0]).toEqual({
@@ -2225,13 +2333,12 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      await provider.pullRequests.list("testowner", "test-repo", { perPage: 15 });
+      await provider.pullRequests.list({ owner: "testowner", repo: "test-repo" }, { perPage: 15 });
 
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/testowner/test-repo/pulls",
-        { query: { limit: "15" } },
-      );
+      expect(mockedRawFetch).toHaveBeenCalledWith(expect.anything(), {
+        url: "/repos/testowner/test-repo/pulls",
+        query: { limit: "15" },
+      });
     });
   });
 
@@ -2254,9 +2361,12 @@ describe("Gitea Provider", () => {
         }),
       );
 
-      const result = await provider.pullRequests.listFiles("testowner", "test-repo", 5, {
-        perPage: 10,
-      });
+      const result = await provider.pullRequests.listFiles(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        {
+          perPage: 10,
+        },
+      );
 
       expect(forge.threads.files).toHaveBeenCalledWith(
         expect.objectContaining({ kind: "pull_request", number: "5" }),
@@ -2277,14 +2387,16 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.commits.listChecks("testowner", "test-repo", "feat/checks");
+      const result = await provider.commits.listChecks(
+        { owner: "testowner", repo: "test-repo" },
+        { ref: "feat/checks" },
+      );
 
       expect(mockClient).not.toHaveBeenCalled();
-      expect(mockedRawFetch).toHaveBeenCalledExactlyOnceWith(
-        expect.anything(),
-        "/repos/testowner/test-repo/commits/feat%2Fchecks/status",
-        { query: { page: "1", limit: "30" } },
-      );
+      expect(mockedRawFetch).toHaveBeenCalledExactlyOnceWith(expect.anything(), {
+        url: "/repos/testowner/test-repo/commits/feat%2Fchecks/status",
+        query: { page: "1", limit: "30" },
+      });
       expect(result).toEqual({
         items: [
           {
@@ -2306,7 +2418,10 @@ describe("Gitea Provider", () => {
       });
       mockClient.mockResolvedValueOnce({ sha: "42190a2e08172b2d2e3f63f7b848231ec566b08f" });
 
-      const result = await provider.commits.listChecks("testowner", "test-repo", "main");
+      const result = await provider.commits.listChecks(
+        { owner: "testowner", repo: "test-repo" },
+        { ref: "main" },
+      );
 
       expect(mockClient).toHaveBeenCalledExactlyOnceWith(
         "/repos/testowner/test-repo/git/commits/main",
@@ -2324,7 +2439,10 @@ describe("Gitea Provider", () => {
       mockClient.mockRejectedValueOnce(makeFetchError(404));
 
       await expect(
-        provider.commits.listChecks("testowner", "test-repo", "no-such-branch"),
+        provider.commits.listChecks(
+          { owner: "testowner", repo: "test-repo" },
+          { ref: "no-such-branch" },
+        ),
       ).rejects.toBeInstanceOf(NotFoundError);
     });
   });
@@ -2353,29 +2471,28 @@ describe("Gitea Provider", () => {
           status: 200,
         });
 
-      const result = await provider.pullRequests.listChecks("testowner", "test-repo", 5, {
-        cursor: cursorFor("pullRequests.listChecks", {
-          page: 2,
-          subject: ["testowner", "test-repo", 5],
-          filters: {
-            perPage: 1,
-          },
-        }),
-        perPage: 1,
-      });
+      const result = await provider.pullRequests.listChecks(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        {
+          cursor: cursorFor("pullRequests.listChecks", {
+            page: 2,
+            subject: ["testowner", "test-repo", 5],
+            filters: {
+              perPage: 1,
+            },
+          }),
+          perPage: 1,
+        },
+      );
 
-      expect(mockedRawFetch).toHaveBeenNthCalledWith(
-        1,
-        expect.anything(),
-        "/repos/testowner/test-repo/commits/42190a2e08172b2d2e3f63f7b848231ec566b08f/status",
-        { query: { page: "2", limit: "1" } },
-      );
-      expect(mockedRawFetch).toHaveBeenNthCalledWith(
-        2,
-        expect.anything(),
-        "/repos/testowner/test-repo/commits/42190a2e08172b2d2e3f63f7b848231ec566b08f/status",
-        { query: { page: "3", limit: "1" } },
-      );
+      expect(mockedRawFetch).toHaveBeenNthCalledWith(1, expect.anything(), {
+        url: "/repos/testowner/test-repo/commits/42190a2e08172b2d2e3f63f7b848231ec566b08f/status",
+        query: { page: "2", limit: "1" },
+      });
+      expect(mockedRawFetch).toHaveBeenNthCalledWith(2, expect.anything(), {
+        url: "/repos/testowner/test-repo/commits/42190a2e08172b2d2e3f63f7b848231ec566b08f/status",
+        query: { page: "3", limit: "1" },
+      });
       expect(result).toEqual({
         items: [
           {
@@ -2413,9 +2530,12 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.pullRequests.listChecks("testowner", "test-repo", 5, {
-        perPage: 2,
-      });
+      const result = await provider.pullRequests.listChecks(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        {
+          perPage: 2,
+        },
+      );
 
       expect(result.items[0]).toMatchObject({
         id: "503",
@@ -2465,15 +2585,17 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
-        perPage: 3,
-      });
-
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/testowner/test-repo/pulls/5/reviews",
-        { query: { page: "1", limit: "3" } },
+      const result = await provider.pullRequests.listReviews(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        {
+          perPage: 3,
+        },
       );
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(expect.anything(), {
+        url: "/repos/testowner/test-repo/pulls/5/reviews",
+        query: { page: "1", limit: "3" },
+      });
       expect(result).toEqual({
         items: [
           {
@@ -2513,16 +2635,19 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
-        cursor: cursorFor("pullRequests.listReviews", {
-          page: 2,
-          subject: ["testowner", "test-repo", 5],
-          filters: {
-            perPage: 2,
-          },
-        }),
-        perPage: 2,
-      });
+      const result = await provider.pullRequests.listReviews(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        {
+          cursor: cursorFor("pullRequests.listReviews", {
+            page: 2,
+            subject: ["testowner", "test-repo", 5],
+            filters: {
+              perPage: 2,
+            },
+          }),
+          perPage: 2,
+        },
+      );
 
       expect(result.nextCursor).toBeUndefined();
     });
@@ -2535,16 +2660,19 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
-        cursor: cursorFor("pullRequests.listReviews", {
-          page: 2,
-          subject: ["testowner", "test-repo", 5],
-          filters: {
-            perPage: 3,
-          },
-        }),
-        perPage: 3,
-      });
+      const result = await provider.pullRequests.listReviews(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        {
+          cursor: cursorFor("pullRequests.listReviews", {
+            page: 2,
+            subject: ["testowner", "test-repo", 5],
+            filters: {
+              perPage: 3,
+            },
+          }),
+          perPage: 3,
+        },
+      );
 
       expect(result.nextCursor).toBeUndefined();
     });
@@ -2567,10 +2695,13 @@ describe("Gitea Provider", () => {
         first || cursor !== undefined;
         first = false
       ) {
-        const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
-          cursor,
-          perPage: 100,
-        });
+        const result = await provider.pullRequests.listReviews(
+          { owner: "testowner", repo: "test-repo", number: 5 },
+          {
+            cursor,
+            perPage: 100,
+          },
+        );
         pages.push(result.items.length);
         cursor = result.nextCursor;
       }
@@ -2587,9 +2718,12 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.pullRequests.listReviews("testowner", "test-repo", 5, {
-        perPage: 1,
-      });
+      const result = await provider.pullRequests.listReviews(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        {
+          perPage: 1,
+        },
+      );
 
       expect(result).toMatchObject({
         nextCursor: cursorFor("pullRequests.listReviews", {
@@ -2646,7 +2780,10 @@ describe("Gitea Provider", () => {
         }),
       );
 
-      const result = await provider.releases.list("testowner", "test-repo", { perPage: 2 });
+      const result = await provider.releases.list(
+        { owner: "testowner", repo: "test-repo" },
+        { perPage: 2 },
+      );
 
       expect(forge.releases.list).toHaveBeenCalledWith(ref, { perPage: 2 });
       expect(result).toEqual({
@@ -2661,7 +2798,10 @@ describe("Gitea Provider", () => {
         raw: { ...giteaRelease, name: null, body: null, html_url: null },
       });
 
-      const result = await provider.releases.get("testowner", "test-repo", "v0.16.0");
+      const result = await provider.releases.get(
+        { owner: "testowner", repo: "test-repo" },
+        { tag: "v0.16.0" },
+      );
 
       expect(forge.releases.getByTag).toHaveBeenCalledWith(ref, "v0.16.0");
       expect(result).toEqual({ ...release, name: "", body: "", url: "" });
@@ -2672,7 +2812,10 @@ describe("Gitea Provider", () => {
         raw: { ...giteaRelease, tag_name: "release/0.16" },
       });
 
-      await provider.releases.get("testowner", "test-repo", "release/0.16");
+      await provider.releases.get(
+        { owner: "testowner", repo: "test-repo" },
+        { tag: "release/0.16" },
+      );
 
       expect(forge.releases.getByTag).toHaveBeenCalledWith(ref, "release/0.16");
     });
@@ -2682,12 +2825,15 @@ describe("Gitea Provider", () => {
         raw: { ...giteaRelease, draft: true, published_at: null },
       });
 
-      const result = await provider.releases.create("testowner", "test-repo", {
-        tag: "v0.16.0",
-        body: "## What's Changed",
-        ref: "main",
-        draft: true,
-      });
+      const result = await provider.releases.create(
+        { owner: "testowner", repo: "test-repo" },
+        {
+          tag: "v0.16.0",
+          body: "## What's Changed",
+          ref: "main",
+          draft: true,
+        },
+      );
 
       expect(forge.releases.create).toHaveBeenCalledWith(ref, {
         tag: "v0.16.0",
@@ -2703,9 +2849,10 @@ describe("Gitea Provider", () => {
       forge.releases.getByTag.mockResolvedValueOnce({ ref: releaseRef, raw: giteaRelease });
       forge.releases.update.mockResolvedValueOnce({ raw: { ...giteaRelease, prerelease: true } });
 
-      const result = await provider.releases.update("testowner", "test-repo", "v0.16.0", {
-        prerelease: true,
-      });
+      const result = await provider.releases.update(
+        { owner: "testowner", repo: "test-repo" },
+        { tag: "v0.16.0", prerelease: true },
+      );
 
       expect(forge.releases.update).toHaveBeenCalledWith(releaseRef, { prerelease: true });
       expect(result).toEqual({ ...release, prerelease: true });
@@ -2715,7 +2862,10 @@ describe("Gitea Provider", () => {
       forge.releases.getByTag.mockRejectedValueOnce(makeFetchError(404));
 
       await expect(
-        provider.releases.update("testowner", "test-repo", "v9.9.9", { body: "x" }),
+        provider.releases.update(
+          { owner: "testowner", repo: "test-repo" },
+          { tag: "v9.9.9", body: "x" },
+        ),
       ).rejects.toBeInstanceOf(NotFoundError);
       expect(forge.releases.update).not.toHaveBeenCalled();
     });
@@ -2738,10 +2888,9 @@ describe("Gitea Provider", () => {
       });
 
       const result = await provider.pullRequests.search(
-        "testowner",
-        "test-repo",
-        "runner timeout",
+        { owner: "testowner", repo: "test-repo" },
         {
+          query: "runner timeout",
           state: "closed",
           cursor: cursorFor("pullRequests.search", {
             page: 2,
@@ -2753,19 +2902,16 @@ describe("Gitea Provider", () => {
       );
 
       expect(mockedRawFetch).toHaveBeenCalledTimes(1);
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/testowner/test-repo/issues",
-        {
-          query: {
-            q: "runner timeout",
-            state: "closed",
-            type: "pulls",
-            page: "2",
-            limit: "1",
-          },
+      expect(mockedRawFetch).toHaveBeenCalledWith(expect.anything(), {
+        url: "/repos/testowner/test-repo/issues",
+        query: {
+          q: "runner timeout",
+          state: "closed",
+          type: "pulls",
+          page: "2",
+          limit: "1",
         },
-      );
+      });
       expect(mockClient).not.toHaveBeenCalled();
       expect(result).toMatchObject({
         items: [{ number: 1, merged: true, draft: true }],
@@ -2783,19 +2929,22 @@ describe("Gitea Provider", () => {
     it("searches every state when none is given, like GitHub and GitLab", async () => {
       mockedRawFetch.mockResolvedValueOnce({ data: [], headers: makeHeaders(), status: 200 });
 
-      await provider.pullRequests.search("testowner", "test-repo", "runner timeout", {
-        cursor: cursorFor("pullRequests.search", {
-          page: 2,
-          subject: ["testowner", "test-repo", "runner timeout"],
-          filters: {},
-        }),
-      });
-
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/testowner/test-repo/issues",
-        { query: { q: "runner timeout", state: "all", type: "pulls", page: "2" } },
+      await provider.pullRequests.search(
+        { owner: "testowner", repo: "test-repo" },
+        {
+          query: "runner timeout",
+          cursor: cursorFor("pullRequests.search", {
+            page: 2,
+            subject: ["testowner", "test-repo", "runner timeout"],
+            filters: {},
+          }),
+        },
       );
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(expect.anything(), {
+        url: "/repos/testowner/test-repo/issues",
+        query: { q: "runner timeout", state: "all", type: "pulls", page: "2" },
+      });
     });
   });
 
@@ -2803,9 +2952,12 @@ describe("Gitea Provider", () => {
     it("reports closing issues as unknown, not as none", async () => {
       mockClient.mockResolvedValueOnce(giteaPullRequest());
 
-      const result = await provider.pullRequests.get("testowner", "test-repo", 5, {
-        closingIssues: true,
-      });
+      const result = await provider.pullRequests.get(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        {
+          closingIssues: true,
+        },
+      );
 
       expect(result.closingIssues).toBeNull();
       expect(mockClient).toHaveBeenCalledTimes(1);
@@ -2819,7 +2971,11 @@ describe("Gitea Provider", () => {
         }),
       );
 
-      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
+      const result = await provider.pullRequests.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
 
       expect(result.id).toBe("300");
       expect(result.sourceBranch).toBe("feature-branch");
@@ -2844,7 +3000,11 @@ describe("Gitea Provider", () => {
         }),
       );
 
-      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
+      const result = await provider.pullRequests.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
 
       expect(result.mergedAt).toBe("2026-09-20T11:04:52Z");
       expect(result.mergedBy).toEqual({ login: "maintainer" });
@@ -2853,7 +3013,11 @@ describe("Gitea Provider", () => {
     it("leaves merge metadata null on an open pull request", async () => {
       mockClient.mockResolvedValueOnce(giteaPullRequest());
 
-      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
+      const result = await provider.pullRequests.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
 
       expect(result.mergedAt).toBeNull();
       expect(result.mergedBy).toBeNull();
@@ -2862,7 +3026,11 @@ describe("Gitea Provider", () => {
     it("keeps mergeability unknown when an older server omits it", async () => {
       mockClient.mockResolvedValueOnce(giteaPullRequest({ mergeable: undefined }));
 
-      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
+      const result = await provider.pullRequests.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
 
       expect(result.mergeable).toBeNull();
     });
@@ -2876,8 +3044,12 @@ describe("Gitea Provider", () => {
       mockedCachedFetch.mockResolvedValue(giteaPullRequest());
       mockClient.mockResolvedValueOnce(giteaPullRequest()).mockResolvedValueOnce(merged);
 
-      await provider.pullRequests.get("testowner", "test-repo", 5);
-      const pr = await provider.pullRequests.get("testowner", "test-repo", 5);
+      await provider.pullRequests.get({ owner: "testowner", repo: "test-repo", number: 5 });
+      const pr = await provider.pullRequests.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
 
       expect(pr.merged).toBe(true);
       expect(pr.mergeCommitSha).toBe("dfe89dfb6bf22dcbd2a6203bef8aa262e65ea085");
@@ -2895,13 +3067,16 @@ describe("Gitea Provider", () => {
         }),
       );
 
-      const result = await provider.pullRequests.create("testowner", "test-repo", {
-        title: "New PR",
-        body: "PR body",
-        sourceBranch: "feature",
-        targetBranch: "main",
-        assignees: ["maintainer"],
-      });
+      const result = await provider.pullRequests.create(
+        { owner: "testowner", repo: "test-repo" },
+        {
+          title: "New PR",
+          body: "PR body",
+          sourceBranch: "feature",
+          targetBranch: "main",
+          assignees: ["maintainer"],
+        },
+      );
 
       expect(result.id).toBe("301");
       expect(result.assignees).toEqual([{ login: "maintainer" }]);
@@ -2923,13 +3098,16 @@ describe("Gitea Provider", () => {
     it("includes draft field in request body when specified", async () => {
       mockClient.mockResolvedValueOnce(giteaPullRequest({ id: 302 }));
 
-      await provider.pullRequests.create("testowner", "test-repo", {
-        title: "Draft PR",
-        body: "WIP",
-        sourceBranch: "wip-branch",
-        targetBranch: "main",
-        draft: true,
-      });
+      await provider.pullRequests.create(
+        { owner: "testowner", repo: "test-repo" },
+        {
+          title: "Draft PR",
+          body: "WIP",
+          sourceBranch: "wip-branch",
+          targetBranch: "main",
+          draft: true,
+        },
+      );
 
       expect(mockClient).toHaveBeenCalledWith(
         "/repos/testowner/test-repo/pulls",
@@ -2963,11 +3141,14 @@ describe("Gitea Provider", () => {
           }),
         );
 
-      const result = await provider.issues.update("testowner", "test-repo", 1, {
-        state: "closed",
-        addAssignees: ["reviewer"],
-        removeLabels: ["bug"],
-      });
+      const result = await provider.issues.update(
+        { owner: "testowner", repo: "test-repo", number: 1 },
+        {
+          state: "closed",
+          addAssignees: ["reviewer"],
+          removeLabels: ["bug"],
+        },
+      );
 
       expect(mockClient.mock.calls).toEqual([
         [issue],
@@ -2996,9 +3177,12 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.issues.update("testowner", "test-repo", 1, {
-        addLabels: ["docs"],
-      });
+      const result = await provider.issues.update(
+        { owner: "testowner", repo: "test-repo", number: 1 },
+        {
+          addLabels: ["docs"],
+        },
+      );
 
       expect(mockClient.mock.calls).toEqual([
         [issue],
@@ -3012,7 +3196,10 @@ describe("Gitea Provider", () => {
       mockClient.mockResolvedValueOnce(giteaIssue({ pull_request: { merged: false } }));
 
       await expect(
-        provider.issues.update("testowner", "test-repo", 1, { title: "Renamed" }),
+        provider.issues.update(
+          { owner: "testowner", repo: "test-repo", number: 1 },
+          { title: "Renamed" },
+        ),
       ).rejects.toBeInstanceOf(NotFoundError);
       expect(mockClient).toHaveBeenCalledTimes(1);
     });
@@ -3022,12 +3209,22 @@ describe("Gitea Provider", () => {
     const pull = "/repos/testowner/test-repo/pulls/5";
 
     it.each([
-      ["pullRequests.merge", () => provider.pullRequests.merge("..", "test-repo", 5, {})],
+      [
+        "pullRequests.merge",
+        () => provider.pullRequests.merge({ owner: "..", repo: "test-repo", number: 5 }, {}),
+      ],
       [
         "pullRequests.update",
-        () => provider.pullRequests.update("..", "test-repo", 5, { title: "x" }),
+        () =>
+          provider.pullRequests.update(
+            { owner: "..", repo: "test-repo", number: 5 },
+            { title: "x" },
+          ),
       ],
-      ["issues.update", () => provider.issues.update("..", "test-repo", 5, { title: "x" })],
+      [
+        "issues.update",
+        () => provider.issues.update({ owner: "..", repo: "test-repo", number: 5 }, { title: "x" }),
+      ],
     ])("%s names the platform when the owner is no path segment", async (_name, write) => {
       await expect(write()).rejects.toMatchObject({ status: 400, platform: "gitea" });
       expect(mockClient).not.toHaveBeenCalled();
@@ -3038,12 +3235,15 @@ describe("Gitea Provider", () => {
         .mockResolvedValueOnce(undefined)
         .mockResolvedValueOnce(giteaPullRequest({ merged: true, merge_commit_sha: "f00d" }));
 
-      const result = await provider.pullRequests.merge("testowner", "test-repo", 5, {
-        method: "rebase",
-        headSha: "abc123",
-        title: "Dark mode",
-        message: "Closes #42.",
-      });
+      const result = await provider.pullRequests.merge(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        {
+          method: "rebase",
+          headSha: "abc123",
+          title: "Dark mode",
+          message: "Closes #42.",
+        },
+      );
 
       expect(mockClient.mock.calls).toEqual([
         [
@@ -3067,7 +3267,7 @@ describe("Gitea Provider", () => {
     it("makes a merge commit when no method is given, since Gitea requires one", async () => {
       mockClient.mockResolvedValueOnce(undefined).mockResolvedValueOnce(giteaPullRequest());
 
-      await provider.pullRequests.merge("testowner", "test-repo", 5);
+      await provider.pullRequests.merge({ owner: "testowner", repo: "test-repo", number: 5 });
 
       expect(JSON.parse(JSON.stringify(mockClient.mock.calls[0]?.[1]))).toEqual({
         method: "POST",
@@ -3077,20 +3277,27 @@ describe("Gitea Provider", () => {
 
     it("blames a 409 on the head only when the merge named one", async () => {
       mockClient.mockRejectedValueOnce(makeFetchError(409));
-      await expect(provider.pullRequests.merge("testowner", "test-repo", 5)).rejects.toThrow(
-        /The branches conflict or the head moved/,
-      );
+      await expect(
+        provider.pullRequests.merge({ owner: "testowner", repo: "test-repo", number: 5 }),
+      ).rejects.toThrow(/The branches conflict or the head moved/);
 
       mockClient.mockRejectedValueOnce(makeFetchError(409));
       await expect(
-        provider.pullRequests.merge("testowner", "test-repo", 5, { headSha: "abc123" }),
+        provider.pullRequests.merge(
+          { owner: "testowner", repo: "test-repo", number: 5 },
+          { headSha: "abc123" },
+        ),
       ).rejects.toThrow(/The head commit may no longer be headSha/);
     });
 
     it("says the merge went through when only the read after it fails", async () => {
       mockClient.mockResolvedValueOnce(undefined).mockRejectedValueOnce(makeFetchError(502));
 
-      const read = provider.pullRequests.merge("testowner", "test-repo", 5);
+      const read = provider.pullRequests.merge({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
       await expect(read).rejects.toMatchObject({ status: 502, platform: "gitea" });
       await expect(read).rejects.toThrow(
         /502\. The merge went through, but reading the pull request back failed/,
@@ -3100,7 +3307,11 @@ describe("Gitea Provider", () => {
     it("explains an empty 405 instead of passing the bare status on", async () => {
       mockClient.mockRejectedValueOnce(makeFetchError(405));
 
-      const refused = provider.pullRequests.merge("testowner", "test-repo", 5);
+      const refused = provider.pullRequests.merge({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
       await expect(refused).rejects.toMatchObject({ status: 405, platform: "gitea" });
       await expect(refused).rejects.toThrow(
         /closed, a draft, in conflict, waiting on required checks or approvals/,
@@ -3115,9 +3326,12 @@ describe("Gitea Provider", () => {
     it("patches only the title when nothing else changes", async () => {
       mockClient.mockResolvedValueOnce(giteaPullRequest({ title: "Renamed" }));
 
-      const result = await provider.pullRequests.update("testowner", "test-repo", 5, {
-        title: "Renamed",
-      });
+      const result = await provider.pullRequests.update(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        {
+          title: "Renamed",
+        },
+      );
 
       expect(mockClient.mock.calls).toEqual([
         [pull, { method: "PATCH", body: { title: "Renamed" } }],
@@ -3154,12 +3368,15 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.pullRequests.update("testowner", "test-repo", 5, {
-        state: "closed",
-        addAssignees: ["reviewer"],
-        addLabels: ["bug"],
-        removeLabels: ["stale", "never-set"],
-      });
+      const result = await provider.pullRequests.update(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        {
+          state: "closed",
+          addAssignees: ["reviewer"],
+          addLabels: ["bug"],
+          removeLabels: ["stale", "never-set"],
+        },
+      );
 
       expect(mockClient.mock.calls).toEqual([
         [pull],
@@ -3179,9 +3396,12 @@ describe("Gitea Provider", () => {
         .mockResolvedValueOnce(giteaPullRequest())
         .mockResolvedValueOnce(giteaPullRequest({ assignees: [] }));
 
-      await provider.pullRequests.update("testowner", "test-repo", 5, {
-        removeAssignees: ["Maintainer"],
-      });
+      await provider.pullRequests.update(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        {
+          removeAssignees: ["Maintainer"],
+        },
+      );
 
       expect(mockClient).toHaveBeenLastCalledWith(pull, {
         method: "PATCH",
@@ -3195,9 +3415,12 @@ describe("Gitea Provider", () => {
         .mockResolvedValueOnce(undefined)
         .mockResolvedValueOnce(giteaPullRequest({ labels: [] }));
 
-      const result = await provider.pullRequests.update("testowner", "test-repo", 5, {
-        removeLabels: ["enhancement"],
-      });
+      const result = await provider.pullRequests.update(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        {
+          removeLabels: ["enhancement"],
+        },
+      );
 
       expect(mockClient.mock.calls).toEqual([
         [pull],
@@ -3214,10 +3437,13 @@ describe("Gitea Provider", () => {
         .mockResolvedValueOnce({ data: [], headers: makeHeaders(), status: 200 });
 
       await expect(
-        provider.pullRequests.update("testowner", "test-repo", 5, {
-          title: "Renamed",
-          addLabels: ["missing"],
-        }),
+        provider.pullRequests.update(
+          { owner: "testowner", repo: "test-repo", number: 5 },
+          {
+            title: "Renamed",
+            addLabels: ["missing"],
+          },
+        ),
       ).rejects.toBeInstanceOf(NotFoundError);
       expect(mockClient).toHaveBeenCalledTimes(1);
     });
@@ -3231,15 +3457,17 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.issues.listComments("testowner", "test-repo", 1, {
-        perPage: 2,
-      });
-
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        mockClient,
-        "/repos/testowner/test-repo/issues/1/comments",
-        { query: { page: "1", limit: "50" } },
+      const result = await provider.issues.listComments(
+        { owner: "testowner", repo: "test-repo", number: 1 },
+        {
+          perPage: 2,
+        },
       );
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(mockClient, {
+        url: "/repos/testowner/test-repo/issues/1/comments",
+        query: { page: "1", limit: "50" },
+      });
       expect(result.items.map((comment) => comment.id)).toEqual(["21", "22"]);
       expect(result.items[0]).toMatchObject({
         body: "Same here on 1.22",
@@ -3267,7 +3495,7 @@ describe("Gitea Provider", () => {
       ],
     ] as const)("refuses %s %o before the local cut sees it", async (kind, page, message) => {
       await expect(
-        provider[kind].listComments("testowner", "test-repo", 1, page),
+        provider[kind].listComments({ owner: "testowner", repo: "test-repo", number: 1 }, page),
       ).rejects.toMatchObject({ status: 400, message });
       expect(mockedRawFetch).not.toHaveBeenCalled();
     });
@@ -3279,14 +3507,17 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.issues.listComments("testowner", "test-repo", 1, {
-        cursor: cursorFor("issues.listComments", {
-          page: 2,
-          subject: ["testowner", "test-repo", 1],
-          filters: { perPage: 2 },
-        }),
-        perPage: 2,
-      });
+      const result = await provider.issues.listComments(
+        { owner: "testowner", repo: "test-repo", number: 1 },
+        {
+          cursor: cursorFor("issues.listComments", {
+            page: 2,
+            subject: ["testowner", "test-repo", 1],
+            filters: { perPage: 2 },
+          }),
+          perPage: 2,
+        },
+      );
 
       expect(result.items.map((comment) => comment.id)).toEqual(["23"]);
       expect(result.nextCursor).toBeUndefined();
@@ -3311,7 +3542,11 @@ describe("Gitea Provider", () => {
           status: 200,
         });
 
-      const result = await provider.issues.listComments("testowner", "test-repo", 1);
+      const result = await provider.issues.listComments({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 1,
+      });
 
       expect(mockedRawFetch).toHaveBeenCalledTimes(2);
       expect(result.items.map((comment) => comment.id)).toEqual(["20", "21"]);
@@ -3331,9 +3566,12 @@ describe("Gitea Provider", () => {
           status: 200,
         });
 
-      const result = await provider.issues.listComments("testowner", "test-repo", 1, {
-        perPage: 1,
-      });
+      const result = await provider.issues.listComments(
+        { owner: "testowner", repo: "test-repo", number: 1 },
+        {
+          perPage: 1,
+        },
+      );
 
       expect(mockedRawFetch).toHaveBeenCalledTimes(2);
       expect(result.items.map((comment) => comment.id)).toEqual(["21"]);
@@ -3356,13 +3594,16 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.pullRequests.listComments("testowner", "test-repo", 5);
+      const result = await provider.pullRequests.listComments({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
 
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        mockClient,
-        "/repos/testowner/test-repo/issues/5/comments",
-        { query: { page: "1", limit: "50" } },
-      );
+      expect(mockedRawFetch).toHaveBeenCalledWith(mockClient, {
+        url: "/repos/testowner/test-repo/issues/5/comments",
+        query: { page: "1", limit: "50" },
+      });
       expect(result.items).toHaveLength(1);
     });
   });
@@ -3371,9 +3612,12 @@ describe("Gitea Provider", () => {
     it("posts to the issue discussion", async () => {
       mockClient.mockResolvedValueOnce(giteaComment());
 
-      const comment = await provider.issues.createComment("testowner", "test-repo", 1, {
-        body: "Same here on 1.22",
-      });
+      const comment = await provider.issues.createComment(
+        { owner: "testowner", repo: "test-repo", number: 1 },
+        {
+          body: "Same here on 1.22",
+        },
+      );
 
       expect(mockClient).toHaveBeenLastCalledWith("/repos/testowner/test-repo/issues/1/comments", {
         method: "POST",
@@ -3385,7 +3629,10 @@ describe("Gitea Provider", () => {
     it("posts a pull-request comment through the shared issue index", async () => {
       mockClient.mockResolvedValueOnce(giteaComment());
 
-      await provider.pullRequests.createComment("testowner", "test-repo", 5, { body: "Rebased" });
+      await provider.pullRequests.createComment(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        { body: "Rebased" },
+      );
 
       expect(mockClient).toHaveBeenLastCalledWith("/repos/testowner/test-repo/issues/5/comments", {
         method: "POST",
@@ -3398,7 +3645,10 @@ describe("Gitea Provider", () => {
     it("reads one comment by id, without the issue number", async () => {
       mockClient.mockResolvedValueOnce(giteaComment());
 
-      const comment = await provider.issues.getComment("testowner", "test-repo", 1, "21");
+      const comment = await provider.issues.getComment(
+        { owner: "testowner", repo: "test-repo", number: 1 },
+        { commentId: "21" },
+      );
 
       expect(mockClient).toHaveBeenLastCalledWith("/repos/testowner/test-repo/issues/comments/21");
       expect(comment).toMatchObject({ id: "21", body: "Same here on 1.22" });
@@ -3409,8 +3659,14 @@ describe("Gitea Provider", () => {
       mockedCachedFetch.mockResolvedValue(giteaComment());
       mockClient.mockResolvedValueOnce(giteaComment()).mockResolvedValueOnce(edited);
 
-      await provider.issues.getComment("testowner", "test-repo", 1, "21");
-      const comment = await provider.issues.getComment("testowner", "test-repo", 1, "21");
+      await provider.issues.getComment(
+        { owner: "testowner", repo: "test-repo", number: 1 },
+        { commentId: "21" },
+      );
+      const comment = await provider.issues.getComment(
+        { owner: "testowner", repo: "test-repo", number: 1 },
+        { commentId: "21" },
+      );
 
       expect(comment.body).toBe("Edited after the first read");
       expect(mockClient).toHaveBeenCalledTimes(2);
@@ -3420,9 +3676,12 @@ describe("Gitea Provider", () => {
     it("answers 404 when the comment belongs to another issue", async () => {
       mockClient.mockResolvedValueOnce(giteaComment());
 
-      await expect(provider.issues.getComment("testowner", "test-repo", 9, "21")).rejects.toThrow(
-        NotFoundError,
-      );
+      await expect(
+        provider.issues.getComment(
+          { owner: "testowner", repo: "test-repo", number: 9 },
+          { commentId: "21" },
+        ),
+      ).rejects.toThrow(NotFoundError);
     });
   });
 
@@ -3435,7 +3694,10 @@ describe("Gitea Provider", () => {
         }),
       );
 
-      const comment = await provider.pullRequests.getComment("testowner", "test-repo", 5, "21");
+      const comment = await provider.pullRequests.getComment(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        { commentId: "21" },
+      );
 
       expect(mockClient).toHaveBeenLastCalledWith("/repos/testowner/test-repo/issues/comments/21");
       expect(comment.id).toBe("21");
@@ -3450,7 +3712,10 @@ describe("Gitea Provider", () => {
       );
 
       await expect(
-        provider.pullRequests.getComment("testowner", "test-repo", 9, "21"),
+        provider.pullRequests.getComment(
+          { owner: "testowner", repo: "test-repo", number: 9 },
+          { commentId: "21" },
+        ),
       ).rejects.toThrow(NotFoundError);
     });
   });
@@ -3480,20 +3745,22 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.issues.listReactions("gitea", "tea", 37, {
-        cursor: cursorFor("issues.listReactions", {
-          page: 3,
-          subject: ["gitea", "tea", 37],
-          filters: { perPage: 2 },
-        }),
-        perPage: 2,
-      });
-
-      expect(mockedRawFetch).toHaveBeenCalledWith(
-        expect.anything(),
-        "/repos/gitea/tea/issues/37/reactions",
-        { query: { page: "3", limit: "2" } },
+      const result = await provider.issues.listReactions(
+        { owner: "gitea", repo: "tea", number: 37 },
+        {
+          cursor: cursorFor("issues.listReactions", {
+            page: 3,
+            subject: ["gitea", "tea", 37],
+            filters: { perPage: 2 },
+          }),
+          perPage: 2,
+        },
       );
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(expect.anything(), {
+        url: "/repos/gitea/tea/issues/37/reactions",
+        query: { page: "3", limit: "2" },
+      });
       expect(result).toEqual({
         items: [
           { content: "gitea", user: { login: "lunny" }, createdAt: "2020-03-05T15:48:00Z" },
@@ -3512,7 +3779,10 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.pullRequests.listReactions("gitea", "tea", 37, { perPage: 5 });
+      const result = await provider.pullRequests.listReactions(
+        { owner: "gitea", repo: "tea", number: 37 },
+        { perPage: 5 },
+      );
 
       expect(result).toMatchObject({
         totalCount: 6,
@@ -3533,14 +3803,14 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      await expect(provider.pullRequests.listReactions("gitea", "tea", 37)).rejects.toThrow(
-        "Pull request not found: 37",
-      );
+      await expect(
+        provider.pullRequests.listReactions({ owner: "gitea", repo: "tea", number: 37 }),
+      ).rejects.toThrow("Pull request not found: 37");
       expect(mockClient).toHaveBeenCalledWith("/repos/gitea/tea/issues/37");
       mockClient.mockResolvedValue(giteaIssue({ pull_request: { merged: false } }));
-      await expect(provider.issues.listReactions("gitea", "tea", 37)).rejects.toThrow(
-        "Issue not found: 37",
-      );
+      await expect(
+        provider.issues.listReactions({ owner: "gitea", repo: "tea", number: 37 }),
+      ).rejects.toThrow("Issue not found: 37");
     });
 
     it("reads an empty list from the null Gitea answers with", async () => {
@@ -3550,7 +3820,11 @@ describe("Gitea Provider", () => {
         status: 200,
       });
 
-      const result = await provider.issues.listReactions("gitea", "tea", 1);
+      const result = await provider.issues.listReactions({
+        owner: "gitea",
+        repo: "tea",
+        number: 1,
+      });
 
       expect(result).toMatchObject({ items: [] });
     });
@@ -3560,18 +3834,21 @@ describe("Gitea Provider", () => {
         url.endsWith("/reactions") ? tea37 : giteaComment(),
       );
 
-      const result = await provider.issues.listReactions("testowner", "test-repo", 1, {
-        commentId: "21",
-        cursor: cursorFor("issues.listReactions", {
-          page: 2,
-          subject: ["testowner", "test-repo", 1],
-          filters: {
-            commentId: "21",
-            perPage: 4,
-          },
-        }),
-        perPage: 4,
-      });
+      const result = await provider.issues.listReactions(
+        { owner: "testowner", repo: "test-repo", number: 1 },
+        {
+          commentId: "21",
+          cursor: cursorFor("issues.listReactions", {
+            page: 2,
+            subject: ["testowner", "test-repo", 1],
+            filters: {
+              commentId: "21",
+              perPage: 4,
+            },
+          }),
+          perPage: 4,
+        },
+      );
 
       expect(mockClient).toHaveBeenCalledWith(
         "/repos/testowner/test-repo/issues/comments/21/reactions",
@@ -3597,7 +3874,10 @@ describe("Gitea Provider", () => {
       ],
     ] as const)("refuses %s %o before the local cut sees it", async (kind, page, message) => {
       await expect(
-        provider[kind].listReactions("testowner", "test-repo", 1, { commentId: "21", ...page }),
+        provider[kind].listReactions(
+          { owner: "testowner", repo: "test-repo", number: 1 },
+          { commentId: "21", ...page },
+        ),
       ).rejects.toMatchObject({ status: 400, message });
       expect(mockClient).not.toHaveBeenCalled();
       expect(mockedRawFetch).not.toHaveBeenCalled();
@@ -3609,7 +3889,10 @@ describe("Gitea Provider", () => {
       );
 
       await expect(
-        provider.issues.listReactions("testowner", "test-repo", 9, { commentId: "21" }),
+        provider.issues.listReactions(
+          { owner: "testowner", repo: "test-repo", number: 9 },
+          { commentId: "21" },
+        ),
       ).rejects.toThrow(NotFoundError);
     });
   });
@@ -3688,7 +3971,7 @@ describe("Gitea Provider", () => {
     it("handles null description on repository", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo({ description: null }) });
 
-      const result = await provider.repos.get("testowner", "test-repo");
+      const result = await provider.repos.get({ owner: "testowner", repo: "test-repo" });
       expect(result.description).toBe("");
     });
 
@@ -3708,7 +3991,7 @@ describe("Gitea Provider", () => {
     it("handles null default_branch on repository", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo({ default_branch: null }) });
 
-      const result = await provider.repos.get("testowner", "test-repo");
+      const result = await provider.repos.get({ owner: "testowner", repo: "test-repo" });
       expect(result.defaultBranch).toBe("main");
     });
 
@@ -3717,7 +4000,7 @@ describe("Gitea Provider", () => {
         raw: giteaRepo({ html_url: null, clone_url: null }),
       });
 
-      const result = await provider.repos.get("testowner", "test-repo");
+      const result = await provider.repos.get({ owner: "testowner", repo: "test-repo" });
       expect(result.url).toBe("");
       expect(result.cloneUrl).toBe("");
     });
@@ -3729,14 +4012,18 @@ describe("Gitea Provider", () => {
         }),
       });
 
-      const result = await provider.repos.get("testowner", "test-repo");
+      const result = await provider.repos.get({ owner: "testowner", repo: "test-repo" });
       expect(result.owner.avatarUrl).toBe("");
     });
 
     it("handles null body, html_url, and assignees on issue", async () => {
       mockClient.mockResolvedValueOnce(giteaIssue({ body: null, html_url: null, assignees: null }));
 
-      const result = await provider.issues.get("testowner", "test-repo", 1);
+      const result = await provider.issues.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 1,
+      });
       expect(result.body).toBe("");
       expect(result.url).toBe("");
       expect(result.assignees).toEqual([]);
@@ -3745,7 +4032,11 @@ describe("Gitea Provider", () => {
     it("handles null labels on issue", async () => {
       mockClient.mockResolvedValueOnce(giteaIssue({ labels: null }));
 
-      const result = await provider.issues.get("testowner", "test-repo", 1);
+      const result = await provider.issues.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 1,
+      });
       expect(result.labels).toEqual([]);
     });
 
@@ -3757,7 +4048,11 @@ describe("Gitea Provider", () => {
         }),
       );
 
-      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
+      const result = await provider.pullRequests.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
       expect(result.sourceBranch).toBe("");
       expect(result.targetBranch).toBe("");
     });
@@ -3770,7 +4065,11 @@ describe("Gitea Provider", () => {
         }),
       );
 
-      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
+      const result = await provider.pullRequests.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
       expect(result.sourceBranch).toBe("");
       expect(result.targetBranch).toBe("");
     });
@@ -3800,7 +4099,11 @@ describe("Gitea Provider", () => {
         }),
       );
 
-      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
+      const result = await provider.pullRequests.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
       expect(result.url).toBe("");
       expect(result.assignees).toEqual([]);
       expect(result.merged).toBe(false);
@@ -3816,7 +4119,7 @@ describe("Gitea Provider", () => {
       fetchErr.status = 404;
       mockClient.mockRejectedValueOnce(fetchErr);
 
-      await expect(provider.repos.get("bad", "repo")).rejects.toThrow();
+      await expect(provider.repos.get({ owner: "bad", repo: "repo" })).rejects.toThrow();
     });
 
     it("wraps list errors with normalizeError", async () => {
@@ -3834,14 +4137,18 @@ describe("Gitea Provider", () => {
     it("converts numeric IDs to strings for repos", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: giteaRepo({ id: 999 }) });
 
-      const result = await provider.repos.get("testowner", "test-repo");
+      const result = await provider.repos.get({ owner: "testowner", repo: "test-repo" });
       expect(result.id).toBe("999");
     });
 
     it("converts numeric IDs to strings for issues", async () => {
       mockClient.mockResolvedValueOnce(giteaIssue({ id: 888 }));
 
-      const result = await provider.issues.get("testowner", "test-repo", 1);
+      const result = await provider.issues.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 1,
+      });
       expect(result.id).toBe("888");
     });
 
@@ -3858,19 +4165,31 @@ describe("Gitea Provider", () => {
   describe("state mapping", () => {
     it("maps open state correctly for issues", async () => {
       mockClient.mockResolvedValueOnce(giteaIssue({ state: "open" }));
-      const result = await provider.issues.get("testowner", "test-repo", 1);
+      const result = await provider.issues.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 1,
+      });
       expect(result.state).toBe("open");
     });
 
     it("maps closed state correctly for issues", async () => {
       mockClient.mockResolvedValueOnce(giteaIssue({ state: "closed" }));
-      const result = await provider.issues.get("testowner", "test-repo", 1);
+      const result = await provider.issues.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 1,
+      });
       expect(result.state).toBe("closed");
     });
 
     it("maps non-open state to closed for pull requests", async () => {
       mockClient.mockResolvedValueOnce(giteaPullRequest({ state: "closed", merged: true }));
-      const result = await provider.pullRequests.get("testowner", "test-repo", 5);
+      const result = await provider.pullRequests.get({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
       expect(result.state).toBe("closed");
       expect(result.merged).toBe(true);
     });
@@ -3893,7 +4212,11 @@ describe("Gitea Provider", () => {
           status: 200,
         });
 
-      const result = await provider.threads.list("testowner", "test-repo", 5);
+      const result = await provider.threads.list({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
 
       expect(result.items).toHaveLength(2);
       expect(result.items.map((thread) => thread.id)).toEqual(["11", "12"]);
@@ -3918,7 +4241,11 @@ describe("Gitea Provider", () => {
         };
       });
 
-      const result = await provider.threads.list("testowner", "test-repo", 5);
+      const result = await provider.threads.list({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
 
       expect(calls).toBe(1);
       expect(result.items).toEqual([]);
@@ -3951,24 +4278,27 @@ describe("Gitea Provider", () => {
           status: 200,
         });
 
-      const result = await provider.threads.list("testowner", "test-repo", 5);
+      const result = await provider.threads.list({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
 
       expect(result.items.map((thread) => thread.id)).toEqual(["11", "21"]);
       expect(mockedRawFetch).toHaveBeenCalledTimes(4);
-      expect(mockedRawFetch).toHaveBeenNthCalledWith(
-        3,
-        expect.anything(),
-        "/repos/testowner/test-repo/pulls/5/reviews",
-        { query: { page: "2", limit: "50" } },
-      );
+      expect(mockedRawFetch).toHaveBeenNthCalledWith(3, expect.anything(), {
+        url: "/repos/testowner/test-repo/pulls/5/reviews",
+        query: { page: "2", limit: "50" },
+      });
     });
 
     it("replies through the review-comment replies endpoint without scanning reviews", async () => {
       mockClient.mockResolvedValueOnce(giteaReviewComment({ id: 13, body: "Renamed." }));
 
-      const comment = await provider.threads.reply("testowner", "test-repo", 5, "11", {
-        body: "Renamed.",
-      });
+      const comment = await provider.threads.reply(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        { threadId: "11", body: "Renamed." },
+      );
 
       expect(mockedRawFetch).not.toHaveBeenCalled();
       expect(mockClient).toHaveBeenLastCalledWith(
@@ -3992,7 +4322,10 @@ describe("Gitea Provider", () => {
         });
       mockClient.mockResolvedValueOnce(undefined);
 
-      const thread = await provider.threads.resolve("testowner", "test-repo", 5, "11");
+      const thread = await provider.threads.resolve(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        { threadId: "11" },
+      );
 
       expect(mockClient).toHaveBeenCalledWith(
         "/repos/testowner/test-repo/pulls/comments/11/resolve",
@@ -4018,7 +4351,10 @@ describe("Gitea Provider", () => {
         });
       mockClient.mockResolvedValueOnce(undefined);
 
-      const thread = await provider.threads.unresolve("testowner", "test-repo", 5, "11");
+      const thread = await provider.threads.unresolve(
+        { owner: "testowner", repo: "test-repo", number: 5 },
+        { threadId: "11" },
+      );
 
       expect(mockClient).toHaveBeenCalledWith(
         "/repos/testowner/test-repo/pulls/comments/11/unresolve",
@@ -4040,9 +4376,12 @@ describe("Gitea Provider", () => {
           status: 200,
         });
 
-      await expect(provider.threads.resolve("testowner", "test-repo", 5, "999")).rejects.toThrow(
-        NotFoundError,
-      );
+      await expect(
+        provider.threads.resolve(
+          { owner: "testowner", repo: "test-repo", number: 5 },
+          { threadId: "999" },
+        ),
+      ).rejects.toThrow(NotFoundError);
       expect(mockClient).not.toHaveBeenCalled();
     });
 
@@ -4066,15 +4405,17 @@ describe("Gitea Provider", () => {
           status: 200,
         });
 
-      const result = await provider.threads.list("testowner", "test-repo", 5);
+      const result = await provider.threads.list({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
 
       expect(result.items.map((thread) => thread.id)).toEqual(["11", "12"]);
-      expect(mockedRawFetch).toHaveBeenNthCalledWith(
-        2,
-        expect.anything(),
-        "/repos/testowner/test-repo/pulls/5/reviews/1/comments",
-        { query: { page: "1", limit: "50" } },
-      );
+      expect(mockedRawFetch).toHaveBeenNthCalledWith(2, expect.anything(), {
+        url: "/repos/testowner/test-repo/pulls/5/reviews/1/comments",
+        query: { page: "1", limit: "50" },
+      });
     });
 
     it("stops comment pagination when a page is empty even if Link next exists", async () => {
@@ -4092,7 +4433,11 @@ describe("Gitea Provider", () => {
           status: 200,
         });
 
-      const result = await provider.threads.list("testowner", "test-repo", 5);
+      const result = await provider.threads.list({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
 
       expect(result.items).toEqual([]);
       expect(mockedRawFetch).toHaveBeenCalledTimes(2);
@@ -4111,7 +4456,11 @@ describe("Gitea Provider", () => {
           status: 200,
         });
 
-      const result = await provider.threads.list("testowner", "test-repo", 5);
+      const result = await provider.threads.list({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
 
       // Gitea does not expose its internal outdated flag, so it stays false.
       expect(result.items[0]?.isOutdated).toBe(false);
@@ -4131,7 +4480,11 @@ describe("Gitea Provider", () => {
           status: 200,
         });
 
-      const result = await provider.threads.list("testowner", "test-repo", 5);
+      const result = await provider.threads.list({
+        owner: "testowner",
+        repo: "test-repo",
+        number: 5,
+      });
 
       expect(result.items[0]?.isOutdated).toBe(false);
       expect(result.items[0]?.line).toBeNull();

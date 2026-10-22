@@ -557,11 +557,10 @@ function assertNoCommaLabels(input: UpdateIssueInput): void {
     name.includes(","),
   );
   if (commaLabel !== undefined) {
-    throw new ForgesError(
-      `GitLab label names cannot contain a comma: ${commaLabel}`,
-      400,
-      "gitlab",
-    );
+    throw new ForgesError(`GitLab label names cannot contain a comma: ${commaLabel}`, {
+      status: 400,
+      platform: "gitlab",
+    });
   }
 }
 
@@ -915,7 +914,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       usernames.map(async (username) => {
         const users = await this.client<GitLabUser[]>("/users", { query: { username } });
         const match = users.find((user) => user.username.toLowerCase() === username.toLowerCase());
-        if (!match) throw new NotFoundError(`User not found: ${username}`, "gitlab");
+        if (!match) throw new NotFoundError(`User not found: ${username}`, { platform: "gitlab" });
         return match.id;
       }),
     );
@@ -1019,18 +1018,15 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   ): Promise<NumberedPage<Tag>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const { data, headers } = await rawFetch<GitLabTag[]>(
-        this.client,
-        `/projects/${projectId}/repository/tags`,
-        {
-          query: {
-            order_by: "version",
-            sort: "desc",
-            page: options?.page ?? 1,
-            per_page: options?.perPage ?? 30,
-          },
+      const { data, headers } = await rawFetch<GitLabTag[]>(this.client, {
+        url: `/projects/${projectId}/repository/tags`,
+        query: {
+          order_by: "version",
+          sort: "desc",
+          page: options?.page ?? 1,
+          per_page: options?.perPage ?? 30,
         },
-      );
+      });
       const rows = data ?? [];
       const tags: Tag[] = [];
       for (let offset = 0; offset < rows.length; offset += MAX_TAG_TARGET_REQUESTS) {
@@ -1075,7 +1071,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
           assertContinuationRef(options, file.commit_id);
           assertFileSize(path, file.size);
           if (file.encoding !== "base64") {
-            throw new ForgesError(`GitLab returned no content for ${path}`, 502, "gitlab");
+            throw new ForgesError(`GitLab returned no content for ${path}`, {
+              status: 502,
+              platform: "gitlab",
+            });
           }
           return buildRepositoryFile({ path, sha: file.commit_id, base64: file.content }, options);
         }
@@ -1089,11 +1088,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       let entriesComplete = true;
       let page = 1;
       while (true) {
-        const { data, headers } = await rawFetch<GitLabTreeEntry[]>(
-          this.client,
-          `/projects/${projectId}/repository/tree`,
-          { query: { ref: commit.id, path: path === "" ? undefined : path, page, per_page: 100 } },
-        );
+        const { data, headers } = await rawFetch<GitLabTreeEntry[]>(this.client, {
+          url: `/projects/${projectId}/repository/tree`,
+          query: { ref: commit.id, path: path === "" ? undefined : path, page, per_page: 100 },
+        });
         entries.push(...(data ?? []).map((entry) => this.mapTreeEntry(entry)));
         const next = headers.get("x-next-page");
         if (next === null || next === "") break;
@@ -1105,7 +1103,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
         page = nextPage;
       }
       if (entries.length === 0 && path !== "") {
-        throw new NotFoundError(`Resource not found: ${path}`, "gitlab");
+        throw new NotFoundError(`Resource not found: ${path}`, { platform: "gitlab" });
       }
       return { type: "directory", path, sha: commit.id, entries, entriesComplete };
     } catch (error: unknown) {
@@ -1156,7 +1154,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     if (next === null || next === "") return null;
     const parsed = Number.parseInt(next, 10);
     if (!Number.isInteger(parsed) || parsed <= page || parsed > MAX_CONTRIBUTION_TEMPLATE_PAGES) {
-      throw new ForgesError("GitLab returned unsafe template pagination", 502, "gitlab");
+      throw new ForgesError("GitLab returned unsafe template pagination", {
+        status: 502,
+        platform: "gitlab",
+      });
     }
     return parsed;
   }
@@ -1168,11 +1169,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     const rows: GitLabContributionTemplate[] = [];
     let page = 1;
     while (page <= MAX_CONTRIBUTION_TEMPLATE_PAGES) {
-      const { data, headers } = await rawFetch<GitLabContributionTemplate[]>(
-        this.client,
-        `/projects/${projectId}/templates/${apiType}`,
-        { query: { page, per_page: 100 } },
-      );
+      const { data, headers } = await rawFetch<GitLabContributionTemplate[]>(this.client, {
+        url: `/projects/${projectId}/templates/${apiType}`,
+        query: { page, per_page: 100 },
+      });
       rows.push(...(data ?? []));
       const next = this.nextContributionTemplatePage(headers, page);
       if (next === null) break;
@@ -1190,11 +1190,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     let page = 1;
     try {
       while (page <= MAX_CONTRIBUTION_TEMPLATE_PAGES) {
-        const { data, headers } = await rawFetch<GitLabTreeEntry[]>(
-          this.client,
-          `/projects/${projectId}/repository/tree`,
-          { query: { path: directory, ref, page, per_page: 100 } },
-        );
+        const { data, headers } = await rawFetch<GitLabTreeEntry[]>(this.client, {
+          url: `/projects/${projectId}/repository/tree`,
+          query: { path: directory, ref, page, per_page: 100 },
+        });
         for (const entry of data ?? []) {
           if (entry.type !== "blob" || !entry.name.endsWith(".md")) continue;
           local.set(entry.name.slice(0, -3), entry.path);
@@ -1264,7 +1263,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
         `/projects/${projectId}/templates/${apiType}/${encodeApiResponsePathSegment(template.key)}`,
       );
       if (row.content === undefined) {
-        throw new ForgesError("GitLab returned template metadata without content", 502, "gitlab");
+        throw new ForgesError("GitLab returned template metadata without content", {
+          status: 502,
+          platform: "gitlab",
+        });
       }
       return row.content;
     } catch (error: unknown) {
@@ -1310,11 +1312,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       let page = 1;
 
       while (page <= MAX_COMMIT_DIFF_PAGES) {
-        const { data, headers } = await rawFetch<GitLabMergeRequestDiff[]>(
-          this.client,
-          `/projects/${projectId}/repository/commits/${encodedSha}/diff`,
-          { query: { page, per_page: 100 } },
-        );
+        const { data, headers } = await rawFetch<GitLabMergeRequestDiff[]>(this.client, {
+          url: `/projects/${projectId}/repository/commits/${encodedSha}/diff`,
+          query: { page, per_page: 100 },
+        });
         files.push(...(data ?? []).map((diff) => this.mapPullRequestFile(diff)));
 
         const next = headers.get("x-next-page");
@@ -1383,20 +1384,18 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
         `/projects/${projectId}/repository/commits/${encodedSha}`,
       );
       if ((options?.offset ?? 0) > 0 && sha !== commit.id) {
-        throw new ForgesError(
-          "Continue commit patches with the resolved SHA from the first page",
-          409,
-        );
+        throw new ForgesError("Continue commit patches with the resolved SHA from the first page", {
+          status: 409,
+        });
       }
 
       const files: CommitPatchFile[] = [];
       let page = 1;
       while (page <= MAX_COMMIT_DIFF_PAGES) {
-        const { data, headers } = await rawFetch<GitLabMergeRequestDiff[]>(
-          this.client,
-          `/projects/${projectId}/repository/commits/${encodePathSegment(commit.id)}/diff`,
-          { query: { page, per_page: 100 } },
-        );
+        const { data, headers } = await rawFetch<GitLabMergeRequestDiff[]>(this.client, {
+          url: `/projects/${projectId}/repository/commits/${encodePathSegment(commit.id)}/diff`,
+          query: { page, per_page: 100 },
+        });
         files.push(
           ...(data ?? []).map((diff) => {
             const unavailable = diff.too_large === true || diff.collapsed === true;
@@ -1445,7 +1444,8 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
         route = `/groups/${encodeNamespacePath(options.owner)}/search`;
       }
 
-      const response = await rawFetch<GitLabCodeSearchItem[]>(this.client, route, {
+      const response = await rawFetch<GitLabCodeSearchItem[]>(this.client, {
+        url: route,
         query: {
           scope: "blobs",
           search,
@@ -1491,11 +1491,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       perPage < 1 ||
       perPage > 100
     ) {
-      throw new ForgesError(
-        "Commit search requires a positive page and perPage from 1 to 100",
-        400,
-        "gitlab",
-      );
+      throw new ForgesError("Commit search requires a positive page and perPage from 1 to 100", {
+        status: 400,
+        platform: "gitlab",
+      });
     }
     const owner = options?.owner;
     const repo = options?.repo;
@@ -1513,7 +1512,8 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
         route = `/groups/${encodeNamespacePath(owner)}/search`;
       }
 
-      const response = await rawFetch<GitLabCommitSearchItem[]>(this.client, route, {
+      const response = await rawFetch<GitLabCommitSearchItem[]>(this.client, {
+        url: route,
         query: { scope: "commits", search, page, per_page: perPage },
       });
       const rawItems = response.data ?? [];
@@ -1543,9 +1543,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       ) {
         throw new ForgesError(
           "GitLab searches commits across a group or the whole instance only with advanced search. Pass owner and repo to search one project",
-          501,
-          "gitlab",
-          error,
+          { status: 501, platform: "gitlab", originalError: error },
         );
       }
       throw normalizeError(error, "gitlab");
@@ -1606,7 +1604,8 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       const stateFilter = this.mapStateFilter(options?.state);
       if (stateFilter) query.state = stateFilter;
 
-      const response = await rawFetch<GitLabIssue[]>(this.client, `/projects/${projectId}/issues`, {
+      const response = await rawFetch<GitLabIssue[]>(this.client, {
+        url: `/projects/${projectId}/issues`,
         query,
       });
       return {
@@ -1675,11 +1674,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
         query.state = stateFilter;
       }
 
-      const response = await rawFetch<GitLabMergeRequest[]>(
-        this.client,
-        `/projects/${projectId}/merge_requests`,
-        { query },
-      );
+      const response = await rawFetch<GitLabMergeRequest[]>(this.client, {
+        url: `/projects/${projectId}/merge_requests`,
+        query,
+      });
 
       const prs = (response.data ?? []).map((raw) => this.mapPullRequest(raw));
       return this.parsePagination(prs, response.headers);
@@ -1696,16 +1694,13 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   ): Promise<NumberedPage<PullRequestFile>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const response = await rawFetch<GitLabMergeRequestDiff[]>(
-        this.client,
-        `/projects/${projectId}/merge_requests/${encodePathSegment(number, "Number")}/diffs`,
-        {
-          query: {
-            page: options?.page ?? 1,
-            per_page: options?.perPage ?? 30,
-          },
+      const response = await rawFetch<GitLabMergeRequestDiff[]>(this.client, {
+        url: `/projects/${projectId}/merge_requests/${encodePathSegment(number, "Number")}/diffs`,
+        query: {
+          page: options?.page ?? 1,
+          per_page: options?.perPage ?? 30,
         },
-      );
+      });
       return this.parsePagination(
         (response.data ?? []).map((raw) => this.mapPullRequestFile(raw)),
         response.headers,
@@ -1739,13 +1734,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       // MR pipelines include earlier revisions. Scan one current-head match past
       // the requested page so normalized pagination never reports stale checks.
       while (hasMore && matched.length <= skip + perPage) {
-        const { data, headers } = await rawFetch<GitLabPipeline[]>(
-          this.client,
-          `${base}/pipelines`,
-          {
-            query: { page: remotePage, per_page: 100 },
-          },
-        );
+        const { data, headers } = await rawFetch<GitLabPipeline[]>(this.client, {
+          url: `${base}/pipelines`,
+          query: { page: remotePage, per_page: 100 },
+        });
         const batch = data ?? [];
         if (batch.length === 0) {
           hasMore = false;
@@ -1786,13 +1778,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       const commit = await this.client<GitLabCommit>(
         `/projects/${projectId}/repository/commits/${encodeRefPathSegment(ref, "Ref")}`,
       );
-      const { data, headers } = await rawFetch<GitLabPipeline[]>(
-        this.client,
-        `/projects/${projectId}/pipelines`,
-        {
-          query: { sha: commit.id, page: options?.page ?? 1, per_page: options?.perPage ?? 30 },
-        },
-      );
+      const { data, headers } = await rawFetch<GitLabPipeline[]>(this.client, {
+        url: `/projects/${projectId}/pipelines`,
+        query: { sha: commit.id, page: options?.page ?? 1, per_page: options?.perPage ?? 30 },
+      });
       const pipelines = data ?? [];
       const items = await this.#readPipelineChecks(pipelines);
       return { ...this.parsePagination(pipelines, headers), items };
@@ -1818,9 +1807,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       },
     );
     const error = response.errors?.[0];
-    if (error) throw new ForgesError(error.message, undefined, "gitlab");
+    if (error) throw new ForgesError(error.message, { platform: "gitlab" });
     const mergeRequest = response.data?.projects?.nodes[0]?.mergeRequest;
-    if (!mergeRequest) throw new NotFoundError(`Merge request not found: !${number}`, "gitlab");
+    if (!mergeRequest)
+      throw new NotFoundError(`Merge request not found: !${number}`, { platform: "gitlab" });
     const pipelineGid = mergeRequest.headPipeline?.id;
     return {
       headSha: mergeRequest.diffHeadSha ?? "",
@@ -1838,11 +1828,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     _reviewId: string,
   ): Promise<PullRequestReview> {
     return Promise.reject(
-      new ForgesError(
-        "GitLab exposes reviewer stances, not individual review bodies",
-        501,
-        "gitlab",
-      ),
+      new ForgesError("GitLab exposes reviewer stances, not individual review bodies", {
+        status: 501,
+        platform: "gitlab",
+      }),
     );
   }
 
@@ -1960,10 +1949,16 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
 
   private assertReleaseFlags(input: { draft?: boolean; prerelease?: boolean }): void {
     if (input.draft === true) {
-      throw new ForgesError("GitLab releases have no draft state", 501, "gitlab");
+      throw new ForgesError("GitLab releases have no draft state", {
+        status: 501,
+        platform: "gitlab",
+      });
     }
     if (input.prerelease === true) {
-      throw new ForgesError("GitLab releases have no pre-release flag", 501, "gitlab");
+      throw new ForgesError("GitLab releases have no pre-release flag", {
+        status: 501,
+        platform: "gitlab",
+      });
     }
   }
 
@@ -1984,11 +1979,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       const stateFilter = this.mapStateFilter(options?.state);
       if (stateFilter) query.state = stateFilter;
 
-      const response = await rawFetch<GitLabMergeRequest[]>(
-        this.client,
-        `/projects/${projectId}/merge_requests`,
-        { query },
-      );
+      const response = await rawFetch<GitLabMergeRequest[]>(this.client, {
+        url: `/projects/${projectId}/merge_requests`,
+        query,
+      });
       return {
         ...this.parsePagination(
           (response.data ?? []).map((raw) => this.mapPullRequestSearchItem(raw)),
@@ -2044,19 +2038,24 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
         perPage < 1 ||
         perPage > 100
       ) {
-        throw new ForgesError(
-          `${noun} search requires a positive page and perPage from 1 to 100`,
-          400,
-          "gitlab",
-        );
+        throw new ForgesError(`${noun} search requires a positive page and perPage from 1 to 100`, {
+          status: 400,
+          platform: "gitlab",
+        });
       }
       const sort = options?.sort ?? "created";
       if (sort !== "created" && sort !== "updated") {
-        throw new ForgesError(`GitLab can't order ${plural} by comments`, 501, "gitlab");
+        throw new ForgesError(`GitLab can't order ${plural} by comments`, {
+          status: 501,
+          platform: "gitlab",
+        });
       }
       const order = options?.order ?? "desc";
       if (order !== "asc" && order !== "desc") {
-        throw new ForgesError(`${noun} search order must be asc or desc`, 400, "gitlab");
+        throw new ForgesError(`${noun} search order must be asc or desc`, {
+          status: 400,
+          platform: "gitlab",
+        });
       }
       const query: Record<string, string> = {
         order_by: `${sort}_at`,
@@ -2078,7 +2077,8 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       } else {
         query.scope = "all";
       }
-      const { data, headers } = await rawFetch<TRaw[]>(this.client, path, {
+      const { data, headers } = await rawFetch<TRaw[]>(this.client, {
+        url: path,
         query,
         retryStatusCodes: SEARCH_RETRY_STATUS_CODES,
       });
@@ -2100,16 +2100,13 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       if (normalized.status === 408) {
         throw new ForgesError(
           "GitLab timed out on this search. Narrow it with an owner or an author",
-          408,
-          "gitlab",
-          normalized.originalError,
+          { status: 408, platform: "gitlab", originalError: normalized.originalError },
         );
       }
       if (normalized.status === 404 && options?.owner !== undefined && options.repo === undefined) {
         throw new NotFoundError(
           `No GitLab group ${options.owner}. For one user's ${plural}, pass author instead`,
-          "gitlab",
-          normalized.originalError,
+          { platform: "gitlab", originalError: normalized.originalError },
         );
       }
       throw normalized;
@@ -2142,11 +2139,10 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       const issues: ClosingIssue[] = [];
       let page = 1;
       for (;;) {
-        const { data, headers } = await rawFetch<Array<Partial<GitLabIssue>>>(
-          this.client,
-          `/projects/${projectId}/merge_requests/${encodePathSegment(iid, "Number")}/closes_issues`,
-          { query: { page, per_page: 100 } },
-        );
+        const { data, headers } = await rawFetch<Array<Partial<GitLabIssue>>>(this.client, {
+          url: `/projects/${projectId}/merge_requests/${encodePathSegment(iid, "Number")}/closes_issues`,
+          query: { page, per_page: 100 },
+        });
         for (const raw of data ?? []) {
           // An external tracker such as Jira answers with its own keys and no iid.
           if (typeof raw.iid !== "number") continue;
@@ -2235,15 +2231,13 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     if (input.method === "rebase") {
       throw new ForgesError(
         "GitLab merges by the project's merge method; rebase cannot be chosen per merge request",
-        501,
-        "gitlab",
+        { status: 501, platform: "gitlab" },
       );
     }
     if (input.message !== undefined && input.title === undefined) {
       throw new ForgesError(
         "GitLab takes the commit message whole; pass a title with the message",
-        400,
-        "gitlab",
+        { status: 400, platform: "gitlab" },
       );
     }
     const commitMessage =
@@ -2375,18 +2369,15 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   ): Promise<NumberedPage<Comment>> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
-      const response = await rawFetch<GitLabNote[]>(
-        this.client,
-        `/projects/${projectId}/${resource}/${encodePathSegment(number, "Number")}/notes`,
-        {
-          query: {
-            page: options?.page ?? 1,
-            per_page: options?.perPage ?? 30,
-            order_by: "created_at",
-            sort: "asc",
-          },
+      const response = await rawFetch<GitLabNote[]>(this.client, {
+        url: `/projects/${projectId}/${resource}/${encodePathSegment(number, "Number")}/notes`,
+        query: {
+          page: options?.page ?? 1,
+          per_page: options?.perPage ?? 30,
+          order_by: "created_at",
+          sort: "asc",
         },
-      );
+      });
 
       const notes = (response.data ?? []).filter((note) => this.isDiscussionNote(note));
       const page = this.parsePagination(
@@ -2464,13 +2455,13 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const noteable = `/projects/${projectId}/${resource}/${encodePathSegment(number, "Number")}`;
-      const { data, headers } = await rawFetch<GitLabAwardEmoji[]>(
-        this.client,
-        options?.commentId === undefined
-          ? `${noteable}/award_emoji`
-          : `${noteable}/notes/${encodePathSegment(options.commentId, "Comment id")}/award_emoji`,
-        { query: { page: options?.page ?? 1, per_page: options?.perPage ?? 30 } },
-      );
+      const { data, headers } = await rawFetch<GitLabAwardEmoji[]>(this.client, {
+        url:
+          options?.commentId === undefined
+            ? `${noteable}/award_emoji`
+            : `${noteable}/notes/${encodePathSegment(options.commentId, "Comment id")}/award_emoji`,
+        query: { page: options?.page ?? 1, per_page: options?.perPage ?? 30 },
+      });
       const reactions = (data ?? []).map((raw) => ({
         content: GITHUB_REACTIONS.get(raw.name) ?? raw.name,
         user: { login: raw.user?.username ?? "" },
@@ -2525,7 +2516,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
         `/projects/${projectId}/${resource}/${encodePathSegment(number, "Number")}/notes/${encodePathSegment(commentId, "Comment id")}`,
       );
       if (!this.isDiscussionNote(note)) {
-        throw new NotFoundError(`Comment not found: ${commentId}`, "gitlab");
+        throw new NotFoundError(`Comment not found: ${commentId}`, { platform: "gitlab" });
       }
       return this.mapComment(note);
     } catch (error: unknown) {
@@ -2555,16 +2546,13 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       // Scan one match past the page: with a state filter, a full page says
       // nothing about whether any later thread still matches.
       while (hasMore && matched.length <= skip + perPage) {
-        const response = await rawFetch<GitLabDiscussion[]>(
-          this.client,
-          `/projects/${projectId}/merge_requests/${encodePathSegment(number, "Number")}/discussions`,
-          {
-            query: {
-              page: remotePage,
-              per_page: 50,
-            },
+        const response = await rawFetch<GitLabDiscussion[]>(this.client, {
+          url: `/projects/${projectId}/merge_requests/${encodePathSegment(number, "Number")}/discussions`,
+          query: {
+            page: remotePage,
+            per_page: 50,
           },
-        );
+        });
         const batch = response.data ?? [];
         if (batch.length === 0) {
           hasMore = false;
@@ -2660,7 +2648,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
    */
   private async dropCachedDiscussion(url: string): Promise<void> {
     try {
-      await invalidateCache(this.client, url);
+      await invalidateCache(this.client, { url });
     } catch (error) {
       console.warn(`[forges] Could not invalidate cached discussion ${url}: ${String(error)}`);
     }
@@ -2682,10 +2670,9 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     number: number,
     threadId: string,
   ): Promise<GitLabDiscussion> {
-    return cachedFetch<GitLabDiscussion>(
-      this.client,
-      await this.discussionUrl(owner, repo, number, threadId),
-    );
+    return cachedFetch<GitLabDiscussion>(this.client, {
+      url: await this.discussionUrl(owner, repo, number, threadId),
+    });
   }
 
   private async setDiscussionResolved(

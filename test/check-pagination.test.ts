@@ -38,7 +38,10 @@ describe.each(["github", "gitlab", "gitea"] as const)("%s check pagination", (pl
       vi.stubGlobal("fetch", fetch);
       const provider = await createProvider(platform, { token: "" });
 
-      const result = provider.pullRequests.listChecks("owner", "repo", 1, options);
+      const result = provider.pullRequests.listChecks(
+        { owner: "owner", repo: "repo", number: 1 },
+        options,
+      );
       await expect(result).rejects.toBeInstanceOf(ForgesError);
       await expect(result).rejects.toMatchObject({ status: 400 });
       expect(fetch).not.toHaveBeenCalled();
@@ -53,7 +56,7 @@ describe.each(["github", "gitlab", "gitea"] as const)("%s check pagination", (pl
       const provider = await createProvider(platform, { token: "" });
 
       await expect(
-        provider.commits.listChecks("owner", "repo", "main", options),
+        provider.commits.listChecks({ owner: "owner", repo: "repo" }, { ref: "main", ...options }),
       ).rejects.toMatchObject({ status: 400, platform });
       expect(fetch).not.toHaveBeenCalled();
     },
@@ -85,7 +88,7 @@ describe.each(["github", "gitlab", "gitea"] as const)("%s check pagination", (pl
     const provider = await createProvider(platform, { token: "" });
 
     await expect(
-      provider.pullRequests.listChecks("owner", "repo", 1, options),
+      provider.pullRequests.listChecks({ owner: "owner", repo: "repo", number: 1 }, options),
     ).rejects.toMatchObject({ status: 404, platform });
     expect(fetch).toHaveBeenCalledOnce();
   });

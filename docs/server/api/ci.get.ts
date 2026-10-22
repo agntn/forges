@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
   try {
     return await cachedAnswer<CiAnswer>(event, "ci", params, TTL.list, async () => {
       const provider = await forge(platform, host);
-      const page = await provider.ciRuns.list(owner, repo, { perPage });
+      const page = await provider.ciRuns.list({ owner, repo }, { perPage });
       return {
         platform,
         items: page.items.map(slimCiRun),

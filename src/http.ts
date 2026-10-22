@@ -224,13 +224,23 @@ export const forgeFetch: FetchLike = async (input, init) => {
   });
 };
 
+/** One request for {@link rawFetch}: the URL and the options the client takes with it. */
+export interface RawRequest<R extends ResponseType = ResponseType> extends RequestOptions<R> {
+  url: string;
+}
+
 /** Like a client call, but keeps the headers and status that pagination reads. */
 export function rawFetch<T = unknown, R extends ResponseType = "json">(
   client: HttpClient,
-  url: string,
-  options?: RequestOptions<R>,
+  request: RawRequest<R>,
 ): Promise<RawFetchResult<ResponseData<R, T>>> {
-  return client.raw<T, R>(url, options);
+  if (typeof request !== "object" || request === null || typeof request.url !== "string") {
+    return Promise.reject(
+      new TypeError("rawFetch takes { url, ...options } as its second argument"),
+    );
+  }
+  const { url, ...options } = request;
+  return client.raw<T, R>(url, Object.keys(options).length === 0 ? undefined : options);
 }
 
 /** The fields a `forges` failure carries, read without importing its classes. */

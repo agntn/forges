@@ -18,11 +18,10 @@ function assertLabels(labels: unknown, about: Field): void {
     labels.length > MAX_LABELS ||
     labels.some((name) => typeof name !== "string" || name.length === 0)
   ) {
-    throw new ForgesError(
-      `${field} must be an array of at most ${MAX_LABELS} non-empty names`,
-      400,
+    throw new ForgesError(`${field} must be an array of at most ${MAX_LABELS} non-empty names`, {
+      status: 400,
       platform,
-    );
+    });
   }
 }
 
@@ -54,10 +53,10 @@ function assertUpdate(
   assertLabels(input.addLabels, { field: "addLabels", platform });
   assertLabels(input.removeLabels, { field: "removeLabels", platform });
   if (input.title !== undefined && input.title.trim() === "") {
-    throw new ForgesError(`${subject} title must not be empty`, 400, platform);
+    throw new ForgesError(`${subject} title must not be empty`, { status: 400, platform });
   }
   if (input.state !== undefined && input.state !== "open" && input.state !== "closed") {
-    throw new ForgesError(`${subject} state must be "open" or "closed"`, 400, platform);
+    throw new ForgesError(`${subject} state must be "open" or "closed"`, { status: 400, platform });
   }
 
   const assignees = overlap(
@@ -67,7 +66,10 @@ function assertUpdate(
   const labels = overlap({ added: input.addLabels, removed: input.removeLabels }, (name) => name);
   const conflicts = [...assignees, ...labels];
   if (conflicts.length > 0) {
-    throw new ForgesError(`Cannot both add and remove: ${conflicts.join(", ")}`, 400, platform);
+    throw new ForgesError(`Cannot both add and remove: ${conflicts.join(", ")}`, {
+      status: 400,
+      platform,
+    });
   }
 
   const changes =
@@ -78,7 +80,7 @@ function assertUpdate(
       (list) => list !== undefined && list.length > 0,
     );
   if (!changes) {
-    throw new ForgesError(`${subject} update needs at least one change`, 400, platform);
+    throw new ForgesError(`${subject} update needs at least one change`, { status: 400, platform });
   }
 }
 
@@ -95,13 +97,16 @@ const MERGE_METHODS: ReadonlySet<unknown> = new Set(["merge", "squash", "rebase"
 /** Rejects a merge method, head or title the platform would misread, before the merge goes out. */
 export function assertMergeInput(input: MergePullRequestInput, platform?: string): void {
   if (input.method !== undefined && !MERGE_METHODS.has(input.method)) {
-    throw new ForgesError('Merge method must be "merge", "squash" or "rebase"', 400, platform);
+    throw new ForgesError('Merge method must be "merge", "squash" or "rebase"', {
+      status: 400,
+      platform,
+    });
   }
   if (input.headSha !== undefined && input.headSha.trim() === "") {
-    throw new ForgesError("Merge headSha must not be empty", 400, platform);
+    throw new ForgesError("Merge headSha must not be empty", { status: 400, platform });
   }
   if (input.title !== undefined && input.title.trim() === "") {
-    throw new ForgesError("Merge commit title must not be empty", 400, platform);
+    throw new ForgesError("Merge commit title must not be empty", { status: 400, platform });
   }
 }
 

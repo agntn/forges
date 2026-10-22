@@ -28,7 +28,7 @@ describe("cachedFetch", () => {
   it("fetches from client on cache miss", async () => {
     const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
 
-    const result = await cachedFetch(client as any, "/repos/unjs/ugp");
+    const result = await cachedFetch(client as any, { url: "/repos/unjs/ugp" });
 
     expect(client).toHaveBeenCalledOnce();
     expect(result).toEqual({ id: 1, name: "forges" });
@@ -37,8 +37,8 @@ describe("cachedFetch", () => {
   it("returns cached value on cache hit without calling client", async () => {
     const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
 
-    await cachedFetch(client as any, "/repos/unjs/ugp");
-    const result = await cachedFetch(client as any, "/repos/unjs/ugp");
+    await cachedFetch(client as any, { url: "/repos/unjs/ugp" });
+    const result = await cachedFetch(client as any, { url: "/repos/unjs/ugp" });
 
     expect(client).toHaveBeenCalledOnce();
     expect(result).toEqual({ id: 1, name: "forges" });
@@ -51,7 +51,7 @@ describe("cachedFetch", () => {
     configureStorage(storage);
     const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
 
-    const result = await cachedFetch(client as any, "/repos/unjs/ugp");
+    const result = await cachedFetch(client as any, { url: "/repos/unjs/ugp" });
 
     expect(result).toEqual({ id: 1, name: "forges" });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("Could not cache /repos/unjs/ugp"));
@@ -64,7 +64,7 @@ describe("cachedFetch", () => {
     configureStorage(storage);
     const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
 
-    const result = await cachedFetch(client as any, "/repos/unjs/ugp");
+    const result = await cachedFetch(client as any, { url: "/repos/unjs/ugp" });
 
     expect(client).toHaveBeenCalledOnce();
     expect(result).toEqual({ id: 1, name: "forges" });
@@ -76,8 +76,8 @@ describe("cachedFetch", () => {
   it("does not cache non-GET requests", async () => {
     const client = vi.fn().mockResolvedValue({ id: 1 });
 
-    await cachedFetch(client as any, "/repos", { method: "POST" });
-    await cachedFetch(client as any, "/repos", { method: "POST" });
+    await cachedFetch(client as any, { url: "/repos", method: "POST" });
+    await cachedFetch(client as any, { url: "/repos", method: "POST" });
 
     expect(client).toHaveBeenCalledTimes(2);
   });
@@ -85,8 +85,8 @@ describe("cachedFetch", () => {
   it("differentiates cache entries by URL path", async () => {
     const client = vi.fn().mockResolvedValueOnce({ id: 1 }).mockResolvedValueOnce({ id: 2 });
 
-    const r1 = await cachedFetch(client as any, "/repos/a");
-    const r2 = await cachedFetch(client as any, "/repos/b");
+    const r1 = await cachedFetch(client as any, { url: "/repos/a" });
+    const r2 = await cachedFetch(client as any, { url: "/repos/b" });
 
     expect(client).toHaveBeenCalledTimes(2);
     expect(r1).toEqual({ id: 1 });
@@ -96,10 +96,12 @@ describe("cachedFetch", () => {
   it("reuses cache for equivalent query objects with different key order", async () => {
     const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
 
-    const first = await cachedFetch(client as any, "/repos/unjs/ugp", {
+    const first = await cachedFetch(client as any, {
+      url: "/repos/unjs/ugp",
       query: { page: "1", state: "open" },
     });
-    const second = await cachedFetch(client as any, "/repos/unjs/ugp", {
+    const second = await cachedFetch(client as any, {
+      url: "/repos/unjs/ugp",
       query: { state: "open", page: "1" },
     });
 
@@ -111,10 +113,12 @@ describe("cachedFetch", () => {
   it("reuses cache for equivalent query strings with different key order", async () => {
     const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
 
-    const first = await cachedFetch(client as any, "/repos/unjs/ugp", {
+    const first = await cachedFetch(client as any, {
+      url: "/repos/unjs/ugp",
       query: "page=1&state=open",
     });
-    const second = await cachedFetch(client as any, "/repos/unjs/ugp", {
+    const second = await cachedFetch(client as any, {
+      url: "/repos/unjs/ugp",
       query: "state=open&page=1",
     });
 
@@ -126,12 +130,8 @@ describe("cachedFetch", () => {
   it("differentiates cache entries by query parameters", async () => {
     const client = vi.fn().mockResolvedValueOnce({ page: 1 }).mockResolvedValueOnce({ page: 2 });
 
-    const first = await cachedFetch(client as any, "/repos", {
-      query: { page: "1" },
-    });
-    const second = await cachedFetch(client as any, "/repos", {
-      query: { page: "2" },
-    });
+    const first = await cachedFetch(client as any, { url: "/repos", query: { page: "1" } });
+    const second = await cachedFetch(client as any, { url: "/repos", query: { page: "2" } });
 
     expect(client).toHaveBeenCalledTimes(2);
     expect(first).toEqual({ page: 1 });
@@ -141,11 +141,10 @@ describe("cachedFetch", () => {
   it("treats empty query like no query", async () => {
     const client = vi.fn().mockResolvedValue({ id: 1, name: "forges" });
 
-    const noQuery = await cachedFetch(client as any, "/repos/unjs/ugp");
-    const emptyObject = await cachedFetch(client as any, "/repos/unjs/ugp", {
-      query: {},
-    });
-    const emptyParams = await cachedFetch(client as any, "/repos/unjs/ugp", {
+    const noQuery = await cachedFetch(client as any, { url: "/repos/unjs/ugp" });
+    const emptyObject = await cachedFetch(client as any, { url: "/repos/unjs/ugp", query: {} });
+    const emptyParams = await cachedFetch(client as any, {
+      url: "/repos/unjs/ugp",
       query: new URLSearchParams(),
     });
 
@@ -167,9 +166,9 @@ describe("clearCache", () => {
       .mockResolvedValueOnce({ id: 1 })
       .mockResolvedValueOnce({ id: 1, updated: true });
 
-    await cachedFetch(client as any, "/repos/a");
+    await cachedFetch(client as any, { url: "/repos/a" });
     await clearCache();
-    const result = await cachedFetch(client as any, "/repos/a");
+    const result = await cachedFetch(client as any, { url: "/repos/a" });
 
     expect(client).toHaveBeenCalledTimes(2);
     expect(result).toEqual({ id: 1, updated: true });
@@ -186,16 +185,16 @@ describe("cache scoping", () => {
     const selfHosted = scopedClient("https://git.example.com/api/v4#aaaa", { secret: "self" });
 
     const url = "/projects/278964/merge_requests/33/discussions/abc";
-    expect(await cachedFetch(saas as any, url)).toEqual({ secret: "saas" });
-    expect(await cachedFetch(selfHosted as any, url)).toEqual({ secret: "self" });
+    expect(await cachedFetch(saas as any, { url })).toEqual({ secret: "saas" });
+    expect(await cachedFetch(selfHosted as any, { url })).toEqual({ secret: "self" });
   });
 
   it("does not share entries between two tokens on the same host", async () => {
     const alice = scopedClient("https://gitlab.com/api/v4#aaaa", { login: "alice" });
     const bob = scopedClient("https://gitlab.com/api/v4#bbbb", { login: "bob" });
 
-    expect(await cachedFetch(alice as any, "/user")).toEqual({ login: "alice" });
-    expect(await cachedFetch(bob as any, "/user")).toEqual({ login: "bob" });
+    expect(await cachedFetch(alice as any, { url: "/user" })).toEqual({ login: "alice" });
+    expect(await cachedFetch(bob as any, { url: "/user" })).toEqual({ login: "bob" });
   });
 
   it("invalidates only the calling client's entry", async () => {
@@ -206,12 +205,12 @@ describe("cache scoping", () => {
     );
     const bob = scopedClient("https://gitlab.com/api/v4#bbbb", { login: "bob" });
 
-    await cachedFetch(alice as any, "/user");
-    await cachedFetch(bob as any, "/user");
-    await invalidateCache(alice as any, "/user");
+    await cachedFetch(alice as any, { url: "/user" });
+    await cachedFetch(bob as any, { url: "/user" });
+    await invalidateCache(alice as any, { url: "/user" });
 
-    expect(await cachedFetch(alice as any, "/user")).toEqual({ login: "alice2" });
-    expect(await cachedFetch(bob as any, "/user")).toEqual({ login: "bob" });
+    expect(await cachedFetch(alice as any, { url: "/user" })).toEqual({ login: "alice2" });
+    expect(await cachedFetch(bob as any, { url: "/user" })).toEqual({ login: "bob" });
     expect(bob).toHaveBeenCalledOnce();
   });
 });
@@ -228,13 +227,13 @@ describe("invalidateCache", () => {
       .mockResolvedValueOnce({ id: 2 })
       .mockResolvedValueOnce({ id: 1, fresh: true });
 
-    await cachedFetch(client as any, "/repos/a");
-    await cachedFetch(client as any, "/repos/b");
-    await invalidateCache(client as any, "/repos/a");
+    await cachedFetch(client as any, { url: "/repos/a" });
+    await cachedFetch(client as any, { url: "/repos/b" });
+    await invalidateCache(client as any, { url: "/repos/a" });
 
     // /repos/a should be re-fetched, /repos/b should still be cached
-    const a = await cachedFetch(client as any, "/repos/a");
-    const b = await cachedFetch(client as any, "/repos/b");
+    const a = await cachedFetch(client as any, { url: "/repos/a" });
+    const b = await cachedFetch(client as any, { url: "/repos/b" });
 
     expect(client).toHaveBeenCalledTimes(3);
     expect(a).toEqual({ id: 1, fresh: true });

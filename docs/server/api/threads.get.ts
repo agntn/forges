@@ -22,10 +22,13 @@ export default defineEventHandler(async (event) => {
   try {
     return await cachedAnswer<ThreadsAnswer>(event, "threads", params, TTL.threads, async () => {
       const provider = await forge(platform, host);
-      const page = await provider.threads.list(owner, repo, number, {
-        perPage,
-        state: "all",
-      });
+      const page = await provider.threads.list(
+        { owner, repo, number },
+        {
+          perPage,
+          state: "all",
+        },
+      );
       return {
         platform,
         number,

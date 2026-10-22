@@ -37,7 +37,8 @@ describe("commit search", () => {
     const provider = new GitHubProvider({ token: "" });
     const query = "author:contributor committer-date:2026-08-21..2026-09-20";
     const result = await provider.commits.search(query, { perPage: 1 });
-    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/search/commits", {
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+      url: "/search/commits",
       query: { q: query, page: "1", per_page: "1" },
     });
     expect(result).toEqual({
@@ -139,7 +140,8 @@ describe("commit search", () => {
         perPage: 10,
       },
     );
-    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/search/commits", {
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+      url: "/search/commits",
       query: { q: "snapshot repo:other/project repo:other/chosen", page: "2", per_page: "10" },
     });
     expect(result.items.map((item) => item.repository)).toEqual(["Other/Chosen"]);
@@ -154,7 +156,8 @@ describe("commit search", () => {
     const result = await new GitHubProvider({ token: "" }).commits.search("snapshot", {
       owner: "other",
     });
-    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/search/commits", {
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+      url: "/search/commits",
       query: { q: "snapshot user:other", page: "1", per_page: "30" },
     });
     expect(result).toMatchObject({
@@ -296,7 +299,8 @@ describe("GitLab commit search", () => {
 
     expect(mocks.client).toHaveBeenCalledTimes(1);
     expect(mocks.client).toHaveBeenCalledWith("/projects/gitlab-org%2Fgitlab-runner");
-    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/projects/250833/search", {
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+      url: "/projects/250833/search",
       query: { scope: "commits", search: "snapshot", page: 2, per_page: 1 },
     });
     // x-total stops counting 100 past the earlier pages, so it is no count to report.
@@ -389,7 +393,8 @@ describe("GitLab commit search", () => {
       scope,
     );
 
-    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, route, {
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+      url: route,
       query: { scope: "commits", search: "snapshot", page: 1, per_page: 30 },
     });
     expect(mocks.client).toHaveBeenCalledWith("/projects/250833");

@@ -22,7 +22,7 @@ export function assertRepositoryContentsOptions(
 ): TextWindow {
   const window = readTextWindow(options, { subject: "File", platform });
   if (options.ref !== undefined && options.ref.length === 0) {
-    throw new ForgesError("File ref must not be empty", 400, platform);
+    throw new ForgesError("File ref must not be empty", { status: 400, platform });
   }
   return window;
 }
@@ -34,7 +34,7 @@ export function normalizeRepositoryPath(path: string, platform?: string): string
   try {
     for (const segment of trimmed.split("/")) encodeApiResponsePathSegment(segment);
   } catch {
-    throw new ForgesError(`Invalid repository path: ${path}`, 400, platform);
+    throw new ForgesError(`Invalid repository path: ${path}`, { status: 400, platform });
   }
   return trimmed;
 }
@@ -55,7 +55,9 @@ export function assertContinuationRef(
   sha: string,
 ): void {
   if ((options?.offset ?? 0) > 0 && options?.ref !== sha) {
-    throw new ForgesError("Continue file reads with the resolved SHA from the first slice", 409);
+    throw new ForgesError("Continue file reads with the resolved SHA from the first slice", {
+      status: 409,
+    });
   }
 }
 
@@ -63,7 +65,7 @@ export function assertContinuationRef(
 export function fileTooLarge(path: string, size: number): ForgesError {
   return new ForgesError(
     `File ${path} is ${size} bytes; reads stop at ${MAX_FILE_BYTES}. Clone the repository for larger files`,
-    413,
+    { status: 413 },
   );
 }
 
@@ -81,7 +83,9 @@ export function contentsEntryType(type: string): RepositoryEntryType {
 
 /** A path that is neither a file nor a directory has nothing to read. */
 export function unreadableEntry(path: string, type: string): ForgesError {
-  return new ForgesError(`Repository path ${path} is a ${type}, not a file or directory`, 422);
+  return new ForgesError(`Repository path ${path} is a ${type}, not a file or directory`, {
+    status: 422,
+  });
 }
 
 function decodeText(bytes: Uint8Array): string | null {

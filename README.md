@@ -44,7 +44,7 @@ const codeberg = await createProvider("gitea", {
   baseURL: "https://codeberg.org",
 });
 
-const repo = await codeberg.repos.get("forgejo", "forgejo");
+const repo = await codeberg.repos.get({ owner: "forgejo", repo: "forgejo" });
 console.log(repo.fullName, repo.description, repo.defaultBranch);
 ```
 
@@ -58,7 +58,7 @@ Logged into `gh`? Drop the config object.
 
 ```ts
 const github = await createProvider("github");
-const hello = await github.repos.get("octocat", "Hello-World");
+const hello = await github.repos.get({ owner: "octocat", repo: "Hello-World" });
 console.log(hello.fullName, hello.description, hello.defaultBranch);
 ```
 
@@ -86,13 +86,11 @@ Options are the tool's own arguments. A list or an object goes in as JSON, `--js
 import { createProvider } from "@agntn/forges";
 
 const github = await createProvider("github");
-const repo = await github.repos.get("octocat", "Hello-World");
+const hello = { owner: "octocat", repo: "Hello-World" };
+const repo = await github.repos.get(hello);
 
-const open = await github.pullRequests.list("octocat", "Hello-World", { state: "open" });
-const more = await github.pullRequests.list("octocat", "Hello-World", {
-  state: "open",
-  cursor: open.nextCursor,
-});
+const open = await github.pullRequests.list(hello, { state: "open" });
+const more = await github.pullRequests.list(hello, { state: "open", cursor: open.nextCursor });
 
 const gitlab = await createProvider("gitlab", {
   token: "glpat-…",

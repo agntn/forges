@@ -48,10 +48,9 @@ export async function resolveCloudflareCredential(
     return await resolve(options);
   } catch (error) {
     if (!(error instanceof CredentialsError)) throw error;
-    throw new AuthenticationError(
-      `No Cloudflare credentials for artifacts: ${error.message}`,
-      "artifacts",
-      error,
-    );
+    throw new AuthenticationError(`No Cloudflare credentials for artifacts: ${error.message}`, {
+      platform: "artifacts",
+      originalError: error,
+    });
   }
 }

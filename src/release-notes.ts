@@ -33,16 +33,14 @@ export function assertReleaseNotesOptions(
   if (options.notesHash !== undefined && !NOTES_HASH.test(options.notesHash)) {
     throw new ForgesError(
       "Release notes notesHash must be the 16 hex digits a previous read returned",
-      400,
-      platform,
+      { status: 400, platform },
     );
   }
   if (window.offset > 0 && options.notesHash === undefined) {
-    throw new ForgesError(
-      "Release notes offset needs the notesHash of the read it continues",
-      400,
+    throw new ForgesError("Release notes offset needs the notesHash of the read it continues", {
+      status: 400,
       platform,
-    );
+    });
   }
   return window;
 }
@@ -63,8 +61,7 @@ export function sliceReleaseNotes(
   if (options.notesHash !== undefined && options.notesHash !== notesHash) {
     throw new ForgesError(
       "Release notes changed since the read that returned this notesHash. Read again from offset 0",
-      409,
-      platform,
+      { status: 409, platform },
     );
   }
   const { length } = release.body;

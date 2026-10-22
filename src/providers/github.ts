@@ -637,11 +637,10 @@ function comparisonStatus(status: string): CommitComparisonStatus | null {
 function githubSearchQualifierSegment(value: string, field: string): string {
   encodePathSegment(value, field);
   if (/[\s:'"]/u.test(value)) {
-    throw new ForgesError(
-      `${field} must not contain spaces, ":" or quotes in a search`,
-      400,
-      "github",
-    );
+    throw new ForgesError(`${field} must not contain spaces, ":" or quotes in a search`, {
+      status: 400,
+      platform: "github",
+    });
   }
   return value;
 }
@@ -682,7 +681,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     const owner = segments[0];
     const repo = segments[1];
     if (segments.length !== 2 || owner === undefined || repo === undefined) {
-      throw new ForgesError("GitHub returned an invalid repository name", 502, "github");
+      throw new ForgesError("GitHub returned an invalid repository name", {
+        status: 502,
+        platform: "github",
+      });
     }
     return `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
   }
@@ -712,10 +714,9 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     const hostname = new URL(this.restBaseURL).hostname;
     if (hostname === "api.github.com" || hostname.endsWith(".ghe.com")) return true;
     try {
-      const { headers } = await rawFetch<GitHubRepo>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`,
-      );
+      const { headers } = await rawFetch<GitHubRepo>(this.client, {
+        url: `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`,
+      });
       this.gitHubHost = headers.has("x-github-enterprise-version");
       return this.gitHubHost;
     } catch (error) {
@@ -916,14 +917,20 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         template.sourcePath === null ||
         template.sourceRef === null
       ) {
-        throw new ForgesError("GitHub template source metadata is incomplete", 502, "github");
+        throw new ForgesError("GitHub template source metadata is incomplete", {
+          status: 502,
+          platform: "github",
+        });
       }
       const file = await this.client<GitHubContent>(
         this.contentsRoute(template.sourceRepository, template.sourcePath),
         { query: { ref: template.sourceRef } },
       );
       if (file.type !== "file" || file.encoding !== "base64" || file.content === undefined) {
-        throw new ForgesError("GitHub did not return decodable template content", 502, "github");
+        throw new ForgesError("GitHub did not return decodable template content", {
+          status: 502,
+          platform: "github",
+        });
       }
       return Buffer.from(file.content.replaceAll("\n", ""), "base64").toString("utf8");
     } catch (error) {
@@ -1176,7 +1183,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (contents.encoding === "none") throw fileTooLarge(path, contents.size ?? 0);
       assertFileSize(path, contents.size ?? 0);
       if (contents.encoding !== "base64" || contents.content === undefined) {
-        throw new ForgesError(`GitHub returned no content for ${path}`, 502, "github");
+        throw new ForgesError(`GitHub returned no content for ${path}`, {
+          status: 502,
+          platform: "github",
+        });
       }
       return buildRepositoryFile({ path, sha, base64: contents.content }, options);
     } catch (error) {
@@ -1204,7 +1214,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     } catch {
       /* Neither a SHA nor JSON: the error below says so. */
     }
-    throw new ForgesError(`GitHub could not resolve ${ref} to a commit`, 502, "github");
+    throw new ForgesError(`GitHub could not resolve ${ref} to a commit`, {
+      status: 502,
+      platform: "github",
+    });
   }
 
   protected override async readCiJobLog(
@@ -1242,14 +1255,15 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         perPage < 1 ||
         perPage > 100
       ) {
-        throw new ForgesError(
-          "Commit search requires a positive page and perPage from 1 to 100",
-          400,
-        );
+        throw new ForgesError("Commit search requires a positive page and perPage from 1 to 100", {
+          status: 400,
+        });
       }
       const offset = (page - 1) * perPage;
       if (offset >= GITHUB_SEARCH_RESULT_LIMIT) {
-        throw new ForgesError("GitHub commit search only exposes the first 1000 results", 400);
+        throw new ForgesError("GitHub commit search only exposes the first 1000 results", {
+          status: 400,
+        });
       }
       let query = searchQuery;
       if (options?.owner !== undefined) {
@@ -1259,11 +1273,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
             ? ` user:${owner}`
             : ` repo:${owner}/${githubSearchQualifierSegment(options.repo, "Repository name")}`;
       }
-      const { data, headers } = await rawFetch<GitHubCommitSearchResponse>(
-        this.client,
-        "/search/commits",
-        { query: { q: query, page: String(page), per_page: String(perPage) } },
-      );
+      const { data, headers } = await rawFetch<GitHubCommitSearchResponse>(this.client, {
+        url: "/search/commits",
+        query: { q: query, page: String(page), per_page: String(perPage) },
+      });
       const rawItems = data?.items ?? [];
       const expectedOwner = options?.owner?.toLowerCase();
       const expectedRepository =
@@ -1292,12 +1305,11 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       };
     } catch (error) {
       if (error instanceof FetchError && (error.status === 404 || error.status === 405)) {
-        throw new ForgesError(
-          "Commit search is not supported by this GitHub-compatible host",
-          501,
-          "github",
-          error,
-        );
+        throw new ForgesError("Commit search is not supported by this GitHub-compatible host", {
+          status: 501,
+          platform: "github",
+          originalError: error,
+        });
       }
       throw normalizeError(error, "github");
     }
@@ -1312,11 +1324,15 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       let page = 1;
 
       while (page <= MAX_COMMIT_FILE_PAGES) {
-        const { data, headers } = await rawFetch<GitHubCommit>(this.client, path, {
+        const { data, headers } = await rawFetch<GitHubCommit>(this.client, {
+          url: path,
           query: { page: String(page), per_page: "100" },
         });
         if (!data) {
-          throw new ForgesError("GitHub returned no commit data", 502, "github");
+          throw new ForgesError("GitHub returned no commit data", {
+            status: 502,
+            platform: "github",
+          });
         }
         commit ??= data;
         files.push(...(data.files ?? []).map((file) => this.mapPullRequestFile(file)));
@@ -1331,7 +1347,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       }
 
       if (!commit) {
-        throw new ForgesError("GitHub commit pagination produced no pages", 502, "github");
+        throw new ForgesError("GitHub commit pagination produced no pages", {
+          status: 502,
+          platform: "github",
+        });
       }
 
       return {
@@ -1354,12 +1373,15 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   ): Promise<Numbered<CommitComparison>> {
     try {
       const page = options?.page ?? 1;
-      const { data, headers } = await rawFetch<GitHubComparison>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/compare/${encodeRevisionPathSegment(base, "Base")}...${encodeRevisionPathSegment(head, "Head")}`,
-        { query: { page: String(page), per_page: String(options?.perPage ?? 30) } },
-      );
-      if (!data) throw new ForgesError("GitHub returned no comparison data", 502, "github");
+      const { data, headers } = await rawFetch<GitHubComparison>(this.client, {
+        url: `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/compare/${encodeRevisionPathSegment(base, "Base")}...${encodeRevisionPathSegment(head, "Head")}`,
+        query: { page: String(page), per_page: String(options?.perPage ?? 30) },
+      });
+      if (!data)
+        throw new ForgesError("GitHub returned no comparison data", {
+          status: 502,
+          platform: "github",
+        });
       const files =
         page === 1 && data.files ? data.files.map((file) => this.mapPullRequestFile(file)) : null;
       return {
@@ -1397,16 +1419,20 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
             ? encodeRevisionPathSegment(commitRef, "Commit SHA")
             : encodePathSegment(commitRef);
         const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodedCommitRef}`;
-        const { data, headers } = await rawFetch<GitHubCommit>(this.client, route, {
+        const { data, headers } = await rawFetch<GitHubCommit>(this.client, {
+          url: route,
           query: { page: String(page), per_page: "100" },
         });
-        if (!data) throw new ForgesError("GitHub returned no commit data", 502, "github");
+        if (!data)
+          throw new ForgesError("GitHub returned no commit data", {
+            status: 502,
+            platform: "github",
+          });
         if (resolvedSha !== undefined && data.sha !== resolvedSha) {
-          throw new ForgesError(
-            "GitHub changed commit identity during patch pagination",
-            502,
-            "github",
-          );
+          throw new ForgesError("GitHub changed commit identity during patch pagination", {
+            status: 502,
+            platform: "github",
+          });
         }
         resolvedSha ??= data.sha;
         files.push(
@@ -1432,13 +1458,15 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       }
 
       if (resolvedSha === undefined) {
-        throw new ForgesError("GitHub commit pagination produced no pages", 502, "github");
+        throw new ForgesError("GitHub commit pagination produced no pages", {
+          status: 502,
+          platform: "github",
+        });
       }
       if ((options?.offset ?? 0) > 0 && sha !== resolvedSha) {
-        throw new ForgesError(
-          "Continue commit patches with the resolved SHA from the first page",
-          409,
-        );
+        throw new ForgesError("Continue commit patches with the resolved SHA from the first page", {
+          status: 409,
+        });
       }
       return buildCommitPatch(
         { sha: resolvedSha, files, filesComplete: files.length < 3000 ? filesComplete : null },
@@ -1471,11 +1499,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (options?.page) query.page = String(options.page);
       if (options?.perPage) query.per_page = String(options.perPage);
 
-      const { data, headers } = await rawFetch<GitHubCodeSearchResponse>(
-        this.client,
-        "/search/code",
-        { query },
-      );
+      const { data, headers } = await rawFetch<GitHubCodeSearchResponse>(this.client, {
+        url: "/search/code",
+        query,
+      });
       const rawItems = data?.items ?? [];
       const expectedOwner = options?.owner?.toLowerCase();
       const expectedRepository =
@@ -1502,12 +1529,11 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       };
     } catch (error) {
       if (error instanceof FetchError && (error.status === 404 || error.status === 405)) {
-        throw new ForgesError(
-          "Code search is not supported by this GitHub-compatible host",
-          501,
-          "github",
-          error,
-        );
+        throw new ForgesError("Code search is not supported by this GitHub-compatible host", {
+          status: 501,
+          platform: "github",
+          originalError: error,
+        });
       }
       throw normalizeError(error, "github");
     }
@@ -1525,11 +1551,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       );
       const review = this.mapPullRequestReview(raw);
       if (review === null) {
-        throw new ForgesError(
-          "This review state cannot be represented as a pull request review",
-          501,
-          "github",
-        );
+        throw new ForgesError("This review state cannot be represented as a pull request review", {
+          status: 501,
+          platform: "github",
+        });
       }
       return review;
     } catch (error) {
@@ -1540,9 +1565,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       ) {
         throw new ForgesError(
           "Pull request reviews are not supported by this GitHub-compatible host",
-          501,
-          "github",
-          error,
+          { status: 501, platform: "github", originalError: error },
         );
       }
       throw normalizeError(error, "github");
@@ -1560,11 +1583,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (options?.page) query.page = String(options.page);
       if (options?.perPage) query.per_page = String(options.perPage);
 
-      const { data, headers } = await rawFetch<GitHubPullRequestReview[]>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews`,
-        { query },
-      );
+      const { data, headers } = await rawFetch<GitHubPullRequestReview[]>(this.client, {
+        url: `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews`,
+        query,
+      });
       const page = buildPageResult({ items: data ?? [], headers }, (raw) =>
         this.mapPullRequestReview(raw),
       );
@@ -1577,9 +1599,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       ) {
         throw new ForgesError(
           "Pull request reviews are not supported by this GitHub-compatible host",
-          501,
-          "github",
-          error,
+          { status: 501, platform: "github", originalError: error },
         );
       }
       throw normalizeError(error, "github");
@@ -1592,12 +1612,11 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   private async releaseError(owner: string, repo: string, error: unknown): Promise<ForgesError> {
     const normalized = normalizeError(error, "github");
     if (normalized.status === 404 && !(await this.isGitHubHost(owner, repo))) {
-      return new ForgesError(
-        "Releases are not supported by this GitHub-compatible host",
-        501,
-        "github",
-        normalized,
-      );
+      return new ForgesError("Releases are not supported by this GitHub-compatible host", {
+        status: 501,
+        platform: "github",
+        originalError: normalized,
+      });
     }
     return normalized;
   }
@@ -1700,11 +1719,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (options?.page) query.page = String(options.page);
       if (options?.perPage) query.per_page = String(options.perPage);
 
-      const { data, headers } = await rawFetch<GitHubIssueSearchResponse>(
-        this.client,
-        "/search/issues",
-        { query },
-      );
+      const { data, headers } = await rawFetch<GitHubIssueSearchResponse>(this.client, {
+        url: "/search/issues",
+        query,
+      });
       const expectedRepositoryPath = `/repos/${encodedOwner}/${encodedRepo}`.toLowerCase();
       const rawIssues = data?.items ?? [];
       const scopedIssues = rawIssues.filter((issue) => {
@@ -1740,7 +1758,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(issueNumber, "Number")}`,
       );
       if (data.pull_request !== undefined) {
-        throw new NotFoundError(`Issue not found: ${issueNumber}`, "github");
+        throw new NotFoundError(`Issue not found: ${issueNumber}`, { platform: "github" });
       }
       return this.mapIssue(data);
     } catch (error) {
@@ -1785,11 +1803,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (options?.perPage) query.per_page = String(options.perPage);
       if (options?.state) query.state = options.state;
 
-      const { data, headers } = await rawFetch<GitHubPullRequest[]>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls`,
-        { query },
-      );
+      const { data, headers } = await rawFetch<GitHubPullRequest[]>(this.client, {
+        url: `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls`,
+        query,
+      });
 
       return buildPageResult({ items: data ?? [], headers }, (raw) => this.mapPullRequest(raw));
     } catch (error) {
@@ -1840,7 +1857,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       );
     } catch (error) {
       if (error instanceof FetchError && error.status === 422) {
-        throw new NotFoundError(`Ref not found: ${ref}`, "github", error);
+        throw new NotFoundError(`Ref not found: ${ref}`, {
+          platform: "github",
+          originalError: error,
+        });
       }
       throw error;
     }
@@ -1919,7 +1939,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     let total = 0;
     let page = 1;
     while (collected.length < wanted) {
-      const { data, headers } = await rawFetch<TResponse>(this.client, path, {
+      const { data, headers } = await rawFetch<TResponse>(this.client, {
+        url: path,
         query: { page: String(page), per_page: perPage },
       });
       if (data) total = data.total_count;
@@ -1969,23 +1990,26 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         perPage < 1 ||
         perPage > 100
       ) {
-        throw new ForgesError(
-          `${noun} search requires a positive page and perPage from 1 to 100`,
-          400,
-        );
+        throw new ForgesError(`${noun} search requires a positive page and perPage from 1 to 100`, {
+          status: 400,
+        });
       }
       const offset = (page - 1) * perPage;
       if (offset >= GITHUB_SEARCH_RESULT_LIMIT) {
-        throw new ForgesError(`GitHub ${kind} search only exposes the first 1000 results`, 400);
+        throw new ForgesError(`GitHub ${kind} search only exposes the first 1000 results`, {
+          status: 400,
+        });
       }
       if (
         options?.sort !== undefined &&
         !["created", "updated", "comments"].includes(options.sort)
       ) {
-        throw new ForgesError(`${noun} search sort must be created, updated or comments`, 400);
+        throw new ForgesError(`${noun} search sort must be created, updated or comments`, {
+          status: 400,
+        });
       }
       if (options?.order !== undefined && !["asc", "desc"].includes(options.order)) {
-        throw new ForgesError(`${noun} search order must be asc or desc`, 400);
+        throw new ForgesError(`${noun} search order must be asc or desc`, { status: 400 });
       }
       const filters = kind === "issue" ? options : undefined;
       let query = `${searchQuery} ${kind === "issue" ? "is:issue" : "is:pr"}`.trim();
@@ -2003,19 +2027,16 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
             ? ` user:${owner}`
             : ` repo:${owner}/${githubSearchQualifierSegment(options.repo, "Repository name")}`;
       }
-      const { data, headers } = await rawFetch<GitHubIssueSearchResponse>(
-        this.client,
-        "/search/issues",
-        {
-          query: {
-            q: query,
-            page: String(page),
-            per_page: String(perPage),
-            ...(options?.sort === undefined ? {} : { sort: options.sort }),
-            ...(options?.order === undefined ? {} : { order: options.order }),
-          },
+      const { data, headers } = await rawFetch<GitHubIssueSearchResponse>(this.client, {
+        url: "/search/issues",
+        query: {
+          q: query,
+          page: String(page),
+          per_page: String(perPage),
+          ...(options?.sort === undefined ? {} : { sort: options.sort }),
+          ...(options?.order === undefined ? {} : { order: options.order }),
         },
-      );
+      });
       const rawItems = data?.items ?? [];
       const items: Array<T & { repository: string }> = [];
       for (const raw of rawItems.slice(0, GITHUB_SEARCH_RESULT_LIMIT - offset)) {
@@ -2060,9 +2081,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (error instanceof FetchError && (error.status === 404 || error.status === 405)) {
         throw new ForgesError(
           `Global ${kind} search is not supported by this GitHub-compatible host`,
-          501,
-          "github",
-          error,
+          { status: 501, platform: "github", originalError: error },
         );
       }
       throw normalizeError(error, "github");
@@ -2087,11 +2106,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (options?.page) query.page = String(options.page);
       if (options?.perPage) query.per_page = String(options.perPage);
 
-      const { data, headers } = await rawFetch<GitHubIssueSearchResponse>(
-        this.client,
-        "/search/issues",
-        { query },
-      );
+      const { data, headers } = await rawFetch<GitHubIssueSearchResponse>(this.client, {
+        url: "/search/issues",
+        query,
+      });
       const expectedRepositoryPath = `/repos/${encodedOwner}/${encodedRepo}`.toLowerCase();
       const rawPullRequests = data?.items ?? [];
       const scopedPullRequests = rawPullRequests.filter((pullRequest) => {
@@ -2157,10 +2175,9 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         });
         const pullRequest = data.repository?.pullRequest;
         if (!pullRequest) {
-          throw new NotFoundError(
-            `Resource not found: pull request ${owner}/${repo}#${prNumber}`,
-            "github",
-          );
+          throw new NotFoundError(`Resource not found: pull request ${owner}/${repo}#${prNumber}`, {
+            platform: "github",
+          });
         }
         const connection = pullRequest.closingIssuesReferences;
         for (const node of presentGraphQLNodes(connection.nodes)) {
@@ -2307,7 +2324,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       const removedLabelPaths = this.removedLabelPaths(issuePath, input.removeLabels);
       let data = await this.client<GitHubIssue>(issuePath);
       if (data.pull_request !== undefined) {
-        throw new NotFoundError(`Issue not found: ${issueNumber}`, "github");
+        throw new NotFoundError(`Issue not found: ${issueNumber}`, { platform: "github" });
       }
       const fields = { title: input.title, body: input.body, state: input.state };
       if (Object.values(fields).some((value) => value !== undefined)) {
@@ -2327,7 +2344,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   private removedLabelPaths(issuePath: string, labels: readonly string[] = []): string[] {
     return labels.map((label) => {
       if (label === "." || label === "..") {
-        throw new ForgesError(`GitHub has no route to remove the label "${label}"`, 400, "github");
+        throw new ForgesError(`GitHub has no route to remove the label "${label}"`, {
+          status: 400,
+          platform: "github",
+        });
       }
       return `${issuePath}/labels/${encodeLabelPathSegment(label)}`;
     });
@@ -2396,7 +2416,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/comments/${encodePathSegment(commentId, "Comment id")}`,
       );
       if (data.issue_url && !data.issue_url.endsWith(`/issues/${number}`)) {
-        throw new NotFoundError(`Comment not found: ${commentId}`, "github");
+        throw new NotFoundError(`Comment not found: ${commentId}`, { platform: "github" });
       }
       return this.mapComment(data);
     } catch (error) {
@@ -2478,13 +2498,13 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       const base = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues`;
       const commentId = options?.commentId;
       const [read, ...checks] = await Promise.allSettled([
-        rawFetch<GitHubReaction[]>(
-          this.client,
-          commentId === undefined
-            ? `${base}/${encodePathSegment(number, "Number")}/reactions`
-            : `${base}/comments/${encodePathSegment(commentId, "Comment id")}/reactions`,
-          { query },
-        ),
+        rawFetch<GitHubReaction[]>(this.client, {
+          url:
+            commentId === undefined
+              ? `${base}/${encodePathSegment(number, "Number")}/reactions`
+              : `${base}/comments/${encodePathSegment(commentId, "Comment id")}/reactions`,
+          query,
+        }),
         this.assertIssueKind(owner, repo, number, pullRequest),
         commentId === undefined ? undefined : this.getIssueComment(owner, repo, number, commentId),
       ]);
@@ -2503,12 +2523,11 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         error.status === 404 &&
         !(await this.isGitHubHost(owner, repo))
       ) {
-        throw new ForgesError(
-          "Reactions are not supported by this GitHub-compatible host",
-          501,
-          "github",
-          error,
-        );
+        throw new ForgesError("Reactions are not supported by this GitHub-compatible host", {
+          status: 501,
+          platform: "github",
+          originalError: error,
+        });
       }
       throw normalizeError(error, "github");
     }
@@ -2523,7 +2542,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (options?.page) query.page = String(options.page);
       if (options?.perPage) query.per_page = String(options.perPage);
       const [read, kind] = await Promise.allSettled([
-        rawFetch<GitHubIssue[]>(this.client, `${issuePath(issue)}/sub_issues`, { query }),
+        rawFetch<GitHubIssue[]>(this.client, { url: `${issuePath(issue)}/sub_issues`, query }),
         this.assertIssueKind(issue.owner, issue.repo, issue.number, false),
       ]);
       if (kind.status === "rejected") throw kind.reason;
@@ -2583,12 +2602,11 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       error.status === 404 &&
       !(await this.isGitHubHost(issue.owner, issue.repo))
     ) {
-      return new ForgesError(
-        "Sub-issues are not supported by this GitHub-compatible host",
-        501,
-        "github",
-        error,
-      );
+      return new ForgesError("Sub-issues are not supported by this GitHub-compatible host", {
+        status: 501,
+        platform: "github",
+        originalError: error,
+      });
     }
     return normalizeError(error, "github");
   }
@@ -2610,7 +2628,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     }
     if ((issue.pull_request !== undefined) !== pullRequest) {
       const kind = pullRequest ? "Pull request" : "Issue";
-      throw new NotFoundError(`${kind} not found: ${number}`, "github");
+      throw new NotFoundError(`${kind} not found: ${number}`, { platform: "github" });
     }
   }
 
@@ -2645,10 +2663,9 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         });
         const pullRequest = data.repository?.pullRequest;
         if (!pullRequest) {
-          throw new NotFoundError(
-            `Resource not found: pull request ${owner}/${repo}#${number}`,
-            "github",
-          );
+          throw new NotFoundError(`Resource not found: pull request ${owner}/${repo}#${number}`, {
+            platform: "github",
+          });
         }
         const connection = pullRequest.reviewThreads;
         for (const node of presentGraphQLNodes(connection.nodes)) {
@@ -2692,7 +2709,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (!data.node || !threadMatchesPullRequest(data.node.pullRequest, owner, repo, number)) {
         throw new NotFoundError(
           `Resource not found: thread ${threadId} on ${owner}/${repo}#${number}`,
-          "github",
+          { platform: "github" },
         );
       }
       return this.mapThread(await this.completeThreadComments(data.node));
@@ -2781,7 +2798,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (!thread) {
         throw new NotFoundError(
           `Resource not found: thread ${threadId} on ${owner}/${repo}#${number}`,
-          "github",
+          { platform: "github" },
         );
       }
       return this.mapThread(await this.completeThreadComments(thread));
@@ -2802,7 +2819,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     if (!threadMatchesPullRequest(data.node?.pullRequest, owner, repo, number)) {
       throw new NotFoundError(
         `Resource not found: thread ${threadId} on ${owner}/${repo}#${number}`,
-        "github",
+        { platform: "github" },
       );
     }
   }
@@ -2816,11 +2833,9 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     const thread = await this.getThread(owner, repo, number, threadId);
     const commentId = thread.comments[0]?.id;
     if (!commentId) {
-      throw new ForgesError(
-        `Review thread ${threadId} has no comment id to reply to`,
-        undefined,
-        "github",
-      );
+      throw new ForgesError(`Review thread ${threadId} has no comment id to reply to`, {
+        platform: "github",
+      });
     }
     return commentId;
   }
@@ -2867,9 +2882,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (error instanceof FetchError && (error.status === 404 || error.status === 405)) {
         throw new ForgesError(
           `Review threads need the GitHub GraphQL API, which ${url} does not serve. REST-only hosts such as GitBucket cannot use thread operations.`,
-          error.status,
-          "github",
-          error,
+          { status: error.status, platform: "github", originalError: error },
         );
       }
       throw error;
@@ -2877,12 +2890,14 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     const firstError = response.errors?.[0];
     if (firstError) {
       if (firstError.type === "NOT_FOUND") {
-        throw new NotFoundError(`Resource not found: ${firstError.message}`, "github");
+        throw new NotFoundError(`Resource not found: ${firstError.message}`, {
+          platform: "github",
+        });
       }
-      throw new ForgesError(firstError.message, undefined, "github");
+      throw new ForgesError(firstError.message, { platform: "github" });
     }
     if (response.data === undefined || response.data === null) {
-      throw new ForgesError("GitHub GraphQL returned no data", undefined, "github");
+      throw new ForgesError("GitHub GraphQL returned no data", { platform: "github" });
     }
     return response.data;
   }

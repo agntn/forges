@@ -598,7 +598,7 @@ async function readBoundedGiteaDiff(stream: ReadableStream<Uint8Array>): Promise
       if (length > MAX_GITEA_DIFF_CHARS) {
         throw new ForgesError(
           `Gitea commit diff exceeds the ${MAX_GITEA_DIFF_CHARS} character input limit`,
-          413,
+          { status: 413 },
         );
       }
       chunks.push(chunk);
@@ -608,7 +608,7 @@ async function readBoundedGiteaDiff(stream: ReadableStream<Uint8Array>): Promise
     if (length > MAX_GITEA_DIFF_CHARS) {
       throw new ForgesError(
         `Gitea commit diff exceeds the ${MAX_GITEA_DIFF_CHARS} character input limit`,
-        413,
+        { status: 413 },
       );
     }
     chunks.push(finalChunk);
@@ -945,7 +945,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       if (contents.type !== "file") throw unreadableEntry(path, contents.type);
       assertFileSize(path, contents.size ?? 0);
       if (contents.encoding !== "base64" || contents.content === undefined) {
-        throw new ForgesError(`Gitea returned no content for ${path}`, 502, PLATFORM);
+        throw new ForgesError(`Gitea returned no content for ${path}`, {
+          status: 502,
+          platform: PLATFORM,
+        });
       }
       return buildRepositoryFile({ path, sha, base64: contents.content }, options);
     } catch (error) {
@@ -1043,14 +1046,20 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   ): Promise<string> {
     try {
       if (template.sourcePath === null || template.sourceRef === null) {
-        throw new ForgesError("Gitea template source metadata is incomplete", 502, PLATFORM);
+        throw new ForgesError("Gitea template source metadata is incomplete", {
+          status: 502,
+          platform: PLATFORM,
+        });
       }
       const file = await this.client<GiteaContent>(
         this.contributionTemplateContentsRoute(owner, repo, template.sourcePath),
         { query: { ref: template.sourceRef } },
       );
       if (file.type !== "file" || file.encoding !== "base64" || file.content === undefined) {
-        throw new ForgesError("Gitea did not return decodable template content", 502, PLATFORM);
+        throw new ForgesError("Gitea did not return decodable template content", {
+          status: 502,
+          platform: PLATFORM,
+        });
       }
       return Buffer.from(file.content.replaceAll("\n", ""), "base64").toString("utf8");
     } catch (error) {
@@ -1074,8 +1083,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       const perPage = options?.perPage ?? 30;
       const { data, headers } = await rawFetch<GiteaCiJobsResponse | ForgejoActionsJob[]>(
         this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/runs/${runId}/jobs`,
-        { query: { page: String(page), limit: String(perPage) } },
+        {
+          url: `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/runs/${runId}/jobs`,
+          query: { page: String(page), limit: String(perPage) },
+        },
       );
       if (Array.isArray(data)) return forgejoJobsPage(data, headers, page, perPage);
       const totalCount = data?.total_count;
@@ -1206,8 +1217,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       if (options?.path && !(await this.commitPathFilterIsPaged())) {
         throw new ForgesError(
           "Path-filtered commit listing is not supported by Gitea because its API ignores pagination limits",
-          501,
-          PLATFORM,
+          { status: 501, platform: PLATFORM },
         );
       }
 
@@ -1224,11 +1234,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       if (options?.since) query.since = options.since;
       if (options?.until) query.until = options.until;
 
-      const { data, headers } = await rawFetch<GiteaCommit[]>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits`,
-        { query },
-      );
+      const { data, headers } = await rawFetch<GiteaCommit[]>(this.client, {
+        url: `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits`,
+        query,
+      });
       const result = buildPageResult({ items: data ?? [], headers }, (raw) =>
         this.mapCommitSummary(raw),
       );
@@ -1304,10 +1313,9 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/git/commits/${encodeRevisionPathSegment(sha, "Commit SHA")}`,
       );
       if ((options?.offset ?? 0) > 0 && sha !== commit.sha) {
-        throw new ForgesError(
-          "Continue commit patches with the resolved SHA from the first page",
-          409,
-        );
+        throw new ForgesError("Continue commit patches with the resolved SHA from the first page", {
+          status: 409,
+        });
       }
       const diffStream = await this.client<unknown, "stream">(
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/git/commits/${encodePathSegment(commit.sha)}.diff`,
@@ -1349,11 +1357,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       // Gitea lists open items by default; GitHub and GitLab search every state.
       query.state = options?.state ?? "all";
       query.type = "issues";
-      const { data, headers } = await rawFetch<GiteaIssue[]>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues`,
-        { query },
-      );
+      const { data, headers } = await rawFetch<GiteaIssue[]>(this.client, {
+        url: `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues`,
+        query,
+      });
       return {
         ...buildPageResult({ items: data ?? [], headers }, (raw) => this.mapIssue(raw)),
         incomplete: false,
@@ -1369,7 +1376,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`,
       );
       if (issue.pull_request != null) {
-        throw new NotFoundError(`Issue not found: ${number}`, PLATFORM);
+        throw new NotFoundError(`Issue not found: ${number}`, { platform: PLATFORM });
       }
       return this.mapIssue(issue);
     } catch (error) {
@@ -1434,12 +1441,14 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     }
 
     if (pending.size > 0) {
-      throw new NotFoundError(`Labels not found: ${[...pending].join(", ")}`, PLATFORM);
+      throw new NotFoundError(`Labels not found: ${[...pending].join(", ")}`, {
+        platform: PLATFORM,
+      });
     }
     return names.map((name) => {
       const id = ids.get(name);
       if (id === undefined) {
-        throw new NotFoundError(`Label not found: ${name}`, PLATFORM);
+        throw new NotFoundError(`Label not found: ${name}`, { platform: PLATFORM });
       }
       return id;
     });
@@ -1452,7 +1461,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   ): Promise<void> {
     let page = 1;
     while (pending.size > 0 && page <= MAX_GITEA_LABEL_PAGES) {
-      const { data, headers } = await rawFetch<GiteaLabel[]>(this.client, path, {
+      const { data, headers } = await rawFetch<GiteaLabel[]>(this.client, {
+        url: path,
         query: { page: String(page), limit: String(GITEA_LABEL_PAGE_SIZE) },
       });
       const labels = data ?? [];
@@ -1470,7 +1480,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
           : labels.length === GITEA_LABEL_PAGE_SIZE);
       if (!hasNextPage) break;
       if (page === MAX_GITEA_LABEL_PAGES) {
-        throw new ForgesError("Gitea label lookup exceeded its pagination limit", 502, PLATFORM);
+        throw new ForgesError("Gitea label lookup exceeded its pagination limit", {
+          status: 502,
+          platform: PLATFORM,
+        });
       }
       page += 1;
     }
@@ -1483,11 +1496,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   ): Promise<NumberedPage<PullRequest>> {
     try {
       const query = buildListQuery(options);
-      const { data, headers } = await rawFetch<GiteaPullRequest[]>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls`,
-        { query },
-      );
+      const { data, headers } = await rawFetch<GiteaPullRequest[]>(this.client, {
+        url: `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls`,
+        query,
+      });
       return buildPageResult({ items: data ?? [], headers }, (raw) => this.mapPullRequest(raw));
     } catch (error) {
       throw normalizeError(error, PLATFORM);
@@ -1539,13 +1551,15 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     const page = options?.page ?? 1;
     const perPage = options?.perPage ?? 30;
     const path = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/commits/${encodeRefPathSegment(ref, "Ref")}/status`;
-    const { data, headers } = await rawFetch<GiteaCombinedStatus>(this.client, path, {
+    const { data, headers } = await rawFetch<GiteaCombinedStatus>(this.client, {
+      url: path,
       query: { page: String(page), limit: String(perPage) },
     });
     const statuses = data?.statuses ?? [];
     let hasNextPage = !!parseLinkHeader(headers.get("Link")).next;
     if (!hasNextPage && statuses.length === perPage) {
-      const next = await rawFetch<GiteaCombinedStatus>(this.client, path, {
+      const next = await rawFetch<GiteaCombinedStatus>(this.client, {
+        url: path,
         query: { page: String(page + 1), limit: String(perPage) },
       });
       hasNextPage = (next.data?.statuses.length ?? 0) > 0;
@@ -1570,11 +1584,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       );
       const review = this.mapPullRequestReview(raw);
       if (review === null) {
-        throw new ForgesError(
-          "This review state cannot be represented as a pull request review",
-          501,
-          PLATFORM,
-        );
+        throw new ForgesError("This review state cannot be represented as a pull request review", {
+          status: 501,
+          platform: PLATFORM,
+        });
       }
       return review;
     } catch (error) {
@@ -1595,11 +1608,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     try {
       const page = options?.page ?? 1;
       const perPage = options?.perPage ?? 30;
-      const { data, headers } = await rawFetch<GiteaPullReview[]>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews`,
-        { query: { page: String(page), limit: String(perPage) } },
-      );
+      const { data, headers } = await rawFetch<GiteaPullReview[]>(this.client, {
+        url: `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews`,
+        query: { page: String(page), limit: String(perPage) },
+      });
       const rows = data ?? [];
       const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
       const hasNextPage =
@@ -1627,11 +1639,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       // Gitea lists open items by default; GitHub and GitLab search every state.
       query.state = options?.state ?? "all";
       query.type = "pulls";
-      const { data, headers } = await rawFetch<GiteaIssue[]>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues`,
-        { query },
-      );
+      const { data, headers } = await rawFetch<GiteaIssue[]>(this.client, {
+        url: `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues`,
+        query,
+      });
       return {
         ...buildPageResult({ items: data ?? [], headers }, (raw) =>
           this.mapPullRequestSearchItem(raw),
@@ -1684,14 +1695,16 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         perPage < 1 ||
         perPage > 100
       ) {
-        throw new ForgesError(
-          `${noun} search requires a positive page and perPage from 1 to 100`,
-          400,
-          PLATFORM,
-        );
+        throw new ForgesError(`${noun} search requires a positive page and perPage from 1 to 100`, {
+          status: 400,
+          platform: PLATFORM,
+        });
       }
       if ((options?.sort ?? "created") !== "created" || (options?.order ?? "desc") !== "desc") {
-        throw new ForgesError(`Gitea ${kind} search only returns the newest first`, 501, PLATFORM);
+        throw new ForgesError(`Gitea ${kind} search only returns the newest first`, {
+          status: 501,
+          platform: PLATFORM,
+        });
       }
       const filters = kind === "issue" ? options : undefined;
       const labels = filters?.labels ?? [];
@@ -1711,18 +1724,17 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         query.owner = options.owner;
       }
       const scopedToRepository = path !== "/repos/issues/search";
-      const { data, headers } = await rawFetch<GiteaIssue[]>(this.client, path, { query });
+      const { data, headers } = await rawFetch<GiteaIssue[]>(this.client, { url: path, query });
       const rawItems = data ?? [];
       const author = options?.author?.toLowerCase();
       if (
         author !== undefined &&
         rawItems.some((raw) => raw.user?.login?.toLowerCase() !== author)
       ) {
-        throw new ForgesError(
-          `This Gitea host ignores the author filter on ${kind} search`,
-          501,
-          PLATFORM,
-        );
+        throw new ForgesError(`This Gitea host ignores the author filter on ${kind} search`, {
+          status: 501,
+          platform: PLATFORM,
+        });
       }
       // Gitea and Forgejo drop an unknown label name and answer unfiltered, so a row
       // without the labels asked for means the filter never ran.
@@ -1892,7 +1904,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       const issuePath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`;
       const current = await this.client<GiteaIssue>(issuePath);
       if (current.pull_request != null) {
-        throw new NotFoundError(`Issue not found: ${number}`, PLATFORM);
+        throw new NotFoundError(`Issue not found: ${number}`, { platform: PLATFORM });
       }
 
       await this.writeIssueLabels(owner, repo, issuePath, input, current.labels);
@@ -1971,11 +1983,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       let remotePage = 1;
       let hasMore = true;
       while (hasMore && comments.length <= start + perPage) {
-        const { data, headers } = await rawFetch<GiteaComment[]>(
-          this.client,
-          `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}/comments`,
-          { query: { page: String(remotePage), limit: "50" } },
-        );
+        const { data, headers } = await rawFetch<GiteaComment[]>(this.client, {
+          url: `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}/comments`,
+          query: { page: String(remotePage), limit: "50" },
+        });
         const batch = data ?? [];
         if (batch.length === 0) {
           hasMore = false;
@@ -2033,7 +2044,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         !association.endsWith(`/issues/${number}`) &&
         !association.endsWith(`/pulls/${number}`)
       ) {
-        throw new NotFoundError(`Comment not found: ${commentId}`, PLATFORM);
+        throw new NotFoundError(`Comment not found: ${commentId}`, { platform: PLATFORM });
       }
       return this.mapComment(data);
     } catch (error) {
@@ -2123,11 +2134,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       }
 
       const [{ data, headers }] = await Promise.all([
-        rawFetch<GiteaReaction[] | null>(
-          this.client,
-          `${base}/${encodePathSegment(number, "Number")}/reactions`,
-          { query: { page: String(page), limit: String(perPage) } },
-        ),
+        rawFetch<GiteaReaction[] | null>(this.client, {
+          url: `${base}/${encodePathSegment(number, "Number")}/reactions`,
+          query: { page: String(page), limit: String(perPage) },
+        }),
         this.assertIssueKind(owner, repo, number, pullRequest),
       ]);
       const total = Number.parseInt(headers.get("x-total-count") ?? "", 10);
@@ -2158,7 +2168,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     );
     if ((issue.pull_request != null) !== pullRequest) {
       const kind = pullRequest ? "Pull request" : "Issue";
-      throw new NotFoundError(`${kind} not found: ${number}`, PLATFORM);
+      throw new NotFoundError(`${kind} not found: ${number}`, { platform: PLATFORM });
     }
   }
 
@@ -2290,7 +2300,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     if (!thread) {
       throw new NotFoundError(
         `Resource not found: thread ${threadId} on ${owner}/${repo}#${number}`,
-        PLATFORM,
+        { platform: PLATFORM },
       );
     }
     return thread;
@@ -2306,11 +2316,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     let page = 1;
     let hasNextPage = true;
     while (hasNextPage) {
-      const { data, headers } = await rawFetch<GiteaPullReviewComment[]>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews/${encodePathSegment(reviewId, "Review id")}/comments`,
-        { query: { page: String(page), limit: "50" } },
-      );
+      const { data, headers } = await rawFetch<GiteaPullReviewComment[]>(this.client, {
+        url: `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews/${encodePathSegment(reviewId, "Review id")}/comments`,
+        query: { page: String(page), limit: "50" },
+      });
       const batch = data ?? [];
       if (batch.length === 0) {
         break;
@@ -2333,11 +2342,10 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     let seen = 0;
     let hasNextPage = true;
     while (hasNextPage) {
-      const { data, headers } = await rawFetch<GiteaPullReview[]>(
-        this.client,
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews`,
-        { query: { page: String(page), limit: "50" } },
-      );
+      const { data, headers } = await rawFetch<GiteaPullReview[]>(this.client, {
+        url: `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/${encodePathSegment(number, "Number")}/reviews`,
+        query: { page: String(page), limit: "50" },
+      });
       const reviews = data ?? [];
       if (reviews.length === 0) {
         break;

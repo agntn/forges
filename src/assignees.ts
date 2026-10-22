@@ -12,8 +12,7 @@ export function assertAssignees(assignees: unknown, platform?: string): void {
   ) {
     throw new ForgesError(
       `Assignees must be an array of at most ${MAX_ASSIGNEES} non-empty logins`,
-      400,
-      platform,
+      { status: 400, platform },
     );
   }
 }
