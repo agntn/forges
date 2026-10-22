@@ -21,8 +21,8 @@ importers:
         specifier: 5.13.0
         version: 5.13.0(4d3037c0cab058688feac2351a48acb1)
       forges:
-        specifier: https://pkg.pr.new/forges@13a3007
-        version: https://pkg.pr.new/forges@13a3007
+        specifier: 0.2.0
+        version: 0.2.0
       nuxt:
         specifier: 4.5.2
         version: 4.5.2(@babel/plugin-syntax-jsx@7.29.7(@babel/core@7.29.7(supports-color@10.2.2)))(@babel/plugin-syntax-typescript@7.29.7(@babel/core@7.29.7(supports-color@10.2.2)))(@oxc-project/types@0.148.0)(@types/node@26.4.1)(@vue/compiler-sfc@3.5.42)(better-sqlite3@12.11.1)(db0@0.3.4(better-sqlite3@12.11.1))(esbuild@0.28.2)(eslint@10.9.1(jiti@2.7.0)(supports-color@10.2.2))(ioredis@5.11.1(supports-color@10.2.2))(lightningcss@1.33.0)(magicast@0.5.4)(optionator@0.9.4)(oxc-parser@0.143.0)(rolldown@1.2.7)(rollup-plugin-visualizer@7.1.1(rolldown@1.2.7)(rollup@4.63.1))(rollup@4.63.1)(srvx@0.11.22)(supports-color@10.2.2)(terser@5.51.2)(typescript@5.9.3)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0))(yaml@2.9.0)
@@ -4513,9 +4513,8 @@ packages:
     resolution: {integrity: sha512-gIXjKqtFuWEgzFRJA9WCQeSJLZDjgJUOMCMzxtvFq/37KojM1BFGufqsCy0r4qSQmYLsZYMeyRqzIWOMup03sw==}
     engines: {node: '>=14'}
 
-  forges@https://pkg.pr.new/forges@13a3007:
-    resolution: {integrity: sha512-TyuGkYR+yxDPToOzxDc8qtX+AwSSvOBbx5iPckHTuP0E7PFfa9apH3JTgkyW1fiAR+LMS1Mn8RLBSXluVLhS7w==, tarball: https://pkg.pr.new/forges@13a3007}
-    version: 0.1.0
+  forges@0.2.0:
+    resolution: {integrity: sha512-n7r9408sEp5U53P7JalJ0bPxqUO7uR0WXQ3HyWTcJc/M2ItXL+mDSUALU7cz4Uig0zNWBAOE68ITPjSVoFktww==}
     engines: {node: '>=22.18'}
 
   forwarded@0.2.0:
@@ -12060,7 +12059,7 @@ snapshots:
       cross-spawn: 7.0.6
       signal-exit: 4.1.0
 
-  forges@https://pkg.pr.new/forges@13a3007: {}
+  forges@0.2.0: {}
 
   forwarded@0.2.0: {}
 

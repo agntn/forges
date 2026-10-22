@@ -1,3 +1,4 @@
+import { isNamespaceRef } from "forges";
 import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 import { FetchError } from "../src/errors.ts";
 import { NotFoundError, AuthenticationError, RateLimitError, ForgesError } from "../src/errors.ts";
@@ -41,7 +42,15 @@ vi.mock("forges/github", async () => {
 });
 
 import { GitHubProvider } from "../src/providers/github.ts";
-import { failing, forgeOptions, listing, raws, repoRef, sharedForge } from "./support/forge.ts";
+import {
+  failing,
+  forgeOptions,
+  listing,
+  raws,
+  ownerRef,
+  repoRef,
+  sharedForge,
+} from "./support/forge.ts";
 import { cursorFor } from "./support/cursor.ts";
 import type { UpdateIssueInput, UpdatePullRequestInput } from "../src/types.ts";
 
@@ -769,12 +778,10 @@ describe("GitHubProvider", () => {
 
       const result = await gh.repos.list("octocat", { perPage: 50 });
 
-      expect(forge.repos.byOwner).toHaveBeenCalledWith(
-        repoRef(forge, { owner: "octocat", name: "" }),
-        {
-          perPage: 50,
-        },
-      );
+      expect(forge.repos.byOwner).toHaveBeenCalledWith(ownerRef(forge, "octocat"), {
+        perPage: 50,
+      });
+      expect(isNamespaceRef(ownerRef(forge, "octocat"))).toBe(true);
       expect(result).toEqual({
         items: [
           expect.objectContaining({
@@ -4441,13 +4448,10 @@ describe("GitHubProvider", () => {
       forge.repos.byOwner.mockReturnValueOnce(listing({ items: [] }));
       const second = await gh.repos.list("octocat", { cursor: first.nextCursor });
 
-      expect(forge.repos.byOwner).toHaveBeenLastCalledWith(
-        repoRef(forge, { owner: "octocat", name: "" }),
-        {
-          perPage: 30,
-          cursor: { nextUrl: next },
-        },
-      );
+      expect(forge.repos.byOwner).toHaveBeenLastCalledWith(ownerRef(forge, "octocat"), {
+        perPage: 30,
+        cursor: { nextUrl: next },
+      });
       expect(second.nextCursor).toBeUndefined();
     });
 

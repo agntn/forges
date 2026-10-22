@@ -56,6 +56,17 @@ export function repoRef(fake: FakeForge, repo: { owner: string; name: string }) 
   return { forge: fake.forge, instance: fake.instance, ...repo };
 }
 
+/** The namespace ref the providers hand to `repos.byOwner`, as `namespaceRef()` builds it. */
+export function ownerRef(fake: FakeForge, owner: string) {
+  return {
+    forge: fake.forge,
+    instance: fake.instance,
+    owner,
+    name: "",
+    kind: "namespace" as const,
+  };
+}
+
 /** A listing whose page read fails with `error`. */
 export function failing(error: unknown) {
   return {
