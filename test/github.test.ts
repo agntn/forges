@@ -1,4 +1,4 @@
-import { isNamespaceRef } from "forges";
+import { isNamespaceRef, type RepoRef } from "forges";
 import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 import { FetchError } from "../src/errors.ts";
 import { NotFoundError, AuthenticationError, RateLimitError, ForgesError } from "../src/errors.ts";
@@ -781,7 +781,8 @@ describe("GitHubProvider", () => {
       expect(forge.repos.byOwner).toHaveBeenCalledWith(ownerRef(forge, "octocat"), {
         perPage: 50,
       });
-      expect(isNamespaceRef(ownerRef(forge, "octocat"))).toBe(true);
+      const [owner] = forge.repos.byOwner.mock.lastCall as [RepoRef];
+      expect(isNamespaceRef(owner)).toBe(true);
       expect(result).toEqual({
         items: [
           expect.objectContaining({
