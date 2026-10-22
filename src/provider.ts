@@ -10,6 +10,7 @@ import { assertCiId, assertCiJobLogOptions } from "./ci-job-log.ts";
 import { assertIssueUpdate, assertMergeInput, assertPullRequestUpdate } from "./update-input.ts";
 import { assertRepositoryContentsOptions, normalizeRepositoryPath } from "./repository-contents.ts";
 import type {
+  AddSubIssueInput,
   CiJob,
   CiJobLog,
   CiJobLogOptions,
@@ -37,6 +38,7 @@ import type {
   CreatePullRequestInput,
   CreateReleaseInput,
   Issue,
+  IssueRef,
   IssueResource,
   ListCiJobsOptions,
   ListCiRunsOptions,
@@ -75,6 +77,8 @@ import type {
   RepositoryContentsOptions,
   RepositoryResource,
   SearchPageResult,
+  SubIssue,
+  SubIssueInput,
   Tag,
   Thread,
   ThreadComment,
@@ -166,6 +170,25 @@ interface Listing<O> {
   listing: string;
   subject: readonly unknown[];
   options: O | undefined;
+}
+
+/** A guessed `owner, repo, number` row would go out as `/repos/undefined/...`, so it's refused. */
+function assertIssueRef(issue: IssueRef, call: string): void {
+  const ref: Partial<IssueRef> = typeof issue === "object" && issue !== null ? issue : {};
+  if (
+    typeof ref.owner !== "string" ||
+    typeof ref.repo !== "string" ||
+    !Number.isInteger(ref.number)
+  ) {
+    throw new TypeError(`issues.${call} takes { owner, repo, number } as its first argument`);
+  }
+}
+
+/** The child goes in an object, so a bare number in its place is refused the same way. */
+function assertSubIssueInput(input: SubIssueInput, call: string): void {
+  if (typeof input !== "object" || input === null || !Number.isInteger(input.subIssue)) {
+    throw new TypeError(`issues.${call} takes { subIssue } as its second argument`);
+  }
 }
 
 function contributionTemplatePagination(
@@ -481,6 +504,25 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           },
         );
       },
+      listSubIssues: async (issue, options) => {
+        assertIssueRef(issue, "listSubIssues");
+        const { owner, repo, number } = issue;
+        return this.#paged(
+          { listing: "issues.listSubIssues", subject: [owner, repo, number], options },
+          (paged) => {
+            this.#assertListPage(paged);
+            return this.listSubIssues(issue, paged);
+          },
+        );
+      },
+      addSubIssue: async (issue, input) => {
+        this.#assertSubIssue(issue, input, "addSubIssue");
+        return this.addSubIssue(issue, input);
+      },
+      removeSubIssue: async (issue, input) => {
+        this.#assertSubIssue(issue, input, "removeSubIssue");
+        return this.removeSubIssue(issue, input);
+      },
     };
     this.pullRequests = {
       searchGlobal: async (query, options) => {
@@ -651,6 +693,15 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   #assertListPage(options: WithPage<ListCommentOptions> | undefined): void {
     paginationPageValue(options?.page, { ...PAGE, platform: this.#platform });
     paginationPageValue(options?.perPage, { ...PER_PAGE, platform: this.#platform });
+  }
+
+  /** An issue can't be its own child, so that call never needs the network to fail. */
+  #assertSubIssue(issue: IssueRef, input: SubIssueInput, call: string): void {
+    assertIssueRef(issue, call);
+    assertSubIssueInput(input, call);
+    if (input.subIssue === issue.number) {
+      throw this.#refusal(`Issue ${issue.number} cannot be a sub-issue of itself`);
+    }
   }
 
   #unsupported(message: string): Promise<never> {
@@ -957,6 +1008,18 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _options?: WithPage<ListReactionOptions>,
   ): Promise<NumberedPage<Reaction>> {
     return this.#unsupported("Issue reactions are not supported by this provider");
+  }
+  protected listSubIssues(
+    _issue: IssueRef,
+    _options?: WithPage<ListCommentOptions>,
+  ): Promise<NumberedPage<SubIssue>> {
+    return this.#unsupported("Sub-issues are not supported by this provider");
+  }
+  protected addSubIssue(_issue: IssueRef, _input: AddSubIssueInput): Promise<Issue> {
+    return this.#unsupported("Sub-issues are not supported by this provider");
+  }
+  protected removeSubIssue(_issue: IssueRef, _input: SubIssueInput): Promise<Issue> {
+    return this.#unsupported("Sub-issues are not supported by this provider");
   }
   protected listPullRequestReactions(
     _owner: string,

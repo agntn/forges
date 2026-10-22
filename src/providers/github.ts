@@ -41,7 +41,12 @@ import type {
   CompareCommitsOptions,
   ContributionTemplateKind,
   ContributionTemplateSummary,
+  AddSubIssueInput,
   Issue,
+  IssueRef,
+  SubIssue,
+  SubIssueInput,
+  ListCommentOptions,
   PullRequest,
   ClosingIssue,
   PullRequestCheck,
@@ -638,6 +643,22 @@ function githubSearchQualifierSegment(value: string, field: string): string {
     );
   }
   return value;
+}
+
+function issuePath({ owner, repo, number }: IssueRef): string {
+  return `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`;
+}
+
+/** `owner/name` from a `repository_url` such as `https://api.github.com/repos/agntn/web`. */
+function repositoryFromApiUrl(url: string | undefined): string | undefined {
+  if (url === undefined) return undefined;
+  const match = URL.parse(url)?.pathname.match(/\/repos\/([^/]+)\/([^/]+)$/u);
+  if (!match) return undefined;
+  try {
+    return `${decodeURIComponent(match[1]!)}/${decodeURIComponent(match[2]!)}`;
+  } catch {
+    return undefined;
+  }
 }
 
 // --- Provider ---
@@ -2488,6 +2509,85 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       }
       throw normalizeError(error, "github");
     }
+  }
+
+  protected override async listSubIssues(
+    issue: IssueRef,
+    options?: WithPage<ListCommentOptions>,
+  ): Promise<NumberedPage<SubIssue>> {
+    try {
+      const query: Record<string, string> = {};
+      if (options?.page) query.page = String(options.page);
+      if (options?.perPage) query.per_page = String(options.perPage);
+      const [read, kind] = await Promise.allSettled([
+        rawFetch<GitHubIssue[]>(this.client, `${issuePath(issue)}/sub_issues`, { query }),
+        this.assertIssueKind(issue.owner, issue.repo, issue.number, false),
+      ]);
+      if (kind.status === "rejected") throw kind.reason;
+      if (read.status === "rejected") throw read.reason;
+      const { data, headers } = read.value;
+      return buildPageResult({ items: data ?? [], headers }, (raw) => ({
+        ...this.mapIssue(raw),
+        repository: repositoryFromApiUrl(raw.repository_url) ?? `${issue.owner}/${issue.repo}`,
+      }));
+    } catch (error) {
+      throw await this.subIssueError(issue, error);
+    }
+  }
+
+  protected override async addSubIssue(issue: IssueRef, input: AddSubIssueInput): Promise<Issue> {
+    const subIssueId = await this.subIssueId(issue, input);
+    try {
+      const data = await this.client<GitHubIssue>(`${issuePath(issue)}/sub_issues`, {
+        method: "POST",
+        body: {
+          sub_issue_id: subIssueId,
+          ...(input.replaceParent ? { replace_parent: true } : {}),
+        },
+      });
+      return this.mapIssue(data);
+    } catch (error) {
+      throw await this.subIssueError(issue, error);
+    }
+  }
+
+  protected override async removeSubIssue(issue: IssueRef, input: SubIssueInput): Promise<Issue> {
+    const subIssueId = await this.subIssueId(issue, input);
+    try {
+      const data = await this.client<GitHubIssue>(`${issuePath(issue)}/sub_issue`, {
+        method: "DELETE",
+        body: { sub_issue_id: subIssueId },
+      });
+      return this.mapIssue(data);
+    } catch (error) {
+      throw await this.subIssueError(issue, error);
+    }
+  }
+
+  /** GitHub links children by REST id, and a pull request is no parent, so both get read first. */
+  private async subIssueId(issue: IssueRef, input: SubIssueInput): Promise<number> {
+    const [child] = await Promise.all([
+      this.getIssue(issue.owner, issue.repo, input.subIssue),
+      this.assertIssueKind(issue.owner, issue.repo, issue.number, false),
+    ]);
+    return Number(child.id);
+  }
+
+  /** GitBucket and the like 404 the whole route, which says nothing about the issue. */
+  private async subIssueError(issue: IssueRef, error: unknown): Promise<ForgesError> {
+    if (
+      error instanceof FetchError &&
+      error.status === 404 &&
+      !(await this.isGitHubHost(issue.owner, issue.repo))
+    ) {
+      return new ForgesError(
+        "Sub-issues are not supported by this GitHub-compatible host",
+        501,
+        "github",
+        error,
+      );
+    }
+    return normalizeError(error, "github");
   }
 
   /** An issue read tells the kinds apart, so the wrong one is a 404 as on GitLab. */

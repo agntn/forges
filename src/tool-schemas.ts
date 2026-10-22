@@ -509,6 +509,42 @@ export function forgesToolSchemas() {
     cursor,
     perPage,
   });
+  const parent = Type.Integer({ description: "Number of the parent issue", minimum: 1 });
+  const subIssue = Type.Integer({
+    description:
+      "Number of the child issue in the same repository; forges looks up the id GitHub wants",
+    minimum: 1,
+  });
+  const listSubIssuesParameters = closed({
+    platform,
+    owner,
+    repo,
+    number: parent,
+    cursor,
+    perPage,
+  });
+  const removeSubIssueParameters = closed({
+    platform,
+    owner,
+    repo,
+    number: parent,
+    subIssue,
+    account,
+  });
+  const addSubIssueParameters = closed({
+    platform,
+    owner,
+    repo,
+    number: parent,
+    subIssue,
+    replaceParent: Type.Optional(
+      Type.Boolean({
+        description:
+          "Move a child that already hangs under another parent; without it such a child is refused",
+      }),
+    ),
+    account,
+  });
   const createCommentParameters = closed({
     platform,
     owner,
@@ -761,6 +797,9 @@ export function forgesToolSchemas() {
     pullRequestReviewParameters,
     commentParameters,
     listReactionsParameters,
+    listSubIssuesParameters,
+    addSubIssueParameters,
+    removeSubIssueParameters,
     createCommentParameters,
     createIssueParameters,
     updateIssueParameters,
