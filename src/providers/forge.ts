@@ -1,28 +1,53 @@
 /**
  * Shared base for the providers built on `forges`.
  *
- * `forges` sends the requests, picks the endpoints and walks the pages. Where
- * its model says the same as ours, the base maps that; elsewhere a provider
- * maps the forge's own payload, which `forges` keeps as `raw`.
+ * `forges` sends the requests, picks the endpoints and walks the pages, and
+ * the base maps its model, so a provider for a forge `forges` knows needs only
+ * its factory. A provider with more to say maps the forge's own payload, which
+ * `forges` keeps as `raw`, and overrides the operations it serves better.
  */
 
 import { sha256 } from "@agntn/hashes/sha2";
 import type {
+  Actor,
+  Comment as ForgeComment,
   Cursor,
   ForgeListing,
   ForgeProvider as Forge,
   Page,
   ReleaseRef,
+  Repo,
   RepoRef,
+  Thread as ForgeThread,
   ThreadKind,
   ThreadRef,
+  User as ForgeUser,
 } from "forges";
 
 import type { PagePosition } from "../cursor.ts";
 
 import { encodePathSegment, encodeRefPathSegment } from "./base-url.ts";
-import { normalizeChangedFileStatus } from "../changed-file.ts";
-import { ForgesError, normalizeError } from "../errors.ts";
+import {
+  changedFileFromModel,
+  checkFromModel,
+  ciJobFromModel,
+  ciRunFromModel,
+  commentFromModel,
+  commitFromModel,
+  commitSummaryFromModel,
+  issueFromModel,
+  ownerFromModel,
+  pullRequestFromModel,
+  releaseFromModel,
+  repositoryFromModel,
+  reviewConversations,
+  tagFromModel,
+  threadCommentFromModel,
+  threadFromModel,
+  userFromModel,
+  type ReviewConversation,
+} from "./forge-model.ts";
+import { ForgesError, normalizeError, NotFoundError } from "../errors.ts";
 import {
   createForgeClient,
   credentialScope,
@@ -31,21 +56,34 @@ import {
   type HttpClient,
 } from "../http.ts";
 import { version } from "../version.ts";
+import { slicePage } from "../pagination.ts";
 import {
   Provider,
   type ContinuedPage,
+  type NumberedPage,
   type Positioned,
   type ProviderRawTypes,
+  type WithPage,
 } from "../provider.ts";
 import type {
   CiJob,
   CiRun,
+  Commit,
   CommitSummary,
   Comment,
+  CreateIssueInput,
+  CreatePullRequestInput,
   CreateReleaseInput,
   Issue,
+  IssueRef,
   ListCommentOptions,
+  ListCommitChecksOptions,
+  ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
+  ListThreadOptions,
+  Owner,
+  PullRequest,
+  PullRequestCheck,
   PullRequestFile,
   ListCiJobsOptions,
   ListCiRunsOptions,
@@ -54,8 +92,11 @@ import type {
   ListReleasesOptions,
   ListTagsOptions,
   Release,
+  ReplyThreadInput,
   Repository,
   Tag,
+  Thread,
+  ThreadComment,
   UpdateReleaseInput,
   User,
 } from "../types.ts";
@@ -104,17 +145,61 @@ export abstract class ForgeBackedProvider<
   /** The `forges` factory for this platform; called once, on the first request. */
   protected abstract createForge(options: ForgeOptions): Forge;
 
-  /** Maps the forge's own release payload. */
-  protected abstract mapRelease(raw: never): Release;
+  /** What the mappers read: the model item here, `raw` in a provider that maps its forge's own. */
+  protected forgePayload(item: Readonly<{ raw: unknown }>): unknown {
+    return item;
+  }
 
-  /** Maps the forge's own commit payload, as a listing serves it. */
-  protected abstract mapCommitSummary(raw: never): CommitSummary;
+  protected override mapOwner(actor: Raw["owner"]): Owner {
+    return ownerFromModel(actor as Actor);
+  }
 
-  /** Maps the forge's own CI run payload. */
-  protected abstract mapCiRun(raw: never): CiRun;
+  protected override mapRepository(repo: Raw["repository"]): Repository {
+    return repositoryFromModel(repo as Repo);
+  }
 
-  /** Maps the forge's own CI job payload. */
-  protected abstract mapCiJob(raw: never): CiJob;
+  protected override mapIssue(thread: Raw["issue"]): Issue {
+    return issueFromModel(thread as ForgeThread);
+  }
+
+  protected override mapPullRequest(thread: Raw["pullRequest"]): PullRequest {
+    return pullRequestFromModel(thread as ForgeThread);
+  }
+
+  protected override mapUser(user: Raw["user"]): User {
+    return userFromModel(user as ForgeUser);
+  }
+
+  /** Review conversations have no payload of their own, so the operations below map them directly. */
+  protected override mapThread(conversation: Raw["thread"]): Thread {
+    return threadFromModel(conversation as ReviewConversation);
+  }
+
+  protected override mapComment(comment: Raw["comment"]): Comment {
+    return commentFromModel(comment as ForgeComment);
+  }
+
+  protected mapRelease(release: never): Release {
+    return releaseFromModel(release);
+  }
+
+  protected mapTag(tag: never): Tag {
+    return tagFromModel(tag);
+  }
+
+  /** A commit as a listing serves it. */
+  protected mapCommitSummary(commit: never): CommitSummary {
+    return commitSummaryFromModel(commit);
+  }
+
+  protected mapCiRun(run: never): CiRun {
+    return ciRunFromModel(run);
+  }
+
+  /** `runId` names the run the jobs were listed for, where the forge leaves it off a job. */
+  protected mapCiJob(job: never, runId: string): CiJob {
+    return ciJobFromModel(job, runId);
+  }
 
   /** Keyed by endpoint and token. No token, no credential to aim, so the key needn't be secret. */
   protected override cursorKey(): Uint8Array {
@@ -215,19 +300,23 @@ export abstract class ForgeBackedProvider<
 
   protected override async getRepo(owner: string, repo: string): Promise<Repository> {
     return this.forgeCall(async (forge) =>
-      this.mapRepository((await forge.repos.get(this.repoRef(forge, owner, repo))).raw as never),
+      this.mapRepository(
+        this.forgePayload(await forge.repos.get(this.repoRef(forge, owner, repo))) as never,
+      ),
     );
   }
 
   protected override async getUser(username: string): Promise<User> {
     encodePathSegment(username, "Username");
     return this.forgeCall(async (forge) =>
-      this.mapUser((await forge.users.get(username)).raw as never),
+      this.mapUser(this.forgePayload(await forge.users.get(username)) as never),
     );
   }
 
   protected override async getAuthenticatedUser(): Promise<User> {
-    return this.forgeCall(async (forge) => this.mapUser((await forge.users.me()).raw as never));
+    return this.forgeCall(async (forge) =>
+      this.mapUser(this.forgePayload(await forge.users.me()) as never),
+    );
   }
 
   protected override listReleases(
@@ -238,7 +327,7 @@ export abstract class ForgeBackedProvider<
     return this.forgeCall((forge) =>
       this.forgePage(
         forge.releases.list(this.repoRef(forge, owner, repo), this.forgePageOptions(options)),
-        (release) => this.mapRelease(release.raw as never),
+        (release) => this.mapRelease(this.forgePayload(release) as never),
       ),
     );
   }
@@ -247,7 +336,9 @@ export abstract class ForgeBackedProvider<
     encodeRefPathSegment(tag, "Tag");
     return this.forgeCall(async (forge) =>
       this.mapRelease(
-        (await forge.releases.getByTag(this.repoRef(forge, owner, repo), tag)).raw as never,
+        this.forgePayload(
+          await forge.releases.getByTag(this.repoRef(forge, owner, repo), tag),
+        ) as never,
       ),
     );
   }
@@ -259,13 +350,13 @@ export abstract class ForgeBackedProvider<
   ): Promise<Release> {
     return this.forgeCall(async (forge) =>
       this.mapRelease(
-        (
+        this.forgePayload(
           await forge.releases.create(this.repoRef(forge, owner, repo), {
             ...releaseUpdate(input),
             tag: input.tag,
             ...(input.ref === undefined ? {} : { target: input.ref }),
-          })
-        ).raw as never,
+          }),
+        ) as never,
       ),
     );
   }
@@ -279,7 +370,9 @@ export abstract class ForgeBackedProvider<
     encodeRefPathSegment(tag, "Tag");
     return this.forgeCall(async (forge) => {
       const ref = await this.releaseRef(forge, owner, repo, tag);
-      return this.mapRelease((await forge.releases.update(ref, releaseUpdate(input))).raw as never);
+      return this.mapRelease(
+        this.forgePayload(await forge.releases.update(ref, releaseUpdate(input))) as never,
+      );
     });
   }
 
@@ -293,7 +386,6 @@ export abstract class ForgeBackedProvider<
     return (await forge.releases.getByTag(this.repoRef(forge, owner, repo), tag)).ref;
   }
 
-  /** GitHub and Gitea name the peeled commit on each tag; a tag on a tree or blob names none. */
   protected override listTags(
     owner: string,
     repo: string,
@@ -302,10 +394,7 @@ export abstract class ForgeBackedProvider<
     return this.forgeCall((forge) =>
       this.forgePage(
         forge.contents.tags(this.repoRef(forge, owner, repo), this.forgePageOptions(options)),
-        (tag) => {
-          const raw = tag.raw as { name: string; commit?: { sha?: string } };
-          return { name: raw.name, sha: raw.commit?.sha || null };
-        },
+        (tag) => this.mapTag(this.forgePayload(tag) as never),
       ),
     );
   }
@@ -324,7 +413,7 @@ export abstract class ForgeBackedProvider<
           ...(options?.since ? { since: this.#date(options.since, "since") } : {}),
           ...(options?.until ? { until: this.#date(options.until, "until") } : {}),
         }),
-        (commit) => this.mapCommitSummary(commit.raw as never),
+        (commit) => this.mapCommitSummary(this.forgePayload(commit) as never),
       ),
     );
   }
@@ -340,7 +429,7 @@ export abstract class ForgeBackedProvider<
           ...this.forgePageOptions(options),
           ...(options?.branch ? { branch: options.branch } : {}),
         }),
-        (run) => this.mapCiRun(run.raw as never),
+        (run) => this.mapCiRun(this.forgePayload(run) as never),
       ),
     );
   }
@@ -358,7 +447,7 @@ export abstract class ForgeBackedProvider<
           { forge: forge.forge, instance: forge.instance, repo: ref, id: runId },
           this.forgePageOptions(options),
         ),
-        (job) => this.mapCiJob(job.raw as never),
+        (job) => this.mapCiJob(this.forgePayload(job) as never, runId),
       );
     });
   }
@@ -385,7 +474,7 @@ export abstract class ForgeBackedProvider<
           kind: "issue",
           state: options?.state ?? "open",
         }),
-        (thread) => this.mapIssue(thread.raw as never),
+        (thread) => this.mapIssue(this.forgePayload(thread) as never),
       ),
     );
   }
@@ -421,7 +510,7 @@ export abstract class ForgeBackedProvider<
           this.threadRef(forge, owner, repo, kind, number),
           this.forgePageOptions(options),
         ),
-        (comment) => this.mapComment(comment.raw as never),
+        (comment) => this.mapComment(this.forgePayload(comment) as never),
       ),
     );
   }
@@ -439,14 +528,280 @@ export abstract class ForgeBackedProvider<
           this.threadRef(forge, owner, repo, "pull_request", number),
           this.forgePageOptions(options),
         ),
-        (file) => ({
-          path: file.path,
-          status: normalizeChangedFileStatus(file.statusRaw ?? file.status),
-          additions: file.additions ?? null,
-          deletions: file.deletions ?? null,
+        changedFileFromModel,
+      ),
+    );
+  }
+
+  protected override getCommit(owner: string, repo: string, sha: string): Promise<Commit> {
+    encodePathSegment(sha, "Commit SHA");
+    return this.forgeCall(async (forge) =>
+      commitFromModel(
+        await forge.commits.get({
+          forge: forge.forge,
+          instance: forge.instance,
+          repo: this.repoRef(forge, owner, repo),
+          sha,
         }),
       ),
     );
+  }
+
+  /** `forges` reads checks by commit sha, so a branch or tag is resolved first. */
+  protected override listCommitChecks(
+    owner: string,
+    repo: string,
+    ref: string,
+    options?: WithPage<ListCommitChecksOptions>,
+  ): Promise<NumberedPage<PullRequestCheck>> {
+    return this.forgeCall(async (forge) => {
+      const repoRef = this.repoRef(forge, owner, repo);
+      const sha = await forge.contents.resolveRef(repoRef, ref);
+      const checks = await forge.checks.list(repoRef, sha);
+      return slicePage(checks.items.map(checkFromModel), options);
+    });
+  }
+
+  protected override getIssue(owner: string, repo: string, number: number): Promise<Issue> {
+    return this.forgeCall(async (forge) =>
+      this.mapIssue(
+        this.forgePayload(
+          await this.#readThread(forge, this.threadRef(forge, owner, repo, "issue", number)),
+        ) as never,
+      ),
+    );
+  }
+
+  protected override createIssue(
+    owner: string,
+    repo: string,
+    input: CreateIssueInput,
+  ): Promise<Issue> {
+    return this.forgeCall(async (forge) =>
+      this.mapIssue(
+        this.forgePayload(
+          await forge.threads.create(this.repoRef(forge, owner, repo), {
+            kind: "issue",
+            title: input.title,
+            body: input.body,
+            ...(input.labels === undefined ? {} : { labels: input.labels }),
+            ...(input.assignees === undefined ? {} : { assignees: input.assignees }),
+          }),
+        ) as never,
+      ),
+    );
+  }
+
+  /** Continues by the forge's own cursor, like the issue listing. */
+  protected override listPullRequests(
+    owner: string,
+    repo: string,
+    options?: Positioned<ListOptions>,
+  ): Promise<ContinuedPage<PullRequest>> {
+    return this.forgeCall((forge) =>
+      this.forgePage(
+        forge.threads.list(this.repoRef(forge, owner, repo), {
+          ...this.forgePageOptions(options),
+          kind: "pull_request",
+          state: options?.state ?? "open",
+        }),
+        (thread) => this.mapPullRequest(this.forgePayload(thread) as never),
+      ),
+    );
+  }
+
+  protected override getPullRequest(
+    owner: string,
+    repo: string,
+    number: number,
+  ): Promise<PullRequest> {
+    return this.forgeCall(async (forge) =>
+      this.mapPullRequest(
+        this.forgePayload(
+          await this.#readThread(forge, this.threadRef(forge, owner, repo, "pull_request", number)),
+        ) as never,
+      ),
+    );
+  }
+
+  protected override createPullRequest(
+    owner: string,
+    repo: string,
+    input: CreatePullRequestInput,
+  ): Promise<PullRequest> {
+    return this.forgeCall(async (forge) =>
+      this.mapPullRequest(
+        this.forgePayload(
+          await forge.threads.create(this.repoRef(forge, owner, repo), {
+            kind: "pull_request",
+            title: input.title,
+            body: input.body,
+            head: input.sourceBranch,
+            base: input.targetBranch,
+            ...(input.draft === undefined ? {} : { draft: input.draft }),
+            ...(input.assignees === undefined ? {} : { assignees: input.assignees }),
+          }),
+        ) as never,
+      ),
+    );
+  }
+
+  protected override listPullRequestChecks(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: WithPage<ListPullRequestChecksOptions>,
+  ): Promise<NumberedPage<PullRequestCheck>> {
+    return this.forgeCall(async (forge) => {
+      const checks = await forge.threads.checks(
+        this.threadRef(forge, owner, repo, "pull_request", number),
+      );
+      return slicePage(checks.items.map(checkFromModel), options);
+    });
+  }
+
+  protected override getIssueComment(
+    owner: string,
+    repo: string,
+    number: number,
+    commentId: string,
+  ): Promise<Comment> {
+    return this.#findComment("issue", { owner, repo, number }, commentId);
+  }
+
+  protected override getPullRequestComment(
+    owner: string,
+    repo: string,
+    number: number,
+    commentId: string,
+  ): Promise<Comment> {
+    return this.#findComment("pull_request", { owner, repo, number }, commentId);
+  }
+
+  /** Searched in the thread's own comments: some forges read one by id alone, from any thread. */
+  #findComment(kind: ThreadKind, thread: IssueRef, commentId: string): Promise<Comment> {
+    return this.forgeCall(async (forge) => {
+      const ref = this.threadRef(forge, thread.owner, thread.repo, kind, thread.number);
+      await this.#readThread(forge, ref);
+      for await (const comment of forge.threads.comments(ref, { perPage: 100 })) {
+        if (comment.ref.id === commentId) {
+          return this.mapComment(this.forgePayload(comment) as never);
+        }
+      }
+      throw new NotFoundError(`Comment not found: ${commentId}`, this.#platform);
+    });
+  }
+
+  /** The number of an issue read as a pull request, or the other way round, is not found. */
+  async #readThread(forge: Forge, ref: ThreadRef): Promise<ForgeThread> {
+    const thread = await forge.threads.get(ref);
+    if (thread.kind !== ref.kind) {
+      const kind = ref.kind === "issue" ? "Issue" : "Pull request";
+      throw new NotFoundError(`${kind} not found: ${ref.number}`, this.#platform);
+    }
+    return thread;
+  }
+
+  protected override listThreads(
+    owner: string,
+    repo: string,
+    number: number,
+    options?: WithPage<ListThreadOptions>,
+  ): Promise<NumberedPage<Thread>> {
+    return this.forgeCall(async (forge) => {
+      const conversations = await this.#conversations(forge, { owner, repo, number });
+      const threads = conversations.map(threadFromModel);
+      return slicePage(this.filterThreadsByState(threads, options?.state), options);
+    });
+  }
+
+  protected override getThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread> {
+    return this.forgeCall(async (forge) =>
+      threadFromModel(await this.#conversation(forge, { owner, repo, number }, threadId)),
+    );
+  }
+
+  /** The reply goes to the comment that opened the conversation. */
+  protected override replyToThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+    input: ReplyThreadInput,
+  ): Promise<ThreadComment> {
+    return this.forgeCall(async (forge) => {
+      const pull = { owner, repo, number };
+      const conversation = await this.#conversation(forge, pull, threadId);
+      const [opening] = conversation.comments;
+      if (opening === undefined)
+        throw new NotFoundError(`Thread not found: ${threadId}`, this.#platform);
+      const reply = await forge.threads.replyToReviewComment(
+        this.threadRef(forge, owner, repo, "pull_request", number),
+        opening,
+        input.body,
+      );
+      return threadCommentFromModel(reply);
+    });
+  }
+
+  protected override resolveThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread> {
+    return this.#setResolved({ owner, repo, number }, { threadId, resolved: true });
+  }
+
+  protected override unresolveThread(
+    owner: string,
+    repo: string,
+    number: number,
+    threadId: string,
+  ): Promise<Thread> {
+    return this.#setResolved({ owner, repo, number }, { threadId, resolved: false });
+  }
+
+  /** The conversation is read first, so an id from another pull request is not found here. */
+  #setResolved(
+    pull: IssueRef,
+    change: Readonly<{ threadId: string; resolved: boolean }>,
+  ): Promise<Thread> {
+    return this.forgeCall(async (forge) => {
+      const conversation = await this.#conversation(forge, pull, change.threadId);
+      const ref = this.threadRef(forge, pull.owner, pull.repo, "pull_request", pull.number);
+      await (change.resolved
+        ? forge.threads.resolveReviewThread(ref, conversation.id)
+        : forge.threads.unresolveReviewThread(ref, conversation.id));
+      return threadFromModel({ ...conversation, resolved: change.resolved });
+    });
+  }
+
+  async #conversation(forge: Forge, pull: IssueRef, threadId: string): Promise<ReviewConversation> {
+    const conversation = (await this.#conversations(forge, pull)).find(
+      (candidate) => candidate.id === threadId,
+    );
+    if (conversation === undefined) {
+      throw new NotFoundError(`Thread not found: ${threadId}`, this.#platform);
+    }
+    return conversation;
+  }
+
+  /** Every review is read, as a reply can land in a later one; an issue number fails the kind check first. */
+  async #conversations(forge: Forge, pull: IssueRef): Promise<ReviewConversation[]> {
+    const ref = this.threadRef(forge, pull.owner, pull.repo, "pull_request", pull.number);
+    const [thread, reviews] = await Promise.allSettled([
+      this.#readThread(forge, ref),
+      Array.fromAsync(forge.threads.reviews(ref, { perPage: 100 })),
+    ]);
+    if (thread.status === "rejected") throw thread.reason;
+    if (reviews.status === "rejected") throw reviews.reason;
+    return reviewConversations(reviews.value);
   }
 
   protected threadRef(
@@ -466,7 +821,7 @@ export abstract class ForgeBackedProvider<
   }
 
   /** `forges` tells a namespace ref by `kind` alone; an empty name would still read as a repo. */
-  protected listOwnerRepos(
+  protected override listRepos(
     owner: string,
     options?: Positioned<ListOptions>,
   ): Promise<ContinuedPage<Repository>> {
@@ -477,7 +832,7 @@ export abstract class ForgeBackedProvider<
           { forge: forge.forge, instance: forge.instance, owner, name: "", kind: "namespace" },
           this.forgePageOptions(options),
         ),
-        (repo) => this.mapRepository(repo.raw as never),
+        (repo) => this.mapRepository(this.forgePayload(repo) as never),
       ),
     );
   }
@@ -521,4 +876,15 @@ function positionOf(cursor: Cursor | undefined, origin?: string): PagePosition |
 
 function isUnsupported(error: unknown): boolean {
   return error instanceof Error && error.name === "UnsupportedOperationError";
+}
+
+/** A tag as GitHub and Gitea send it, naming the commit it peels to. */
+export interface CommitTag {
+  name: string;
+  commit?: { sha?: string };
+}
+
+/** GitHub and Gitea name the peeled commit on each tag; a tag on a tree or blob names none. */
+export function commitTag(raw: CommitTag): Tag {
+  return { name: raw.name, sha: raw.commit?.sha || null };
 }

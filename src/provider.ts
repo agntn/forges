@@ -882,11 +882,12 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   ): Promise<Issue> {
     return this.#unsupported("Issue updates are not supported by this provider");
   }
+  /** A provider that counts pages reads `page`; one that follows the forge's own cursor reads `at`. */
   protected abstract listPullRequests(
     owner: string,
     repo: string,
-    options?: WithPage<ListOptions>,
-  ): Promise<NumberedPage<PullRequest>>;
+    options?: Positioned<ListOptions>,
+  ): Promise<NumberedPage<PullRequest> | ContinuedPage<PullRequest>>;
   protected listPullRequestFiles(
     _owner: string,
     _repo: string,

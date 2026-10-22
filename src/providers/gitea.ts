@@ -11,7 +11,7 @@ import type { ForgeProvider as Forge } from "forges";
 import { forgejo } from "forges/forgejo";
 import { gitea } from "forges/gitea";
 
-import { ForgeBackedProvider, type ForgeOptions } from "./forge.ts";
+import { commitTag, ForgeBackedProvider, type CommitTag, type ForgeOptions } from "./forge.ts";
 import { rawFetch } from "../http.ts";
 import { buildPageResult, parseLinkHeader, slicePage } from "../pagination.ts";
 import {
@@ -29,8 +29,6 @@ import {
   normalizeApiBaseURL,
 } from "./base-url.ts";
 import {
-  type ContinuedPage,
-  type Positioned,
   type Numbered,
   type NumberedPage,
   type NumberedSearchPage,
@@ -90,6 +88,7 @@ import type {
   UpdateIssueInput,
   UpdatePullRequestInput,
   MergePullRequestInput,
+  Tag,
 } from "../types.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
 import { isPullRequestReview, normalizeReviewState } from "../review.ts";
@@ -676,11 +675,13 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     ) as Forge;
   }
 
-  protected override listRepos(
-    owner: string,
-    options?: Positioned<ListOptions>,
-  ): Promise<ContinuedPage<Repository>> {
-    return this.listOwnerRepos(owner, options);
+  /** The mappers here read Gitea's own payload. */
+  protected override forgePayload(item: Readonly<{ raw: unknown }>): unknown {
+    return item.raw;
+  }
+
+  protected override mapTag(raw: CommitTag): Tag {
+    return commitTag(raw);
   }
 
   protected override mapOwner(raw: GiteaOwner): Owner {

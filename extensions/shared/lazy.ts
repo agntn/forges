@@ -15,3 +15,13 @@ export function lazy<T>(load: () => Promise<T>): () => Promise<T> {
     return pending;
   };
 }
+
+/** Loads take turns: Pi's uncached jiti gives a module still evaluating to the next importer. */
+export function oneAtATime(): <T>(load: () => Promise<T>) => () => Promise<T> {
+  let previous: Promise<unknown> = Promise.resolve();
+  return (load) => () => {
+    const next = previous.then(load);
+    previous = next.catch(() => undefined);
+    return next;
+  };
+}

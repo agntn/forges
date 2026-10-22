@@ -8,7 +8,7 @@ import type { ProviderConfig } from "./types.ts";
 import { resolveCloudflareCredential, resolveToken } from "./auth.ts";
 import type { Platform } from "./auth.ts";
 import { AuthenticationError, ForgesError } from "./errors.ts";
-import { lazy } from "../extensions/shared/lazy.ts";
+import { lazy, oneAtATime } from "../extensions/shared/lazy.ts";
 
 // --- Type exports ---
 export type * from "./types.ts";
@@ -72,15 +72,26 @@ export type ProviderPlatform = Platform | "artifacts";
  * Each loader imports one provider module on demand, so a process that talks to
  * GitHub never parses the GitLab or Gitea implementation. The specifiers stay
  * literal for the bundler to split them into their own chunks. Concurrent first
- * calls share one import, since the uncached jiti Pi loads extensions with hands
- * an overlapping one an empty namespace.
+ * calls share one import, and imports of different providers wait their turn,
+ * since the uncached jiti Pi loads extensions with hands an overlapping one an
+ * empty namespace.
  */
+const queued = /* @__PURE__ */ oneAtATime();
+
 const providers: Record<ProviderPlatform, () => Promise<ProviderConstructor>> = {
-  github: /* @__PURE__ */ lazy(() => import("./providers/github.ts").then((m) => m.GitHubProvider)),
-  gitlab: /* @__PURE__ */ lazy(() => import("./providers/gitlab.ts").then((m) => m.GitLabProvider)),
-  gitea: /* @__PURE__ */ lazy(() => import("./providers/gitea.ts").then((m) => m.GiteaProvider)),
-  artifacts: /* @__PURE__ */ lazy(() =>
-    import("./providers/artifacts.ts").then((m) => m.ArtifactsProvider),
+  github: /* @__PURE__ */ lazy(
+    /* @__PURE__ */ queued(() => import("./providers/github.ts").then((m) => m.GitHubProvider)),
+  ),
+  gitlab: /* @__PURE__ */ lazy(
+    /* @__PURE__ */ queued(() => import("./providers/gitlab.ts").then((m) => m.GitLabProvider)),
+  ),
+  gitea: /* @__PURE__ */ lazy(
+    /* @__PURE__ */ queued(() => import("./providers/gitea.ts").then((m) => m.GiteaProvider)),
+  ),
+  artifacts: /* @__PURE__ */ lazy(
+    /* @__PURE__ */ queued(() =>
+      import("./providers/artifacts.ts").then((m) => m.ArtifactsProvider),
+    ),
   ),
 };
 
