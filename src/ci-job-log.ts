@@ -71,7 +71,7 @@ export function assertCiId(
 ): void {
   const { kind, platform } = about;
   if (!/^[1-9]\d*$/u.test(id)) {
-    throw new ForgesError(`CI ${kind} id must be a positive integer`, 400, platform);
+    throw new ForgesError(`CI ${kind} id must be a positive integer`, { status: 400, platform });
   }
 }
 

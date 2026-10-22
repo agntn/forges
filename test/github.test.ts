@@ -290,7 +290,10 @@ describe("GitHubProvider", () => {
         throw new Error(`Unexpected URL: ${url}`);
       });
 
-      const page = await gh.contributionTemplates.list("octocat", "hello-world", "issue");
+      const page = await gh.contributionTemplates.list(
+        { owner: "octocat", repo: "hello-world" },
+        { kind: "issue" },
+      );
 
       expect(page).toEqual({
         items: [
@@ -309,10 +312,8 @@ describe("GitHubProvider", () => {
       });
 
       const template = await gh.contributionTemplates.get(
-        "octocat",
-        "hello-world",
-        "issue",
-        page.items[0]!.key,
+        { owner: "octocat", repo: "hello-world" },
+        { kind: "issue", key: page.items[0]!.key },
       );
       expect(template).toEqual({ ...page.items[0], content: form });
     });
@@ -327,7 +328,7 @@ describe("GitHubProvider", () => {
       });
 
       await expect(
-        gh.contributionTemplates.list("octocat", "hello-world", "issue"),
+        gh.contributionTemplates.list({ owner: "octocat", repo: "hello-world" }, { kind: "issue" }),
       ).resolves.toEqual({ items: [], totalCount: 0 });
       expect(mocks.client).not.toHaveBeenCalledWith("/repos/octocat/.github");
     });
@@ -352,7 +353,10 @@ describe("GitHubProvider", () => {
         throw new Error(`Unexpected URL: ${url}`);
       });
 
-      const page = await gh.contributionTemplates.list("octocat", "hello-world", "issue");
+      const page = await gh.contributionTemplates.list(
+        { owner: "octocat", repo: "hello-world" },
+        { kind: "issue" },
+      );
 
       expect(page.items[0]).toMatchObject({
         scope: "owner",
@@ -375,7 +379,10 @@ describe("GitHubProvider", () => {
         throw new Error(`Unexpected URL: ${url}`);
       });
 
-      const page = await gh.contributionTemplates.list("octocat", "hello-world", "issue");
+      const page = await gh.contributionTemplates.list(
+        { owner: "octocat", repo: "hello-world" },
+        { kind: "issue" },
+      );
 
       expect(
         page.items.map(({ sourcePath, scope, inherited }) => ({ sourcePath, scope, inherited })),
@@ -402,7 +409,10 @@ describe("GitHubProvider", () => {
         throw new Error(`Unexpected URL: ${url}`);
       });
 
-      const page = await gh.contributionTemplates.list("octocat", "hello-world", "issue");
+      const page = await gh.contributionTemplates.list(
+        { owner: "octocat", repo: "hello-world" },
+        { kind: "issue" },
+      );
 
       expect(page.items).toHaveLength(1);
       expect(page.items[0]?.sourcePath).toBe("ISSUE_TEMPLATE");
@@ -434,7 +444,10 @@ describe("GitHubProvider", () => {
         throw new Error(`Unexpected URL: ${url}`);
       });
 
-      const page = await gh.contributionTemplates.list("octocat", "hello-world", "issue");
+      const page = await gh.contributionTemplates.list(
+        { owner: "octocat", repo: "hello-world" },
+        { kind: "issue" },
+      );
 
       expect(page.items).toHaveLength(1);
       expect(page.items[0]).toMatchObject({
@@ -465,7 +478,10 @@ describe("GitHubProvider", () => {
         throw new Error(`Unexpected URL: ${url}`);
       });
 
-      const page = await gh.contributionTemplates.list("octocat", "hello-world", "pull_request");
+      const page = await gh.contributionTemplates.list(
+        { owner: "octocat", repo: "hello-world" },
+        { kind: "pull_request" },
+      );
 
       expect(page.items.map(({ sourcePath }) => sourcePath)).toEqual([
         ".github/PULL_REQUEST_TEMPLATE.md",
@@ -493,7 +509,10 @@ describe("GitHubProvider", () => {
         throw new Error(`Unexpected URL: ${url}`);
       });
 
-      const page = await gh.contributionTemplates.list("octocat", "hello-world", "pull_request");
+      const page = await gh.contributionTemplates.list(
+        { owner: "octocat", repo: "hello-world" },
+        { kind: "pull_request" },
+      );
 
       expect(page.items).toHaveLength(1);
       expect(page.items[0]?.sourcePath).toBe(".github/PULL_REQUEST_TEMPLATE");
@@ -525,7 +544,10 @@ describe("GitHubProvider", () => {
       });
 
       await expect(
-        bucket.contributionTemplates.list("octocat", "hello-world", "issue"),
+        bucket.contributionTemplates.list(
+          { owner: "octocat", repo: "hello-world" },
+          { kind: "issue" },
+        ),
       ).resolves.toEqual({ items: [], totalCount: 0 });
       expect(mocks.client).not.toHaveBeenCalledWith("/repos/octocat/.github");
     });
@@ -564,7 +586,10 @@ describe("GitHubProvider", () => {
         status: 200,
       });
 
-      const page = await enterprise.contributionTemplates.list("octocat", "hello-world", "issue");
+      const page = await enterprise.contributionTemplates.list(
+        { owner: "octocat", repo: "hello-world" },
+        { kind: "issue" },
+      );
 
       expect(page.items[0]).toMatchObject({
         scope: "owner",
@@ -575,13 +600,17 @@ describe("GitHubProvider", () => {
 
     it("rejects invalid local pagination before making a request", async () => {
       await expect(
-        gh.contributionTemplates.list("octocat", "hello-world", "issue", {
-          cursor: cursorFor("contributionTemplates.list", {
-            page: 0,
-            subject: ["octocat", "hello-world", "issue"],
-            filters: {},
-          }),
-        }),
+        gh.contributionTemplates.list(
+          { owner: "octocat", repo: "hello-world" },
+          {
+            kind: "issue",
+            cursor: cursorFor("contributionTemplates.list", {
+              page: 0,
+              subject: ["octocat", "hello-world", "issue"],
+              filters: {},
+            }),
+          },
+        ),
       ).rejects.toMatchObject({ status: 400 });
       expect(mocks.client).not.toHaveBeenCalled();
     });
@@ -602,7 +631,10 @@ describe("GitHubProvider", () => {
       });
 
       await expect(
-        gh.contributionTemplates.get("octocat", "hello-world", "issue", "../../secrets"),
+        gh.contributionTemplates.get(
+          { owner: "octocat", repo: "hello-world" },
+          { kind: "issue", key: "../../secrets" },
+        ),
       ).rejects.toBeInstanceOf(NotFoundError);
     });
   });
@@ -611,7 +643,7 @@ describe("GitHubProvider", () => {
     it("opens forges on the first request with the token and API base", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: ghRepo });
 
-      await gh.repos.get("octocat", "hello-world");
+      await gh.repos.get({ owner: "octocat", repo: "hello-world" });
 
       expect(forgeOptions.at(-1)).toMatchObject({
         baseUrl: "https://api.github.com",
@@ -623,7 +655,10 @@ describe("GitHubProvider", () => {
     it("defaults baseURL when empty and reads anonymously without a token", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: ghRepo });
 
-      await new GitHubProvider({ baseURL: "", token: "" }).repos.get("octocat", "hello-world");
+      await new GitHubProvider({ baseURL: "", token: "" }).repos.get({
+        owner: "octocat",
+        repo: "hello-world",
+      });
 
       expect(forgeOptions.at(-1)).toMatchObject({
         baseUrl: "https://api.github.com",
@@ -671,7 +706,8 @@ describe("GitHubProvider", () => {
         perPage: 1,
       });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/search/code", {
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/search/code",
         query: {
           q: "Provider repo:agntn/forges",
           page: "2",
@@ -733,7 +769,8 @@ describe("GitHubProvider", () => {
 
       const result = await gh.code.search("Provider", { owner: "agntn" });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/search/code", {
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/search/code",
         query: { q: "Provider user:agntn" },
       });
       expect(result.items).toEqual([
@@ -819,7 +856,7 @@ describe("GitHubProvider", () => {
     it("returns a mapped repository", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: ghRepo });
 
-      const repo = await gh.repos.get("octocat", "hello-world");
+      const repo = await gh.repos.get({ owner: "octocat", repo: "hello-world" });
 
       expect(forge.repos.get).toHaveBeenCalledWith(
         repoRef(forge, { owner: "octocat", name: "hello-world" }),
@@ -849,7 +886,7 @@ describe("GitHubProvider", () => {
         },
       });
 
-      const repo = await gh.repos.get("octocat", "hello-world");
+      const repo = await gh.repos.get({ owner: "octocat", repo: "hello-world" });
 
       expect(repo).toMatchObject({
         isFork: true,
@@ -864,7 +901,7 @@ describe("GitHubProvider", () => {
     it("keeps omitted viewer permissions unknown", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: { ...ghRepo, permissions: undefined } });
 
-      const repo = await gh.repos.get("octocat", "hello-world");
+      const repo = await gh.repos.get({ owner: "octocat", repo: "hello-world" });
 
       expect(repo.viewerPermission).toBeNull();
     });
@@ -885,7 +922,7 @@ describe("GitHubProvider", () => {
         },
       });
 
-      const repo = await gh.repos.get("agntn", "forges");
+      const repo = await gh.repos.get({ owner: "agntn", repo: "forges" });
 
       expect(repo.merge).toEqual({
         methods: ["squash", "rebase"],
@@ -910,8 +947,8 @@ describe("GitHubProvider", () => {
           },
         });
 
-      const anonymous = await gh.repos.get("torvalds", "linux");
-      const pushed = await gh.repos.get("torvalds", "linux");
+      const anonymous = await gh.repos.get({ owner: "torvalds", repo: "linux" });
+      const pushed = await gh.repos.get({ owner: "torvalds", repo: "linux" });
 
       expect(anonymous.merge?.methods).toEqual([]);
       expect(pushed.merge?.methods).toEqual([]);
@@ -929,8 +966,8 @@ describe("GitHubProvider", () => {
         },
       });
 
-      const omitted = await gh.repos.get("nodejs", "node");
-      const nulled = await gh.repos.get("nodejs", "node");
+      const omitted = await gh.repos.get({ owner: "nodejs", repo: "node" });
+      const nulled = await gh.repos.get({ owner: "nodejs", repo: "node" });
 
       expect(omitted.merge).toBeNull();
       expect(nulled.merge).toBeNull();
@@ -945,8 +982,8 @@ describe("GitHubProvider", () => {
         },
       });
 
-      await gh.repos.get("octocat", "hello-world");
-      const repository = await gh.repos.get("octocat", "hello-world");
+      await gh.repos.get({ owner: "octocat", repo: "hello-world" });
+      const repository = await gh.repos.get({ owner: "octocat", repo: "hello-world" });
 
       expect(repository.viewerPermission).toBe("admin");
       expect(forge.repos.get).toHaveBeenCalledTimes(2);
@@ -956,7 +993,7 @@ describe("GitHubProvider", () => {
     it("hands names with spaces and hashes to forges, which encodes them", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: ghRepo });
 
-      await gh.repos.get("octo cat", "hello#world");
+      await gh.repos.get({ owner: "octo cat", repo: "hello#world" });
 
       expect(forge.repos.get).toHaveBeenCalledWith(
         repoRef(forge, { owner: "octo cat", name: "hello#world" }),
@@ -976,7 +1013,7 @@ describe("GitHubProvider", () => {
       String.fromCharCode(10),
       String.fromCharCode(127),
     ])("rejects unsafe repository path segment %j before transport", async (segment) => {
-      await expect(gh.repos.get(segment, "hello-world")).rejects.toMatchObject({
+      await expect(gh.repos.get({ owner: segment, repo: "hello-world" })).rejects.toMatchObject({
         status: 400,
         message: expect.stringContaining("Owner must be one path segment"),
       });
@@ -984,7 +1021,7 @@ describe("GitHubProvider", () => {
     });
 
     it("names the repository when the name is the bad segment", async () => {
-      await expect(gh.repos.get("agntn", "..")).rejects.toMatchObject({
+      await expect(gh.repos.get({ owner: "agntn", repo: ".." })).rejects.toMatchObject({
         status: 400,
         message: expect.stringMatching(/^Repository name must be one path segment/u),
       });
@@ -1020,7 +1057,7 @@ describe("GitHubProvider", () => {
         }),
       );
 
-      const result = await gh.repos.listTags("agntn", "forges", { perPage: 2 });
+      const result = await gh.repos.listTags({ owner: "agntn", repo: "forges" }, { perPage: 2 });
 
       expect(forge.contents.tags).toHaveBeenCalledWith(
         repoRef(forge, { owner: "agntn", name: "forges" }),
@@ -1050,7 +1087,7 @@ describe("GitHubProvider", () => {
         }),
       );
 
-      const result = await gh.repos.listTags("torvalds", "linux");
+      const result = await gh.repos.listTags({ owner: "torvalds", repo: "linux" });
 
       expect(result.items).toEqual([{ name: "v2.6.11-tree", sha: null }]);
     });
@@ -1058,7 +1095,9 @@ describe("GitHubProvider", () => {
     it("maps a missing repository to NotFoundError", async () => {
       forge.contents.tags.mockReturnValueOnce(failing(makeFetchError(404)));
 
-      await expect(gh.repos.listTags("agntn", "missing")).rejects.toBeInstanceOf(NotFoundError);
+      await expect(gh.repos.listTags({ owner: "agntn", repo: "missing" })).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
     });
   });
 
@@ -1076,7 +1115,10 @@ describe("GitHubProvider", () => {
         content: `${base64("# Hello\n")}\n`,
       });
 
-      const file = await gh.repos.readContents("octocat", "hello-world", "/docs/README.md");
+      const file = await gh.repos.readContents(
+        { owner: "octocat", repo: "hello-world" },
+        { path: "/docs/README.md" },
+      );
 
       expect(mocks.client).toHaveBeenNthCalledWith(1, "/repos/octocat/hello-world/commits/HEAD", {
         headers: { Accept: "application/vnd.github.sha" },
@@ -1114,7 +1156,10 @@ describe("GitHubProvider", () => {
         .mockResolvedValueOnce(file)
         .mockResolvedValueOnce(file);
 
-      await gh.repos.readContents("octocat", "hello-world", "a", { ref: "release/v1.0" });
+      await gh.repos.readContents(
+        { owner: "octocat", repo: "hello-world" },
+        { path: "a", ref: "release/v1.0" },
+      );
       expect(mocks.client).toHaveBeenNthCalledWith(
         1,
         "/repos/octocat/hello-world/commits/release%2Fv1.0",
@@ -1122,7 +1167,10 @@ describe("GitHubProvider", () => {
       );
 
       mocks.client.mockClear();
-      const pinned = await gh.repos.readContents("octocat", "hello-world", "a", { ref: sha });
+      const pinned = await gh.repos.readContents(
+        { owner: "octocat", repo: "hello-world" },
+        { path: "a", ref: sha },
+      );
       expect(mocks.client).toHaveBeenCalledTimes(1);
       expect(pinned.sha).toBe(sha);
     });
@@ -1139,7 +1187,9 @@ describe("GitHubProvider", () => {
           content: base64("a"),
         });
 
-      await expect(gh.repos.readContents("octocat", "hello-world", "a")).resolves.toMatchObject({
+      await expect(
+        gh.repos.readContents({ owner: "octocat", repo: "hello-world" }, { path: "a" }),
+      ).resolves.toMatchObject({
         sha,
       });
     });
@@ -1155,7 +1205,7 @@ describe("GitHubProvider", () => {
       });
 
       await expect(
-        gh.repos.readContents("octocat", "hello-world", "logo.png"),
+        gh.repos.readContents({ owner: "octocat", repo: "hello-world" }, { path: "logo.png" }),
       ).resolves.toMatchObject({
         binary: true,
         content: "",
@@ -1175,7 +1225,7 @@ describe("GitHubProvider", () => {
       });
 
       await expect(
-        gh.repos.readContents("octocat", "hello-world", "api.json"),
+        gh.repos.readContents({ owner: "octocat", repo: "hello-world" }, { path: "api.json" }),
       ).rejects.toMatchObject({
         status: 413,
       });
@@ -1188,7 +1238,9 @@ describe("GitHubProvider", () => {
         { type: "submodule", name: "vendor", path: "src/vendor", size: 0 },
       ]);
 
-      await expect(gh.repos.readContents("octocat", "hello-world", "src/")).resolves.toEqual({
+      await expect(
+        gh.repos.readContents({ owner: "octocat", repo: "hello-world" }, { path: "src/" }),
+      ).resolves.toEqual({
         type: "directory",
         path: "src",
         sha,
@@ -1201,7 +1253,7 @@ describe("GitHubProvider", () => {
       });
 
       mocks.client.mockResolvedValueOnce(sha).mockResolvedValueOnce([]);
-      await gh.repos.readContents("octocat", "hello-world", "/");
+      await gh.repos.readContents({ owner: "octocat", repo: "hello-world" }, { path: "/" });
       expect(mocks.client).toHaveBeenLastCalledWith("/repos/octocat/hello-world/contents", {
         query: { ref: sha },
       });
@@ -1222,14 +1274,16 @@ describe("GitHubProvider", () => {
         .mockResolvedValueOnce(file)
         .mockResolvedValueOnce(file);
 
-      const first = await gh.repos.readContents("octocat", "hello-world", "a", { maxChars: 10 });
+      const first = await gh.repos.readContents(
+        { owner: "octocat", repo: "hello-world" },
+        { path: "a", maxChars: 10 },
+      );
       expect(first).toMatchObject({ content: "x".repeat(10), nextOffset: 10, truncated: true });
 
-      const last = await gh.repos.readContents("octocat", "hello-world", "a", {
-        ref: first.sha,
-        offset: 20,
-        maxChars: 10,
-      });
+      const last = await gh.repos.readContents(
+        { owner: "octocat", repo: "hello-world" },
+        { path: "a", ref: first.sha, offset: 20, maxChars: 10 },
+      );
       expect(last).toMatchObject({
         content: "xxxxx",
         offset: 20,
@@ -1239,7 +1293,7 @@ describe("GitHubProvider", () => {
 
       mocks.client.mockResolvedValueOnce(sha);
       await expect(
-        gh.repos.readContents("octocat", "hello-world", "a", { offset: 10 }),
+        gh.repos.readContents({ owner: "octocat", repo: "hello-world" }, { path: "a", offset: 10 }),
       ).rejects.toMatchObject({ status: 409 });
     });
 
@@ -1247,16 +1301,22 @@ describe("GitHubProvider", () => {
       mocks.client.mockResolvedValueOnce(sha).mockRejectedValueOnce(makeFetchError(404));
 
       await expect(
-        gh.repos.readContents("octocat", "hello-world", "nope.md"),
+        gh.repos.readContents({ owner: "octocat", repo: "hello-world" }, { path: "nope.md" }),
       ).rejects.toBeInstanceOf(NotFoundError);
     });
 
     it("refuses a path that would leave the contents route before any request", async () => {
       await expect(
-        gh.repos.readContents("octocat", "hello-world", "docs/../../user"),
+        gh.repos.readContents(
+          { owner: "octocat", repo: "hello-world" },
+          { path: "docs/../../user" },
+        ),
       ).rejects.toMatchObject({ status: 400 });
       await expect(
-        gh.repos.readContents("octocat", "hello-world", "a", { maxChars: 0 }),
+        gh.repos.readContents(
+          { owner: "octocat", repo: "hello-world" },
+          { path: "a", maxChars: 0 },
+        ),
       ).rejects.toMatchObject({ status: 400 });
       expect(mocks.client).not.toHaveBeenCalled();
     });
@@ -1301,7 +1361,10 @@ describe("GitHubProvider", () => {
     it("lists the jobs of one run with their steps", async () => {
       forge.ci.jobs.mockReturnValueOnce(listing({ items: raws(rawJob), total: 1 }));
 
-      const result = await gh.ciRuns.listJobs("octocat", "hello-world", "9876", { perPage: 10 });
+      const result = await gh.ciRuns.listJobs(
+        { owner: "octocat", repo: "hello-world" },
+        { runId: "9876", perPage: 10 },
+      );
 
       expect(forge.ci.jobs).toHaveBeenCalledWith(
         {
@@ -1334,7 +1397,10 @@ describe("GitHubProvider", () => {
     it("reads a job log with the failing step first", async () => {
       mocks.client.mockResolvedValueOnce(rawJob).mockResolvedValueOnce(new Response(jobLog).body);
 
-      const log = await gh.ciRuns.readJobLog("octocat", "hello-world", "105912189006");
+      const log = await gh.ciRuns.readJobLog(
+        { owner: "octocat", repo: "hello-world" },
+        { jobId: "105912189006" },
+      );
 
       expect(mocks.client).toHaveBeenNthCalledWith(
         1,
@@ -1366,7 +1432,10 @@ describe("GitHubProvider", () => {
         steps: [],
       });
 
-      const log = await gh.ciRuns.readJobLog("octocat", "hello-world", "105912189006");
+      const log = await gh.ciRuns.readJobLog(
+        { owner: "octocat", repo: "hello-world" },
+        { jobId: "105912189006" },
+      );
 
       expect(mocks.client).toHaveBeenCalledTimes(1);
       expect(log).toMatchObject({ started: false, status: "queued", content: "", length: 0 });
@@ -1374,7 +1443,7 @@ describe("GitHubProvider", () => {
 
     it("rejects a job id that is not a number before any request", async () => {
       await expect(
-        gh.ciRuns.readJobLog("octocat", "hello-world", "1/../../hooks"),
+        gh.ciRuns.readJobLog({ owner: "octocat", repo: "hello-world" }, { jobId: "1/../../hooks" }),
       ).rejects.toMatchObject({ status: 400 });
       expect(mocks.client).not.toHaveBeenCalled();
     });
@@ -1383,7 +1452,7 @@ describe("GitHubProvider", () => {
       mocks.client.mockRejectedValueOnce(makeFetchError(404));
 
       await expect(
-        gh.ciRuns.readJobLog("octocat", "hello-world", "105912189006"),
+        gh.ciRuns.readJobLog({ owner: "octocat", repo: "hello-world" }, { jobId: "105912189006" }),
       ).rejects.toBeInstanceOf(NotFoundError);
     });
   });
@@ -1392,7 +1461,7 @@ describe("GitHubProvider", () => {
     it("leaves an empty branch out instead of filtering every run away", async () => {
       forge.ci.runs.mockReturnValueOnce(listing({ items: [] }));
 
-      await gh.ciRuns.list("octocat", "hello-world", { branch: "" });
+      await gh.ciRuns.list({ owner: "octocat", repo: "hello-world" }, { branch: "" });
 
       expect(forge.ci.runs).toHaveBeenCalledWith(
         repoRef(forge, { owner: "octocat", name: "hello-world" }),
@@ -1413,10 +1482,13 @@ describe("GitHubProvider", () => {
         }),
       );
 
-      const result = await gh.ciRuns.list("octocat", "hello-world", {
-        branch: "main",
-        perPage: 10,
-      });
+      const result = await gh.ciRuns.list(
+        { owner: "octocat", repo: "hello-world" },
+        {
+          branch: "main",
+          perPage: 10,
+        },
+      );
 
       expect(forge.ci.runs).toHaveBeenCalledWith(
         repoRef(forge, { owner: "octocat", name: "hello-world" }),
@@ -1462,13 +1534,16 @@ describe("GitHubProvider", () => {
         }),
       );
 
-      const result = await gh.commits.list("octocat", "hello-world", {
-        ref: "main",
-        path: "src/provider.ts",
-        since: "2026-08-01T00:00:00Z",
-        until: "2026-08-29T23:59:59Z",
-        perPage: 10,
-      });
+      const result = await gh.commits.list(
+        { owner: "octocat", repo: "hello-world" },
+        {
+          ref: "main",
+          path: "src/provider.ts",
+          since: "2026-08-01T00:00:00Z",
+          until: "2026-08-29T23:59:59Z",
+          perPage: 10,
+        },
+      );
 
       expect(forge.commits.list).toHaveBeenCalledWith(
         repoRef(forge, { owner: "octocat", name: "hello-world" }),
@@ -1532,15 +1607,15 @@ describe("GitHubProvider", () => {
         ),
       });
 
-      const result = await gh.commits.compare("agntn", "forges", "v0.3.4", "renovate/deps", {
-        perPage: 1,
-      });
-
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/agntn/forges/compare/v0.3.4...renovate%2Fdeps",
-        { query: { page: "1", per_page: "1" } },
+      const result = await gh.commits.compare(
+        { owner: "agntn", repo: "forges" },
+        { base: "v0.3.4", head: "renovate/deps", perPage: 1 },
       );
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/repos/agntn/forges/compare/v0.3.4...renovate%2Fdeps",
+        query: { page: "1", per_page: "1" },
+      });
       expect(result).toEqual({
         items: [
           {
@@ -1591,13 +1666,18 @@ describe("GitHubProvider", () => {
         headers: makeHeaders(),
       });
 
-      const result = await gh.commits.compare("agntn", "forges", "v0.3.4", "main", {
-        cursor: cursorFor("commits.compare", {
-          page: 2,
-          subject: ["agntn", "forges", "v0.3.4", "main"],
-          filters: {},
-        }),
-      });
+      const result = await gh.commits.compare(
+        { owner: "agntn", repo: "forges" },
+        {
+          base: "v0.3.4",
+          head: "main",
+          cursor: cursorFor("commits.compare", {
+            page: 2,
+            subject: ["agntn", "forges", "v0.3.4", "main"],
+            filters: {},
+          }),
+        },
+      );
 
       expect(result).toMatchObject({ files: null, filesComplete: null });
     });
@@ -1621,14 +1701,19 @@ describe("GitHubProvider", () => {
         headers: makeHeaders(),
       });
 
-      const result = await gh.commits.compare("nodejs", "node", "v20.0.0", "v22.0.0");
+      const result = await gh.commits.compare(
+        { owner: "nodejs", repo: "node" },
+        { base: "v20.0.0", head: "v22.0.0" },
+      );
 
       expect(result.files).toHaveLength(300);
       expect(result.filesComplete).toBeNull();
     });
 
     it("needs a base and a head before any request", async () => {
-      await expect(gh.commits.compare("agntn", "forges", " ", "main")).rejects.toMatchObject({
+      await expect(
+        gh.commits.compare({ owner: "agntn", repo: "forges" }, { base: " ", head: "main" }),
+      ).rejects.toMatchObject({
         status: 400,
         message: "Commit comparison needs a base and a head ref",
       });
@@ -1637,19 +1722,27 @@ describe("GitHubProvider", () => {
 
     it("refuses a cursor it never handed out and a perPage outside 1 to 100", async () => {
       await expect(
-        gh.commits.compare("agntn", "forges", "v0.3.4", "main", {
-          cursor: cursorFor("commits.compare", {
-            page: 0,
-            subject: ["agntn", "forges", "v0.3.4", "main"],
-            filters: {},
-          }),
-        }),
+        gh.commits.compare(
+          { owner: "agntn", repo: "forges" },
+          {
+            base: "v0.3.4",
+            head: "main",
+            cursor: cursorFor("commits.compare", {
+              page: 0,
+              subject: ["agntn", "forges", "v0.3.4", "main"],
+              filters: {},
+            }),
+          },
+        ),
       ).rejects.toMatchObject({
         status: 400,
         message: expect.stringContaining("cursor is not one that commits.compare returned"),
       });
       await expect(
-        gh.commits.compare("agntn", "forges", "v0.3.4", "main", { perPage: 101 }),
+        gh.commits.compare(
+          { owner: "agntn", repo: "forges" },
+          { base: "v0.3.4", head: "main", perPage: 101 },
+        ),
       ).rejects.toMatchObject({ status: 400, message: "perPage must be an integer from 1 to 100" });
       expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
@@ -1660,17 +1753,21 @@ describe("GitHubProvider", () => {
         headers: makeHeaders(),
       });
 
-      await gh.commits.compare("agntn", "forges", "1dc231a~1", "main^");
-
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/agntn/forges/compare/1dc231a~1...main%5E",
-        { query: { page: "1", per_page: "30" } },
+      await gh.commits.compare(
+        { owner: "agntn", repo: "forges" },
+        { base: "1dc231a~1", head: "main^" },
       );
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/repos/agntn/forges/compare/1dc231a~1...main%5E",
+        query: { page: "1", per_page: "30" },
+      });
     });
 
     it("refuses a revision git would not accept before any request", async () => {
-      await expect(gh.commits.compare("agntn", "forges", "main~3b", "main")).rejects.toMatchObject({
+      await expect(
+        gh.commits.compare({ owner: "agntn", repo: "forges" }, { base: "main~3b", head: "main" }),
+      ).rejects.toMatchObject({
         status: 400,
         message: "Base must be a ref name git accepts, optionally with ~N or ^N steps",
       });
@@ -1681,7 +1778,10 @@ describe("GitHubProvider", () => {
       mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
 
       await expect(
-        gh.commits.compare("agntn", "forges", "v0.3.4", "no-such-branch"),
+        gh.commits.compare(
+          { owner: "agntn", repo: "forges" },
+          { base: "v0.3.4", head: "no-such-branch" },
+        ),
       ).rejects.toBeInstanceOf(NotFoundError);
     });
   });
@@ -1723,20 +1823,19 @@ describe("GitHubProvider", () => {
           headers: makeHeaders(),
         });
 
-      const result = await gh.commits.get("octocat", "hello-world", commit.sha);
+      const result = await gh.commits.get(
+        { owner: "octocat", repo: "hello-world" },
+        { sha: commit.sha },
+      );
 
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
-        1,
-        mocks.client,
-        `/repos/octocat/hello-world/commits/${commit.sha}`,
-        { query: { page: "1", per_page: "100" } },
-      );
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
-        2,
-        mocks.client,
-        `/repos/octocat/hello-world/commits/${commit.sha}`,
-        { query: { page: "2", per_page: "100" } },
-      );
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, {
+        url: `/repos/octocat/hello-world/commits/${commit.sha}`,
+        query: { page: "1", per_page: "100" },
+      });
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, {
+        url: `/repos/octocat/hello-world/commits/${commit.sha}`,
+        query: { page: "2", per_page: "100" },
+      });
       expect(result).toEqual({
         sha: commit.sha,
         message: "fix: preserve commit metadata",
@@ -1774,7 +1873,7 @@ describe("GitHubProvider", () => {
         headers: makeHeaders('<?page=1>; rel="next"'),
       });
 
-      const result = await gh.commits.get("octocat", "hello-world", sha);
+      const result = await gh.commits.get({ owner: "octocat", repo: "hello-world" }, { sha });
 
       expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
       expect(result.files).toHaveLength(1);
@@ -1806,7 +1905,10 @@ describe("GitHubProvider", () => {
         headers: makeHeaders(),
       });
 
-      const first = await gh.commits.readPatch("octocat", "hello-world", "main", { maxChars: 30 });
+      const first = await gh.commits.readPatch(
+        { owner: "octocat", repo: "hello-world" },
+        { sha: "main", maxChars: 30 },
+      );
       expect(first).toMatchObject({
         sha,
         nextOffset: 30,
@@ -1814,12 +1916,16 @@ describe("GitHubProvider", () => {
         states: { included: 1, binary: 0, unavailable: 1 },
       });
       expect(first.content).toBe("--- renamed src/new.ts from sr");
-      const continued = await gh.commits.readPatch("octocat", "hello-world", first.sha, {
-        offset: first.nextOffset ?? 0,
-      });
+      const continued = await gh.commits.readPatch(
+        { owner: "octocat", repo: "hello-world" },
+        { sha: first.sha, offset: first.nextOffset ?? 0 },
+      );
       expect(continued).toMatchObject({ offset: 30, nextOffset: null, truncated: false });
       await expect(
-        gh.commits.readPatch("octocat", "hello-world", "main", { offset: first.nextOffset ?? 0 }),
+        gh.commits.readPatch(
+          { owner: "octocat", repo: "hello-world" },
+          { sha: "main", offset: first.nextOffset ?? 0 },
+        ),
       ).rejects.toMatchObject({ status: 409 });
     });
 
@@ -1845,25 +1951,24 @@ describe("GitHubProvider", () => {
           headers: makeHeaders(),
         });
 
-      await gh.commits.readPatch("octocat", "hello-world", "feature/foo");
+      await gh.commits.readPatch({ owner: "octocat", repo: "hello-world" }, { sha: "feature/foo" });
 
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
-        1,
-        mocks.client,
-        "/repos/octocat/hello-world/commits/feature%2Ffoo",
-        { query: { page: "1", per_page: "100" } },
-      );
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
-        2,
-        mocks.client,
-        `/repos/octocat/hello-world/commits/${sha}`,
-        { query: { page: "2", per_page: "100" } },
-      );
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, {
+        url: "/repos/octocat/hello-world/commits/feature%2Ffoo",
+        query: { page: "1", per_page: "100" },
+      });
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, {
+        url: `/repos/octocat/hello-world/commits/${sha}`,
+        query: { page: "2", per_page: "100" },
+      });
     });
 
     it("rejects invalid patch limits before provider I/O", async () => {
       await expect(
-        gh.commits.readPatch("octocat", "hello-world", "main", { maxChars: 0 }),
+        gh.commits.readPatch(
+          { owner: "octocat", repo: "hello-world" },
+          { sha: "main", maxChars: 0 },
+        ),
       ).rejects.toMatchObject({ status: 400 });
       expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
@@ -1875,7 +1980,7 @@ describe("GitHubProvider", () => {
     it("returns mapped issues", async () => {
       forge.threads.list.mockReturnValueOnce(listing({ items: raws(ghIssue) }));
 
-      const result = await gh.issues.list("octocat", "hello-world");
+      const result = await gh.issues.list({ owner: "octocat", repo: "hello-world" });
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0]).toMatchObject({
@@ -1898,8 +2003,11 @@ describe("GitHubProvider", () => {
         .mockReturnValueOnce(listing({ items: [] }))
         .mockReturnValueOnce(listing({ items: [] }));
 
-      await gh.issues.list("octocat", "hello-world");
-      await gh.issues.list("octocat", "hello-world", { state: "closed", perPage: 5 });
+      await gh.issues.list({ owner: "octocat", repo: "hello-world" });
+      await gh.issues.list(
+        { owner: "octocat", repo: "hello-world" },
+        { state: "closed", perPage: 5 },
+      );
 
       const ref = repoRef(forge, { owner: "octocat", name: "hello-world" });
       expect(forge.threads.list).toHaveBeenNthCalledWith(1, ref, {
@@ -1933,20 +2041,25 @@ describe("GitHubProvider", () => {
         headers: makeHeaders('<https://api.github.com/search/issues?q=bug&page=3>; rel="next"'),
       });
 
-      const result = await gh.issues.search("octocat", "hello-world", 'label:"help wanted"', {
-        state: "closed",
-        cursor: cursorFor("issues.search", {
-          page: 2,
-          subject: ["octocat", "hello-world", 'label:"help wanted"'],
-          filters: {
-            state: "closed",
-            perPage: 1,
-          },
-        }),
-        perPage: 1,
-      });
+      const result = await gh.issues.search(
+        { owner: "octocat", repo: "hello-world" },
+        {
+          query: 'label:"help wanted"',
+          state: "closed",
+          cursor: cursorFor("issues.search", {
+            page: 2,
+            subject: ["octocat", "hello-world", 'label:"help wanted"'],
+            filters: {
+              state: "closed",
+              perPage: 1,
+            },
+          }),
+          perPage: 1,
+        },
+      );
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/search/issues", {
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/search/issues",
         query: {
           q: 'label:"help wanted" repo:octocat/hello-world is:issue is:closed',
           page: "2",
@@ -2004,10 +2117,8 @@ describe("GitHubProvider", () => {
       });
 
       const result = await gh.issues.search(
-        "octocat",
-        "hello-world",
-        "repo:octocat/other-repo OR is:open OR bug",
-        { state: "closed" },
+        { owner: "octocat", repo: "hello-world" },
+        { query: "repo:octocat/other-repo OR is:open OR bug", state: "closed" },
       );
 
       expect(result.items.map((issue) => issue.number)).toEqual([43]);
@@ -2015,9 +2126,9 @@ describe("GitHubProvider", () => {
     });
 
     it("rejects a blank query before transport", async () => {
-      await expect(gh.issues.search("octocat", "hello-world", "   ")).rejects.toThrow(
-        "Issue search query must not be empty",
-      );
+      await expect(
+        gh.issues.search({ owner: "octocat", repo: "hello-world" }, { query: "   " }),
+      ).rejects.toThrow("Issue search query must not be empty");
       expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
   });
@@ -2026,7 +2137,7 @@ describe("GitHubProvider", () => {
     it("returns single mapped issue", async () => {
       mocks.client.mockResolvedValueOnce(ghIssue);
 
-      const issue = await gh.issues.get("octocat", "hello-world", 42);
+      const issue = await gh.issues.get({ owner: "octocat", repo: "hello-world", number: 42 });
 
       expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/42");
       expect(issue.number).toBe(42);
@@ -2038,7 +2149,9 @@ describe("GitHubProvider", () => {
     it("rejects a pull request returned by the issues endpoint", async () => {
       mocks.client.mockResolvedValueOnce({ ...ghIssue, pull_request: {} });
 
-      await expect(gh.issues.get("octocat", "hello-world", 42)).rejects.toThrow(NotFoundError);
+      await expect(
+        gh.issues.get({ owner: "octocat", repo: "hello-world", number: 42 }),
+      ).rejects.toThrow(NotFoundError);
     });
 
     it("reads current state on every call", async () => {
@@ -2046,8 +2159,8 @@ describe("GitHubProvider", () => {
       mocks.cachedFetch.mockResolvedValue(ghIssue);
       mocks.client.mockResolvedValueOnce(ghIssue).mockResolvedValueOnce(closed);
 
-      await gh.issues.get("octocat", "hello-world", 42);
-      const issue = await gh.issues.get("octocat", "hello-world", 42);
+      await gh.issues.get({ owner: "octocat", repo: "hello-world", number: 42 });
+      const issue = await gh.issues.get({ owner: "octocat", repo: "hello-world", number: 42 });
 
       expect(issue.state).toBe("closed");
       expect(issue.updatedAt).toBe("2024-01-17T12:00:00Z");
@@ -2064,7 +2177,9 @@ describe("GitHubProvider", () => {
       1.5,
       Number.MAX_SAFE_INTEGER + 1,
     ])("rejects invalid issue number %s before transport", async (number) => {
-      await expect(gh.issues.get("octocat", "hello-world", number)).rejects.toMatchObject({
+      await expect(
+        gh.issues.get({ owner: "octocat", repo: "hello-world", number }),
+      ).rejects.toMatchObject({
         status: 400,
         message: "Number must be a positive integer",
       });
@@ -2082,12 +2197,15 @@ describe("GitHubProvider", () => {
       };
       mocks.client.mockResolvedValueOnce(created);
 
-      const issue = await gh.issues.create("octocat", "hello-world", {
-        title: "New bug",
-        body: "Details here",
-        labels: ["bug"],
-        assignees: ["triager"],
-      });
+      const issue = await gh.issues.create(
+        { owner: "octocat", repo: "hello-world" },
+        {
+          title: "New bug",
+          body: "Details here",
+          labels: ["bug"],
+          assignees: ["triager"],
+        },
+      );
 
       expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues", {
         method: "POST",
@@ -2105,11 +2223,14 @@ describe("GitHubProvider", () => {
 
     it("rejects more than ten assignees before transport", async () => {
       await expect(
-        gh.issues.create("octocat", "hello-world", {
-          title: "New bug",
-          body: "Details here",
-          assignees: Array.from({ length: 11 }, (_, index) => `user-${index}`),
-        }),
+        gh.issues.create(
+          { owner: "octocat", repo: "hello-world" },
+          {
+            title: "New bug",
+            body: "Details here",
+            assignees: Array.from({ length: 11 }, (_, index) => `user-${index}`),
+          },
+        ),
       ).rejects.toThrow("Assignees must be an array of at most 10 non-empty logins");
 
       expect(mocks.client).not.toHaveBeenCalled();
@@ -2123,7 +2244,10 @@ describe("GitHubProvider", () => {
         listing({ items: raws(ghComment), cursor: { nextUrl: next } }),
       );
 
-      const result = await gh.issues.listComments("octocat", "hello-world", 42, { perPage: 1 });
+      const result = await gh.issues.listComments(
+        { owner: "octocat", repo: "hello-world", number: 42 },
+        { perPage: 1 },
+      );
 
       expect(forge.threads.comments).toHaveBeenCalledWith(
         {
@@ -2153,7 +2277,11 @@ describe("GitHubProvider", () => {
         listing({ items: raws({ ...ghComment, body: null, user: null }) }),
       );
 
-      const result = await gh.issues.listComments("octocat", "hello-world", 42);
+      const result = await gh.issues.listComments({
+        owner: "octocat",
+        repo: "hello-world",
+        number: 42,
+      });
 
       expect(result.items[0]).toMatchObject({ body: "", author: { login: "" } });
     });
@@ -2163,7 +2291,10 @@ describe("GitHubProvider", () => {
     it("reads one comment by id, without the issue number", async () => {
       mocks.client.mockResolvedValueOnce(ghComment);
 
-      const comment = await gh.issues.getComment("octocat", "hello-world", 42, "3001");
+      const comment = await gh.issues.getComment(
+        { owner: "octocat", repo: "hello-world", number: 42 },
+        { commentId: "3001" },
+      );
 
       expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/comments/3001");
       expect(comment).toMatchObject({ id: "3001", body: "Reproduced on 1.2.3 as well" });
@@ -2174,8 +2305,14 @@ describe("GitHubProvider", () => {
       mocks.cachedFetch.mockResolvedValue(ghComment);
       mocks.client.mockResolvedValueOnce(ghComment).mockResolvedValueOnce(edited);
 
-      await gh.issues.getComment("octocat", "hello-world", 42, "3001");
-      const comment = await gh.issues.getComment("octocat", "hello-world", 42, "3001");
+      await gh.issues.getComment(
+        { owner: "octocat", repo: "hello-world", number: 42 },
+        { commentId: "3001" },
+      );
+      const comment = await gh.issues.getComment(
+        { owner: "octocat", repo: "hello-world", number: 42 },
+        { commentId: "3001" },
+      );
 
       expect(comment.body).toBe("Edited after the first read");
       expect(mocks.client).toHaveBeenCalledTimes(2);
@@ -2185,15 +2322,21 @@ describe("GitHubProvider", () => {
     it("answers 404 when the comment belongs to another issue", async () => {
       mocks.client.mockResolvedValueOnce(ghComment);
 
-      await expect(gh.issues.getComment("octocat", "hello-world", 7, "3001")).rejects.toThrow(
-        NotFoundError,
-      );
+      await expect(
+        gh.issues.getComment(
+          { owner: "octocat", repo: "hello-world", number: 7 },
+          { commentId: "3001" },
+        ),
+      ).rejects.toThrow(NotFoundError);
     });
 
     it("skips the association check when the payload omits issue_url", async () => {
       mocks.client.mockResolvedValueOnce({ ...ghComment, issue_url: undefined });
 
-      const comment = await gh.issues.getComment("octocat", "hello-world", 7, "3001");
+      const comment = await gh.issues.getComment(
+        { owner: "octocat", repo: "hello-world", number: 7 },
+        { commentId: "3001" },
+      );
 
       expect(comment.id).toBe("3001");
     });
@@ -2206,7 +2349,10 @@ describe("GitHubProvider", () => {
         issue_url: "https://api.github.com/repos/octocat/hello-world/issues/99",
       });
 
-      const comment = await gh.pullRequests.getComment("octocat", "hello-world", 99, "3001");
+      const comment = await gh.pullRequests.getComment(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        { commentId: "3001" },
+      );
 
       expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/comments/3001");
       expect(comment.id).toBe("3001");
@@ -2217,9 +2363,12 @@ describe("GitHubProvider", () => {
     it("posts the body to the issue discussion and returns the stored comment", async () => {
       mocks.client.mockResolvedValueOnce(ghComment);
 
-      const comment = await gh.issues.createComment("octocat", "hello-world", 42, {
-        body: "Reproduced on 1.2.3 as well",
-      });
+      const comment = await gh.issues.createComment(
+        { owner: "octocat", repo: "hello-world", number: 42 },
+        {
+          body: "Reproduced on 1.2.3 as well",
+        },
+      );
 
       expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/42/comments", {
         method: "POST",
@@ -2230,7 +2379,10 @@ describe("GitHubProvider", () => {
 
     it("refuses a blank body before any request", async () => {
       await expect(
-        gh.issues.createComment("octocat", "hello-world", 42, { body: " \n" }),
+        gh.issues.createComment(
+          { owner: "octocat", repo: "hello-world", number: 42 },
+          { body: " \n" },
+        ),
       ).rejects.toMatchObject({ status: 400, message: "Comment body must not be empty" });
       expect(mocks.client).not.toHaveBeenCalled();
     });
@@ -2239,7 +2391,10 @@ describe("GitHubProvider", () => {
       mocks.client.mockRejectedValueOnce(makeFetchError(404));
 
       await expect(
-        gh.issues.createComment("octocat", "hello-world", 42, { body: "Hi" }),
+        gh.issues.createComment(
+          { owner: "octocat", repo: "hello-world", number: 42 },
+          { body: "Hi" },
+        ),
       ).rejects.toThrow(NotFoundError);
     });
   });
@@ -2251,9 +2406,12 @@ describe("GitHubProvider", () => {
         issue_url: "https://api.github.com/repos/octocat/hello-world/issues/99",
       });
 
-      const comment = await gh.pullRequests.createComment("octocat", "hello-world", 99, {
-        body: "Rebased",
-      });
+      const comment = await gh.pullRequests.createComment(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          body: "Rebased",
+        },
+      );
 
       expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/99/comments", {
         method: "POST",
@@ -2296,13 +2454,15 @@ describe("GitHubProvider", () => {
         ),
       });
 
-      const result = await gh.issues.listReactions("octocat", "hello-world", 42, { perPage: 2 });
-
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/octocat/hello-world/issues/42/reactions",
-        { query: { per_page: "2" } },
+      const result = await gh.issues.listReactions(
+        { owner: "octocat", repo: "hello-world", number: 42 },
+        { perPage: 2 },
       );
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/repos/octocat/hello-world/issues/42/reactions",
+        query: { per_page: "2" },
+      });
       expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/42");
       expect(result).toEqual({
         items: [
@@ -2327,13 +2487,16 @@ describe("GitHubProvider", () => {
       serve(ghPull);
       mocks.rawFetch.mockResolvedValueOnce({ data: [ghReaction], headers: makeHeaders() });
 
-      const result = await gh.pullRequests.listReactions("agntn", "forges", 266);
+      const result = await gh.pullRequests.listReactions({
+        owner: "agntn",
+        repo: "forges",
+        number: 266,
+      });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/agntn/forges/issues/266/reactions",
-        { query: {} },
-      );
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/repos/agntn/forges/issues/266/reactions",
+        query: {},
+      });
       expect(result.items.map((reaction) => reaction.content)).toEqual(["+1"]);
     });
 
@@ -2341,28 +2504,30 @@ describe("GitHubProvider", () => {
       serve(ghIssue);
       mocks.rawFetch.mockResolvedValue({ data: [ghReaction], headers: makeHeaders() });
 
-      await expect(gh.pullRequests.listReactions("octocat", "hello-world", 42)).rejects.toThrow(
-        "Pull request not found: 42",
-      );
+      await expect(
+        gh.pullRequests.listReactions({ owner: "octocat", repo: "hello-world", number: 42 }),
+      ).rejects.toThrow("Pull request not found: 42");
       serve(ghPull);
-      await expect(gh.issues.listReactions("agntn", "forges", 266)).rejects.toThrow(
-        "Issue not found: 266",
-      );
+      await expect(
+        gh.issues.listReactions({ owner: "agntn", repo: "forges", number: 266 }),
+      ).rejects.toThrow("Issue not found: 266");
     });
 
     it("reads a comment's reactions and checks the comment is under the issue", async () => {
       serve(ghIssue);
       mocks.rawFetch.mockResolvedValueOnce({ data: [ghReaction], headers: makeHeaders() });
 
-      const result = await gh.issues.listReactions("octocat", "hello-world", 42, {
-        commentId: "3001",
-      });
-
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/octocat/hello-world/issues/comments/3001/reactions",
-        { query: {} },
+      const result = await gh.issues.listReactions(
+        { owner: "octocat", repo: "hello-world", number: 42 },
+        {
+          commentId: "3001",
+        },
       );
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/repos/octocat/hello-world/issues/comments/3001/reactions",
+        query: {},
+      });
       expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/comments/3001");
       expect(result.items).toHaveLength(1);
     });
@@ -2372,7 +2537,10 @@ describe("GitHubProvider", () => {
       mocks.rawFetch.mockResolvedValueOnce({ data: [ghReaction], headers: makeHeaders() });
 
       await expect(
-        gh.issues.listReactions("octocat", "hello-world", 7, { commentId: "3001" }),
+        gh.issues.listReactions(
+          { owner: "octocat", repo: "hello-world", number: 7 },
+          { commentId: "3001" },
+        ),
       ).rejects.toThrow("Comment not found: 3001");
     });
 
@@ -2380,9 +2548,9 @@ describe("GitHubProvider", () => {
       serve(ghIssue);
       mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
 
-      await expect(gh.issues.listReactions("octocat", "hello-world", 404)).rejects.toThrow(
-        NotFoundError,
-      );
+      await expect(
+        gh.issues.listReactions({ owner: "octocat", repo: "hello-world", number: 404 }),
+      ).rejects.toThrow(NotFoundError);
     });
 
     it("keeps a missing issue a 404 on a GitHub-compatible host", async () => {
@@ -2397,7 +2565,7 @@ describe("GitHubProvider", () => {
       mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
 
       const error = await gitbucket.issues
-        .listReactions("octocat", "hello-world", 404)
+        .listReactions({ owner: "octocat", repo: "hello-world", number: 404 })
         .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(NotFoundError);
@@ -2414,7 +2582,7 @@ describe("GitHubProvider", () => {
         .mockResolvedValueOnce({ data: ghRepo, headers: new Headers(), status: 200 });
 
       const error = await gitbucket.pullRequests
-        .listReactions("octocat", "hello-world", 99)
+        .listReactions({ owner: "octocat", repo: "hello-world", number: 99 })
         .catch((e: unknown) => e);
 
       expect(error).not.toBeInstanceOf(NotFoundError);
@@ -2479,11 +2647,10 @@ describe("GitHubProvider", () => {
 
       const result = await gh.issues.listSubIssues(parent, { perPage: 2 });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/agntn/web/issues/292/sub_issues",
-        { query: { per_page: "2" } },
-      );
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/repos/agntn/web/issues/292/sub_issues",
+        query: { per_page: "2" },
+      });
       expect(result.items.map(({ number, repository }) => ({ number, repository }))).toEqual([
         { number: 303, repository: "agntn/web" },
         { number: 12, repository: "agntn/tools" },
@@ -2617,7 +2784,7 @@ describe("GitHubProvider", () => {
         headers: makeHeaders(),
       });
 
-      const result = await gh.pullRequests.list("octocat", "hello-world");
+      const result = await gh.pullRequests.list({ owner: "octocat", repo: "hello-world" });
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0]).toMatchObject({
@@ -2650,7 +2817,7 @@ describe("GitHubProvider", () => {
         headers: makeHeaders(),
       });
 
-      const result = await gh.pullRequests.list("octocat", "hello-world");
+      const result = await gh.pullRequests.list({ owner: "octocat", repo: "hello-world" });
 
       expect(result.items[0]).toMatchObject({
         merged: true,
@@ -2682,9 +2849,12 @@ describe("GitHubProvider", () => {
         }),
       );
 
-      const result = await gh.pullRequests.listFiles("octocat", "hello-world", 99, {
-        perPage: 10,
-      });
+      const result = await gh.pullRequests.listFiles(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          perPage: 10,
+        },
+      );
 
       expect(forge.threads.files).toHaveBeenCalledWith(
         expect.objectContaining({ kind: "pull_request", number: "99" }),
@@ -2773,16 +2943,21 @@ describe("GitHubProvider", () => {
           headers: makeHeaders(),
         });
 
-      const result = await gh.commits.listChecks("octocat", "hello-world", "feat/checks");
+      const result = await gh.commits.listChecks(
+        { owner: "octocat", repo: "hello-world" },
+        { ref: "feat/checks" },
+      );
 
       expect(mocks.client).toHaveBeenCalledExactlyOnceWith(
         "/repos/octocat/hello-world/commits/feat%2Fchecks",
         { headers: { Accept: "application/vnd.github.sha" }, responseType: "text" },
       );
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, `${revision}/status`, {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, {
+        url: `${revision}/status`,
         query: { page: "1", per_page: "31" },
       });
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${revision}/check-runs`, {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, {
+        url: `${revision}/check-runs`,
         query: { page: "1", per_page: "29" },
       });
       expect(result).toEqual({
@@ -2800,13 +2975,13 @@ describe("GitHubProvider", () => {
         });
 
       await gh.commits.listChecks(
-        "octocat",
-        "hello-world",
-        "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
+        { owner: "octocat", repo: "hello-world" },
+        { ref: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38" },
       );
 
       expect(mocks.client).not.toHaveBeenCalled();
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, `${revision}/status`, {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, {
+        url: `${revision}/status`,
         query: { page: "1", per_page: "31" },
       });
     });
@@ -2815,13 +2990,15 @@ describe("GitHubProvider", () => {
       mocks.client.mockRejectedValueOnce(makeFetchError(422));
 
       await expect(
-        gh.commits.listChecks("octocat", "hello-world", "no-such-branch"),
+        gh.commits.listChecks({ owner: "octocat", repo: "hello-world" }, { ref: "no-such-branch" }),
       ).rejects.toBeInstanceOf(NotFoundError);
       expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
 
     it("refuses an empty ref before any request", async () => {
-      await expect(gh.commits.listChecks("octocat", "hello-world", " ")).rejects.toMatchObject({
+      await expect(
+        gh.commits.listChecks({ owner: "octocat", repo: "hello-world" }, { ref: " " }),
+      ).rejects.toMatchObject({
         status: 400,
         platform: "github",
       });
@@ -2841,13 +3018,16 @@ describe("GitHubProvider", () => {
         });
 
       await expect(
-        gh.pullRequests.listChecks("octocat", "hello-world", 99, {
-          cursor: cursorFor("pullRequests.listChecks", {
-            page: 0,
-            subject: ["octocat", "hello-world", 99],
-            filters: {},
-          }),
-        }),
+        gh.pullRequests.listChecks(
+          { owner: "octocat", repo: "hello-world", number: 99 },
+          {
+            cursor: cursorFor("pullRequests.listChecks", {
+              page: 0,
+              subject: ["octocat", "hello-world", 99],
+              filters: {},
+            }),
+          },
+        ),
       ).rejects.toMatchObject({ status: 400 });
       expect(mocks.client).not.toHaveBeenCalled();
       expect(mocks.rawFetch).not.toHaveBeenCalled();
@@ -2865,14 +3045,19 @@ describe("GitHubProvider", () => {
           headers: makeHeaders(),
         });
 
-      const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
-        perPage: 10,
-      });
+      const result = await gh.pullRequests.listChecks(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          perPage: 10,
+        },
+      );
 
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, `${revision}/status`, {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, {
+        url: `${revision}/status`,
         query: { page: "1", per_page: "11" },
       });
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${revision}/check-runs`, {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, {
+        url: `${revision}/check-runs`,
         query: { page: "1", per_page: "9" },
       });
       expect(result).toEqual({
@@ -2895,14 +3080,19 @@ describe("GitHubProvider", () => {
           ),
         });
 
-      const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
-        perPage: 3,
-      });
+      const result = await gh.pullRequests.listChecks(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          perPage: 3,
+        },
+      );
 
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, `${revision}/status`, {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, {
+        url: `${revision}/status`,
         query: { page: "1", per_page: "4" },
       });
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${revision}/check-runs`, {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, {
+        url: `${revision}/check-runs`,
         query: { page: "1", per_page: "2" },
       });
       expect(result).toEqual({
@@ -2932,19 +3122,23 @@ describe("GitHubProvider", () => {
           ),
         });
 
-      const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
-        cursor: cursorFor("pullRequests.listChecks", {
-          page: 2,
-          subject: ["octocat", "hello-world", 99],
-          filters: {
-            perPage: 2,
-          },
-        }),
-        perPage: 2,
-      });
+      const result = await gh.pullRequests.listChecks(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          cursor: cursorFor("pullRequests.listChecks", {
+            page: 2,
+            subject: ["octocat", "hello-world", 99],
+            filters: {
+              perPage: 2,
+            },
+          }),
+          perPage: 2,
+        },
+      );
 
       expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${revision}/check-runs`, {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, {
+        url: `${revision}/check-runs`,
         query: { page: "1", per_page: "3" },
       });
       expect(result).toEqual({
@@ -2979,24 +3173,30 @@ describe("GitHubProvider", () => {
           headers: makeHeaders(),
         });
 
-      const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
-        cursor: cursorFor("pullRequests.listChecks", {
-          page: 60,
-          subject: ["octocat", "hello-world", 99],
-          filters: {
-            perPage: 2,
-          },
-        }),
-        perPage: 2,
-      });
+      const result = await gh.pullRequests.listChecks(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          cursor: cursorFor("pullRequests.listChecks", {
+            page: 60,
+            subject: ["octocat", "hello-world", 99],
+            filters: {
+              perPage: 2,
+            },
+          }),
+          perPage: 2,
+        },
+      );
 
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, `${revision}/status`, {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, {
+        url: `${revision}/status`,
         query: { page: "1", per_page: "100" },
       });
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${revision}/check-runs`, {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, {
+        url: `${revision}/check-runs`,
         query: { page: "1", per_page: "100" },
       });
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(3, mocks.client, `${revision}/check-runs`, {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(3, mocks.client, {
+        url: `${revision}/check-runs`,
         query: { page: "2", per_page: "100" },
       });
       expect(result).toEqual({
@@ -3026,11 +3226,15 @@ describe("GitHubProvider", () => {
           ),
         });
 
-      const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99, {
-        perPage: 1,
-      });
+      const result = await gh.pullRequests.listChecks(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          perPage: 1,
+        },
+      );
 
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${revision}/check-runs`, {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, {
+        url: `${revision}/check-runs`,
         query: { page: "1", per_page: "1" },
       });
       expect(result).toEqual({
@@ -3060,10 +3264,15 @@ describe("GitHubProvider", () => {
           headers: makeHeaders(),
         });
 
-      const result = await gh.pullRequests.listChecks("octocat", "hello-world", 99);
+      const result = await gh.pullRequests.listChecks({
+        owner: "octocat",
+        repo: "hello-world",
+        number: 99,
+      });
 
       expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, `${revision}/check-runs`, {
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, {
+        url: `${revision}/check-runs`,
         query: { page: "1", per_page: "31" },
       });
       expect(result).toEqual({
@@ -3086,9 +3295,15 @@ describe("GitHubProvider", () => {
         .mockRejectedValueOnce(makeFetchError(404))
         .mockResolvedValueOnce({ data: ghRepo, headers: new Headers(), status: 200 });
 
-      const result = await gitbucket.pullRequests.listChecks("octocat", "hello-world", 99);
+      const result = await gitbucket.pullRequests.listChecks({
+        owner: "octocat",
+        repo: "hello-world",
+        number: 99,
+      });
 
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(3, mocks.client, "/repos/octocat/hello-world");
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(3, mocks.client, {
+        url: "/repos/octocat/hello-world",
+      });
       expect(result).toEqual({
         items: statuses,
         totalCount: 2,
@@ -3104,9 +3319,9 @@ describe("GitHubProvider", () => {
         })
         .mockRejectedValueOnce(makeFetchError(404));
 
-      await expect(gh.pullRequests.listChecks("octocat", "hello-world", 99)).rejects.toBeInstanceOf(
-        NotFoundError,
-      );
+      await expect(
+        gh.pullRequests.listChecks({ owner: "octocat", repo: "hello-world", number: 99 }),
+      ).rejects.toBeInstanceOf(NotFoundError);
       expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
     });
 
@@ -3129,9 +3344,11 @@ describe("GitHubProvider", () => {
         });
 
       await expect(
-        enterprise.pullRequests.listChecks("octocat", "hello-world", 99),
+        enterprise.pullRequests.listChecks({ owner: "octocat", repo: "hello-world", number: 99 }),
       ).rejects.toBeInstanceOf(NotFoundError);
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(3, mocks.client, "/repos/octocat/hello-world");
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(3, mocks.client, {
+        url: "/repos/octocat/hello-world",
+      });
     });
   });
 
@@ -3163,22 +3380,24 @@ describe("GitHubProvider", () => {
         ),
       });
 
-      const result = await gh.pullRequests.listReviews("octocat", "hello-world", 99, {
-        cursor: cursorFor("pullRequests.listReviews", {
-          page: 2,
-          subject: ["octocat", "hello-world", 99],
-          filters: {
-            perPage: 2,
-          },
-        }),
-        perPage: 2,
-      });
-
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/repos/octocat/hello-world/pulls/99/reviews",
-        { query: { page: "2", per_page: "2" } },
+      const result = await gh.pullRequests.listReviews(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          cursor: cursorFor("pullRequests.listReviews", {
+            page: 2,
+            subject: ["octocat", "hello-world", 99],
+            filters: {
+              perPage: 2,
+            },
+          }),
+          perPage: 2,
+        },
       );
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/repos/octocat/hello-world/pulls/99/reviews",
+        query: { page: "2", per_page: "2" },
+      });
       expect(result).toEqual({
         items: [
           {
@@ -3220,20 +3439,22 @@ describe("GitHubProvider", () => {
         .mockResolvedValueOnce({ data: ghRepo, headers: new Headers(), status: 200 });
 
       const error = await gitbucket.pullRequests
-        .listReviews("octocat", "hello-world", 99)
+        .listReviews({ owner: "octocat", repo: "hello-world", number: 99 })
         .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(ForgesError);
       expect(error).not.toBeInstanceOf(NotFoundError);
       expect((error as ForgesError).status).toBe(501);
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, "/repos/octocat/hello-world");
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, {
+        url: "/repos/octocat/hello-world",
+      });
     });
 
     it("keeps a GitHub.com 404 as not found without probing the host", async () => {
       mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
 
       await expect(
-        gh.pullRequests.listReviews("octocat", "hello-world", 99),
+        gh.pullRequests.listReviews({ owner: "octocat", repo: "hello-world", number: 99 }),
       ).rejects.toBeInstanceOf(NotFoundError);
       expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
     });
@@ -3301,7 +3522,7 @@ describe("GitHubProvider", () => {
         }),
       );
 
-      const result = await gh.releases.list("agntn", "forges", { perPage: 2 });
+      const result = await gh.releases.list({ owner: "agntn", repo: "forges" }, { perPage: 2 });
 
       expect(forge.releases.list).toHaveBeenCalledWith(ref, { perPage: 2 });
       expect(result).toEqual({
@@ -3324,7 +3545,10 @@ describe("GitHubProvider", () => {
       });
 
       forge.releases.list.mockReturnValueOnce(listing({ items: [] }));
-      await gh.releases.list("agntn", "forges", { cursor: result.nextCursor, perPage: 2 });
+      await gh.releases.list(
+        { owner: "agntn", repo: "forges" },
+        { cursor: result.nextCursor, perPage: 2 },
+      );
       expect(forge.releases.list).toHaveBeenLastCalledWith(ref, {
         perPage: 2,
         cursor: { nextUrl: next },
@@ -3334,7 +3558,7 @@ describe("GitHubProvider", () => {
     it("reads one release by its tag", async () => {
       forge.releases.getByTag.mockResolvedValueOnce({ raw: ghRelease });
 
-      const result = await gh.releases.get("agntn", "forges", "v0.3.1");
+      const result = await gh.releases.get({ owner: "agntn", repo: "forges" }, { tag: "v0.3.1" });
 
       expect(forge.releases.getByTag).toHaveBeenCalledWith(ref, "v0.3.1");
       expect(result).toEqual(release);
@@ -3345,7 +3569,10 @@ describe("GitHubProvider", () => {
         raw: { ...ghRelease, tag_name: "storage/v1.30.0" },
       });
 
-      const result = await gh.releases.get("googleapis", "google-cloud-go", "storage/v1.30.0");
+      const result = await gh.releases.get(
+        { owner: "googleapis", repo: "google-cloud-go" },
+        { tag: "storage/v1.30.0" },
+      );
 
       expect(forge.releases.getByTag).toHaveBeenCalledWith(
         repoRef(forge, { owner: "googleapis", name: "google-cloud-go" }),
@@ -3355,7 +3582,9 @@ describe("GitHubProvider", () => {
     });
 
     it.each(["", "  "])("rejects the blank tag %j before any request", async (tag) => {
-      await expect(gh.releases.get("agntn", "forges", tag)).rejects.toMatchObject({
+      await expect(
+        gh.releases.get({ owner: "agntn", repo: "forges" }, { tag }),
+      ).rejects.toMatchObject({
         status: 400,
       });
       expect(forge.releases.getByTag).not.toHaveBeenCalled();
@@ -3366,13 +3595,16 @@ describe("GitHubProvider", () => {
         raw: { ...ghRelease, draft: true, published_at: null },
       });
 
-      const result = await gh.releases.create("agntn", "forges", {
-        tag: "v0.3.1",
-        name: "v0.3.1",
-        body: "notes",
-        ref: "main",
-        draft: true,
-      });
+      const result = await gh.releases.create(
+        { owner: "agntn", repo: "forges" },
+        {
+          tag: "v0.3.1",
+          name: "v0.3.1",
+          body: "notes",
+          ref: "main",
+          draft: true,
+        },
+      );
 
       expect(forge.releases.create).toHaveBeenCalledWith(ref, {
         tag: "v0.3.1",
@@ -3388,7 +3620,10 @@ describe("GitHubProvider", () => {
       forge.releases.getByTag.mockResolvedValueOnce({ raw: ghRelease });
       forge.releases.update.mockResolvedValueOnce({ raw: { ...ghRelease, body: "edited" } });
 
-      const result = await gh.releases.update("agntn", "forges", "v0.3.1", { body: "edited" });
+      const result = await gh.releases.update(
+        { owner: "agntn", repo: "forges" },
+        { tag: "v0.3.1", body: "edited" },
+      );
 
       expect(forge.releases.getByTag).toHaveBeenCalledWith(ref, "v0.3.1");
       expect(forge.releases.update).toHaveBeenCalledWith(releaseRef("391667800", "v0.3.1"), {
@@ -3398,7 +3633,9 @@ describe("GitHubProvider", () => {
     });
 
     it("refuses an update with nothing to change before reading the release", async () => {
-      await expect(gh.releases.update("agntn", "forges", "v0.3.1", {})).rejects.toMatchObject({
+      await expect(
+        gh.releases.update({ owner: "agntn", repo: "forges" }, { tag: "v0.3.1" }),
+      ).rejects.toMatchObject({
         status: 400,
       });
       expect(forge.releases.getByTag).not.toHaveBeenCalled();
@@ -3425,7 +3662,10 @@ describe("GitHubProvider", () => {
         raw: { ...draft, draft: false, published_at: "2026-09-19T12:00:00Z" },
       });
 
-      const result = await gh.releases.update("agntn", "forges", "v0.4.0", { draft: false });
+      const result = await gh.releases.update(
+        { owner: "agntn", repo: "forges" },
+        { tag: "v0.4.0", draft: false },
+      );
 
       expect(forge.releases.list).toHaveBeenCalledWith(ref, { perPage: 100 });
       expect(forge.releases.update).toHaveBeenCalledWith(releaseRef("391667802", "v0.4.0"), {
@@ -3446,9 +3686,9 @@ describe("GitHubProvider", () => {
         )
         .mockReturnValueOnce(listing({ items: [] }));
 
-      await expect(gh.releases.get("agntn", "forges", "v9.9.9")).rejects.toBeInstanceOf(
-        NotFoundError,
-      );
+      await expect(
+        gh.releases.get({ owner: "agntn", repo: "forges" }, { tag: "v9.9.9" }),
+      ).rejects.toBeInstanceOf(NotFoundError);
       expect(forge.releases.getByTag).toHaveBeenCalledTimes(1);
       expect(forge.releases.list).toHaveBeenCalledTimes(2);
     });
@@ -3463,9 +3703,9 @@ describe("GitHubProvider", () => {
         }),
       );
 
-      await expect(gh.releases.get("agntn", "forges", "v9.9.9")).rejects.toBeInstanceOf(
-        NotFoundError,
-      );
+      await expect(
+        gh.releases.get({ owner: "agntn", repo: "forges" }, { tag: "v9.9.9" }),
+      ).rejects.toBeInstanceOf(NotFoundError);
       expect(forge.releases.list).toHaveBeenCalledTimes(5);
     });
 
@@ -3473,9 +3713,9 @@ describe("GitHubProvider", () => {
       const anonymous = new GitHubProvider({ baseURL: "https://api.github.com", token: "" });
       forge.releases.getByTag.mockRejectedValueOnce(makeFetchError(404));
 
-      await expect(anonymous.releases.get("agntn", "forges", "v9.9.9")).rejects.toBeInstanceOf(
-        NotFoundError,
-      );
+      await expect(
+        anonymous.releases.get({ owner: "agntn", repo: "forges" }, { tag: "v9.9.9" }),
+      ).rejects.toBeInstanceOf(NotFoundError);
       expect(forge.releases.list).not.toHaveBeenCalled();
     });
 
@@ -3483,7 +3723,9 @@ describe("GitHubProvider", () => {
       forge.releases.getByTag.mockRejectedValueOnce(makeFetchError(404));
       forge.releases.list.mockReturnValueOnce(failing(makeFetchError(403)));
 
-      const error = await gh.releases.get("agntn", "forges", "v9.9.9").catch((e: unknown) => e);
+      const error = await gh.releases
+        .get({ owner: "agntn", repo: "forges" }, { tag: "v9.9.9" })
+        .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(ForgesError);
       expect((error as ForgesError).status).toBe(403);
@@ -3498,16 +3740,20 @@ describe("GitHubProvider", () => {
       mocks.rawFetch.mockResolvedValueOnce({ data: ghRepo, headers: new Headers(), status: 200 });
 
       const error = await gitbucket.releases
-        .list("octocat", "hello-world")
+        .list({ owner: "octocat", repo: "hello-world" })
         .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(ForgesError);
       expect(error).not.toBeInstanceOf(NotFoundError);
       expect((error as ForgesError).status).toBe(501);
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/repos/octocat/hello-world");
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/repos/octocat/hello-world",
+      });
 
       forge.releases.list.mockReturnValueOnce(failing(makeFetchError(404)));
-      await expect(gitbucket.releases.list("octocat", "hello-world")).rejects.toMatchObject({
+      await expect(
+        gitbucket.releases.list({ owner: "octocat", repo: "hello-world" }),
+      ).rejects.toMatchObject({
         status: 501,
       });
       expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
@@ -3550,10 +3796,9 @@ describe("GitHubProvider", () => {
       });
 
       const result = await gh.pullRequests.search(
-        "octocat",
-        "hello-world",
-        "repo:octocat/other-repo OR is:issue OR search",
+        { owner: "octocat", repo: "hello-world" },
         {
+          query: "repo:octocat/other-repo OR is:issue OR search",
           state: "closed",
           cursor: cursorFor("pullRequests.search", {
             page: 2,
@@ -3565,7 +3810,8 @@ describe("GitHubProvider", () => {
       );
 
       expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/search/issues", {
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/search/issues",
         query: {
           q: "repo:octocat/other-repo OR is:issue OR search repo:octocat/hello-world is:pr is:closed",
           page: "2",
@@ -3594,9 +3840,9 @@ describe("GitHubProvider", () => {
     });
 
     it("rejects a blank query before transport", async () => {
-      await expect(gh.pullRequests.search("octocat", "hello-world", "   ")).rejects.toThrow(
-        "Pull-request search query must not be empty",
-      );
+      await expect(
+        gh.pullRequests.search({ owner: "octocat", repo: "hello-world" }, { query: "   " }),
+      ).rejects.toThrow("Pull-request search query must not be empty");
       expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
   });
@@ -3637,7 +3883,10 @@ describe("GitHubProvider", () => {
           : ghPullRequest,
       );
 
-      const pr = await gh.pullRequests.get("octocat", "hello-world", 99, { closingIssues: true });
+      const pr = await gh.pullRequests.get(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        { closingIssues: true },
+      );
 
       expect(pr.number).toBe(99);
       expect(pr.closingIssues).toEqual([
@@ -3669,7 +3918,10 @@ describe("GitHubProvider", () => {
         url === "/graphql" ? closingIssuesPage([]) : ghPullRequest,
       );
 
-      const pr = await gh.pullRequests.get("octocat", "hello-world", 99, { closingIssues: true });
+      const pr = await gh.pullRequests.get(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        { closingIssues: true },
+      );
 
       expect(pr.closingIssues).toEqual([]);
     });
@@ -3689,7 +3941,10 @@ describe("GitHubProvider", () => {
         url === "/graphql" ? pages.shift() : ghPullRequest,
       );
 
-      const pr = await gh.pullRequests.get("octocat", "hello-world", 99, { closingIssues: true });
+      const pr = await gh.pullRequests.get(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        { closingIssues: true },
+      );
 
       expect(pr.closingIssues?.map((issue) => issue.number)).toEqual([1, 2]);
       expect(mocks.client).toHaveBeenLastCalledWith("/graphql", {
@@ -3708,9 +3963,12 @@ describe("GitHubProvider", () => {
         return ghPullRequest;
       });
 
-      const pr = await gitbucket.pullRequests.get("octocat", "hello-world", 99, {
-        closingIssues: true,
-      });
+      const pr = await gitbucket.pullRequests.get(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          closingIssues: true,
+        },
+      );
 
       expect(pr.closingIssues).toBeNull();
     });
@@ -3718,7 +3976,7 @@ describe("GitHubProvider", () => {
     it("makes no extra request and adds no field by default", async () => {
       mocks.client.mockResolvedValueOnce(ghPullRequest);
 
-      const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
+      const pr = await gh.pullRequests.get({ owner: "octocat", repo: "hello-world", number: 99 });
 
       expect(pr).not.toHaveProperty("closingIssues");
       expect(mocks.client).toHaveBeenCalledTimes(1);
@@ -3731,7 +3989,7 @@ describe("GitHubProvider", () => {
         merge_commit_sha: "0549abd44267f5eb5c6e219fb9ab43b7129aa470",
       });
 
-      const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
+      const pr = await gh.pullRequests.get({ owner: "octocat", repo: "hello-world", number: 99 });
 
       expect(pr.sourceBranch).toBe("feature/dark-mode");
       expect(pr.targetBranch).toBe("main");
@@ -3753,7 +4011,7 @@ describe("GitHubProvider", () => {
         merged_by: { login: "maintainer", id: 5001, type: "User" },
       });
 
-      const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
+      const pr = await gh.pullRequests.get({ owner: "octocat", repo: "hello-world", number: 99 });
 
       expect(pr.mergedAt).toBe("2024-02-03T09:00:00Z");
       expect(pr.mergedBy).toEqual({ login: "maintainer" });
@@ -3762,7 +4020,7 @@ describe("GitHubProvider", () => {
     it("leaves merge metadata null on an open pull request", async () => {
       mocks.client.mockResolvedValueOnce(ghPullRequest);
 
-      const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
+      const pr = await gh.pullRequests.get({ owner: "octocat", repo: "hello-world", number: 99 });
 
       expect(pr.mergedAt).toBeNull();
       expect(pr.mergedBy).toBeNull();
@@ -3775,7 +4033,7 @@ describe("GitHubProvider", () => {
         mergeable_state: "unknown",
       });
 
-      const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
+      const pr = await gh.pullRequests.get({ owner: "octocat", repo: "hello-world", number: 99 });
 
       expect(pr.mergeable).toBeNull();
       expect(pr.mergeStatus).toBe("unknown");
@@ -3792,8 +4050,8 @@ describe("GitHubProvider", () => {
       mocks.cachedFetch.mockResolvedValue(ghPullRequest);
       mocks.client.mockResolvedValueOnce(ghPullRequest).mockResolvedValueOnce(merged);
 
-      await gh.pullRequests.get("octocat", "hello-world", 99);
-      const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
+      await gh.pullRequests.get({ owner: "octocat", repo: "hello-world", number: 99 });
+      const pr = await gh.pullRequests.get({ owner: "octocat", repo: "hello-world", number: 99 });
 
       expect(pr.merged).toBe(true);
       expect(pr.mergeCommitSha).toBe("0549abd44267f5eb5c6e219fb9ab43b7129aa470");
@@ -3804,7 +4062,7 @@ describe("GitHubProvider", () => {
     it("leaves mergeCommitSha empty when an older payload omits it", async () => {
       mocks.client.mockResolvedValueOnce({ ...ghPullRequest, merge_commit_sha: undefined });
 
-      const pr = await gh.pullRequests.get("octocat", "hello-world", 99);
+      const pr = await gh.pullRequests.get({ owner: "octocat", repo: "hello-world", number: 99 });
 
       expect(pr.mergeCommitSha).toBe("");
     });
@@ -3816,14 +4074,17 @@ describe("GitHubProvider", () => {
         .mockResolvedValueOnce({ ...ghPullRequest, assignees: [] })
         .mockResolvedValueOnce({ ...ghIssue, assignees: [{ login: "maintainer" }] });
 
-      const pr = await gh.pullRequests.create("octocat", "hello-world", {
-        title: "Add dark mode",
-        body: "Implements it",
-        sourceBranch: "feature/dark-mode",
-        targetBranch: "main",
-        draft: true,
-        assignees: ["maintainer"],
-      });
+      const pr = await gh.pullRequests.create(
+        { owner: "octocat", repo: "hello-world" },
+        {
+          title: "Add dark mode",
+          body: "Implements it",
+          sourceBranch: "feature/dark-mode",
+          targetBranch: "main",
+          draft: true,
+          assignees: ["maintainer"],
+        },
+      );
 
       expect(mocks.client).toHaveBeenNthCalledWith(1, "/repos/octocat/hello-world/pulls", {
         method: "POST",
@@ -3849,13 +4110,16 @@ describe("GitHubProvider", () => {
         .mockResolvedValueOnce({ ...ghPullRequest, assignees: [] })
         .mockRejectedValueOnce(makeFetchError(403));
 
-      const pr = await gh.pullRequests.create("octocat", "hello-world", {
-        title: "Add dark mode",
-        body: "Implements it",
-        sourceBranch: "feature/dark-mode",
-        targetBranch: "main",
-        assignees: ["maintainer"],
-      });
+      const pr = await gh.pullRequests.create(
+        { owner: "octocat", repo: "hello-world" },
+        {
+          title: "Add dark mode",
+          body: "Implements it",
+          sourceBranch: "feature/dark-mode",
+          targetBranch: "main",
+          assignees: ["maintainer"],
+        },
+      );
 
       expect(mocks.client).toHaveBeenCalledTimes(2);
       expect(pr.number).toBe(99);
@@ -3867,9 +4131,12 @@ describe("GitHubProvider", () => {
     it("patches only the body and leaves title, state, assignees and labels out", async () => {
       mocks.client.mockResolvedValueOnce({ ...ghPullRequest, body: "Closes #42." });
 
-      const pr = await gh.pullRequests.update("octocat", "hello-world", 99, {
-        body: "Closes #42.",
-      });
+      const pr = await gh.pullRequests.update(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          body: "Closes #42.",
+        },
+      );
 
       expect(mocks.client).toHaveBeenCalledTimes(1);
       // Undefined fields drop out of the JSON body, so the title and state go untouched.
@@ -3897,12 +4164,15 @@ describe("GitHubProvider", () => {
         .mockRejectedValueOnce(makeFetchError(404))
         .mockResolvedValueOnce(updated);
 
-      const pr = await gh.pullRequests.update("octocat", "hello-world", 99, {
-        addAssignees: ["reviewer"],
-        removeAssignees: ["former"],
-        addLabels: ["docs"],
-        removeLabels: ["enhancement", "never-set"],
-      });
+      const pr = await gh.pullRequests.update(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          addAssignees: ["reviewer"],
+          removeAssignees: ["former"],
+          addLabels: ["docs"],
+          removeLabels: ["enhancement", "never-set"],
+        },
+      );
 
       const issue = "/repos/octocat/hello-world/issues/99";
       expect(mocks.client.mock.calls).toEqual([
@@ -3923,12 +4193,18 @@ describe("GitHubProvider", () => {
         .mockResolvedValueOnce({ ...ghPullRequest, state: "closed" })
         .mockResolvedValueOnce({ ...ghPullRequest, state: "open" });
 
-      const closed = await gh.pullRequests.update("octocat", "hello-world", 99, {
-        state: "closed",
-      });
-      const reopened = await gh.pullRequests.update("octocat", "hello-world", 99, {
-        state: "open",
-      });
+      const closed = await gh.pullRequests.update(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          state: "closed",
+        },
+      );
+      const reopened = await gh.pullRequests.update(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          state: "open",
+        },
+      );
 
       expect(mocks.client.mock.calls.map(([, options]) => options.body.state)).toEqual([
         "closed",
@@ -3942,7 +4218,10 @@ describe("GitHubProvider", () => {
       mocks.client.mockRejectedValueOnce(makeFetchError(404));
 
       await expect(
-        gh.pullRequests.update("octocat", "hello-world", 42, { addLabels: ["docs"] }),
+        gh.pullRequests.update(
+          { owner: "octocat", repo: "hello-world", number: 42 },
+          { addLabels: ["docs"] },
+        ),
       ).rejects.toBeInstanceOf(NotFoundError);
       expect(mocks.client).toHaveBeenCalledTimes(1);
     });
@@ -3954,9 +4233,12 @@ describe("GitHubProvider", () => {
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce({ ...ghPullRequest, labels: [] });
 
-      await gh.pullRequests.update("octocat", "hello-world", 99, {
-        removeLabels: ["kind/bug", "100%"],
-      });
+      await gh.pullRequests.update(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          removeLabels: ["kind/bug", "100%"],
+        },
+      );
 
       expect(mocks.client).toHaveBeenNthCalledWith(
         2,
@@ -3972,10 +4254,13 @@ describe("GitHubProvider", () => {
 
     it("refuses a dot label before the title changes, since its path would collapse", async () => {
       await expect(
-        gh.pullRequests.update("octocat", "hello-world", 99, {
-          title: "Renamed",
-          removeLabels: [".."],
-        }),
+        gh.pullRequests.update(
+          { owner: "octocat", repo: "hello-world", number: 99 },
+          {
+            title: "Renamed",
+            removeLabels: [".."],
+          },
+        ),
       ).rejects.toMatchObject({ status: 400, message: expect.stringContaining('"..') });
       expect(mocks.client).not.toHaveBeenCalled();
     });
@@ -3984,7 +4269,10 @@ describe("GitHubProvider", () => {
       mocks.client.mockResolvedValueOnce(ghPullRequest).mockRejectedValueOnce(makeFetchError(403));
 
       await expect(
-        gh.pullRequests.update("octocat", "hello-world", 99, { removeLabels: ["enhancement"] }),
+        gh.pullRequests.update(
+          { owner: "octocat", repo: "hello-world", number: 99 },
+          { removeLabels: ["enhancement"] },
+        ),
       ).rejects.toMatchObject({ status: 403 });
     });
 
@@ -3999,9 +4287,7 @@ describe("GitHubProvider", () => {
     ])("rejects %j before any request", async (input, message) => {
       await expect(
         gh.pullRequests.update(
-          "octocat",
-          "hello-world",
-          99,
+          { owner: "octocat", repo: "hello-world", number: 99 },
           input as unknown as UpdatePullRequestInput,
         ),
       ).rejects.toMatchObject({ status: 400, message: expect.stringContaining(message) });
@@ -4011,9 +4297,19 @@ describe("GitHubProvider", () => {
 
   describe("pullRequests.merge", () => {
     it.each([
-      ["pullRequests.merge", () => gh.pullRequests.merge("..", "hello-world", 1, {})],
-      ["pullRequests.update", () => gh.pullRequests.update("..", "hello-world", 1, { title: "x" })],
-      ["issues.update", () => gh.issues.update("..", "hello-world", 1, { title: "x" })],
+      [
+        "pullRequests.merge",
+        () => gh.pullRequests.merge({ owner: "..", repo: "hello-world", number: 1 }, {}),
+      ],
+      [
+        "pullRequests.update",
+        () =>
+          gh.pullRequests.update({ owner: "..", repo: "hello-world", number: 1 }, { title: "x" }),
+      ],
+      [
+        "issues.update",
+        () => gh.issues.update({ owner: "..", repo: "hello-world", number: 1 }, { title: "x" }),
+      ],
     ])("%s names the platform when the owner is no path segment", async (_name, write) => {
       await expect(write()).rejects.toMatchObject({ status: 400, platform: "github" });
       expect(mocks.client).not.toHaveBeenCalled();
@@ -4035,12 +4331,15 @@ describe("GitHubProvider", () => {
         })
         .mockResolvedValueOnce(merged);
 
-      const pr = await gh.pullRequests.merge("octocat", "hello-world", 99, {
-        method: "squash",
-        headSha: "abc123",
-        title: "feat: dark mode (#99)",
-        message: "Closes #42.",
-      });
+      const pr = await gh.pullRequests.merge(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          method: "squash",
+          headSha: "abc123",
+          title: "feat: dark mode (#99)",
+          message: "Closes #42.",
+        },
+      );
 
       expect(mocks.client.mock.calls).toEqual([
         [
@@ -4064,7 +4363,7 @@ describe("GitHubProvider", () => {
     it("leaves every choice to GitHub when the input is empty", async () => {
       mocks.client.mockResolvedValueOnce({}).mockResolvedValueOnce(ghPullRequest);
 
-      await gh.pullRequests.merge("octocat", "hello-world", 99);
+      await gh.pullRequests.merge({ owner: "octocat", repo: "hello-world", number: 99 });
 
       expect(JSON.parse(JSON.stringify(mocks.client.mock.calls[0]?.[1]))).toEqual({
         method: "PUT",
@@ -4075,7 +4374,7 @@ describe("GitHubProvider", () => {
     it("says the merge went through when only the read after it fails", async () => {
       mocks.client.mockResolvedValueOnce({}).mockRejectedValueOnce(makeFetchError(502));
 
-      const read = gh.pullRequests.merge("octocat", "hello-world", 99);
+      const read = gh.pullRequests.merge({ owner: "octocat", repo: "hello-world", number: 99 });
       await expect(read).rejects.toMatchObject({ status: 502, platform: "github" });
       await expect(read).rejects.toThrow(
         /502\. The merge went through, but reading the pull request back failed/,
@@ -4087,7 +4386,7 @@ describe("GitHubProvider", () => {
       limited.response = new Response(null, { status: 429, headers: { "Retry-After": "30" } });
       mocks.client.mockResolvedValueOnce({}).mockRejectedValueOnce(limited);
 
-      const read = gh.pullRequests.merge("octocat", "hello-world", 99);
+      const read = gh.pullRequests.merge({ owner: "octocat", repo: "hello-world", number: 99 });
       await expect(read).rejects.toBeInstanceOf(RateLimitError);
       await expect(read).rejects.toMatchObject({ retryAfter: 30, platform: "github" });
       await expect(read).rejects.toThrow(/The merge went through/);
@@ -4097,29 +4396,38 @@ describe("GitHubProvider", () => {
       mocks.client.mockRejectedValueOnce(
         makeFetchError(409, "Head branch was modified. Review and try the merge again."),
       );
-      const moved = gh.pullRequests.merge("octocat", "hello-world", 99, { headSha: "abc123" });
+      const moved = gh.pullRequests.merge(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        { headSha: "abc123" },
+      );
       await expect(moved).rejects.toMatchObject({ status: 409, platform: "github" });
       await expect(moved).rejects.toThrow(
         /try the merge again\. The head commit may no longer be headSha/,
       );
 
       mocks.client.mockRejectedValueOnce(makeFetchError(405, "Pull Request is not mergeable"));
-      await expect(gh.pullRequests.merge("octocat", "hello-world", 99)).rejects.toThrow(
-        /not mergeable\. The pull request cannot be merged as it stands/,
-      );
+      await expect(
+        gh.pullRequests.merge({ owner: "octocat", repo: "hello-world", number: 99 }),
+      ).rejects.toThrow(/not mergeable\. The pull request cannot be merged as it stands/);
     });
 
     it("rejects an unknown method or a blank head before any request", async () => {
       await expect(
-        gh.pullRequests.merge("octocat", "hello-world", 99, {
-          method: "fast-forward" as unknown as "merge",
-        }),
+        gh.pullRequests.merge(
+          { owner: "octocat", repo: "hello-world", number: 99 },
+          {
+            method: "fast-forward" as unknown as "merge",
+          },
+        ),
       ).rejects.toMatchObject({ status: 400 });
       await expect(
-        gh.pullRequests.merge("octocat", "hello-world", 99, { headSha: " " }),
+        gh.pullRequests.merge(
+          { owner: "octocat", repo: "hello-world", number: 99 },
+          { headSha: " " },
+        ),
       ).rejects.toMatchObject({ status: 400 });
       await expect(
-        gh.pullRequests.merge("octocat", "hello-world", 99, { title: "" }),
+        gh.pullRequests.merge({ owner: "octocat", repo: "hello-world", number: 99 }, { title: "" }),
       ).rejects.toMatchObject({ status: 400 });
       expect(mocks.client).not.toHaveBeenCalled();
     });
@@ -4133,10 +4441,13 @@ describe("GitHubProvider", () => {
         .mockResolvedValueOnce(ghIssue)
         .mockResolvedValueOnce({ ...ghIssue, body: "Fixed number.", state: "closed" });
 
-      const issue = await gh.issues.update("octocat", "hello-world", 42, {
-        body: "Fixed number.",
-        state: "closed",
-      });
+      const issue = await gh.issues.update(
+        { owner: "octocat", repo: "hello-world", number: 42 },
+        {
+          body: "Fixed number.",
+          state: "closed",
+        },
+      );
 
       expect(mocks.client).toHaveBeenCalledTimes(2);
       expect(mocks.client).toHaveBeenNthCalledWith(1, issuePath);
@@ -4164,12 +4475,15 @@ describe("GitHubProvider", () => {
         .mockRejectedValueOnce(makeFetchError(404))
         .mockResolvedValueOnce(updated);
 
-      const issue = await gh.issues.update("octocat", "hello-world", 42, {
-        addAssignees: ["reviewer"],
-        removeAssignees: ["former"],
-        addLabels: ["docs"],
-        removeLabels: ["never-set"],
-      });
+      const issue = await gh.issues.update(
+        { owner: "octocat", repo: "hello-world", number: 42 },
+        {
+          addAssignees: ["reviewer"],
+          removeAssignees: ["former"],
+          addLabels: ["docs"],
+          removeLabels: ["never-set"],
+        },
+      );
 
       expect(mocks.client.mock.calls).toEqual([
         [issuePath],
@@ -4187,14 +4501,20 @@ describe("GitHubProvider", () => {
       mocks.client.mockResolvedValueOnce({ ...ghIssue, pull_request: {} });
 
       await expect(
-        gh.issues.update("octocat", "hello-world", 42, { state: "closed", addLabels: ["docs"] }),
+        gh.issues.update(
+          { owner: "octocat", repo: "hello-world", number: 42 },
+          { state: "closed", addLabels: ["docs"] },
+        ),
       ).rejects.toBeInstanceOf(NotFoundError);
       expect(mocks.client).toHaveBeenCalledTimes(1);
     });
 
     it("refuses a dot label before the first request", async () => {
       await expect(
-        gh.issues.update("octocat", "hello-world", 42, { title: "Renamed", removeLabels: ["."] }),
+        gh.issues.update(
+          { owner: "octocat", repo: "hello-world", number: 42 },
+          { title: "Renamed", removeLabels: ["."] },
+        ),
       ).rejects.toMatchObject({ status: 400 });
       expect(mocks.client).not.toHaveBeenCalled();
     });
@@ -4206,7 +4526,10 @@ describe("GitHubProvider", () => {
       [{ addLabels: ["docs"], removeLabels: ["docs"] }, "both add and remove: docs"],
     ])("rejects %j before any request", async (input, message) => {
       await expect(
-        gh.issues.update("octocat", "hello-world", 42, input as unknown as UpdateIssueInput),
+        gh.issues.update(
+          { owner: "octocat", repo: "hello-world", number: 42 },
+          input as unknown as UpdateIssueInput,
+        ),
       ).rejects.toMatchObject({ status: 400, message: expect.stringContaining(message) });
       expect(mocks.client).not.toHaveBeenCalled();
     });
@@ -4216,7 +4539,11 @@ describe("GitHubProvider", () => {
     it("reads the issue-comments endpoint, which carries the PR discussion", async () => {
       forge.threads.comments.mockReturnValueOnce(listing({ items: raws(ghComment) }));
 
-      const result = await gh.pullRequests.listComments("octocat", "hello-world", 99);
+      const result = await gh.pullRequests.listComments({
+        owner: "octocat",
+        repo: "hello-world",
+        number: 99,
+      });
 
       expect(forge.threads.comments).toHaveBeenCalledWith(
         expect.objectContaining({ kind: "pull_request", number: "99" }),
@@ -4330,13 +4657,13 @@ describe("GitHubProvider", () => {
           full_name: "org/my-repo",
         },
       });
-      const repo = await gh.repos.get("org", "my-repo");
+      const repo = await gh.repos.get({ owner: "org", repo: "my-repo" });
       expect(repo.fullName).toBe("org/my-repo");
     });
 
     it("maps avatar_url → avatarUrl", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: ghRepo });
-      const repo = await gh.repos.get("o", "r");
+      const repo = await gh.repos.get({ owner: "o", repo: "r" });
       expect(repo.owner.avatarUrl).toBe("https://avatars.githubusercontent.com/u/1?v=4");
     });
 
@@ -4347,19 +4674,19 @@ describe("GitHubProvider", () => {
           default_branch: "develop",
         },
       });
-      const repo = await gh.repos.get("o", "r");
+      const repo = await gh.repos.get({ owner: "o", repo: "r" });
       expect(repo.defaultBranch).toBe("develop");
     });
 
     it("maps html_url → url", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: ghRepo });
-      const repo = await gh.repos.get("o", "r");
+      const repo = await gh.repos.get({ owner: "o", repo: "r" });
       expect(repo.url).toBe("https://github.com/octocat/hello-world");
     });
 
     it("maps clone_url → cloneUrl", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: ghRepo });
-      const repo = await gh.repos.get("o", "r");
+      const repo = await gh.repos.get({ owner: "o", repo: "r" });
       expect(repo.cloneUrl).toBe("https://github.com/octocat/hello-world.git");
     });
 
@@ -4376,7 +4703,7 @@ describe("GitHubProvider", () => {
 
     it("maps created_at → createdAt and updated_at → updatedAt", async () => {
       mocks.client.mockResolvedValueOnce(ghIssue);
-      const issue = await gh.issues.get("o", "r", 42);
+      const issue = await gh.issues.get({ owner: "o", repo: "r", number: 42 });
       expect(issue.createdAt).toBe("2024-01-15T10:00:00Z");
       expect(issue.updatedAt).toBe("2024-01-16T12:00:00Z");
     });
@@ -4386,7 +4713,7 @@ describe("GitHubProvider", () => {
         ...ghIssue,
         user: { login: "specific-user" },
       });
-      const issue = await gh.issues.get("o", "r", 1);
+      const issue = await gh.issues.get({ owner: "o", repo: "r", number: 1 });
       expect(issue.author.login).toBe("specific-user");
     });
 
@@ -4396,14 +4723,14 @@ describe("GitHubProvider", () => {
         head: { ref: "fix/typo" },
         base: { ref: "develop" },
       });
-      const pr = await gh.pullRequests.get("o", "r", 1);
+      const pr = await gh.pullRequests.get({ owner: "o", repo: "r", number: 1 });
       expect(pr.sourceBranch).toBe("fix/typo");
       expect(pr.targetBranch).toBe("develop");
     });
 
     it("converts numeric id to string", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: { ...ghRepo, id: 99999 } });
-      const repo = await gh.repos.get("o", "r");
+      const repo = await gh.repos.get({ owner: "o", repo: "r" });
       expect(repo.id).toBe("99999");
     });
 
@@ -4414,19 +4741,19 @@ describe("GitHubProvider", () => {
           description: null,
         },
       });
-      const repo = await gh.repos.get("o", "r");
+      const repo = await gh.repos.get({ owner: "o", repo: "r" });
       expect(repo.description).toBe("");
     });
 
     it("defaults null body to empty string", async () => {
       mocks.client.mockResolvedValueOnce({ ...ghIssue, body: null });
-      const issue = await gh.issues.get("o", "r", 1);
+      const issue = await gh.issues.get({ owner: "o", repo: "r", number: 1 });
       expect(issue.body).toBe("");
     });
 
     it("extracts label names from label objects", async () => {
       forge.threads.list.mockReturnValueOnce(listing({ items: raws(ghIssue) }));
-      const result = await gh.issues.list("o", "r");
+      const result = await gh.issues.list({ owner: "o", repo: "r" });
       expect(result.items[0].labels).toEqual(["bug", "priority:high"]);
     });
   });
@@ -4472,9 +4799,11 @@ describe("GitHubProvider", () => {
           cursor: { nextUrl: "https://api.github.com/repos/a/one/releases?page=2" },
         }),
       );
-      const { nextCursor } = await gh.releases.list("a", "one");
+      const { nextCursor } = await gh.releases.list({ owner: "a", repo: "one" });
 
-      await expect(gh.releases.list("b", "two", { cursor: nextCursor })).rejects.toMatchObject({
+      await expect(
+        gh.releases.list({ owner: "b", repo: "two" }, { cursor: nextCursor }),
+      ).rejects.toMatchObject({
         status: 400,
       });
       expect(forge.releases.list).toHaveBeenCalledOnce();
@@ -4484,7 +4813,7 @@ describe("GitHubProvider", () => {
       forge.releases.list.mockReturnValueOnce(
         listing({ items: [], cursor: { nextUrl: "https://api.github.com/x?page=2" } }),
       );
-      const { nextCursor } = await gh.releases.list("octocat", "hello-world");
+      const { nextCursor } = await gh.releases.list({ owner: "octocat", repo: "hello-world" });
 
       await expect(gh.repos.list("octocat", { cursor: nextCursor })).rejects.toMatchObject({
         status: 400,
@@ -4497,7 +4826,9 @@ describe("GitHubProvider", () => {
   describe("error handling", () => {
     it("throws NotFoundError on 404", async () => {
       forge.repos.get.mockRejectedValueOnce(makeFetchError(404));
-      await expect(gh.repos.get("x", "nonexistent")).rejects.toThrow(NotFoundError);
+      await expect(gh.repos.get({ owner: "x", repo: "nonexistent" })).rejects.toThrow(
+        NotFoundError,
+      );
     });
 
     it("throws AuthenticationError on 401", async () => {
@@ -4515,7 +4846,7 @@ describe("GitHubProvider", () => {
     it("sets platform to github on errors", async () => {
       forge.repos.get.mockRejectedValueOnce(makeFetchError(500));
 
-      const error = await gh.repos.get("x", "y").catch((e: unknown) => e);
+      const error = await gh.repos.get({ owner: "x", repo: "y" }).catch((e: unknown) => e);
       expect(error).toBeInstanceOf(ForgesError);
       expect((error as ForgesError).platform).toBe("github");
     });
@@ -4523,7 +4854,7 @@ describe("GitHubProvider", () => {
     it("preserves status code on generic errors", async () => {
       forge.repos.get.mockRejectedValueOnce(makeFetchError(503));
 
-      const error = await gh.repos.get("x", "y").catch((e: unknown) => e);
+      const error = await gh.repos.get({ owner: "x", repo: "y" }).catch((e: unknown) => e);
       expect(error).toBeInstanceOf(ForgesError);
       expect((error as ForgesError).status).toBe(503);
     });
@@ -4533,7 +4864,7 @@ describe("GitHubProvider", () => {
     it("lists mapped review threads from GraphQL pages", async () => {
       mocks.client.mockResolvedValueOnce(graphqlThreadList([ghThreadNode]));
 
-      const result = await gh.threads.list("octocat", "hello-world", 99);
+      const result = await gh.threads.list({ owner: "octocat", repo: "hello-world", number: 99 });
 
       expect(mocks.client).toHaveBeenCalledWith("/graphql", {
         method: "POST",
@@ -4576,14 +4907,17 @@ describe("GitHubProvider", () => {
         )
         .mockResolvedValueOnce(graphqlThreadList([second]));
 
-      const result = await gh.threads.list("octocat", "hello-world", 99, {
-        cursor: cursorFor("threads.list", {
-          page: 2,
-          subject: ["octocat", "hello-world", 99],
-          filters: { perPage: 1 },
-        }),
-        perPage: 1,
-      });
+      const result = await gh.threads.list(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          cursor: cursorFor("threads.list", {
+            page: 2,
+            subject: ["octocat", "hello-world", 99],
+            filters: { perPage: 1 },
+          }),
+          perPage: 1,
+        },
+      );
 
       expect(mocks.client).toHaveBeenCalledTimes(2);
       expect(result.items.map((thread) => thread.id)).toEqual(["PRRT_2"]);
@@ -4600,7 +4934,10 @@ describe("GitHubProvider", () => {
         return graphqlThreadList([ghThreadNode], { hasNextPage: true, endCursor: null });
       });
 
-      const result = await gh.threads.list("octocat", "hello-world", 99, { perPage: 30 });
+      const result = await gh.threads.list(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        { perPage: 30 },
+      );
 
       expect(calls).toBe(1);
       expect(result.items).toHaveLength(1);
@@ -4612,9 +4949,12 @@ describe("GitHubProvider", () => {
         graphqlThreadList([ghThreadNode, { ...ghThreadNode, id: "PRRT_done", isResolved: true }]),
       );
 
-      const result = await gh.threads.list("octocat", "hello-world", 99, {
-        state: "unresolved",
-      });
+      const result = await gh.threads.list(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          state: "unresolved",
+        },
+      );
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0]?.id).toBe("PRRT_kwDOA");
@@ -4628,10 +4968,13 @@ describe("GitHubProvider", () => {
         )
         .mockResolvedValueOnce(graphqlThreadList([{ ...resolved, id: "PRRT_done2" }]));
 
-      const result = await gh.threads.list("octocat", "hello-world", 99, {
-        state: "unresolved",
-        perPage: 1,
-      });
+      const result = await gh.threads.list(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          state: "unresolved",
+          perPage: 1,
+        },
+      );
 
       expect(mocks.client).toHaveBeenCalledTimes(2);
       expect(result.items.map((thread) => thread.id)).toEqual(["PRRT_kwDOA"]);
@@ -4643,10 +4986,13 @@ describe("GitHubProvider", () => {
       const second = { ...ghThreadNode, id: "PRRT_second" };
       mocks.client.mockResolvedValueOnce(graphqlThreadList([ghThreadNode, second]));
 
-      const result = await gh.threads.list("octocat", "hello-world", 99, {
-        state: "unresolved",
-        perPage: 1,
-      });
+      const result = await gh.threads.list(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        {
+          state: "unresolved",
+          perPage: 1,
+        },
+      );
 
       expect(result.items.map((thread) => thread.id)).toEqual(["PRRT_kwDOA"]);
       expect(result.nextCursor).toBeDefined();
@@ -4665,7 +5011,10 @@ describe("GitHubProvider", () => {
     it("gets one thread by GraphQL id", async () => {
       mocks.client.mockResolvedValueOnce({ data: { node: ghThreadNode } });
 
-      const thread = await gh.threads.get("octocat", "hello-world", 99, "PRRT_kwDOA");
+      const thread = await gh.threads.get(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        { threadId: "PRRT_kwDOA" },
+      );
 
       expect(thread.id).toBe("PRRT_kwDOA");
       expect(thread.comments[0]?.id).toBe("9001");
@@ -4681,9 +5030,12 @@ describe("GitHubProvider", () => {
         },
       });
 
-      await expect(gh.threads.get("octocat", "hello-world", 99, "PRRT_kwDOA")).rejects.toThrow(
-        NotFoundError,
-      );
+      await expect(
+        gh.threads.get(
+          { owner: "octocat", repo: "hello-world", number: 99 },
+          { threadId: "PRRT_kwDOA" },
+        ),
+      ).rejects.toThrow(NotFoundError);
     });
 
     it("throws NotFoundError when the thread belongs to another repository", async () => {
@@ -4699,17 +5051,23 @@ describe("GitHubProvider", () => {
         },
       });
 
-      await expect(gh.threads.get("octocat", "hello-world", 99, "PRRT_kwDOA")).rejects.toThrow(
-        NotFoundError,
-      );
+      await expect(
+        gh.threads.get(
+          { owner: "octocat", repo: "hello-world", number: 99 },
+          { threadId: "PRRT_kwDOA" },
+        ),
+      ).rejects.toThrow(NotFoundError);
     });
 
     it("throws NotFoundError when GraphQL node is missing", async () => {
       mocks.client.mockResolvedValueOnce({ data: { node: null } });
 
-      await expect(gh.threads.get("octocat", "hello-world", 99, "missing")).rejects.toThrow(
-        NotFoundError,
-      );
+      await expect(
+        gh.threads.get(
+          { owner: "octocat", repo: "hello-world", number: 99 },
+          { threadId: "missing" },
+        ),
+      ).rejects.toThrow(NotFoundError);
     });
 
     it("throws when GraphQL returns errors even if data is present", async () => {
@@ -4718,9 +5076,12 @@ describe("GitHubProvider", () => {
         errors: [{ message: "Something went wrong" }],
       });
 
-      await expect(gh.threads.get("octocat", "hello-world", 99, "PRRT_kwDOA")).rejects.toThrow(
-        "Something went wrong",
-      );
+      await expect(
+        gh.threads.get(
+          { owner: "octocat", repo: "hello-world", number: 99 },
+          { threadId: "PRRT_kwDOA" },
+        ),
+      ).rejects.toThrow("Something went wrong");
     });
 
     it("keeps a 64-bit comment id intact when databaseId overflows", async () => {
@@ -4749,10 +5110,16 @@ describe("GitHubProvider", () => {
           created_at: "2024-02-03T11:00:00Z",
         });
 
-      const thread = await gh.threads.get("octocat", "hello-world", 99, "PRRT_kwDOA");
+      const thread = await gh.threads.get(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        { threadId: "PRRT_kwDOA" },
+      );
       expect(thread.comments[0]?.id).toBe(bigId);
 
-      await gh.threads.reply("octocat", "hello-world", 99, "PRRT_kwDOA", { body: "Done." });
+      await gh.threads.reply(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        { threadId: "PRRT_kwDOA", body: "Done." },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith(
         `/repos/octocat/hello-world/pulls/99/comments/${bigId}/replies`,
@@ -4769,9 +5136,10 @@ describe("GitHubProvider", () => {
         created_at: "2024-02-03T11:00:00Z",
       });
 
-      const comment = await gh.threads.reply("octocat", "hello-world", 99, "PRRT_kwDOA", {
-        body: "Done.",
-      });
+      const comment = await gh.threads.reply(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        { threadId: "PRRT_kwDOA", body: "Done." },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith(
         "/repos/octocat/hello-world/pulls/99/comments/9001/replies",
@@ -4792,8 +5160,14 @@ describe("GitHubProvider", () => {
           data: { unresolveReviewThread: { thread: ghThreadNode } },
         });
 
-      const resolved = await gh.threads.resolve("octocat", "hello-world", 99, "PRRT_kwDOA");
-      const unresolved = await gh.threads.unresolve("octocat", "hello-world", 99, "PRRT_kwDOA");
+      const resolved = await gh.threads.resolve(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        { threadId: "PRRT_kwDOA" },
+      );
+      const unresolved = await gh.threads.unresolve(
+        { owner: "octocat", repo: "hello-world", number: 99 },
+        { threadId: "PRRT_kwDOA" },
+      );
 
       expect(resolved.isResolved).toBe(true);
       expect(unresolved.isResolved).toBe(false);
@@ -4804,9 +5178,12 @@ describe("GitHubProvider", () => {
         data: { node: { pullRequest: { ...ghThreadScope, number: 100 } } },
       });
 
-      await expect(gh.threads.resolve("octocat", "hello-world", 99, "PRRT_kwDOA")).rejects.toThrow(
-        NotFoundError,
-      );
+      await expect(
+        gh.threads.resolve(
+          { owner: "octocat", repo: "hello-world", number: 99 },
+          { threadId: "PRRT_kwDOA" },
+        ),
+      ).rejects.toThrow(NotFoundError);
       expect(mocks.client).toHaveBeenCalledTimes(1);
     });
 
@@ -4818,7 +5195,7 @@ describe("GitHubProvider", () => {
       mocks.client.mockRejectedValueOnce(makeFetchError(404));
 
       const error = await gitbucket.threads
-        .list("octocat", "hello-world", 99)
+        .list({ owner: "octocat", repo: "hello-world", number: 99 })
         .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(ForgesError);
@@ -4834,7 +5211,7 @@ describe("GitHubProvider", () => {
       });
       mocks.client.mockResolvedValueOnce(graphqlThreadList([]));
 
-      await enterprise.threads.list("octocat", "hello-world", 99);
+      await enterprise.threads.list({ owner: "octocat", repo: "hello-world", number: 99 });
 
       expect(mocks.client).toHaveBeenCalledWith("https://git.example.com/api/graphql", {
         method: "POST",

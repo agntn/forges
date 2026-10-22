@@ -23,6 +23,23 @@ export interface CachedFetchOptions {
   [key: string]: unknown;
 }
 
+/** One request for {@link cachedFetch}: the URL and the options the client takes with it. */
+export interface CachedRequest extends CachedFetchOptions {
+  url: string;
+}
+
+/** The URL apart from its options, which stay undefined when there are none. */
+function splitRequest(
+  request: CachedRequest,
+  call: string,
+): { url: string; options?: CachedFetchOptions } {
+  if (typeof request !== "object" || request === null || typeof request.url !== "string") {
+    throw new TypeError(`${call} takes { url, ...options } as its second argument`);
+  }
+  const { url, ...options } = request;
+  return Object.keys(options).length === 0 ? { url } : { url, options };
+}
+
 /**
  * Key under which an HTTP client carries its cache scope.
  *
@@ -153,15 +170,11 @@ function compareQueryEntries(
  * item reads use it: repository, issue, pull request, release, discussion comment
  * and user reads call the client directly, because callers act on their current state.
  * @param client HTTP client
- * @param url Request URL
- * @param options Request options
+ * @param request Request URL with the options the client takes
  * @returns Cached or fresh response
  */
-export async function cachedFetch<T>(
-  client: HttpClient,
-  url: string,
-  options?: CachedFetchOptions,
-): Promise<T> {
+export async function cachedFetch<T>(client: HttpClient, request: CachedRequest): Promise<T> {
+  const { url, options } = splitRequest(request, "cachedFetch");
   const method = (options?.method || "GET").toUpperCase();
 
   // Only cache GET requests
@@ -229,14 +242,10 @@ export async function clearCache(): Promise<void> {
 /**
  * Remove specific cache entry
  * @param client Client whose cached response should be dropped
- * @param url Request URL
- * @param options Request options
+ * @param request Request URL with the options it was cached under
  */
-export async function invalidateCache(
-  client: HttpClient,
-  url: string,
-  options?: CachedFetchOptions,
-): Promise<void> {
+export async function invalidateCache(client: HttpClient, request: CachedRequest): Promise<void> {
+  const { url, options } = splitRequest(request, "invalidateCache");
   const storage = getStorage();
   const cacheKey = generateCacheKey(clientCacheScope(client), { url, options });
   await storage.removeItem(cacheKey);

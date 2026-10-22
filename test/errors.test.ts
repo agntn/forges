@@ -280,17 +280,19 @@ describe("normalizeError", () => {
   });
 
   it("passes through existing ForgesError unchanged", () => {
-    const original = new NotFoundError("Already normalized", "github");
+    const original = new NotFoundError("Already normalized", { platform: "github" });
     const result = normalizeError(original);
 
     expect(result).toBe(original);
   });
 
   it("names the platform on a ForgesError thrown before it knew one", () => {
-    const refused = new ForgesError("Owner must be one path segment", 400);
+    const refused = new ForgesError("Owner must be one path segment", { status: 400 });
 
     expect(normalizeError(refused, "gitea")).toMatchObject({ status: 400, platform: "gitea" });
-    expect(normalizeError(new NotFoundError("Gone", "github"), "gitea").platform).toBe("github");
+    expect(
+      normalizeError(new NotFoundError("Gone", { platform: "github" }), "gitea").platform,
+    ).toBe("github");
   });
 
   it("converts unknown error types to ForgesError", () => {
@@ -916,7 +918,10 @@ describe("writes whose outcome is unknown", () => {
   });
 
   it("says nothing of the sort for an error the provider raised itself", () => {
-    const refused = new ForgesError("GitLab merges by merge commit or rebase", 501, "gitlab");
+    const refused = new ForgesError("GitLab merges by merge commit or rebase", {
+      status: 501,
+      platform: "gitlab",
+    });
 
     expect(normalizeMergeError(refused, { platform: "gitlab", pinnedHead: false })).toBe(refused);
   });

@@ -98,8 +98,7 @@ export function decodeCursor(cursor: string, check: CursorCheck): PagePosition {
   const refuse = (): never => {
     throw new ForgesError(
       `cursor is not one that ${listing} returned; pass back nextCursor unchanged`,
-      400,
-      platform,
+      { status: 400, platform },
     );
   };
   if (cursor.length > MAX_CURSOR_LENGTH || !/^[\w-]+$/u.test(cursor)) return refuse();

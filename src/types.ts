@@ -719,10 +719,14 @@ export interface CreateCommentInput {
   body: string;
 }
 
-/** One issue by its repository and number, the parent in the sub-issue calls. */
-export interface IssueRef {
+/** One repository by its owner and name, the first argument of every repository call. */
+export interface RepoRef {
   owner: string;
   repo: string;
+}
+
+/** One issue or pull request by its repository and number. */
+export interface IssueRef extends RepoRef {
   number: number;
 }
 
@@ -857,29 +861,23 @@ export interface ProviderConfig {
  */
 export interface RepositoryResource {
   list(owner: string, options?: ListOptions): Promise<PageResult<Repository>>;
-  get(owner: string, repo: string): Promise<Repository>;
+  get(repo: RepoRef): Promise<Repository>;
   readContents(
-    owner: string,
-    repo: string,
-    path: string,
-    options?: RepositoryContentsOptions,
+    repo: RepoRef,
+    options: RepositoryContentsOptions & { path: string },
   ): Promise<RepositoryContents>;
-  listTags(owner: string, repo: string, options?: ListTagsOptions): Promise<PageResult<Tag>>;
+  listTags(repo: RepoRef, options?: ListTagsOptions): Promise<PageResult<Tag>>;
 }
 
 /** Resource accessor for effective repository contribution templates. */
 export interface ContributionTemplateResource {
   list(
-    owner: string,
-    repo: string,
-    kind: ContributionTemplateKind,
-    options?: ListContributionTemplatesOptions,
+    repo: RepoRef,
+    options: ListContributionTemplatesOptions & { kind: ContributionTemplateKind },
   ): Promise<PageResult<ContributionTemplateSummary>>;
   get(
-    owner: string,
-    repo: string,
-    kind: ContributionTemplateKind,
-    key: string,
+    repo: RepoRef,
+    template: { kind: ContributionTemplateKind; key: string },
   ): Promise<ContributionTemplate>;
 }
 
@@ -890,58 +888,37 @@ export interface CodeSearchResource {
 
 /** Resource accessor for repository CI runs. */
 export interface CiRunResource {
-  list(owner: string, repo: string, options?: ListCiRunsOptions): Promise<PageResult<CiRun>>;
+  list(repo: RepoRef, options?: ListCiRunsOptions): Promise<PageResult<CiRun>>;
   listJobs(
-    owner: string,
-    repo: string,
-    runId: string,
-    options?: ListCiJobsOptions,
+    repo: RepoRef,
+    options: ListCiJobsOptions & { runId: string },
   ): Promise<PageResult<CiJob>>;
-  readJobLog(
-    owner: string,
-    repo: string,
-    jobId: string,
-    options?: CiJobLogOptions,
-  ): Promise<CiJobLog>;
+  readJobLog(repo: RepoRef, options: CiJobLogOptions & { jobId: string }): Promise<CiJobLog>;
 }
 
 /** Resource accessor for commits. */
 export interface CommitResource {
   search(query: string, options?: CommitSearchOptions): Promise<CommitSearchResult>;
-  list(
-    owner: string,
-    repo: string,
-    options?: ListCommitOptions,
-  ): Promise<PageResult<CommitSummary>>;
-  get(owner: string, repo: string, sha: string): Promise<Commit>;
+  list(repo: RepoRef, options?: ListCommitOptions): Promise<PageResult<CommitSummary>>;
+  get(repo: RepoRef, commit: { sha: string }): Promise<Commit>;
   /** Checks for a SHA, branch or tag, in the rows pullRequests.listChecks returns. */
   listChecks(
-    owner: string,
-    repo: string,
-    ref: string,
-    options?: ListCommitChecksOptions,
+    repo: RepoRef,
+    options: ListCommitChecksOptions & { ref: string },
   ): Promise<PageResult<PullRequestCheck>>;
   compare(
-    owner: string,
-    repo: string,
-    base: string,
-    head: string,
-    options?: CompareCommitsOptions,
+    repo: RepoRef,
+    options: CompareCommitsOptions & { base: string; head: string },
   ): Promise<CommitComparison>;
-  readPatch(
-    owner: string,
-    repo: string,
-    sha: string,
-    options?: CommitPatchOptions,
-  ): Promise<CommitPatch>;
+  readPatch(repo: RepoRef, options: CommitPatchOptions & { sha: string }): Promise<CommitPatch>;
 }
 
 /** Resource accessor for releases. */
 export interface ReleaseResource {
-  list(owner: string, repo: string, options?: ListReleasesOptions): Promise<PageResult<Release>>;
-  get(owner: string, repo: string, tag: string): Promise<Release>;
-  create(owner: string, repo: string, input: CreateReleaseInput): Promise<Release>;
-  update(owner: string, repo: string, tag: string, input: UpdateReleaseInput): Promise<Release>;
+  list(repo: RepoRef, options?: ListReleasesOptions): Promise<PageResult<Release>>;
+  get(repo: RepoRef, release: { tag: string }): Promise<Release>;
+  create(repo: RepoRef, input: CreateReleaseInput): Promise<Release>;
+  update(repo: RepoRef, input: UpdateReleaseInput & { tag: string }): Promise<Release>;
 }
 
 /**
@@ -949,35 +926,15 @@ export interface ReleaseResource {
  */
 export interface IssueResource {
   searchGlobal(query: string, options?: GlobalIssueSearchOptions): Promise<GlobalIssueSearchResult>;
-  list(owner: string, repo: string, options?: ListOptions): Promise<PageResult<Issue>>;
-  search(
-    owner: string,
-    repo: string,
-    query: string,
-    options?: ListOptions,
-  ): Promise<SearchPageResult<Issue>>;
-  get(owner: string, repo: string, number: number): Promise<Issue>;
-  create(owner: string, repo: string, input: CreateIssueInput): Promise<Issue>;
-  update(owner: string, repo: string, number: number, input: UpdateIssueInput): Promise<Issue>;
-  listComments(
-    owner: string,
-    repo: string,
-    number: number,
-    options?: ListCommentOptions,
-  ): Promise<PageResult<Comment>>;
-  getComment(owner: string, repo: string, number: number, commentId: string): Promise<Comment>;
-  createComment(
-    owner: string,
-    repo: string,
-    number: number,
-    input: CreateCommentInput,
-  ): Promise<Comment>;
-  listReactions(
-    owner: string,
-    repo: string,
-    number: number,
-    options?: ListReactionOptions,
-  ): Promise<PageResult<Reaction>>;
+  list(repo: RepoRef, options?: ListOptions): Promise<PageResult<Issue>>;
+  search(repo: RepoRef, options: ListOptions & { query: string }): Promise<SearchPageResult<Issue>>;
+  get(issue: IssueRef): Promise<Issue>;
+  create(repo: RepoRef, input: CreateIssueInput): Promise<Issue>;
+  update(issue: IssueRef, input: UpdateIssueInput): Promise<Issue>;
+  listComments(issue: IssueRef, options?: ListCommentOptions): Promise<PageResult<Comment>>;
+  getComment(issue: IssueRef, comment: { commentId: string }): Promise<Comment>;
+  createComment(issue: IssueRef, input: CreateCommentInput): Promise<Comment>;
+  listReactions(issue: IssueRef, options?: ListReactionOptions): Promise<PageResult<Reaction>>;
   /** The children of one issue, in the parent's order. */
   listSubIssues(issue: IssueRef, options?: ListCommentOptions): Promise<PageResult<SubIssue>>;
   /** Hangs an issue of the same repository under `issue` and returns the parent. */
@@ -994,74 +951,34 @@ export interface PullRequestResource {
     query: string,
     options?: GlobalPullRequestSearchOptions,
   ): Promise<GlobalPullRequestSearchResult>;
-  list(owner: string, repo: string, options?: ListOptions): Promise<PageResult<PullRequest>>;
+  list(repo: RepoRef, options?: ListOptions): Promise<PageResult<PullRequest>>;
   listFiles(
-    owner: string,
-    repo: string,
-    number: number,
+    pullRequest: IssueRef,
     options?: ListPullRequestFilesOptions,
   ): Promise<PageResult<PullRequestFile>>;
   listChecks(
-    owner: string,
-    repo: string,
-    number: number,
+    pullRequest: IssueRef,
     options?: ListPullRequestChecksOptions,
   ): Promise<PageResult<PullRequestCheck>>;
   listReviews(
-    owner: string,
-    repo: string,
-    number: number,
+    pullRequest: IssueRef,
     options?: ListPullRequestReviewsOptions,
   ): Promise<PageResult<PullRequestReview>>;
-  getReview(
-    owner: string,
-    repo: string,
-    number: number,
-    reviewId: string,
-  ): Promise<PullRequestReview>;
+  getReview(pullRequest: IssueRef, review: { reviewId: string }): Promise<PullRequestReview>;
   search(
-    owner: string,
-    repo: string,
-    query: string,
-    options?: ListOptions,
+    repo: RepoRef,
+    options: ListOptions & { query: string },
   ): Promise<SearchPageResult<PullRequestSearchItem>>;
-  get(
-    owner: string,
-    repo: string,
-    number: number,
-    options?: GetPullRequestOptions,
-  ): Promise<PullRequest>;
-  create(owner: string, repo: string, input: CreatePullRequestInput): Promise<PullRequest>;
-  update(
-    owner: string,
-    repo: string,
-    number: number,
-    input: UpdatePullRequestInput,
-  ): Promise<PullRequest>;
+  get(pullRequest: IssueRef, options?: GetPullRequestOptions): Promise<PullRequest>;
+  create(repo: RepoRef, input: CreatePullRequestInput): Promise<PullRequest>;
+  update(pullRequest: IssueRef, input: UpdatePullRequestInput): Promise<PullRequest>;
   /** Merges an open pull request and returns it as it is after the merge. */
-  merge(
-    owner: string,
-    repo: string,
-    number: number,
-    input?: MergePullRequestInput,
-  ): Promise<PullRequest>;
-  listComments(
-    owner: string,
-    repo: string,
-    number: number,
-    options?: ListCommentOptions,
-  ): Promise<PageResult<Comment>>;
-  getComment(owner: string, repo: string, number: number, commentId: string): Promise<Comment>;
-  createComment(
-    owner: string,
-    repo: string,
-    number: number,
-    input: CreateCommentInput,
-  ): Promise<Comment>;
+  merge(pullRequest: IssueRef, input?: MergePullRequestInput): Promise<PullRequest>;
+  listComments(pullRequest: IssueRef, options?: ListCommentOptions): Promise<PageResult<Comment>>;
+  getComment(pullRequest: IssueRef, comment: { commentId: string }): Promise<Comment>;
+  createComment(pullRequest: IssueRef, input: CreateCommentInput): Promise<Comment>;
   listReactions(
-    owner: string,
-    repo: string,
-    number: number,
+    pullRequest: IssueRef,
     options?: ListReactionOptions,
   ): Promise<PageResult<Reaction>>;
 }
@@ -1078,20 +995,12 @@ export interface UserResource {
  * Resource accessor for pull-request review threads
  */
 export interface ThreadResource {
-  list(
-    owner: string,
-    repo: string,
-    number: number,
-    options?: ListThreadOptions,
-  ): Promise<PageResult<Thread>>;
-  get(owner: string, repo: string, number: number, threadId: string): Promise<Thread>;
+  list(pullRequest: IssueRef, options?: ListThreadOptions): Promise<PageResult<Thread>>;
+  get(pullRequest: IssueRef, thread: { threadId: string }): Promise<Thread>;
   reply(
-    owner: string,
-    repo: string,
-    number: number,
-    threadId: string,
-    input: ReplyThreadInput,
+    pullRequest: IssueRef,
+    input: ReplyThreadInput & { threadId: string },
   ): Promise<ThreadComment>;
-  resolve(owner: string, repo: string, number: number, threadId: string): Promise<Thread>;
-  unresolve(owner: string, repo: string, number: number, threadId: string): Promise<Thread>;
+  resolve(pullRequest: IssueRef, thread: { threadId: string }): Promise<Thread>;
+  unresolve(pullRequest: IssueRef, thread: { threadId: string }): Promise<Thread>;
 }

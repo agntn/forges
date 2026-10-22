@@ -150,7 +150,7 @@ describe("createForgeClient", () => {
   });
 
   it("keeps an error this library already classified, status and platform included", () => {
-    const failure = new NotFoundError("Repository not found", "github");
+    const failure = new NotFoundError("Repository not found", { platform: "github" });
 
     expect(toFetchError(failure)).toBe(failure);
   });
@@ -257,7 +257,7 @@ describe("rawFetch", () => {
     request.mockResolvedValueOnce(json([1], { headers: { link: '<x>; rel="next"' } }));
     const client = createForgeClient(() => Promise.resolve(forge), { scope: "s" });
 
-    const result = await rawFetch(client, "/a");
+    const result = await rawFetch(client, { url: "/a" });
 
     expect(result.data).toEqual([1]);
     expect(result.status).toBe(200);

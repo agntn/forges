@@ -88,7 +88,7 @@ describe("a provider built on nothing but a forges factory", () => {
   it("reads a repository and its owner's repositories", async () => {
     const { provider } = seeded();
 
-    const repository = await provider.repos.get("acme", "widgets");
+    const repository = await provider.repos.get({ owner: "acme", repo: "widgets" });
     const listed = await provider.repos.list("acme");
 
     expect(repository).toMatchObject({
@@ -107,9 +107,13 @@ describe("a provider built on nothing but a forges factory", () => {
   it("reads issues and their comments", async () => {
     const { provider } = seeded();
 
-    const issues = await provider.issues.list("acme", "widgets");
-    const issue = await provider.issues.get("acme", "widgets", 1);
-    const comments = await provider.issues.listComments("acme", "widgets", 1);
+    const issues = await provider.issues.list({ owner: "acme", repo: "widgets" });
+    const issue = await provider.issues.get({ owner: "acme", repo: "widgets", number: 1 });
+    const comments = await provider.issues.listComments({
+      owner: "acme",
+      repo: "widgets",
+      number: 1,
+    });
     const [comment] = comments.items;
 
     expect(issues.items).toEqual([issue]);
@@ -127,40 +131,61 @@ describe("a provider built on nothing but a forges factory", () => {
       url: "https://fake.test/acme/widgets/issues/1",
     });
     expect(comment).toMatchObject({ body: "Same here", author: { login: "hubot" } });
-    await expect(provider.issues.getComment("acme", "widgets", 1, comment!.id)).resolves.toEqual(
-      comment,
-    );
+    await expect(
+      provider.issues.getComment(
+        { owner: "acme", repo: "widgets", number: 1 },
+        { commentId: comment!.id },
+      ),
+    ).resolves.toEqual(comment);
   });
 
   it("keeps a comment to the thread it was asked under", async () => {
     const { provider } = seeded();
-    const [comment] = (await provider.pullRequests.listComments("acme", "widgets", 2)).items;
+    const [comment] = (
+      await provider.pullRequests.listComments({ owner: "acme", repo: "widgets", number: 2 })
+    ).items;
 
     await expect(
-      provider.issues.getComment("acme", "widgets", 1, comment!.id),
+      provider.issues.getComment(
+        { owner: "acme", repo: "widgets", number: 1 },
+        { commentId: comment!.id },
+      ),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("creates an issue", async () => {
     const { provider } = seeded();
 
-    const issue = await provider.issues.create("acme", "widgets", {
-      title: "Widgets squeak",
-      body: "Loudly.",
-      labels: ["bug"],
-    });
+    const issue = await provider.issues.create(
+      { owner: "acme", repo: "widgets" },
+      {
+        title: "Widgets squeak",
+        body: "Loudly.",
+        labels: ["bug"],
+      },
+    );
 
     expect(issue).toMatchObject({ number: 3, title: "Widgets squeak", labels: ["bug"] });
-    await expect(provider.issues.get("acme", "widgets", 3)).resolves.toEqual(issue);
+    await expect(
+      provider.issues.get({ owner: "acme", repo: "widgets", number: 3 }),
+    ).resolves.toEqual(issue);
   });
 
   it("reads pull requests with their files and checks", async () => {
     const { provider } = seeded();
 
-    const pulls = await provider.pullRequests.list("acme", "widgets");
-    const pull = await provider.pullRequests.get("acme", "widgets", 2);
-    const files = await provider.pullRequests.listFiles("acme", "widgets", 2);
-    const checks = await provider.pullRequests.listChecks("acme", "widgets", 2);
+    const pulls = await provider.pullRequests.list({ owner: "acme", repo: "widgets" });
+    const pull = await provider.pullRequests.get({ owner: "acme", repo: "widgets", number: 2 });
+    const files = await provider.pullRequests.listFiles({
+      owner: "acme",
+      repo: "widgets",
+      number: 2,
+    });
+    const checks = await provider.pullRequests.listChecks({
+      owner: "acme",
+      repo: "widgets",
+      number: 2,
+    });
 
     expect(pulls.items).toEqual([pull]);
     expect(pull).toMatchObject({
@@ -186,22 +211,25 @@ describe("a provider built on nothing but a forges factory", () => {
   it("finds no pull request behind an issue number", async () => {
     const { provider } = seeded();
 
-    await expect(provider.pullRequests.get("acme", "widgets", 1)).rejects.toBeInstanceOf(
-      NotFoundError,
-    );
+    await expect(
+      provider.pullRequests.get({ owner: "acme", repo: "widgets", number: 1 }),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("opens a pull request with every field it was given", async () => {
     const { forge, provider } = seeded();
     const create = vi.spyOn(forge.threads, "create");
 
-    const pull = await provider.pullRequests.create("acme", "widgets", {
-      title: "Polish the widgets",
-      body: "Shiny.",
-      sourceBranch: "polish",
-      targetBranch: "main",
-      draft: true,
-    });
+    const pull = await provider.pullRequests.create(
+      { owner: "acme", repo: "widgets" },
+      {
+        title: "Polish the widgets",
+        body: "Shiny.",
+        sourceBranch: "polish",
+        targetBranch: "main",
+        draft: true,
+      },
+    );
 
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ owner: "acme", name: "widgets" }),
@@ -224,10 +252,13 @@ describe("a provider built on nothing but a forges factory", () => {
   it("reads commits, CI runs and their jobs", async () => {
     const { provider } = seeded();
 
-    const commit = await provider.commits.get("acme", "widgets", SHA);
-    const runs = await provider.ciRuns.list("acme", "widgets");
+    const commit = await provider.commits.get({ owner: "acme", repo: "widgets" }, { sha: SHA });
+    const runs = await provider.ciRuns.list({ owner: "acme", repo: "widgets" });
     const [run] = runs.items;
-    const jobs = await provider.ciRuns.listJobs("acme", "widgets", run!.id);
+    const jobs = await provider.ciRuns.listJobs(
+      { owner: "acme", repo: "widgets" },
+      { runId: run!.id },
+    );
 
     expect(commit).toMatchObject({
       sha: SHA,
@@ -256,10 +287,14 @@ describe("a provider built on nothing but a forges factory", () => {
   it("reads and writes releases", async () => {
     const { provider } = seeded();
 
-    const release = await provider.releases.get("acme", "widgets", "v1.0.0");
-    const updated = await provider.releases.update("acme", "widgets", "v1.0.0", {
-      body: "Second look",
-    });
+    const release = await provider.releases.get(
+      { owner: "acme", repo: "widgets" },
+      { tag: "v1.0.0" },
+    );
+    const updated = await provider.releases.update(
+      { owner: "acme", repo: "widgets" },
+      { tag: "v1.0.0", body: "Second look" },
+    );
 
     expect(release).toMatchObject({ tag: "v1.0.0", name: "One", body: "First cut" });
     expect(updated).toMatchObject({ tag: "v1.0.0", name: "One", body: "Second look" });
@@ -289,13 +324,24 @@ describe("a provider built on nothing but a forges factory", () => {
       comments: [{ path: "widget.ts", line: 4, body: "Wobbles here" }],
     });
 
-    const [thread] = (await provider.threads.list("acme", "widgets", 2)).items;
-    const reply = await provider.threads.reply("acme", "widgets", 2, thread!.id, {
-      body: "Steadied",
-    });
-    const resolved = await provider.threads.resolve("acme", "widgets", 2, thread!.id);
-    const open = await provider.threads.list("acme", "widgets", 2, { state: "unresolved" });
-    const reopened = await provider.threads.unresolve("acme", "widgets", 2, thread!.id);
+    const [thread] = (await provider.threads.list({ owner: "acme", repo: "widgets", number: 2 }))
+      .items;
+    const reply = await provider.threads.reply(
+      { owner: "acme", repo: "widgets", number: 2 },
+      { threadId: thread!.id, body: "Steadied" },
+    );
+    const resolved = await provider.threads.resolve(
+      { owner: "acme", repo: "widgets", number: 2 },
+      { threadId: thread!.id },
+    );
+    const open = await provider.threads.list(
+      { owner: "acme", repo: "widgets", number: 2 },
+      { state: "unresolved" },
+    );
+    const reopened = await provider.threads.unresolve(
+      { owner: "acme", repo: "widgets", number: 2 },
+      { threadId: thread!.id },
+    );
 
     expect(thread).toMatchObject({
       isResolved: false,
@@ -310,7 +356,9 @@ describe("a provider built on nothing but a forges factory", () => {
     expect(resolved.comments.map((comment) => comment.body)).toEqual(["Wobbles here", "Steadied"]);
     expect(open.items).toEqual([]);
     expect(reopened.isResolved).toBe(false);
-    await expect(provider.threads.get("acme", "widgets", 2, thread!.id)).resolves.toEqual(reopened);
+    await expect(
+      provider.threads.get({ owner: "acme", repo: "widgets", number: 2 }, { threadId: thread!.id }),
+    ).resolves.toEqual(reopened);
   });
 
   it("finds no review threads behind an issue number, whichever read fails first", async () => {
@@ -322,14 +370,19 @@ describe("a provider built on nothing but a forges factory", () => {
       }),
     });
 
-    await expect(provider.threads.list("acme", "widgets", 1)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      provider.threads.list({ owner: "acme", repo: "widgets", number: 1 }),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("finds no thread under an id the pull request doesn't have", async () => {
     const { provider } = seeded();
 
     await expect(
-      provider.threads.resolve("acme", "widgets", 2, "elsewhere"),
+      provider.threads.resolve(
+        { owner: "acme", repo: "widgets", number: 2 },
+        { threadId: "elsewhere" },
+      ),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

@@ -333,7 +333,8 @@ describe("GitLabProvider", () => {
 
       await gl.code.search("Provider", scope);
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, route, {
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: route,
         query: { scope: "blobs", search: "Provider", page: 1, per_page: 30 },
       });
     });
@@ -360,7 +361,8 @@ describe("GitLabProvider", () => {
         perPage: 1,
       });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/projects/278964/search", {
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/search",
         query: { scope: "blobs", search: "Provider", page: 2, per_page: 1 },
       });
       expect(mocks.client).toHaveBeenCalledTimes(1);
@@ -474,7 +476,7 @@ describe("GitLabProvider", () => {
         }
         throw new Error(`Unexpected URL: ${url}`);
       });
-      mocks.rawFetch.mockImplementation(async (_client: unknown, url: string) => {
+      mocks.rawFetch.mockImplementation(async (_client: unknown, { url }: { url: string }) => {
         if (url === "/projects/278964/templates/issues") {
           return { data: templateRows, headers: new Headers() };
         }
@@ -498,9 +500,10 @@ describe("GitLabProvider", () => {
     it("deduplicates effective names and distinguishes project-local from inherited templates", async () => {
       mockTemplateDiscovery();
 
-      const page = await gl.contributionTemplates.list("gitlab-org", "gitlab-foss", "issue", {
-        perPage: 1,
-      });
+      const page = await gl.contributionTemplates.list(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        { kind: "issue", perPage: 1 },
+      );
 
       expect(page).toEqual({
         items: [
@@ -528,10 +531,8 @@ describe("GitLabProvider", () => {
       mockTemplateDiscovery();
 
       const template = await gl.contributionTemplates.get(
-        "gitlab-org",
-        "gitlab-foss",
-        "issue",
-        "Security",
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        { kind: "issue", key: "Security" },
       );
 
       expect(template).toEqual({
@@ -549,7 +550,7 @@ describe("GitLabProvider", () => {
 
     it("rejects non-advancing effective-template pagination", async () => {
       mocks.client.mockResolvedValueOnce(glProject);
-      mocks.rawFetch.mockImplementation(async (_client: unknown, url: string) => {
+      mocks.rawFetch.mockImplementation(async (_client: unknown, { url }: { url: string }) => {
         if (url === "/projects/278964/templates/issues") {
           return {
             data: [{ key: "Bug", name: "Bug" }],
@@ -563,13 +564,16 @@ describe("GitLabProvider", () => {
       });
 
       await expect(
-        gl.contributionTemplates.list("gitlab-org", "gitlab-foss", "issue"),
+        gl.contributionTemplates.list(
+          { owner: "gitlab-org", repo: "gitlab-foss" },
+          { kind: "issue" },
+        ),
       ).rejects.toMatchObject({ status: 502 });
     });
 
     it("keeps provenance unknown when the local template tree is unavailable", async () => {
       mocks.client.mockResolvedValueOnce(glProject);
-      mocks.rawFetch.mockImplementation(async (_client: unknown, url: string) => {
+      mocks.rawFetch.mockImplementation(async (_client: unknown, { url }: { url: string }) => {
         if (url === "/projects/278964/templates/issues") {
           return {
             data: [{ key: "Security", name: "Security" }],
@@ -580,7 +584,10 @@ describe("GitLabProvider", () => {
         throw new Error(`Unexpected raw URL: ${url}`);
       });
 
-      const page = await gl.contributionTemplates.list("gitlab-org", "gitlab-foss", "issue");
+      const page = await gl.contributionTemplates.list(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        { kind: "issue" },
+      );
 
       expect(page.items[0]).toMatchObject({ scope: "unknown", inherited: true });
     });
@@ -589,14 +596,17 @@ describe("GitLabProvider", () => {
   describe("constructor", () => {
     async function openedWith(baseURL: string): Promise<unknown> {
       forge.repos.get.mockResolvedValueOnce({ raw: glProject });
-      await new GitLabProvider({ baseURL, token: "t" }).repos.get("gitlab-org", "gitlab-foss");
+      await new GitLabProvider({ baseURL, token: "t" }).repos.get({
+        owner: "gitlab-org",
+        repo: "gitlab-foss",
+      });
       return forgeOptions.at(-1);
     }
 
     it("opens forges on the first request with the token and API base", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: glProject });
 
-      await gl.repos.get("gitlab-org", "gitlab-foss");
+      await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
 
       expect(forgeOptions.at(-1)).toMatchObject({
         baseUrl: "https://gitlab.com/api/v4",
@@ -667,7 +677,7 @@ describe("GitLabProvider", () => {
     it("URL-encodes the project path", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: glProject });
 
-      await gl.repos.get("gitlab-org", "gitlab-foss");
+      await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
 
       expect(forge.repos.get).toHaveBeenCalledWith(
         repoRef(forge, { owner: "gitlab-org", name: "gitlab-foss" }),
@@ -677,7 +687,7 @@ describe("GitLabProvider", () => {
     it("preserves nested groups while encoding each project path segment", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: glProject });
 
-      await gl.repos.get("parent/child", "project name");
+      await gl.repos.get({ owner: "parent/child", repo: "project name" });
 
       expect(forge.repos.get).toHaveBeenCalledWith(
         repoRef(forge, { owner: "parent/child", name: "project name" }),
@@ -695,7 +705,7 @@ describe("GitLabProvider", () => {
         },
       });
 
-      const repo = await gl.repos.get("gitlab-org", "gitlab-foss");
+      const repo = await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
 
       expect(repo.fullName).toBe("gitlab-org/gitlab-foss");
       expect(repo.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss");
@@ -722,7 +732,7 @@ describe("GitLabProvider", () => {
         },
       });
 
-      const repo = await gl.repos.get("gitlab-org", "gitlab-foss");
+      const repo = await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
 
       expect(repo).toMatchObject({
         isFork: true,
@@ -743,7 +753,7 @@ describe("GitLabProvider", () => {
         },
       });
 
-      const repo = await gl.repos.get("gitlab-org", "gitlab-foss");
+      const repo = await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
 
       expect(repo.isFork).toBe(true);
       expect(repo.parent).toBeNull();
@@ -759,8 +769,8 @@ describe("GitLabProvider", () => {
         })
         .mockResolvedValueOnce({ raw: { ...glProject, permissions: undefined } });
 
-      const noMembership = await gl.repos.get("gitlab-org", "gitlab-foss");
-      const unavailable = await gl.repos.get("gitlab-org", "gitlab-foss");
+      const noMembership = await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
+      const unavailable = await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
 
       expect(noMembership.viewerPermission).toBe("none");
       expect(unavailable.viewerPermission).toBeNull();
@@ -785,7 +795,7 @@ describe("GitLabProvider", () => {
           },
         });
 
-        const repo = await gl.repos.get("gitlab-org", "gitlab-foss");
+        const repo = await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
 
         expect(repo.merge).toEqual({
           methods,
@@ -808,7 +818,7 @@ describe("GitLabProvider", () => {
         },
       });
 
-      const repo = await gl.repos.get("gitlab-org", "gitlab-foss");
+      const repo = await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
 
       expect(repo.merge).toMatchObject({ methods: [], defaultMethod: null });
     });
@@ -822,8 +832,8 @@ describe("GitLabProvider", () => {
         },
       });
 
-      const anonymous = await gl.repos.get("gitlab-org", "gitlab-foss");
-      const unknown = await gl.repos.get("gitlab-org", "gitlab-foss");
+      const anonymous = await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
+      const unknown = await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
 
       expect(anonymous.merge).toBeNull();
       expect(unknown.merge).toBeNull();
@@ -847,7 +857,7 @@ describe("GitLabProvider", () => {
           },
         });
 
-        const repo = await gl.repos.get("gitlab-org", "gitlab-foss");
+        const repo = await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
 
         expect(repo.viewerPermission).toBe(expected);
       }
@@ -865,8 +875,8 @@ describe("GitLabProvider", () => {
         },
       });
 
-      await gl.repos.get("gitlab-org", "gitlab-foss");
-      const repository = await gl.repos.get("gitlab-org", "gitlab-foss");
+      await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
+      const repository = await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
 
       expect(repository.viewerPermission).toBe("write");
       expect(forge.repos.get).toHaveBeenCalledTimes(2);
@@ -875,12 +885,12 @@ describe("GitLabProvider", () => {
 
     it("uses owner when present, falls back to namespace", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: glProjectWithOwner });
-      const withOwner = await gl.repos.get("user1", "my-project");
+      const withOwner = await gl.repos.get({ owner: "user1", repo: "my-project" });
       expect(withOwner.owner.login).toBe("user1");
       expect(withOwner.owner.avatarUrl).toBe("https://gitlab.com/uploads/-/user/avatar/user1.png");
 
       forge.repos.get.mockResolvedValueOnce({ raw: glProject });
-      const withNamespace = await gl.repos.get("gitlab-org", "gitlab-foss");
+      const withNamespace = await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
       expect(withNamespace.owner.login).toBe("gitlab-org");
     });
 
@@ -896,7 +906,7 @@ describe("GitLabProvider", () => {
         },
       });
 
-      const repo = await gl.repos.get("gitlab-org", "gitlab-foss");
+      const repo = await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
 
       expect(repo.owner.avatarUrl).toBe(
         "https://gitlab.example.com/uploads/-/system/group/avatar/9970/logo.png",
@@ -936,13 +946,12 @@ describe("GitLabProvider", () => {
         headers: glHeaders({ nextPage: "2", total: "157" }),
       });
 
-      const result = await gl.repos.listTags("gitlab-org", "cli", { perPage: 1 });
+      const result = await gl.repos.listTags({ owner: "gitlab-org", repo: "cli" }, { perPage: 1 });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/projects/278964/repository/tags",
-        { query: { order_by: "version", sort: "desc", page: 1, per_page: 1 } },
-      );
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/repository/tags",
+        query: { order_by: "version", sort: "desc", page: 1, per_page: 1 },
+      });
       expect(result).toEqual({
         items: [{ name: "v1.121.0", sha: "4d447cc6c19858928884626d802c8f7b7c5f799e" }],
         totalCount: 157,
@@ -979,7 +988,7 @@ describe("GitLabProvider", () => {
       });
       mocks.client.mockRejectedValueOnce(makeFetchError(404, "404 Commit Not Found"));
 
-      const result = await gl.repos.listTags("linux-kernel", "stable");
+      const result = await gl.repos.listTags({ owner: "linux-kernel", repo: "stable" });
 
       expect(mocks.client).toHaveBeenCalledWith(
         "/projects/28181/repository/commits/5dc01c595e6c6ec9ccda4f6f69c131c0dd945f8c",
@@ -992,7 +1001,7 @@ describe("GitLabProvider", () => {
       const { created_at: _created, ...undated } = glTag;
       mocks.rawFetch.mockResolvedValueOnce({ data: [undated], headers: glHeaders() });
 
-      const result = await gl.repos.listTags("gitlab-org", "cli");
+      const result = await gl.repos.listTags({ owner: "gitlab-org", repo: "cli" });
 
       expect(mocks.client).toHaveBeenCalledTimes(1);
       expect(result.items).toEqual([{ name: "v1.121.0", sha: glTag.commit.id }]);
@@ -1016,7 +1025,7 @@ describe("GitLabProvider", () => {
         return { id: glTag.commit.id };
       });
 
-      const result = await gl.repos.listTags("gitlab-org", "cli");
+      const result = await gl.repos.listTags({ owner: "gitlab-org", repo: "cli" });
 
       expect(result.items).toHaveLength(12);
       expect(peak).toBe(5);
@@ -1030,7 +1039,9 @@ describe("GitLabProvider", () => {
       });
       mocks.client.mockRejectedValueOnce(makeFetchError(503));
 
-      await expect(gl.repos.listTags("gitlab-org", "cli")).rejects.toMatchObject({ status: 503 });
+      await expect(gl.repos.listTags({ owner: "gitlab-org", repo: "cli" })).rejects.toMatchObject({
+        status: 503,
+      });
     });
 
     it("keeps an undated annotated tag on the commit its target peels to", async () => {
@@ -1041,7 +1052,7 @@ describe("GitLabProvider", () => {
       });
       mocks.client.mockResolvedValueOnce({ id: glTag.commit.id });
 
-      const result = await gl.repos.listTags("gitlab-org", "cli");
+      const result = await gl.repos.listTags({ owner: "gitlab-org", repo: "cli" });
 
       expect(mocks.client).toHaveBeenCalledWith(
         "/projects/278964/repository/commits/e3abc8e79c419e580779d26c1f72ab463095ac70",
@@ -1063,7 +1074,10 @@ describe("GitLabProvider", () => {
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce(glFile("# GLab\n"));
 
-      const file = await gl.repos.readContents("gitlab-org", "cli", "docs/README.md");
+      const file = await gl.repos.readContents(
+        { owner: "gitlab-org", repo: "cli" },
+        { path: "docs/README.md" },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith(
         "/projects/278964/repository/files/docs%2FREADME.md",
@@ -1081,10 +1095,10 @@ describe("GitLabProvider", () => {
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce(glFile("abcdef"));
 
-      const first = await gl.repos.readContents("gitlab-org", "cli", "a", {
-        ref: "v1.0",
-        maxChars: 4,
-      });
+      const first = await gl.repos.readContents(
+        { owner: "gitlab-org", repo: "cli" },
+        { path: "a", ref: "v1.0", maxChars: 4 },
+      );
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/repository/files/a", {
         query: { ref: "v1.0" },
       });
@@ -1092,7 +1106,10 @@ describe("GitLabProvider", () => {
 
       mocks.client.mockResolvedValueOnce(glFile("abcdef"));
       await expect(
-        gl.repos.readContents("gitlab-org", "cli", "a", { ref: "v1.0", offset: 4 }),
+        gl.repos.readContents(
+          { owner: "gitlab-org", repo: "cli" },
+          { path: "a", ref: "v1.0", offset: 4 },
+        ),
       ).rejects.toMatchObject({ status: 409 });
     });
 
@@ -1100,7 +1117,9 @@ describe("GitLabProvider", () => {
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce({ ...glFile("x"), size: 2_000_000 });
 
-      await expect(gl.repos.readContents("gitlab-org", "cli", "big.bin")).rejects.toMatchObject({
+      await expect(
+        gl.repos.readContents({ owner: "gitlab-org", repo: "cli" }, { path: "big.bin" }),
+      ).rejects.toMatchObject({
         status: 413,
       });
     });
@@ -1121,17 +1140,16 @@ describe("GitLabProvider", () => {
           headers: glHeaders({ nextPage: "" }),
         });
 
-      const listing = await gl.repos.readContents("gitlab-org", "cli", "docs");
+      const listing = await gl.repos.readContents(
+        { owner: "gitlab-org", repo: "cli" },
+        { path: "docs" },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/repository/commits/HEAD");
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
-        1,
-        mocks.client,
-        "/projects/278964/repository/tree",
-        {
-          query: { ref: sha, path: "docs", page: 1, per_page: 100 },
-        },
-      );
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, {
+        url: "/projects/278964/repository/tree",
+        query: { ref: sha, path: "docs", page: 1, per_page: 100 },
+      });
       expect(listing).toEqual({
         type: "directory",
         path: "docs",
@@ -1155,11 +1173,12 @@ describe("GitLabProvider", () => {
         });
       }
 
-      const root = await gl.repos.readContents("gitlab-org", "cli", "");
+      const root = await gl.repos.readContents({ owner: "gitlab-org", repo: "cli" }, { path: "" });
 
       expect(mocks.rawFetch).toHaveBeenCalledTimes(10);
       expect(root).toMatchObject({ type: "directory", path: "", entriesComplete: false });
-      expect(mocks.rawFetch.mock.calls[0]?.[2]).toEqual({
+      expect(mocks.rawFetch.mock.calls[0]?.[1]).toEqual({
+        url: "/projects/278964/repository/tree",
         query: { ref: sha, path: undefined, page: 1, per_page: 100 },
       });
     });
@@ -1169,9 +1188,9 @@ describe("GitLabProvider", () => {
       mocks.client.mockRejectedValueOnce(makeFetchError(404)).mockResolvedValueOnce({ id: sha });
       mocks.rawFetch.mockResolvedValueOnce({ data: [], headers: glHeaders() });
 
-      await expect(gl.repos.readContents("gitlab-org", "cli", "nope")).rejects.toBeInstanceOf(
-        NotFoundError,
-      );
+      await expect(
+        gl.repos.readContents({ owner: "gitlab-org", repo: "cli" }, { path: "nope" }),
+      ).rejects.toBeInstanceOf(NotFoundError);
     });
   });
 
@@ -1195,7 +1214,10 @@ describe("GitLabProvider", () => {
         }),
       );
 
-      const result = await gl.ciRuns.listJobs("gitlab-org", "gitlab-foss", "9001", { perPage: 10 });
+      const result = await gl.ciRuns.listJobs(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        { runId: "9001", perPage: 10 },
+      );
 
       expect(forge.ci.jobs).toHaveBeenCalledWith(
         {
@@ -1231,7 +1253,10 @@ describe("GitLabProvider", () => {
       ].join("\n");
       mocks.client.mockResolvedValueOnce(glJob).mockResolvedValueOnce(new Response(trace).body);
 
-      const log = await gl.ciRuns.readJobLog("gitlab-org", "gitlab-foss", "16667043902");
+      const log = await gl.ciRuns.readJobLog(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        { jobId: "16667043902" },
+      );
 
       expect(mocks.client).toHaveBeenNthCalledWith(2, "/projects/278964/jobs/16667043902");
       expect(mocks.client).toHaveBeenNthCalledWith(3, "/projects/278964/jobs/16667043902/trace", {
@@ -1249,7 +1274,10 @@ describe("GitLabProvider", () => {
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce({ ...glJob, status: "skipped", started_at: null });
 
-      const log = await gl.ciRuns.readJobLog("gitlab-org", "gitlab-foss", "16667043902");
+      const log = await gl.ciRuns.readJobLog(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        { jobId: "16667043902" },
+      );
 
       expect(mocks.client).toHaveBeenCalledTimes(2);
       expect(log).toMatchObject({ started: false, conclusion: "skipped", content: "" });
@@ -1270,10 +1298,13 @@ describe("GitLabProvider", () => {
         }),
       );
 
-      const result = await gl.ciRuns.list("gitlab-org", "gitlab-foss", {
-        branch: "main",
-        perPage: 10,
-      });
+      const result = await gl.ciRuns.list(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        {
+          branch: "main",
+          perPage: 10,
+        },
+      );
 
       expect(forge.ci.runs).toHaveBeenCalledWith(
         repoRef(forge, { owner: "gitlab-org", name: "gitlab-foss" }),
@@ -1325,13 +1356,16 @@ describe("GitLabProvider", () => {
         }),
       );
 
-      const result = await gl.commits.list("gitlab-org", "gitlab-foss", {
-        ref: "main",
-        path: "src/provider.ts",
-        since: "2026-08-01T00:00:00Z",
-        until: "2026-08-29T23:59:59Z",
-        perPage: 10,
-      });
+      const result = await gl.commits.list(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        {
+          ref: "main",
+          path: "src/provider.ts",
+          since: "2026-08-01T00:00:00Z",
+          until: "2026-08-29T23:59:59Z",
+          perPage: 10,
+        },
+      );
 
       expect(forge.commits.list).toHaveBeenCalledWith(
         repoRef(forge, { owner: "gitlab-org", name: "gitlab-foss" }),
@@ -1407,9 +1441,10 @@ describe("GitLabProvider", () => {
         web_url: "https://gitlab.com/gitlab-org/cli/-/compare/v1.50.0...v1.51.0",
       });
 
-      const result = await gl.commits.compare("gitlab-org", "cli", "v1.50.0", "release/v1.51", {
-        perPage: 2,
-      });
+      const result = await gl.commits.compare(
+        { owner: "gitlab-org", repo: "cli" },
+        { base: "v1.50.0", head: "release/v1.51", perPage: 2 },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/repository/compare", {
         query: { from: "v1.50.0", to: "release/v1.51" },
@@ -1441,16 +1476,21 @@ describe("GitLabProvider", () => {
         diffs: [],
       });
 
-      const result = await gl.commits.compare("gitlab-org", "cli", "v1.50.0", "v1.51.0", {
-        cursor: cursorFor("commits.compare", {
-          page: 2,
-          subject: ["gitlab-org", "cli", "v1.50.0", "v1.51.0"],
-          filters: {
-            perPage: 2,
-          },
-        }),
-        perPage: 2,
-      });
+      const result = await gl.commits.compare(
+        { owner: "gitlab-org", repo: "cli" },
+        {
+          base: "v1.50.0",
+          head: "v1.51.0",
+          cursor: cursorFor("commits.compare", {
+            page: 2,
+            subject: ["gitlab-org", "cli", "v1.50.0", "v1.51.0"],
+            filters: {
+              perPage: 2,
+            },
+          }),
+          perPage: 2,
+        },
+      );
 
       expect(result.items.map(({ sha }) => sha)).toEqual(["c"]);
       expect(result).toMatchObject({ files: null });
@@ -1505,21 +1545,17 @@ describe("GitLabProvider", () => {
           headers: glHeaders(),
         });
 
-      const result = await gl.commits.get("gitlab-org", "gitlab-foss", sha);
+      const result = await gl.commits.get({ owner: "gitlab-org", repo: "gitlab-foss" }, { sha });
 
       expect(mocks.client).toHaveBeenNthCalledWith(2, `/projects/278964/repository/commits/${sha}`);
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
-        1,
-        mocks.client,
-        `/projects/278964/repository/commits/${sha}/diff`,
-        { query: { page: 1, per_page: 100 } },
-      );
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
-        2,
-        mocks.client,
-        `/projects/278964/repository/commits/${sha}/diff`,
-        { query: { page: 2, per_page: 100 } },
-      );
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, {
+        url: `/projects/278964/repository/commits/${sha}/diff`,
+        query: { page: 1, per_page: 100 },
+      });
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, {
+        url: `/projects/278964/repository/commits/${sha}/diff`,
+        query: { page: 2, per_page: 100 },
+      });
       expect(result).toEqual({
         sha,
         message: "fix: preserve commit metadata",
@@ -1556,7 +1592,7 @@ describe("GitLabProvider", () => {
         headers: glHeaders({ nextPage }),
       });
 
-      await gl.commits.get("gitlab-org", "gitlab-foss", sha);
+      await gl.commits.get({ owner: "gitlab-org", repo: "gitlab-foss" }, { sha });
 
       expect(mocks.rawFetch).toHaveBeenCalledTimes(1);
     });
@@ -1608,7 +1644,10 @@ describe("GitLabProvider", () => {
         headers: glHeaders(),
       });
 
-      const result = await gl.commits.readPatch("gitlab-org", "gitlab-foss", ref);
+      const result = await gl.commits.readPatch(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        { sha: ref },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith(
         "/projects/278964/repository/commits/feature%2Fmy-change",
@@ -1627,7 +1666,7 @@ describe("GitLabProvider", () => {
     it("lists issues through forges by project path", async () => {
       forge.threads.list.mockReturnValueOnce(listing({ items: raws(glIssue) }));
 
-      const result = await gl.issues.list("gitlab-org", "gitlab-foss");
+      const result = await gl.issues.list({ owner: "gitlab-org", repo: "gitlab-foss" });
 
       expect(forge.threads.list).toHaveBeenCalledWith(
         repoRef(forge, { owner: "gitlab-org", name: "gitlab-foss" }),
@@ -1645,7 +1684,7 @@ describe("GitLabProvider", () => {
     it("passes a named state on for forges to spell the GitLab way", async () => {
       forge.threads.list.mockReturnValueOnce(listing({ items: [] }));
 
-      await gl.issues.list("o", "r", { state: "open" });
+      await gl.issues.list({ owner: "o", repo: "r" }, { state: "open" });
 
       expect(forge.threads.list).toHaveBeenCalledWith(repoRef(forge, { owner: "o", name: "r" }), {
         perPage: 30,
@@ -1663,20 +1702,25 @@ describe("GitLabProvider", () => {
         headers: glHeaders({ nextPage: "3", total: "7" }),
       });
 
-      const result = await gl.issues.search("gitlab-org", "gitlab-foss", "runner timeout", {
-        state: "open",
-        cursor: cursorFor("issues.search", {
-          page: 2,
-          subject: ["gitlab-org", "gitlab-foss", "runner timeout"],
-          filters: {
-            state: "open",
-            perPage: 1,
-          },
-        }),
-        perPage: 1,
-      });
+      const result = await gl.issues.search(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        {
+          query: "runner timeout",
+          state: "open",
+          cursor: cursorFor("issues.search", {
+            page: 2,
+            subject: ["gitlab-org", "gitlab-foss", "runner timeout"],
+            filters: {
+              state: "open",
+              perPage: 1,
+            },
+          }),
+          perPage: 1,
+        },
+      );
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/projects/278964/issues", {
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/issues",
         query: {
           search: "runner timeout",
           state: "opened",
@@ -1705,7 +1749,7 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glIssue);
 
-      const issue = await gl.issues.get("gitlab-org", "gitlab-foss", 15);
+      const issue = await gl.issues.get({ owner: "gitlab-org", repo: "gitlab-foss", number: 15 });
 
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/issues/15");
       expect(issue.number).toBe(15);
@@ -1719,8 +1763,8 @@ describe("GitLabProvider", () => {
       mocks.cachedFetch.mockResolvedValue(glIssue);
       mocks.client.mockResolvedValueOnce(glIssue).mockResolvedValueOnce(closed);
 
-      await gl.issues.get("gitlab-org", "gitlab-foss", 15);
-      const issue = await gl.issues.get("gitlab-org", "gitlab-foss", 15);
+      await gl.issues.get({ owner: "gitlab-org", repo: "gitlab-foss", number: 15 });
+      const issue = await gl.issues.get({ owner: "gitlab-org", repo: "gitlab-foss", number: 15 });
 
       expect(issue.state).toBe("closed");
       expect(issue.updatedAt).toBe("2024-03-03T11:00:00Z");
@@ -1736,12 +1780,15 @@ describe("GitLabProvider", () => {
         .mockResolvedValueOnce([{ ...glUserSearchHit, id: 9, username: "triager" }])
         .mockResolvedValueOnce(glIssue);
 
-      const issue = await gl.issues.create("gitlab-org", "gitlab-foss", {
-        title: "New issue",
-        body: "Description here",
-        labels: ["bug", "urgent"],
-        assignees: ["triager"],
-      });
+      const issue = await gl.issues.create(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        {
+          title: "New issue",
+          body: "Description here",
+          labels: ["bug", "urgent"],
+          assignees: ["triager"],
+        },
+      );
 
       expect(mocks.client).toHaveBeenNthCalledWith(2, "/users", {
         query: { username: "triager" },
@@ -1768,9 +1815,14 @@ describe("GitLabProvider", () => {
         headers: glHeaders({ nextPage: "2", total: "5" }),
       });
 
-      const result = await gl.issues.listComments("gitlab-org", "gitlab-foss", 7);
+      const result = await gl.issues.listComments({
+        owner: "gitlab-org",
+        repo: "gitlab-foss",
+        number: 7,
+      });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/projects/278964/issues/7/notes", {
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/issues/7/notes",
         query: {
           page: 1,
           per_page: 30,
@@ -1805,7 +1857,10 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glNote);
 
-      const comment = await gl.issues.getComment("gitlab-org", "gitlab-foss", 7, "2201");
+      const comment = await gl.issues.getComment(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 7 },
+        { commentId: "2201" },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/issues/7/notes/2201");
       expect(comment).toMatchObject({ id: "2201", body: "Hit the same thing on 16.9" });
@@ -1817,8 +1872,14 @@ describe("GitLabProvider", () => {
       mocks.cachedFetch.mockResolvedValue(glNote);
       mocks.client.mockResolvedValueOnce(glNote).mockResolvedValueOnce(edited);
 
-      await gl.issues.getComment("gitlab-org", "gitlab-foss", 7, "2201");
-      const comment = await gl.issues.getComment("gitlab-org", "gitlab-foss", 7, "2201");
+      await gl.issues.getComment(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 7 },
+        { commentId: "2201" },
+      );
+      const comment = await gl.issues.getComment(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 7 },
+        { commentId: "2201" },
+      );
 
       expect(comment.body).toBe("Edited after the first read");
       expect(mocks.client).toHaveBeenCalledTimes(3);
@@ -1829,9 +1890,12 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glSystemNote);
 
-      await expect(gl.issues.getComment("gitlab-org", "gitlab-foss", 7, "2301")).rejects.toThrow(
-        NotFoundError,
-      );
+      await expect(
+        gl.issues.getComment(
+          { owner: "gitlab-org", repo: "gitlab-foss", number: 7 },
+          { commentId: "2301" },
+        ),
+      ).rejects.toThrow(NotFoundError);
     });
   });
 
@@ -1840,9 +1904,12 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glNote);
 
-      const comment = await gl.issues.createComment("gitlab-org", "gitlab-foss", 7, {
-        body: "Hit the same thing on 16.9",
-      });
+      const comment = await gl.issues.createComment(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 7 },
+        {
+          body: "Hit the same thing on 16.9",
+        },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/issues/7/notes", {
         method: "POST",
@@ -1855,7 +1922,10 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glNote);
 
-      await gl.pullRequests.createComment("gitlab-org", "gitlab-foss", 7, { body: "Rebased" });
+      await gl.pullRequests.createComment(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 7 },
+        { body: "Rebased" },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/merge_requests/7/notes", {
         method: "POST",
@@ -1874,12 +1944,11 @@ describe("GitLabProvider", () => {
         headers: glHeaders(),
       });
 
-      const result = await gl.pullRequests.list("gitlab-org", "gitlab-foss");
+      const result = await gl.pullRequests.list({ owner: "gitlab-org", repo: "gitlab-foss" });
 
       expect(mocks.rawFetch).toHaveBeenCalledWith(
         mocks.client,
-        "/projects/278964/merge_requests",
-        expect.any(Object),
+        expect.objectContaining({ url: "/projects/278964/merge_requests" }),
       );
       expect(result.items[0]).toMatchObject({
         id: "7001",
@@ -1928,22 +1997,24 @@ describe("GitLabProvider", () => {
         headers: glHeaders({ nextPage: "3", total: "4" }),
       });
 
-      const result = await gl.pullRequests.listFiles("gitlab-org", "gitlab-foss", 33, {
-        cursor: cursorFor("pullRequests.listFiles", {
-          page: 2,
-          subject: ["gitlab-org", "gitlab-foss", 33],
-          filters: {
-            perPage: 2,
-          },
-        }),
-        perPage: 2,
-      });
-
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/projects/278964/merge_requests/33/diffs",
-        { query: { page: 2, per_page: 2 } },
+      const result = await gl.pullRequests.listFiles(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        {
+          cursor: cursorFor("pullRequests.listFiles", {
+            page: 2,
+            subject: ["gitlab-org", "gitlab-foss", 33],
+            filters: {
+              perPage: 2,
+            },
+          }),
+          perPage: 2,
+        },
       );
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/merge_requests/33/diffs",
+        query: { page: 2, per_page: 2 },
+      });
       expect(result).toEqual({
         items: [
           {
@@ -1981,22 +2052,27 @@ describe("GitLabProvider", () => {
       });
       mocks.client.mockResolvedValueOnce({ ...glPipeline, name: "verify" });
 
-      const result = await gl.commits.listChecks("gitlab-org", "gitlab-foss", "feat/checks", {
-        cursor: cursorFor("commits.listChecks", {
-          page: 2,
-          subject: ["gitlab-org", "gitlab-foss", "feat/checks"],
-          filters: {
-            perPage: 1,
-          },
-        }),
-        perPage: 1,
-      });
+      const result = await gl.commits.listChecks(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        {
+          ref: "feat/checks",
+          cursor: cursorFor("commits.listChecks", {
+            page: 2,
+            subject: ["gitlab-org", "gitlab-foss", "feat/checks"],
+            filters: {
+              perPage: 1,
+            },
+          }),
+          perPage: 1,
+        },
+      );
 
       expect(mocks.client).toHaveBeenNthCalledWith(
         2,
         "/projects/278964/repository/commits/feat%2Fchecks",
       );
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/projects/278964/pipelines", {
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/pipelines",
         query: { sha: glPipeline.sha, page: 2, per_page: 1 },
       });
       expect(result).toEqual({
@@ -2023,7 +2099,7 @@ describe("GitLabProvider", () => {
       mocks.client.mockRejectedValueOnce(makeFetchError(404));
 
       await expect(
-        gl.commits.listChecks("gitlab-org", "gitlab-foss", "missing"),
+        gl.commits.listChecks({ owner: "gitlab-org", repo: "gitlab-foss" }, { ref: "missing" }),
       ).rejects.toBeInstanceOf(NotFoundError);
       expect(mocks.rawFetch).not.toHaveBeenCalled();
     });
@@ -2042,15 +2118,17 @@ describe("GitLabProvider", () => {
       });
       mocks.client.mockResolvedValueOnce({ ...glPipeline, name: "verify", status: "running" });
 
-      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33, {
-        perPage: 2,
-      });
-
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/projects/278964/merge_requests/33/pipelines",
-        { query: { page: 1, per_page: 100 } },
+      const result = await gl.pullRequests.listChecks(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        {
+          perPage: 2,
+        },
       );
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/merge_requests/33/pipelines",
+        query: { page: 1, per_page: 100 },
+      });
       expect(mocks.client).toHaveBeenCalledWith("/projects/278964/pipelines/9001");
       expect(mocks.client).not.toHaveBeenCalledWith("/projects/278964/pipelines/8999");
       expect(result).toEqual({
@@ -2083,22 +2161,21 @@ describe("GitLabProvider", () => {
         });
       mocks.client.mockResolvedValueOnce({ ...glPipeline, name: null });
 
-      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33, {
-        perPage: 1,
-      });
+      const result = await gl.pullRequests.listChecks(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        {
+          perPage: 1,
+        },
+      );
 
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
-        1,
-        mocks.client,
-        "/projects/278964/merge_requests/33/pipelines",
-        { query: { page: 1, per_page: 100 } },
-      );
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
-        2,
-        mocks.client,
-        "/projects/278964/merge_requests/33/pipelines",
-        { query: { page: 2, per_page: 100 } },
-      );
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, {
+        url: "/projects/278964/merge_requests/33/pipelines",
+        query: { page: 1, per_page: 100 },
+      });
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, {
+        url: "/projects/278964/merge_requests/33/pipelines",
+        query: { page: 2, per_page: 100 },
+      });
       expect(result).toMatchObject({
         items: [expect.objectContaining({ id: "9001" })],
         nextCursor: cursorFor("pullRequests.listChecks", {
@@ -2120,7 +2197,11 @@ describe("GitLabProvider", () => {
       });
       mocks.client.mockResolvedValueOnce({ ...glPipeline, name: null, web_url: null });
 
-      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+      const result = await gl.pullRequests.listChecks({
+        owner: "gitlab-org",
+        repo: "gitlab-foss",
+        number: 33,
+      });
 
       expect(result.items[0]).toMatchObject({ name: "pipeline", url: "" });
     });
@@ -2135,7 +2216,11 @@ describe("GitLabProvider", () => {
         name: "Ruby 3.3.12 MR (community contribution)",
       });
 
-      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+      const result = await gl.pullRequests.listChecks({
+        owner: "gitlab-org",
+        repo: "gitlab-foss",
+        number: 33,
+      });
 
       expect(mocks.client).toHaveBeenCalledWith("/projects/41372369/pipelines/9001");
       expect(result.items).toEqual([
@@ -2168,7 +2253,11 @@ describe("GitLabProvider", () => {
         .mockRejectedValueOnce(makeFetchError(404))
         .mockRejectedValueOnce(makeFetchError(429));
 
-      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+      const result = await gl.pullRequests.listChecks({
+        owner: "gitlab-org",
+        repo: "gitlab-foss",
+        number: 33,
+      });
 
       expect(result.items.map((check) => [check.id, check.name])).toEqual([
         ["9001", "Ruby 3.3.12 MR"],
@@ -2190,7 +2279,11 @@ describe("GitLabProvider", () => {
         });
         mocks.client.mockResolvedValueOnce({ ...glPipeline, name });
 
-        const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+        const result = await gl.pullRequests.listChecks({
+          owner: "gitlab-org",
+          repo: "gitlab-foss",
+          number: 33,
+        });
 
         expect(result.items[0]?.name).toBe(name);
       }
@@ -2216,7 +2309,11 @@ describe("GitLabProvider", () => {
         return { ...glPipeline, name: null };
       });
 
-      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+      const result = await gl.pullRequests.listChecks({
+        owner: "gitlab-org",
+        repo: "gitlab-foss",
+        number: 33,
+      });
 
       expect(mocks.client).toHaveBeenCalledTimes(9);
       expect(peak).toBe(5);
@@ -2240,7 +2337,11 @@ describe("GitLabProvider", () => {
         .mockResolvedValueOnce({ ...headPipeline, name: "Ruby 3.3.12 MR" })
         .mockResolvedValueOnce({ ...glPipeline, name: null });
 
-      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+      const result = await gl.pullRequests.listChecks({
+        owner: "gitlab-org",
+        repo: "gitlab-foss",
+        number: 33,
+      });
 
       expect(mocks.client).toHaveBeenCalledWith("/projects/278964/pipelines/9003");
       expect(mocks.client).toHaveBeenCalledWith("/projects/278964/pipelines/9001");
@@ -2265,7 +2366,11 @@ describe("GitLabProvider", () => {
         headers: glHeaders(),
       });
 
-      const result = await gl.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+      const result = await gl.pullRequests.listChecks({
+        owner: "gitlab-org",
+        repo: "gitlab-foss",
+        number: 33,
+      });
 
       expect(result.items.map((check) => check.id)).toEqual(["9001"]);
     });
@@ -2279,7 +2384,11 @@ describe("GitLabProvider", () => {
       mocks.client.mockResolvedValueOnce(mergeRequestHead(glMergeRequest.sha));
       mocks.rawFetch.mockResolvedValueOnce({ data: [], headers: glHeaders() });
 
-      await selfHosted.pullRequests.listChecks("gitlab-org", "gitlab-foss", 33);
+      await selfHosted.pullRequests.listChecks({
+        owner: "gitlab-org",
+        repo: "gitlab-foss",
+        number: 33,
+      });
 
       expect(mocks.client).toHaveBeenCalledWith("https://gitlab.example.com/gitlab/api/graphql", {
         method: "POST",
@@ -2298,7 +2407,7 @@ describe("GitLabProvider", () => {
       });
 
       const error = await gl.pullRequests
-        .listChecks("gitlab-org", "gitlab-foss", 33)
+        .listChecks({ owner: "gitlab-org", repo: "gitlab-foss", number: 33 })
         .catch((caught: unknown) => caught);
 
       expect(error).toBeInstanceOf(NotFoundError);
@@ -2314,7 +2423,7 @@ describe("GitLabProvider", () => {
       });
 
       const error = await gl.pullRequests
-        .listChecks("gitlab-org", "gitlab-foss", 33)
+        .listChecks({ owner: "gitlab-org", repo: "gitlab-foss", number: 33 })
         .catch((caught: unknown) => caught);
 
       expect(error).toBeInstanceOf(ForgesError);
@@ -2348,7 +2457,11 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(approvals).mockResolvedValueOnce(reviewers);
 
-      const result = await gl.pullRequests.listReviews("gitlab-org", "gitlab-foss", 33);
+      const result = await gl.pullRequests.listReviews({
+        owner: "gitlab-org",
+        repo: "gitlab-foss",
+        number: 33,
+      });
 
       expect(mocks.client).toHaveBeenCalledWith("/projects/278964/merge_requests/33/approvals");
       expect(mocks.client).toHaveBeenCalledWith("/projects/278964/merge_requests/33/reviewers");
@@ -2408,16 +2521,19 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(approvals).mockResolvedValueOnce(reviewers);
 
-      const result = await gl.pullRequests.listReviews("gitlab-org", "gitlab-foss", 33, {
-        cursor: cursorFor("pullRequests.listReviews", {
-          page: 2,
-          subject: ["gitlab-org", "gitlab-foss", 33],
-          filters: {
-            perPage: 3,
-          },
-        }),
-        perPage: 3,
-      });
+      const result = await gl.pullRequests.listReviews(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        {
+          cursor: cursorFor("pullRequests.listReviews", {
+            page: 2,
+            subject: ["gitlab-org", "gitlab-foss", 33],
+            filters: {
+              perPage: 3,
+            },
+          }),
+          perPage: 3,
+        },
+      );
 
       expect(result).toMatchObject({
         items: [
@@ -2432,9 +2548,12 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(approvals).mockResolvedValueOnce(reviewers);
 
-      const result = await gl.pullRequests.listReviews("gitlab-org", "gitlab-foss", 33, {
-        perPage: 3,
-      });
+      const result = await gl.pullRequests.listReviews(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        {
+          perPage: 3,
+        },
+      );
 
       expect(result.items.map((review) => review.id)).toEqual(["1758950", "21826781", "2293"]);
       expect(result).toMatchObject({
@@ -2488,7 +2607,7 @@ describe("GitLabProvider", () => {
         }),
       );
 
-      const result = await gl.releases.list("gitlab-org", "cli", { perPage: 2 });
+      const result = await gl.releases.list({ owner: "gitlab-org", repo: "cli" }, { perPage: 2 });
 
       expect(forge.releases.list).toHaveBeenCalledWith(
         repoRef(forge, { owner: "gitlab-org", name: "cli" }),
@@ -2508,7 +2627,10 @@ describe("GitLabProvider", () => {
         raw: { ...glRelease, tag_name: "release/1.118", author: null, _links: null },
       });
 
-      const result = await gl.releases.get("gitlab-org", "cli", "release/1.118");
+      const result = await gl.releases.get(
+        { owner: "gitlab-org", repo: "cli" },
+        { tag: "release/1.118" },
+      );
 
       expect(forge.releases.getByTag).toHaveBeenCalledWith(
         repoRef(forge, { owner: "gitlab-org", name: "cli" }),
@@ -2526,12 +2648,15 @@ describe("GitLabProvider", () => {
     it("creates a release with description and ref", async () => {
       forge.releases.create.mockResolvedValueOnce({ raw: glRelease });
 
-      await gl.releases.create("gitlab-org", "cli", {
-        tag: "v1.118.0",
-        name: "v1.118.0",
-        body: "## Changelog",
-        ref: "main",
-      });
+      await gl.releases.create(
+        { owner: "gitlab-org", repo: "cli" },
+        {
+          tag: "v1.118.0",
+          name: "v1.118.0",
+          body: "## Changelog",
+          ref: "main",
+        },
+      );
 
       expect(forge.releases.create).toHaveBeenCalledWith(
         repoRef(forge, { owner: "gitlab-org", name: "cli" }),
@@ -2556,9 +2681,10 @@ describe("GitLabProvider", () => {
         raw: { ...glRelease, tag_name: "release/1.118", description: "edited" },
       });
 
-      const result = await gl.releases.update("gitlab-org", "cli", "release/1.118", {
-        body: "edited",
-      });
+      const result = await gl.releases.update(
+        { owner: "gitlab-org", repo: "cli" },
+        { tag: "release/1.118", body: "edited" },
+      );
 
       expect(forge.releases.getByTag).not.toHaveBeenCalled();
       expect(forge.releases.update).toHaveBeenCalledWith(ref, { body: "edited" });
@@ -2575,12 +2701,14 @@ describe("GitLabProvider", () => {
       ["prerelease", { prerelease: true }],
     ])("refuses a %s release instead of publishing it", async (_flag, flags) => {
       const error = await gl.releases
-        .create("gitlab-org", "cli", { tag: "v2.0.0", ...flags })
+        .create({ owner: "gitlab-org", repo: "cli" }, { tag: "v2.0.0", ...flags })
         .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(ForgesError);
       expect((error as ForgesError).status).toBe(501);
-      await expect(gl.releases.update("gitlab-org", "cli", "v2.0.0", flags)).rejects.toMatchObject({
+      await expect(
+        gl.releases.update({ owner: "gitlab-org", repo: "cli" }, { tag: "v2.0.0", ...flags }),
+      ).rejects.toMatchObject({
         status: 501,
       });
       expect(mocks.client).not.toHaveBeenCalled();
@@ -2589,10 +2717,10 @@ describe("GitLabProvider", () => {
     it("answers an update that only clears absent flags with a read", async () => {
       forge.releases.getByTag.mockResolvedValueOnce({ raw: glRelease });
 
-      const result = await gl.releases.update("gitlab-org", "cli", "v1.118.0", {
-        draft: false,
-        prerelease: false,
-      });
+      const result = await gl.releases.update(
+        { owner: "gitlab-org", repo: "cli" },
+        { tag: "v1.118.0", draft: false, prerelease: false },
+      );
 
       expect(forge.releases.update).not.toHaveBeenCalled();
       expect(result).toEqual(release);
@@ -2607,17 +2735,22 @@ describe("GitLabProvider", () => {
         headers: glHeaders({ nextPage: "3", total: "7" }),
       });
 
-      const result = await gl.pullRequests.search("gitlab-org", "gitlab-foss", "runner timeout", {
-        state: "closed",
-        cursor: cursorFor("pullRequests.search", {
-          page: 2,
-          subject: ["gitlab-org", "gitlab-foss", "runner timeout"],
-          filters: { state: "closed", perPage: 1 },
-        }),
-        perPage: 1,
-      });
+      const result = await gl.pullRequests.search(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        {
+          query: "runner timeout",
+          state: "closed",
+          cursor: cursorFor("pullRequests.search", {
+            page: 2,
+            subject: ["gitlab-org", "gitlab-foss", "runner timeout"],
+            filters: { state: "closed", perPage: 1 },
+          }),
+          perPage: 1,
+        },
+      );
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/projects/278964/merge_requests", {
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/merge_requests",
         query: {
           search: "runner timeout",
           state: "closed",
@@ -2675,7 +2808,10 @@ describe("GitLabProvider", () => {
           headers: glHeaders({ nextPage: "" }),
         });
 
-      const pr = await gl.pullRequests.get("o", "r", 34, { closingIssues: true });
+      const pr = await gl.pullRequests.get(
+        { owner: "o", repo: "r", number: 34 },
+        { closingIssues: true },
+      );
 
       expect(pr.number).toBe(34);
       expect(pr.closingIssues).toEqual([
@@ -2692,18 +2828,14 @@ describe("GitLabProvider", () => {
           url: "https://gitlab.com/gitlab-org/gitlab-foss/-/issues/13",
         },
       ]);
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
-        1,
-        mocks.client,
-        "/projects/278964/merge_requests/34/closes_issues",
-        { query: { page: 1, per_page: 100 } },
-      );
-      expect(mocks.rawFetch).toHaveBeenNthCalledWith(
-        2,
-        mocks.client,
-        "/projects/278964/merge_requests/34/closes_issues",
-        { query: { page: 2, per_page: 100 } },
-      );
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(1, mocks.client, {
+        url: "/projects/278964/merge_requests/34/closes_issues",
+        query: { page: 1, per_page: 100 },
+      });
+      expect(mocks.rawFetch).toHaveBeenNthCalledWith(2, mocks.client, {
+        url: "/projects/278964/merge_requests/34/closes_issues",
+        query: { page: 2, per_page: 100 },
+      });
       // One project lookup serves both concurrent reads.
       expect(mocks.client).toHaveBeenCalledTimes(2);
     });
@@ -2712,7 +2844,7 @@ describe("GitLabProvider", () => {
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce(glMergedMR);
 
-      const pr = await gl.pullRequests.get("o", "r", 34);
+      const pr = await gl.pullRequests.get({ owner: "o", repo: "r", number: 34 });
 
       expect(pr).not.toHaveProperty("closingIssues");
       expect(mocks.rawFetch).not.toHaveBeenCalled();
@@ -2722,7 +2854,7 @@ describe("GitLabProvider", () => {
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce(glMergedMR);
 
-      const pr = await gl.pullRequests.get("o", "r", 34);
+      const pr = await gl.pullRequests.get({ owner: "o", repo: "r", number: 34 });
 
       expect(pr.merged).toBe(true);
       expect(pr.state).toBe("closed");
@@ -2742,7 +2874,7 @@ describe("GitLabProvider", () => {
         merged_by: { username: "maintainer" },
       });
 
-      const pr = await gl.pullRequests.get("o", "r", 34);
+      const pr = await gl.pullRequests.get({ owner: "o", repo: "r", number: 34 });
 
       expect(pr.mergedAt).toBe("2024-03-12T10:00:00Z");
       expect(pr.mergedBy).toEqual({ login: "maintainer" });
@@ -2752,7 +2884,7 @@ describe("GitLabProvider", () => {
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce({ ...glMergedMR, merged_by: { username: "maintainer" } });
 
-      const pr = await gl.pullRequests.get("o", "r", 34);
+      const pr = await gl.pullRequests.get({ owner: "o", repo: "r", number: 34 });
 
       expect(pr.mergedBy).toEqual({ login: "maintainer" });
     });
@@ -2765,7 +2897,7 @@ describe("GitLabProvider", () => {
         merge_user: { username: "maintainer" },
       });
 
-      const pr = await gl.pullRequests.get("o", "r", 33);
+      const pr = await gl.pullRequests.get({ owner: "o", repo: "r", number: 33 });
 
       expect(pr.mergedAt).toBeNull();
       expect(pr.mergedBy).toBeNull();
@@ -2782,7 +2914,7 @@ describe("GitLabProvider", () => {
         detailed_merge_status: detailedMergeStatus,
       });
 
-      const pr = await gl.pullRequests.get("o", "r", 33);
+      const pr = await gl.pullRequests.get({ owner: "o", repo: "r", number: 33 });
 
       expect(pr.mergeable).toBe(mergeable);
       expect(pr.mergeStatus).toBe(detailedMergeStatus);
@@ -2795,8 +2927,12 @@ describe("GitLabProvider", () => {
         .mockResolvedValueOnce(glMergeRequest)
         .mockResolvedValueOnce({ ...glMergedMR, iid: 33 });
 
-      await gl.pullRequests.get("gitlab-org", "gitlab-foss", 33);
-      const pr = await gl.pullRequests.get("gitlab-org", "gitlab-foss", 33);
+      await gl.pullRequests.get({ owner: "gitlab-org", repo: "gitlab-foss", number: 33 });
+      const pr = await gl.pullRequests.get({
+        owner: "gitlab-org",
+        repo: "gitlab-foss",
+        number: 33,
+      });
 
       expect(pr.merged).toBe(true);
       expect(pr.mergeCommitSha).toBe("cd9bbd8a3e8af73864ca3c7704211309fae8ce0e");
@@ -2813,13 +2949,16 @@ describe("GitLabProvider", () => {
         .mockResolvedValueOnce([{ ...glUserSearchHit, id: 10, username: "reviewer" }])
         .mockResolvedValueOnce(glMergeRequest);
 
-      const pr = await gl.pullRequests.create("gitlab-org", "gitlab-foss", {
-        title: "New MR",
-        body: "Description",
-        sourceBranch: "feature/x",
-        targetBranch: "main",
-        assignees: ["maintainer", "reviewer"],
-      });
+      const pr = await gl.pullRequests.create(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        {
+          title: "New MR",
+          body: "Description",
+          sourceBranch: "feature/x",
+          targetBranch: "main",
+          assignees: ["maintainer", "reviewer"],
+        },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/merge_requests", {
         method: "POST",
@@ -2839,13 +2978,16 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce({ ...glMergeRequest, draft: true });
 
-      await gl.pullRequests.create("gitlab-org", "gitlab-foss", {
-        title: "WIP: Draft MR",
-        body: "Work in progress",
-        sourceBranch: "draft/feature",
-        targetBranch: "main",
-        draft: true,
-      });
+      await gl.pullRequests.create(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        {
+          title: "WIP: Draft MR",
+          body: "Work in progress",
+          sourceBranch: "draft/feature",
+          targetBranch: "main",
+          draft: true,
+        },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/merge_requests", {
         method: "POST",
@@ -2863,12 +3005,15 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glMergeRequest);
 
-      await gl.pullRequests.create("gitlab-org", "gitlab-foss", {
-        title: "Regular MR",
-        body: "No draft flag",
-        sourceBranch: "feature/y",
-        targetBranch: "main",
-      });
+      await gl.pullRequests.create(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        {
+          title: "Regular MR",
+          body: "No draft flag",
+          sourceBranch: "feature/y",
+          targetBranch: "main",
+        },
+      );
 
       const calls = mocks.client.mock.calls;
       const callArgs = calls[calls.length - 1];
@@ -2884,12 +3029,15 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce({ ...glIssue, state: "closed", labels: ["bug", "docs"] });
 
-      const issue = await gl.issues.update("gitlab-org", "gitlab-foss", 15, {
-        title: "Login page broken on Safari",
-        state: "closed",
-        addLabels: ["docs"],
-        removeLabels: ["critical"],
-      });
+      const issue = await gl.issues.update(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 15 },
+        {
+          title: "Login page broken on Safari",
+          state: "closed",
+          addLabels: ["docs"],
+          removeLabels: ["critical"],
+        },
+      );
 
       expect(mocks.client).toHaveBeenCalledTimes(2);
       expect(mocks.client).toHaveBeenLastCalledWith(issuePath, {
@@ -2912,7 +3060,10 @@ describe("GitLabProvider", () => {
         .mockResolvedValueOnce([{ ...glUserSearchHit, id: 10, username: "reviewer" }])
         .mockResolvedValueOnce(glIssue);
 
-      await gl.issues.update("gitlab-org", "gitlab-foss", 15, { addAssignees: ["reviewer"] });
+      await gl.issues.update(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 15 },
+        { addAssignees: ["reviewer"] },
+      );
 
       expect(mocks.client).toHaveBeenNthCalledWith(2, issuePath);
       expect(mocks.client).toHaveBeenLastCalledWith(issuePath, {
@@ -2927,7 +3078,10 @@ describe("GitLabProvider", () => {
         .mockResolvedValueOnce({ ...glIssue, assignees: [{ id: 9, username: "triager" }] })
         .mockResolvedValueOnce({ ...glIssue, assignees: [] });
 
-      await gl.issues.update("gitlab-org", "gitlab-foss", 15, { removeAssignees: ["triager"] });
+      await gl.issues.update(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 15 },
+        { removeAssignees: ["triager"] },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith(issuePath, {
         method: "PUT",
@@ -2937,7 +3091,10 @@ describe("GitLabProvider", () => {
 
     it("refuses a comma in a label name before any request", async () => {
       await expect(
-        gl.issues.update("gitlab-org", "gitlab-foss", 15, { addLabels: ["a,b"] }),
+        gl.issues.update(
+          { owner: "gitlab-org", repo: "gitlab-foss", number: 15 },
+          { addLabels: ["a,b"] },
+        ),
       ).rejects.toMatchObject({ status: 400, message: expect.stringContaining("a,b") });
       expect(mocks.client).not.toHaveBeenCalled();
     });
@@ -2955,12 +3112,15 @@ describe("GitLabProvider", () => {
         merge_commit_sha: "f00d",
       });
 
-      const pr = await gl.pullRequests.merge("gitlab-org", "gitlab-foss", 33, {
-        method: "squash",
-        headSha: "abc123",
-        title: "feat: dark mode",
-        message: "Closes #42.",
-      });
+      const pr = await gl.pullRequests.merge(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        {
+          method: "squash",
+          headSha: "abc123",
+          title: "feat: dark mode",
+          message: "Closes #42.",
+        },
+      );
 
       expect(JSON.parse(JSON.stringify(mocks.client.mock.calls[1]))).toEqual([
         merge,
@@ -2981,10 +3141,13 @@ describe("GitLabProvider", () => {
     it("turns squash off for a merge commit and leaves it to the project when no method is given", async () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glMergeRequest);
-      await gl.pullRequests.merge("gitlab-org", "gitlab-foss", 33, {
-        method: "merge",
-        title: "Merge dark mode",
-      });
+      await gl.pullRequests.merge(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        {
+          method: "merge",
+          title: "Merge dark mode",
+        },
+      );
       expect(JSON.parse(JSON.stringify(mocks.client.mock.calls[1]?.[1]))).toEqual({
         method: "PUT",
         body: { squash: false, merge_commit_message: "Merge dark mode" },
@@ -2992,7 +3155,10 @@ describe("GitLabProvider", () => {
 
       mocks.client.mockReset();
       mocks.client.mockResolvedValueOnce(glMergeRequest);
-      await gl.pullRequests.merge("gitlab-org", "gitlab-foss", 33, { title: "Dark mode" });
+      await gl.pullRequests.merge(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        { title: "Dark mode" },
+      );
       // The project ID is cached, so the merge is the only request.
       expect(JSON.parse(JSON.stringify(mocks.client.mock.calls[0]?.[1]))).toEqual({
         method: "PUT",
@@ -3002,10 +3168,16 @@ describe("GitLabProvider", () => {
 
     it("refuses a rebase and a message without a title before any request", async () => {
       await expect(
-        gl.pullRequests.merge("gitlab-org", "gitlab-foss", 33, { method: "rebase" }),
+        gl.pullRequests.merge(
+          { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+          { method: "rebase" },
+        ),
       ).rejects.toMatchObject({ status: 501, platform: "gitlab" });
       await expect(
-        gl.pullRequests.merge("gitlab-org", "gitlab-foss", 33, { message: "Closes #42." }),
+        gl.pullRequests.merge(
+          { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+          { message: "Closes #42." },
+        ),
       ).rejects.toMatchObject({ status: 400, platform: "gitlab" });
       expect(mocks.client).not.toHaveBeenCalled();
     });
@@ -3015,7 +3187,10 @@ describe("GitLabProvider", () => {
       mocks.client.mockRejectedValueOnce(makeFetchError(405, "405 Method Not Allowed"));
 
       await expect(
-        gl.pullRequests.merge("gitlab-org", "gitlab-foss", 33, { method: "squash" }),
+        gl.pullRequests.merge(
+          { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+          { method: "squash" },
+        ),
       ).rejects.toThrow(/Method Not Allowed\. The pull request cannot be merged as it stands/);
     });
   });
@@ -3031,12 +3206,15 @@ describe("GitLabProvider", () => {
         labels: ["refactor", "docs"],
       });
 
-      const pr = await gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, {
-        body: "New description",
-        state: "closed",
-        addLabels: ["docs", "api"],
-        removeLabels: ["stale"],
-      });
+      const pr = await gl.pullRequests.update(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        {
+          body: "New description",
+          state: "closed",
+          addLabels: ["docs", "api"],
+          removeLabels: ["stale"],
+        },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith(mr, {
         method: "PUT",
@@ -3055,7 +3233,10 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glMergeRequest);
 
-      await gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, { removeLabels: ["."] });
+      await gl.pullRequests.update(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        { removeLabels: ["."] },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith(mr, {
         method: "PUT",
@@ -3065,10 +3246,13 @@ describe("GitLabProvider", () => {
 
     it("refuses a comma in a label name before any request, since GitLab would split it", async () => {
       await expect(
-        gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, {
-          title: "Renamed",
-          addLabels: ["frontend,backend"],
-        }),
+        gl.pullRequests.update(
+          { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+          {
+            title: "Renamed",
+            addLabels: ["frontend,backend"],
+          },
+        ),
       ).rejects.toMatchObject({
         status: 400,
         message: expect.stringContaining("frontend,backend"),
@@ -3080,7 +3264,10 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glMergeRequest);
 
-      await gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, { state: "open" });
+      await gl.pullRequests.update(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        { state: "open" },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith(mr, {
         method: "PUT",
@@ -3101,10 +3288,13 @@ describe("GitLabProvider", () => {
         .mockResolvedValueOnce([{ ...glUserSearchHit, id: 10, username: "reviewer" }])
         .mockResolvedValueOnce(glMergeRequest);
 
-      await gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, {
-        addAssignees: ["reviewer"],
-        removeAssignees: ["Former"],
-      });
+      await gl.pullRequests.update(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        {
+          addAssignees: ["reviewer"],
+          removeAssignees: ["Former"],
+        },
+      );
 
       expect(mocks.client).toHaveBeenNthCalledWith(2, mr);
       expect(mocks.client).toHaveBeenNthCalledWith(3, "/users", {
@@ -3124,9 +3314,12 @@ describe("GitLabProvider", () => {
         .mockResolvedValueOnce([{ ...glUserSearchHit, id: 10, username: "reviewer" }])
         .mockResolvedValueOnce(glMergeRequest);
 
-      await gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, {
-        addAssignees: ["reviewer"],
-      });
+      await gl.pullRequests.update(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        {
+          addAssignees: ["reviewer"],
+        },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith(mr, {
         method: "PUT",
@@ -3143,9 +3336,12 @@ describe("GitLabProvider", () => {
         })
         .mockResolvedValueOnce({ ...glMergeRequest, assignees: [] });
 
-      const pr = await gl.pullRequests.update("gitlab-org", "gitlab-foss", 33, {
-        removeAssignees: ["maintainer"],
-      });
+      const pr = await gl.pullRequests.update(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        {
+          removeAssignees: ["maintainer"],
+        },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith(mr, {
         method: "PUT",
@@ -3163,29 +3359,29 @@ describe("GitLabProvider", () => {
         headers: glHeaders(),
       });
 
-      const result = await gl.pullRequests.listComments("gitlab-org", "gitlab-foss", 8, {
-        cursor: cursorFor("pullRequests.listComments", {
-          page: 2,
-          subject: ["gitlab-org", "gitlab-foss", 8],
-          filters: {
-            perPage: 10,
-          },
-        }),
-        perPage: 10,
-      });
-
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/projects/278964/merge_requests/8/notes",
+      const result = await gl.pullRequests.listComments(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 8 },
         {
-          query: {
+          cursor: cursorFor("pullRequests.listComments", {
             page: 2,
-            per_page: 10,
-            order_by: "created_at",
-            sort: "asc",
-          },
+            subject: ["gitlab-org", "gitlab-foss", 8],
+            filters: {
+              perPage: 10,
+            },
+          }),
+          perPage: 10,
         },
       );
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/merge_requests/8/notes",
+        query: {
+          page: 2,
+          per_page: 10,
+          order_by: "created_at",
+          sort: "asc",
+        },
+      });
       expect(result.items.map((comment) => comment.id)).toEqual(["2201"]);
       expect(result.nextCursor).toBeUndefined();
     });
@@ -3196,7 +3392,10 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glNote);
 
-      const comment = await gl.pullRequests.getComment("gitlab-org", "gitlab-foss", 8, "2201");
+      const comment = await gl.pullRequests.getComment(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 8 },
+        { commentId: "2201" },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/merge_requests/8/notes/2201");
       expect(comment.id).toBe("2201");
@@ -3229,13 +3428,15 @@ describe("GitLabProvider", () => {
         headers: glHeaders({ nextPage: "2", total: "8" }),
       });
 
-      const result = await gl.issues.listReactions("gitlab-org", "gitlab", 1, { perPage: 6 });
-
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/projects/278964/issues/1/award_emoji",
-        { query: { page: 1, per_page: 6 } },
+      const result = await gl.issues.listReactions(
+        { owner: "gitlab-org", repo: "gitlab", number: 1 },
+        { perPage: 6 },
       );
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/issues/1/award_emoji",
+        query: { page: 1, per_page: 6 },
+      });
       expect(result.items.map((reaction) => reaction.content)).toEqual([
         "+1",
         "-1",
@@ -3265,19 +3466,21 @@ describe("GitLabProvider", () => {
       mockProjectResolve(278964);
       mocks.rawFetch.mockResolvedValueOnce({ data: [], headers: glHeaders({ nextPage: "" }) });
 
-      const result = await gl.pullRequests.listReactions("gitlab-org", "gitlab", 8, {
-        cursor: cursorFor("pullRequests.listReactions", {
-          page: 2,
-          subject: ["gitlab-org", "gitlab", 8],
-          filters: {},
-        }),
-      });
-
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/projects/278964/merge_requests/8/award_emoji",
-        { query: { page: 2, per_page: 30 } },
+      const result = await gl.pullRequests.listReactions(
+        { owner: "gitlab-org", repo: "gitlab", number: 8 },
+        {
+          cursor: cursorFor("pullRequests.listReactions", {
+            page: 2,
+            subject: ["gitlab-org", "gitlab", 8],
+            filters: {},
+          }),
+        },
       );
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/merge_requests/8/award_emoji",
+        query: { page: 2, per_page: 30 },
+      });
       expect(result).toMatchObject({ items: [] });
     });
 
@@ -3288,13 +3491,15 @@ describe("GitLabProvider", () => {
         headers: glHeaders(),
       });
 
-      await gl.pullRequests.listReactions("gitlab-org", "gitlab", 8, { commentId: "2201" });
-
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/projects/278964/merge_requests/8/notes/2201/award_emoji",
-        { query: { page: 1, per_page: 30 } },
+      await gl.pullRequests.listReactions(
+        { owner: "gitlab-org", repo: "gitlab", number: 8 },
+        { commentId: "2201" },
       );
+
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/merge_requests/8/notes/2201/award_emoji",
+        query: { page: 1, per_page: 30 },
+      });
     });
 
     it("keeps a name that only looks like an object key", async () => {
@@ -3304,7 +3509,11 @@ describe("GitLabProvider", () => {
         headers: glHeaders(),
       });
 
-      const result = await gl.issues.listReactions("gitlab-org", "gitlab", 1);
+      const result = await gl.issues.listReactions({
+        owner: "gitlab-org",
+        repo: "gitlab",
+        number: 1,
+      });
 
       expect(result.items[0]?.content).toBe("constructor");
     });
@@ -3314,7 +3523,10 @@ describe("GitLabProvider", () => {
       mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
 
       await expect(
-        gl.issues.listReactions("gitlab-org", "gitlab", 1, { commentId: "9" }),
+        gl.issues.listReactions(
+          { owner: "gitlab-org", repo: "gitlab", number: 1 },
+          { commentId: "9" },
+        ),
       ).rejects.toThrow(NotFoundError);
     });
   });
@@ -3400,7 +3612,7 @@ describe("GitLabProvider", () => {
           path_with_namespace: "org/repo",
         },
       });
-      const repo = await gl.repos.get("org", "repo");
+      const repo = await gl.repos.get({ owner: "org", repo: "repo" });
       expect(repo.fullName).toBe("org/repo");
     });
 
@@ -3411,7 +3623,7 @@ describe("GitLabProvider", () => {
           visibility: "private",
         },
       });
-      const priv = await gl.repos.get("o", "r");
+      const priv = await gl.repos.get({ owner: "o", repo: "r" });
       expect(priv.private).toBe(true);
 
       forge.repos.get.mockResolvedValueOnce({
@@ -3420,19 +3632,19 @@ describe("GitLabProvider", () => {
           visibility: "public",
         },
       });
-      const pub = await gl.repos.get("o", "r");
+      const pub = await gl.repos.get({ owner: "o", repo: "r" });
       expect(pub.private).toBe(false);
     });
 
     it("maps web_url → url", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: glProject });
-      const repo = await gl.repos.get("o", "r");
+      const repo = await gl.repos.get({ owner: "o", repo: "r" });
       expect(repo.url).toBe("https://gitlab.com/gitlab-org/gitlab-foss");
     });
 
     it("maps http_url_to_repo → cloneUrl", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: glProject });
-      const repo = await gl.repos.get("o", "r");
+      const repo = await gl.repos.get({ owner: "o", repo: "r" });
       expect(repo.cloneUrl).toBe("https://gitlab.com/gitlab-org/gitlab-foss.git");
     });
 
@@ -3443,14 +3655,14 @@ describe("GitLabProvider", () => {
           default_branch: null,
         },
       });
-      const repo = await gl.repos.get("o", "r");
+      const repo = await gl.repos.get({ owner: "o", repo: "r" });
       expect(repo.defaultBranch).toBe("main");
     });
 
     it("maps iid → number", async () => {
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce({ ...glIssue, iid: 77 });
-      const issue = await gl.issues.get("o", "r", 77);
+      const issue = await gl.issues.get({ owner: "o", repo: "r", number: 77 });
       expect(issue.number).toBe(77);
     });
 
@@ -3460,7 +3672,7 @@ describe("GitLabProvider", () => {
         ...glIssue,
         description: "Detailed description",
       });
-      const issue = await gl.issues.get("o", "r", 1);
+      const issue = await gl.issues.get({ owner: "o", repo: "r", number: 1 });
       expect(issue.body).toBe("Detailed description");
     });
 
@@ -3470,7 +3682,7 @@ describe("GitLabProvider", () => {
         ...glIssue,
         description: null,
       });
-      const issue = await gl.issues.get("o", "r", 1);
+      const issue = await gl.issues.get({ owner: "o", repo: "r", number: 1 });
       expect(issue.body).toBe("");
     });
 
@@ -3480,7 +3692,7 @@ describe("GitLabProvider", () => {
         ...glIssue,
         author: { username: "gitlab-user" },
       });
-      const issue = await gl.issues.get("o", "r", 1);
+      const issue = await gl.issues.get({ owner: "o", repo: "r", number: 1 });
       expect(issue.author.login).toBe("gitlab-user");
     });
 
@@ -3491,7 +3703,7 @@ describe("GitLabProvider", () => {
         source_branch: "feat/x",
         target_branch: "develop",
       });
-      const pr = await gl.pullRequests.get("o", "r", 1);
+      const pr = await gl.pullRequests.get({ owner: "o", repo: "r", number: 1 });
       expect(pr.sourceBranch).toBe("feat/x");
       expect(pr.targetBranch).toBe("develop");
     });
@@ -3502,7 +3714,7 @@ describe("GitLabProvider", () => {
         ...glMergeRequest,
         merged_at: null,
       });
-      const notMerged = await gl.pullRequests.get("o", "r", 1);
+      const notMerged = await gl.pullRequests.get({ owner: "o", repo: "r", number: 1 });
       expect(notMerged.merged).toBe(false);
 
       // Project ID for 'o/r' is cached from first call — no extra resolve needed
@@ -3510,26 +3722,26 @@ describe("GitLabProvider", () => {
         ...glMergeRequest,
         merged_at: "2024-01-01T00:00:00Z",
       });
-      const merged = await gl.pullRequests.get("o", "r", 2);
+      const merged = await gl.pullRequests.get({ owner: "o", repo: "r", number: 2 });
       expect(merged.merged).toBe(true);
     });
 
     it("maps GitLab states to unified states", async () => {
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce({ ...glIssue, state: "opened" });
-      const opened = await gl.issues.get("o", "r", 1);
+      const opened = await gl.issues.get({ owner: "o", repo: "r", number: 1 });
       expect(opened.state).toBe("open");
 
       // Project ID for 'o/r' is cached from first call — no extra resolve needed
       mocks.client.mockResolvedValueOnce({ ...glIssue, state: "closed" });
-      const closed = await gl.issues.get("o", "r", 2);
+      const closed = await gl.issues.get({ owner: "o", repo: "r", number: 2 });
       expect(closed.state).toBe("closed");
     });
 
     it("maps merged MR state to closed", async () => {
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce({ ...glMergedMR, state: "merged" });
-      const merged = await gl.pullRequests.get("o", "r", 1);
+      const merged = await gl.pullRequests.get({ owner: "o", repo: "r", number: 1 });
       expect(merged.state).toBe("closed");
     });
 
@@ -3559,7 +3771,7 @@ describe("GitLabProvider", () => {
 
     it("converts numeric id to string", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: glProject });
-      const repo = await gl.repos.get("o", "r");
+      const repo = await gl.repos.get({ owner: "o", repo: "r" });
       expect(repo.id).toBe("278964");
     });
   });
@@ -3597,7 +3809,9 @@ describe("GitLabProvider", () => {
   describe("error handling", () => {
     it("throws NotFoundError on 404", async () => {
       forge.repos.get.mockRejectedValueOnce(makeFetchError(404));
-      await expect(gl.repos.get("x", "nonexistent")).rejects.toThrow(NotFoundError);
+      await expect(gl.repos.get({ owner: "x", repo: "nonexistent" })).rejects.toThrow(
+        NotFoundError,
+      );
     });
 
     it("throws AuthenticationError on 401", async () => {
@@ -3613,7 +3827,7 @@ describe("GitLabProvider", () => {
     it("sets platform to gitlab on errors", async () => {
       forge.repos.get.mockRejectedValueOnce(makeFetchError(500));
 
-      const error = await gl.repos.get("x", "y").catch((e: unknown) => e);
+      const error = await gl.repos.get({ owner: "x", repo: "y" }).catch((e: unknown) => e);
       expect(error).toBeInstanceOf(ForgesError);
       expect((error as ForgesError).platform).toBe("gitlab");
     });
@@ -3626,11 +3840,11 @@ describe("GitLabProvider", () => {
       // First call: resolveProjectId + getIssue
       mockProjectResolve(278964);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await gl.issues.get("gitlab-org", "gitlab-foss", 15);
+      await gl.issues.get({ owner: "gitlab-org", repo: "gitlab-foss", number: 15 });
 
       // Second call: uses cached project ID, only getIssue
       mocks.client.mockResolvedValueOnce(glIssue);
-      await gl.issues.get("gitlab-org", "gitlab-foss", 16);
+      await gl.issues.get({ owner: "gitlab-org", repo: "gitlab-foss", number: 16 });
 
       // resolveProjectId called only once: 1 (resolve) + 1 (get#15) + 1 (get#16) = 3
       expect(mocks.client).toHaveBeenCalledTimes(3);
@@ -3638,10 +3852,10 @@ describe("GitLabProvider", () => {
 
     it("getRepo also populates project ID cache", async () => {
       forge.repos.get.mockResolvedValueOnce({ raw: glProject });
-      await gl.repos.get("gitlab-org", "gitlab-foss");
+      await gl.repos.get({ owner: "gitlab-org", repo: "gitlab-foss" });
 
       mocks.client.mockResolvedValueOnce(glIssue);
-      await gl.issues.get("gitlab-org", "gitlab-foss", 15);
+      await gl.issues.get({ owner: "gitlab-org", repo: "gitlab-foss", number: 15 });
 
       // The issue read goes straight to the cached project id.
       expect(mocks.client).toHaveBeenCalledTimes(1);
@@ -3659,15 +3873,15 @@ describe("GitLabProvider", () => {
 
       mockProjectResolve(101);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get("group", "repo-one", 1);
+      await smallCacheProvider.issues.get({ owner: "group", repo: "repo-one", number: 1 });
 
       mockProjectResolve(202);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get("group", "repo-two", 1);
+      await smallCacheProvider.issues.get({ owner: "group", repo: "repo-two", number: 1 });
 
       mockProjectResolve(101);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get("group", "repo-one", 2);
+      await smallCacheProvider.issues.get({ owner: "group", repo: "repo-one", number: 2 });
 
       expect(mocks.client).toHaveBeenCalledTimes(6);
     });
@@ -3686,16 +3900,16 @@ describe("GitLabProvider", () => {
 
         mockProjectResolve(303);
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get("group", "repo-ttl", 1);
+        await shortTtlProvider.issues.get({ owner: "group", repo: "repo-ttl", number: 1 });
 
         vi.advanceTimersByTime(500);
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get("group", "repo-ttl", 2);
+        await shortTtlProvider.issues.get({ owner: "group", repo: "repo-ttl", number: 2 });
 
         vi.advanceTimersByTime(1001);
         mockProjectResolve(303);
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get("group", "repo-ttl", 3);
+        await shortTtlProvider.issues.get({ owner: "group", repo: "repo-ttl", number: 3 });
 
         expect(mocks.client).toHaveBeenCalledTimes(5);
       } finally {
@@ -3714,22 +3928,22 @@ describe("GitLabProvider", () => {
 
       mockProjectResolve(1);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get("g", "repo-a", 1);
+      await smallCacheProvider.issues.get({ owner: "g", repo: "repo-a", number: 1 });
 
       mockProjectResolve(2);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get("g", "repo-b", 1);
+      await smallCacheProvider.issues.get({ owner: "g", repo: "repo-b", number: 1 });
 
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get("g", "repo-a", 2);
+      await smallCacheProvider.issues.get({ owner: "g", repo: "repo-a", number: 2 });
 
       mockProjectResolve(3);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get("g", "repo-c", 1);
+      await smallCacheProvider.issues.get({ owner: "g", repo: "repo-c", number: 1 });
 
       mockProjectResolve(2);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await smallCacheProvider.issues.get("g", "repo-b", 2);
+      await smallCacheProvider.issues.get({ owner: "g", repo: "repo-b", number: 2 });
 
       expect(mocks.client).toHaveBeenCalledTimes(9);
     });
@@ -3749,26 +3963,26 @@ describe("GitLabProvider", () => {
 
         mockProjectResolve(1);
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get("g", "repo-a", 1);
+        await shortTtlProvider.issues.get({ owner: "g", repo: "repo-a", number: 1 });
 
         vi.advanceTimersByTime(900);
 
         mockProjectResolve(2);
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get("g", "repo-b", 1);
+        await shortTtlProvider.issues.get({ owner: "g", repo: "repo-b", number: 1 });
 
         vi.advanceTimersByTime(200);
 
         mockProjectResolve(3);
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get("g", "repo-c", 1);
+        await shortTtlProvider.issues.get({ owner: "g", repo: "repo-c", number: 1 });
 
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get("g", "repo-b", 2);
+        await shortTtlProvider.issues.get({ owner: "g", repo: "repo-b", number: 2 });
 
         mockProjectResolve(1);
         mocks.client.mockResolvedValueOnce(glIssue);
-        await shortTtlProvider.issues.get("g", "repo-a", 2);
+        await shortTtlProvider.issues.get({ owner: "g", repo: "repo-a", number: 2 });
 
         expect(mocks.client).toHaveBeenCalledTimes(9);
       } finally {
@@ -3788,14 +4002,14 @@ describe("GitLabProvider", () => {
 
       mockProjectResolve(111);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await providerWithInvalidConfig.issues.get("g", "repo-one", 1);
+      await providerWithInvalidConfig.issues.get({ owner: "g", repo: "repo-one", number: 1 });
 
       mockProjectResolve(222);
       mocks.client.mockResolvedValueOnce(glIssue);
-      await providerWithInvalidConfig.issues.get("g", "repo-two", 1);
+      await providerWithInvalidConfig.issues.get({ owner: "g", repo: "repo-two", number: 1 });
 
       mocks.client.mockResolvedValueOnce(glIssue);
-      await providerWithInvalidConfig.issues.get("g", "repo-one", 2);
+      await providerWithInvalidConfig.issues.get({ owner: "g", repo: "repo-one", number: 2 });
 
       expect(mocks.client).toHaveBeenCalledTimes(5);
     });
@@ -3809,13 +4023,16 @@ describe("GitLabProvider", () => {
         headers: glHeaders(),
       });
 
-      const result = await gl.threads.list("gitlab-org", "gitlab-foss", 33);
+      const result = await gl.threads.list({
+        owner: "gitlab-org",
+        repo: "gitlab-foss",
+        number: 33,
+      });
 
-      expect(mocks.rawFetch).toHaveBeenCalledWith(
-        mocks.client,
-        "/projects/278964/merge_requests/33/discussions",
-        { query: { page: 1, per_page: 50 } },
-      );
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/merge_requests/33/discussions",
+        query: { page: 1, per_page: 50 },
+      });
       expect(result.items).toHaveLength(1);
       expect(result.items[0]).toMatchObject({
         id: glDiscussion.id,
@@ -3840,10 +4057,13 @@ describe("GitLabProvider", () => {
           headers: glHeaders(),
         });
 
-      const result = await gl.threads.list("gitlab-org", "gitlab-foss", 33, {
-        state: "unresolved",
-        perPage: 1,
-      });
+      const result = await gl.threads.list(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        {
+          state: "unresolved",
+          perPage: 1,
+        },
+      );
 
       expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
       expect(result.items).toHaveLength(1);
@@ -3864,7 +4084,11 @@ describe("GitLabProvider", () => {
         };
       });
 
-      const result = await gl.threads.list("gitlab-org", "gitlab-foss", 33);
+      const result = await gl.threads.list({
+        owner: "gitlab-org",
+        repo: "gitlab-foss",
+        number: 33,
+      });
 
       expect(calls).toBe(1);
       expect(result.items).toEqual([]);
@@ -3888,10 +4112,13 @@ describe("GitLabProvider", () => {
           headers: glHeaders(),
         });
 
-      const result = await gl.threads.list("gitlab-org", "gitlab-foss", 33, {
-        state: "unresolved",
-        perPage: 1,
-      });
+      const result = await gl.threads.list(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        {
+          state: "unresolved",
+          perPage: 1,
+        },
+      );
 
       expect(mocks.rawFetch).toHaveBeenCalledTimes(2);
       expect(result.items.map((thread) => thread.id)).toEqual([glDiscussion.id]);
@@ -3910,9 +4137,10 @@ describe("GitLabProvider", () => {
       });
       mocks.invalidateCache.mockRejectedValueOnce(new Error("storage backend down"));
 
-      const comment = await gl.threads.reply("gitlab-org", "gitlab-foss", 33, glDiscussion.id, {
-        body: "Done.",
-      });
+      const comment = await gl.threads.reply(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        { threadId: glDiscussion.id, body: "Done." },
+      );
 
       expect(comment.id).toBe("2001");
     });
@@ -3921,12 +4149,14 @@ describe("GitLabProvider", () => {
       mockProjectResolve();
       mocks.client.mockResolvedValueOnce(glDiscussion);
 
-      const thread = await gl.threads.get("gitlab-org", "gitlab-foss", 33, glDiscussion.id);
-
-      expect(mocks.cachedFetch).toHaveBeenCalledWith(
-        mocks.client,
-        `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}`,
+      const thread = await gl.threads.get(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        { threadId: glDiscussion.id },
       );
+
+      expect(mocks.cachedFetch).toHaveBeenCalledWith(mocks.client, {
+        url: `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}`,
+      });
       expect(thread.comments[0]?.body).toBe("Please extract this helper");
     });
 
@@ -3940,18 +4170,18 @@ describe("GitLabProvider", () => {
         system: false,
       });
 
-      const comment = await gl.threads.reply("gitlab-org", "gitlab-foss", 33, glDiscussion.id, {
-        body: "Done.",
-      });
+      const comment = await gl.threads.reply(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        { threadId: glDiscussion.id, body: "Done." },
+      );
 
       expect(mocks.client).toHaveBeenLastCalledWith(
         `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}/notes`,
         { method: "POST", body: { body: "Done." } },
       );
-      expect(mocks.invalidateCache).toHaveBeenCalledWith(
-        mocks.client,
-        `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}`,
-      );
+      expect(mocks.invalidateCache).toHaveBeenCalledWith(mocks.client, {
+        url: `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}`,
+      });
       expect(comment.id).toBe("2001");
     });
 
@@ -3963,12 +4193,13 @@ describe("GitLabProvider", () => {
       });
       mocks.client.mockResolvedValueOnce(glDiscussion);
 
-      const resolved = await gl.threads.resolve("gitlab-org", "gitlab-foss", 33, glDiscussion.id);
+      const resolved = await gl.threads.resolve(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        { threadId: glDiscussion.id },
+      );
       const unresolved = await gl.threads.unresolve(
-        "gitlab-org",
-        "gitlab-foss",
-        33,
-        glDiscussion.id,
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 33 },
+        { threadId: glDiscussion.id },
       );
 
       expect(mocks.client).toHaveBeenCalledWith(

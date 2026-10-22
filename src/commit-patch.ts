@@ -14,7 +14,7 @@ export function assertCommitPatchOptions(
 ): TextWindow {
   const window = readTextWindow(options, { subject: "Commit patch", platform });
   if (options.path !== undefined && options.path.length === 0) {
-    throw new ForgesError("Commit patch path must not be empty", 400, platform);
+    throw new ForgesError("Commit patch path must not be empty", { status: 400, platform });
   }
   return window;
 }

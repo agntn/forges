@@ -44,7 +44,12 @@ describe.each([
       state: platform === "github" ? "DISMISSED" : "APPROVED",
       dismissed: true,
     });
-    expect(await provider.pullRequests.getReview("owner", "repo", 5, "123")).toEqual({
+    expect(
+      await provider.pullRequests.getReview(
+        { owner: "owner", repo: "repo", number: 5 },
+        { reviewId: "123" },
+      ),
+    ).toEqual({
       id: "123",
       state: "approved",
       body,
@@ -53,30 +58,44 @@ describe.each([
       submittedAt: rawReview.submitted_at,
       url: rawReview.html_url,
     });
-    expect((await provider.pullRequests.getReview("owner", "repo", 5, "123")).state).toBe(
-      "dismissed",
-    );
+    expect(
+      (
+        await provider.pullRequests.getReview(
+          { owner: "owner", repo: "repo", number: 5 },
+          { reviewId: "123" },
+        )
+      ).state,
+    ).toBe("dismissed");
     expect(mocks.client).toHaveBeenCalledTimes(2);
     expect(mocks.client).toHaveBeenCalledWith("/repos/owner/repo/pulls/5/reviews/123");
   });
 
   it("encodes each path segment", async () => {
     mocks.client.mockResolvedValue(rawReview);
-    await new Constructor({ token: "" }).pullRequests.getReview("owner", "repo", 5, "123?x=1");
+    await new Constructor({ token: "" }).pullRequests.getReview(
+      { owner: "owner", repo: "repo", number: 5 },
+      { reviewId: "123?x=1" },
+    );
     expect(mocks.client).toHaveBeenCalledWith("/repos/owner/repo/pulls/5/reviews/123%3Fx%3D1");
   });
 
   it("normalizes a missing review without returning an empty one", async () => {
     mocks.client.mockRejectedValue(missingReview());
     await expect(
-      new Constructor({ token: "" }).pullRequests.getReview("owner", "repo", 5, "123"),
+      new Constructor({ token: "" }).pullRequests.getReview(
+        { owner: "owner", repo: "repo", number: 5 },
+        { reviewId: "123" },
+      ),
     ).rejects.toMatchObject({ status: 404, platform });
   });
 
   it("rejects unanswered review requests instead of substituting a review", async () => {
     mocks.client.mockResolvedValue({ ...rawReview, state: "REQUEST_REVIEW" });
     await expect(
-      new Constructor({ token: "" }).pullRequests.getReview("owner", "repo", 5, "123"),
+      new Constructor({ token: "" }).pullRequests.getReview(
+        { owner: "owner", repo: "repo", number: 5 },
+        { reviewId: "123" },
+      ),
     ).rejects.toMatchObject({ status: 501, platform });
   });
 });
@@ -85,7 +104,12 @@ it("reports GitBucket's missing reviews route as unsupported", async () => {
   mocks.client.mockRejectedValue(missingReview());
   mocks.rawFetch.mockResolvedValue({ headers: new Headers() });
   const provider = new GitHubProvider({ token: "", baseURL: "https://gitbucket.example/api/v3" });
-  await expect(provider.pullRequests.getReview("owner", "repo", 5, "123")).rejects.toMatchObject({
+  await expect(
+    provider.pullRequests.getReview(
+      { owner: "owner", repo: "repo", number: 5 },
+      { reviewId: "123" },
+    ),
+  ).rejects.toMatchObject({
     status: 501,
     platform: "github",
   });
@@ -93,7 +117,10 @@ it("reports GitBucket's missing reviews route as unsupported", async () => {
 
 it("does not mistake a GitLab reviewer user id for a review id", async () => {
   await expect(
-    new GitLabProvider({ token: "" }).pullRequests.getReview("owner", "repo", 5, "123"),
+    new GitLabProvider({ token: "" }).pullRequests.getReview(
+      { owner: "owner", repo: "repo", number: 5 },
+      { reviewId: "123" },
+    ),
   ).rejects.toMatchObject({ status: 501, platform: "gitlab" });
   expect(mocks.client).not.toHaveBeenCalled();
 });

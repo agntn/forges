@@ -7,7 +7,8 @@ const emit = defineEmits<{ pause: [paused: boolean] }>();
 
 const key = computed(() => `${props.sample.platform}:${props.sample.owner}/${props.sample.repo}`);
 const call = computed(
-  () => `pullRequests.list("${props.sample.owner}", "${props.sample.repo}", { state: "open" })`,
+  () =>
+    `pullRequests.list({ owner: "${props.sample.owner}", repo: "${props.sample.repo}" }, { state: "open" })`,
 );
 const rows = computed(() => props.sample.pullRequests.items.slice(0, 4));
 const issues = computed(() => props.sample.issues.items.slice(0, 2));

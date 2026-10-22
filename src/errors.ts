@@ -20,6 +20,16 @@ export class FetchError<T = unknown> extends Error {
   }
 }
 
+/** Where a failure came from: its HTTP status, the platform and the error underneath. */
+export interface ForgesErrorOptions {
+  status?: number;
+  platform?: string;
+  originalError?: Error;
+}
+
+/** The options of an error class whose status is fixed. */
+export type FixedStatusErrorOptions = Omit<ForgesErrorOptions, "status">;
+
 /**
  * Base error class for forges operations
  */
@@ -28,11 +38,17 @@ export class ForgesError extends Error {
   platform?: string;
   originalError?: Error;
 
-  constructor(message: string, status?: number, platform?: string, originalError?: Error) {
+  /** A positional status or platform from plain JavaScript is refused, not left unset. */
+  constructor(message: string, options: ForgesErrorOptions = {}) {
     super(message);
-    this.status = status;
-    this.platform = platform;
-    this.originalError = originalError;
+    if (typeof options !== "object" || options === null) {
+      throw new TypeError(
+        `${new.target.name} takes { status, platform, originalError } as its second argument`,
+      );
+    }
+    this.status = options.status;
+    this.platform = options.platform;
+    this.originalError = options.originalError;
     this.name = this.constructor.name;
     Object.setPrototypeOf(this, ForgesError.prototype);
   }
@@ -42,8 +58,8 @@ export class ForgesError extends Error {
  * Thrown when a resource is not found (404)
  */
 export class NotFoundError extends ForgesError {
-  constructor(message: string, platform?: string, originalError?: Error) {
-    super(message, 404, platform, originalError);
+  constructor(message: string, options: FixedStatusErrorOptions = {}) {
+    super(message, withStatus(options, { status: 404, error: new.target.name }));
     Object.setPrototypeOf(this, NotFoundError.prototype);
   }
 }
@@ -52,8 +68,8 @@ export class NotFoundError extends ForgesError {
  * Thrown when authentication fails (401)
  */
 export class AuthenticationError extends ForgesError {
-  constructor(message: string, platform?: string, originalError?: Error) {
-    super(message, 401, platform, originalError);
+  constructor(message: string, options: FixedStatusErrorOptions = {}) {
+    super(message, withStatus(options, { status: 401, error: new.target.name }));
     Object.setPrototypeOf(this, AuthenticationError.prototype);
   }
 }
@@ -62,8 +78,8 @@ export class AuthenticationError extends ForgesError {
  * Thrown when the server understands the request but refuses to authorize it (403)
  */
 export class PermissionError extends ForgesError {
-  constructor(message: string, platform?: string, originalError?: Error) {
-    super(message, 403, platform, originalError);
+  constructor(message: string, options: FixedStatusErrorOptions = {}) {
+    super(message, withStatus(options, { status: 403, error: new.target.name }));
     Object.setPrototypeOf(this, PermissionError.prototype);
   }
 }
@@ -74,11 +90,30 @@ export class PermissionError extends ForgesError {
 export class RateLimitError extends ForgesError {
   retryAfter?: number;
 
-  constructor(message: string, retryAfter?: number, platform?: string, originalError?: Error) {
-    super(message, 429, platform, originalError);
-    this.retryAfter = retryAfter;
+  constructor(message: string, options: FixedStatusErrorOptions & { retryAfter?: number } = {}) {
+    super(
+      message,
+      withStatus(options, {
+        status: 429,
+        error: new.target.name,
+        fields: "retryAfter, platform, originalError",
+      }),
+    );
+    this.retryAfter = options.retryAfter;
     Object.setPrototypeOf(this, RateLimitError.prototype);
   }
+}
+
+/** A positional platform from plain JavaScript is refused instead of read as no platform. */
+function withStatus(
+  options: FixedStatusErrorOptions,
+  fixed: { status: number; error: string; fields?: string },
+): ForgesErrorOptions {
+  if (typeof options !== "object" || options === null) {
+    const fields = fixed.fields ?? "platform, originalError";
+    throw new TypeError(`${fixed.error} takes { ${fields} } as its second argument`);
+  }
+  return { platform: options.platform, originalError: options.originalError, status: fixed.status };
 }
 
 /**
@@ -104,7 +139,10 @@ function classifyError(error: unknown, platform?: string): ForgesError {
 
     switch (status) {
       case 401:
-        return new AuthenticationError(`Authentication failed: ${message}`, platform, error);
+        return new AuthenticationError(`Authentication failed: ${message}`, {
+          platform,
+          originalError: error,
+        });
       case 403: {
         if (
           error.response?.headers?.get("x-ratelimit-remaining") === "0" ||
@@ -112,33 +150,45 @@ function classifyError(error: unknown, platform?: string): ForgesError {
           /rate limit/i.test(message)
         ) {
           const retryAfter = retryAfterSeconds(error.response?.headers);
-          return new RateLimitError(`Rate limit exceeded: ${message}`, retryAfter, platform, error);
+          return new RateLimitError(`Rate limit exceeded: ${message}`, {
+            retryAfter,
+            platform,
+            originalError: error,
+          });
         }
-        return new PermissionError(`Permission denied: ${message}`, platform, error);
+        return new PermissionError(`Permission denied: ${message}`, {
+          platform,
+          originalError: error,
+        });
       }
       case 404:
-        return new NotFoundError(`Resource not found: ${message}`, platform, error);
+        return new NotFoundError(`Resource not found: ${message}`, {
+          platform,
+          originalError: error,
+        });
       case 429: {
         const retryAfter = retryAfterSeconds(error.response?.headers);
-        return new RateLimitError(`Rate limit exceeded: ${message}`, retryAfter, platform, error);
+        return new RateLimitError(`Rate limit exceeded: ${message}`, {
+          retryAfter,
+          platform,
+          originalError: error,
+        });
       }
       default:
-        return new ForgesError(message, status, platform, error);
+        return new ForgesError(message, { status, platform, originalError: error });
     }
   }
 
   // Generic Error
   if (error instanceof Error) {
-    return new ForgesError(error.message, undefined, platform, error);
+    return new ForgesError(error.message, { platform, originalError: error });
   }
 
   // Unknown error
-  return new ForgesError(
-    String(error),
-    undefined,
+  return new ForgesError(String(error), {
     platform,
-    error instanceof Error ? error : undefined,
-  );
+    originalError: error instanceof Error ? error : undefined,
+  });
 }
 
 /**

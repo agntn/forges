@@ -355,7 +355,7 @@ describe("forges MCP server", () => {
     });
 
     expect(response.isError).not.toBe(true);
-    expect(mocks.repos.get).toHaveBeenCalledWith("agntn", "forges");
+    expect(mocks.repos.get).toHaveBeenCalledWith({ owner: "agntn", repo: "forges" });
   });
 
   it("reports an ambiguous repository as a tool error the model can act on", async () => {
@@ -380,7 +380,7 @@ describe("forges MCP server", () => {
     });
 
     expect(mocks.createProvider).toHaveBeenCalledWith("github", { token: "test-token" });
-    expect(mocks.repos.get).toHaveBeenCalledWith("agntn", "forges");
+    expect(mocks.repos.get).toHaveBeenCalledWith({ owner: "agntn", repo: "forges" });
     expect(response.isError).not.toBe(true);
     expect(JSON.parse(text(response.content))).toEqual({
       platform: "github",
@@ -431,15 +431,13 @@ describe("forges MCP server", () => {
       },
     });
 
-    expect(mocks.contributionTemplates.list).toHaveBeenCalledWith("agntn", "forges", "issue", {
-      cursor: "page-1",
-      perPage: 10,
-    });
+    expect(mocks.contributionTemplates.list).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { kind: "issue", cursor: "page-1", perPage: 10 },
+    );
     expect(mocks.contributionTemplates.get).toHaveBeenCalledWith(
-      "agntn",
-      "forges",
-      "issue",
-      summary.key,
+      { owner: "agntn", repo: "forges" },
+      { kind: "issue", key: summary.key },
     );
     expect(text(listed.content)).not.toContain("body: []");
     expect(text(read.content)).toContain("body: []");
@@ -552,11 +550,14 @@ describe("forges MCP server", () => {
       },
     });
 
-    expect(mocks.ciRuns.list).toHaveBeenCalledWith("agntn", "forges", {
-      branch: "main",
-      cursor: "page-2",
-      perPage: 10,
-    });
+    expect(mocks.ciRuns.list).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      {
+        branch: "main",
+        cursor: "page-2",
+        perPage: 10,
+      },
+    );
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: runs });
   });
 
@@ -588,14 +589,14 @@ describe("forges MCP server", () => {
       arguments: { repo: "agntn/forges", jobId: "105912189006", offset: 20, maxChars: 1000 },
     });
 
-    expect(mocks.ciRuns.listJobs).toHaveBeenCalledWith("agntn", "forges", "35448775016", {
-      cursor: undefined,
-      perPage: 10,
-    });
-    expect(mocks.ciRuns.readJobLog).toHaveBeenCalledWith("agntn", "forges", "105912189006", {
-      offset: 20,
-      maxChars: 1000,
-    });
+    expect(mocks.ciRuns.listJobs).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { runId: "35448775016", cursor: undefined, perPage: 10 },
+    );
+    expect(mocks.ciRuns.readJobLog).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { jobId: "105912189006", offset: 20, maxChars: 1000 },
+    );
     expect(JSON.parse(text(listed.content))).toEqual({ platform: "github", result: jobs });
     expect(JSON.parse(text(read.content))).toEqual({ platform: "github", result: log });
   });
@@ -632,14 +633,17 @@ describe("forges MCP server", () => {
       },
     });
 
-    expect(mocks.commits.list).toHaveBeenCalledWith("agntn", "forges", {
-      ref: "main",
-      path: "src/provider.ts",
-      since: "2026-08-01T00:00:00Z",
-      until: "2026-08-29T23:59:59Z",
-      cursor: "page-2",
-      perPage: 10,
-    });
+    expect(mocks.commits.list).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      {
+        ref: "main",
+        path: "src/provider.ts",
+        since: "2026-08-01T00:00:00Z",
+        until: "2026-08-29T23:59:59Z",
+        cursor: "page-2",
+        perPage: 10,
+      },
+    );
     expect(JSON.parse(text(response.content))).toMatchObject({
       platform: "github",
       result: commits,
@@ -931,10 +935,11 @@ describe("forges MCP server", () => {
       ),
     );
 
-    expect(mocks.commits.compare).toHaveBeenNthCalledWith(1, "agntn", "forges", "v0.3.4", "main", {
-      cursor: undefined,
-      perPage: 1,
-    });
+    expect(mocks.commits.compare).toHaveBeenNthCalledWith(
+      1,
+      { owner: "agntn", repo: "forges" },
+      { base: "v0.3.4", head: "main", cursor: undefined, perPage: 1 },
+    );
     const { committer: _committer, ...compared } = comparison.items[0]!;
     expect(counts.result).toEqual({
       items: [
@@ -980,7 +985,10 @@ describe("forges MCP server", () => {
       },
     });
 
-    expect(mocks.commits.get).toHaveBeenCalledWith("agntn", "forges", commit.sha);
+    expect(mocks.commits.get).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { sha: commit.sha },
+    );
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: commit });
   });
 
@@ -1004,11 +1012,10 @@ describe("forges MCP server", () => {
       arguments: { repo: "agntn/forges", path: "README.md", ref: "v0.3.3", maxChars: 1000 },
     });
 
-    expect(mocks.repos.readContents).toHaveBeenCalledWith("agntn", "forges", "README.md", {
-      ref: "v0.3.3",
-      offset: undefined,
-      maxChars: 1000,
-    });
+    expect(mocks.repos.readContents).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { path: "README.md", ref: "v0.3.3", offset: undefined, maxChars: 1000 },
+    );
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: contents });
   });
 
@@ -1039,11 +1046,10 @@ describe("forges MCP server", () => {
       },
     });
 
-    expect(mocks.commits.readPatch).toHaveBeenCalledWith("agntn", "forges", patch.sha, {
-      path: patch.path,
-      offset: 20,
-      maxChars: 1000,
-    });
+    expect(mocks.commits.readPatch).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { sha: patch.sha, path: patch.path, offset: 20, maxChars: 1000 },
+    );
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: patch });
   });
 
@@ -1074,10 +1080,13 @@ describe("forges MCP server", () => {
       },
     });
 
-    expect(mocks.pullRequests.listFiles).toHaveBeenCalledWith("agntn", "forges", 53, {
-      cursor: "page-2",
-      perPage: 10,
-    });
+    expect(mocks.pullRequests.listFiles).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 53 },
+      {
+        cursor: "page-2",
+        perPage: 10,
+      },
+    );
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: files });
   });
 
@@ -1108,10 +1117,10 @@ describe("forges MCP server", () => {
       },
     });
 
-    expect(mocks.commits.listChecks).toHaveBeenCalledWith("agntn", "forges", "feat/commit-checks", {
-      cursor: undefined,
-      perPage: 10,
-    });
+    expect(mocks.commits.listChecks).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { ref: "feat/commit-checks", cursor: undefined, perPage: 10 },
+    );
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: checks });
   });
 
@@ -1143,10 +1152,13 @@ describe("forges MCP server", () => {
       },
     });
 
-    expect(mocks.pullRequests.listChecks).toHaveBeenCalledWith("agntn", "forges", 53, {
-      cursor: "page-2",
-      perPage: 10,
-    });
+    expect(mocks.pullRequests.listChecks).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 53 },
+      {
+        cursor: "page-2",
+        perPage: 10,
+      },
+    );
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: checks });
   });
 
@@ -1177,10 +1189,13 @@ describe("forges MCP server", () => {
       },
     });
 
-    expect(mocks.pullRequests.listChecks).toHaveBeenCalledWith("agntn", "forges", 53, {
-      cursor: undefined,
-      perPage: undefined,
-    });
+    expect(mocks.pullRequests.listChecks).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 53 },
+      {
+        cursor: undefined,
+        perPage: undefined,
+      },
+    );
     const payload = JSON.parse(text(response.content));
     expect(payload.result.items).toEqual(concluded.items);
     expect(payload.result.wait).toMatchObject({ settled: true, polls: 1, pending: [] });
@@ -1197,7 +1212,11 @@ describe("forges MCP server", () => {
       arguments: { repo: "agntn/forges", number: 53, waitSeconds: 30 },
     });
 
-    expect(mocks.pullRequests.get).toHaveBeenCalledWith("agntn", "forges", 53);
+    expect(mocks.pullRequests.get).toHaveBeenCalledWith({
+      owner: "agntn",
+      repo: "forges",
+      number: 53,
+    });
     const payload = JSON.parse(text(response.content));
     expect(payload.result.wait).toMatchObject({ settled: true, polls: 1, noChecks: "quiet" });
   });
@@ -1265,10 +1284,13 @@ describe("forges MCP server", () => {
       arguments: { platform: "github", owner: "agntn", repo: "forges", number: 107, perPage: 5 },
     });
 
-    expect(mocks.pullRequests.listReviews).toHaveBeenCalledWith("agntn", "forges", 107, {
-      cursor: undefined,
-      perPage: 5,
-    });
+    expect(mocks.pullRequests.listReviews).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 107 },
+      {
+        cursor: undefined,
+        perPage: 5,
+      },
+    );
     const parsed = JSON.parse(text(response.content));
     expect(parsed.result.items[0]).toEqual({
       ...review,
@@ -1287,7 +1309,10 @@ describe("forges MCP server", () => {
         reviewId: review.id,
       },
     });
-    expect(mocks.pullRequests.getReview).toHaveBeenCalledWith("agntn", "forges", 107, review.id);
+    expect(mocks.pullRequests.getReview).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 107 },
+      { reviewId: review.id },
+    );
     expect(JSON.parse(text(full.content))).toEqual({ platform: "github", result: review });
   });
 
@@ -1308,9 +1333,12 @@ describe("forges MCP server", () => {
       arguments: { owner: "agntn", repo: "forges", number: 170, closingIssues: true },
     });
 
-    expect(mocks.pullRequests.get).toHaveBeenCalledWith("agntn", "forges", 170, {
-      closingIssues: true,
-    });
+    expect(mocks.pullRequests.get).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 170 },
+      {
+        closingIssues: true,
+      },
+    );
     expect(JSON.parse(text(response.content)).result.closingIssues).toEqual(closingIssues);
   });
 
@@ -1413,11 +1441,10 @@ describe("forges MCP server", () => {
       },
     });
 
-    expect(mocks.issues.search).toHaveBeenCalledWith("agntn", "forges", "issue search", {
-      cursor: undefined,
-      perPage: undefined,
-      state: "open",
-    });
+    expect(mocks.issues.search).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { query: "issue search", cursor: undefined, perPage: undefined, state: "open" },
+    );
     const answer = text(response.content);
     expect(answer).not.toContain("large body");
     expect(JSON.parse(answer)).toMatchObject({
@@ -1516,11 +1543,10 @@ describe("forges MCP server", () => {
       },
     });
 
-    expect(mocks.pullRequests.search).toHaveBeenCalledWith("agntn", "forges", "issue search", {
-      cursor: undefined,
-      perPage: undefined,
-      state: "closed",
-    });
+    expect(mocks.pullRequests.search).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { query: "issue search", cursor: undefined, perPage: undefined, state: "closed" },
+    );
     const answer = text(response.content);
     expect(answer).not.toContain("large body");
     expect(JSON.parse(answer)).toMatchObject({
@@ -1548,11 +1574,14 @@ describe("forges MCP server", () => {
       arguments: { repo: "agntn/forges", number: 266, commentId: "6129105893", perPage: 5 },
     });
 
-    expect(mocks.pullRequests.listReactions).toHaveBeenCalledWith("agntn", "forges", 266, {
-      commentId: "6129105893",
-      cursor: undefined,
-      perPage: 5,
-    });
+    expect(mocks.pullRequests.listReactions).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 266 },
+      {
+        commentId: "6129105893",
+        cursor: undefined,
+        perPage: 5,
+      },
+    );
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: page });
   });
 
@@ -1570,11 +1599,14 @@ describe("forges MCP server", () => {
     });
 
     expect(mocks.issues.listReactions).toHaveBeenCalledTimes(1);
-    expect(mocks.issues.listReactions).toHaveBeenCalledWith("agntn", "forges", 256, {
-      commentId: undefined,
-      cursor: undefined,
-      perPage: undefined,
-    });
+    expect(mocks.issues.listReactions).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 256 },
+      {
+        commentId: undefined,
+        cursor: undefined,
+        perPage: undefined,
+      },
+    );
     expect(invalid.isError).toBe(true);
   });
 
@@ -1592,10 +1624,13 @@ describe("forges MCP server", () => {
       arguments: { repo: "agntn/forges", perPage: 1 },
     });
 
-    expect(mocks.repos.listTags).toHaveBeenCalledWith("agntn", "forges", {
-      cursor: undefined,
-      perPage: 1,
-    });
+    expect(mocks.repos.listTags).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      {
+        cursor: undefined,
+        perPage: 1,
+      },
+    );
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: page });
   });
 
@@ -1620,10 +1655,13 @@ describe("forges MCP server", () => {
       arguments: { platform: "github", owner: "agntn", repo: "forges", perPage: 5 },
     });
 
-    expect(mocks.releases.list).toHaveBeenCalledWith("agntn", "forges", {
-      cursor: undefined,
-      perPage: 5,
-    });
+    expect(mocks.releases.list).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      {
+        cursor: undefined,
+        perPage: 5,
+      },
+    );
     const parsed = JSON.parse(text(response.content));
     const { body: _body, ...summary } = release;
     expect(parsed.result.items[0]).toEqual(summary);
@@ -1652,7 +1690,10 @@ describe("forges MCP server", () => {
       arguments: { platform: "gitlab", owner: "gitlab-org", repo: "cli", tag: "v1.118.0" },
     });
 
-    expect(mocks.releases.get).toHaveBeenCalledWith("gitlab-org", "cli", "v1.118.0");
+    expect(mocks.releases.get).toHaveBeenCalledWith(
+      { owner: "gitlab-org", repo: "cli" },
+      { tag: "v1.118.0" },
+    );
     expect(JSON.parse(text(response.content))).toEqual({
       platform: "gitlab",
       result: {
@@ -1764,20 +1805,21 @@ describe("forges MCP server", () => {
       },
     });
 
-    expect(mocks.releases.create).toHaveBeenCalledWith("gitea", "tea", {
-      tag: "v0.17.0",
-      name: "v0.17.0",
-      body: "notes",
-      ref: "main",
-      draft: true,
-      prerelease: undefined,
-    });
-    expect(mocks.releases.update).toHaveBeenCalledWith("gitea", "tea", "v0.17.0", {
-      name: undefined,
-      body: "final notes",
-      draft: false,
-      prerelease: undefined,
-    });
+    expect(mocks.releases.create).toHaveBeenCalledWith(
+      { owner: "gitea", repo: "tea" },
+      {
+        tag: "v0.17.0",
+        name: "v0.17.0",
+        body: "notes",
+        ref: "main",
+        draft: true,
+        prerelease: undefined,
+      },
+    );
+    expect(mocks.releases.update).toHaveBeenCalledWith(
+      { owner: "gitea", repo: "tea" },
+      { tag: "v0.17.0", name: undefined, body: "final notes", draft: false, prerelease: undefined },
+    );
     expect(JSON.parse(text(created.content))).toEqual({ platform: "gitea", result: release });
     expect(JSON.parse(text(updated.content)).result).toMatchObject({
       body: "final notes",
@@ -1810,12 +1852,15 @@ describe("forges MCP server", () => {
       },
     });
 
-    expect(mocks.issues.create).toHaveBeenCalledWith("agntn", "forges", {
-      title: "Bug",
-      body: "Details",
-      labels: ["bug"],
-      assignees: ["triager"],
-    });
+    expect(mocks.issues.create).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      {
+        title: "Bug",
+        body: "Details",
+        labels: ["bug"],
+        assignees: ["triager"],
+      },
+    );
     expect(JSON.parse(text(response.content))).toEqual({ platform: "gitlab", result: issue });
   });
 
@@ -1870,7 +1915,7 @@ describe("forges MCP server", () => {
     mocks.repos.get.mockRejectedValue(
       new NotFoundError(
         'Resource not found: [GET] "https://git.internal.example:8443/api/v1/repos/agntn/forges": 404 Not Found',
-        "gitea",
+        { platform: "gitea" },
       ),
     );
     const client = await connectTestClient();
@@ -1905,8 +1950,7 @@ describe("forges MCP server", () => {
     mocks.issues.list.mockRejectedValue(
       new RateLimitError(
         'Rate limit exceeded: [GET] "https://api.github.com/repos/agntn/forges/issues": 429 Too Many Requests',
-        60,
-        "github",
+        { retryAfter: 60, platform: "github" },
       ),
     );
     const client = await connectTestClient();

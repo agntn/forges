@@ -11,10 +11,10 @@ async function main(): Promise<void> {
 
   const firstRepo = repos.items[0];
   if (firstRepo) {
-    const issues = await github.issues.list(firstRepo.owner.login, firstRepo.name, {
-      state: "open",
-      perPage: 3,
-    });
+    const issues = await github.issues.list(
+      { owner: firstRepo.owner.login, repo: firstRepo.name },
+      { state: "open", perPage: 3 },
+    );
     console.log(
       "issues",
       issues.items.map((issue) => issue.title),

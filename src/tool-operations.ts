@@ -50,6 +50,7 @@ import type {
   CreatePullRequestInput,
   CreateReleaseInput,
   Issue,
+  IssueRef,
   IssueState,
   ListCiRunsOptions,
   ListCommentOptions,
@@ -77,6 +78,7 @@ import type {
   GlobalIssueSearchOptions,
   GlobalIssueSearchItem,
   Release,
+  RepoRef,
   ReplyThreadInput,
   Repository,
   RepositoryContents,
@@ -245,7 +247,7 @@ async function authenticatedProvider(
   if (credential === null) {
     throw new AuthenticationError(
       `No auth token found for ${platform}. ${credentialSetupHint(platform)}`,
-      platform,
+      { platform },
     );
   }
 
@@ -267,8 +269,7 @@ function accountProvider(platform: ForgesPlatform, account: string): Promise<Pro
   if (platform !== "github") {
     throw new ForgesError(
       `Choosing an account is supported only on github; omit account to write as the ${platform} credential.`,
-      501,
-      platform,
+      { status: 501, platform },
     );
   }
 
@@ -281,7 +282,7 @@ function accountProvider(platform: ForgesPlatform, account: string): Promise<Pro
   if (credential === null || credential.token === "") {
     throw new AuthenticationError(
       `No auth token found for ${platform} account "${account}". Log in with \`gh auth login\` until \`gh auth status\` lists it.`,
-      platform,
+      { platform },
     );
   }
 
@@ -306,7 +307,7 @@ async function verifiedAccountProvider(
       : "Check `gh auth status`.";
   throw new AuthenticationError(
     `Refusing to act as "${account}": the ${platform} token found for it belongs to "${actual}". ${hint}`,
-    platform,
+    { platform },
   );
 }
 
@@ -472,7 +473,7 @@ export interface RepositoryTarget {
 const defaultPlatform: ForgesPlatform = "github";
 
 function targetError(message: string, platform: ForgesPlatform): ForgesError {
-  return new ForgesError(message, undefined, platform);
+  return new ForgesError(message, { platform });
 }
 
 /**
@@ -878,6 +879,16 @@ function pullRequestRowText(pullRequest: PullRequestRow): Partial<PullRequestRow
   };
 }
 
+/** The repository a tool call names, without the rest of its arguments. */
+function repoOf({ owner, repo }: RepoRef): RepoRef {
+  return { owner, repo };
+}
+
+/** The issue or pull request a tool call names, without the rest of its arguments. */
+function issueOf({ owner, repo, number }: IssueRef): IssueRef {
+  return { owner, repo, number };
+}
+
 function listOptions(params: {
   cursor?: string;
   perPage?: number;
@@ -925,7 +936,7 @@ export async function getRepository(
 ): Promise<ForgesToolResult<Repository>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const repository = await provider.repos.get(params.owner, params.repo);
+  const repository = await provider.repos.get(repoOf(params));
   return result(repository, { platform: params.platform });
 }
 
@@ -938,12 +949,10 @@ export async function listContributionTemplates(
     perPage: params.perPage,
   };
   const provider = await readProvider(params.platform);
-  const templates = await provider.contributionTemplates.list(
-    params.owner,
-    params.repo,
-    params.kind,
-    options,
-  );
+  const templates = await provider.contributionTemplates.list(repoOf(params), {
+    kind: params.kind,
+    ...options,
+  });
   return result(templates, {
     platform: params.platform,
     note: "Template bodies are omitted from list output; use forges_contribution_templates_get with the returned kind and key.",
@@ -955,12 +964,10 @@ export async function getContributionTemplate(
 ): Promise<ForgesToolResult<ContributionTemplate>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const template = await provider.contributionTemplates.get(
-    params.owner,
-    params.repo,
-    params.kind,
-    params.key,
-  );
+  const template = await provider.contributionTemplates.get(repoOf(params), {
+    kind: params.kind,
+    key: params.key,
+  });
   return result(template, { platform: params.platform });
 }
 
@@ -988,7 +995,7 @@ export async function listCiRuns(
     perPage: params.perPage,
   };
   const provider = await readProvider(params.platform);
-  const runs = await provider.ciRuns.list(params.owner, params.repo, options);
+  const runs = await provider.ciRuns.list(repoOf(params), options);
   return result(runs, { platform: params.platform });
 }
 
@@ -997,7 +1004,8 @@ export async function listCiJobs(
 ): Promise<ForgesToolResult<PageResult<CiJob>>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const jobs = await provider.ciRuns.listJobs(params.owner, params.repo, params.runId, {
+  const jobs = await provider.ciRuns.listJobs(repoOf(params), {
+    runId: params.runId,
     cursor: params.cursor,
     perPage: params.perPage,
   });
@@ -1007,7 +1015,8 @@ export async function listCiJobs(
 export async function readCiJobLog(args: ReadCiJobLogParams): Promise<ForgesToolResult<CiJobLog>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const log = await provider.ciRuns.readJobLog(params.owner, params.repo, params.jobId, {
+  const log = await provider.ciRuns.readJobLog(repoOf(params), {
+    jobId: params.jobId,
     offset: params.offset,
     maxChars: params.maxChars,
   });
@@ -1041,7 +1050,7 @@ export async function listCommits(
 ): Promise<ForgesToolResult<PageResult<CommitListItem>>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const commits = await provider.commits.list(params.owner, params.repo, {
+  const commits = await provider.commits.list(repoOf(params), {
     ref: params.ref,
     path: params.path,
     since: params.since,
@@ -1065,13 +1074,12 @@ export async function compareCommits(
 ): Promise<ForgesToolResult<CommitComparisonResult>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const comparison = await provider.commits.compare(
-    params.owner,
-    params.repo,
-    params.base,
-    params.head,
-    { cursor: params.cursor, perPage: params.perPage },
-  );
+  const comparison = await provider.commits.compare(repoOf(params), {
+    base: params.base,
+    head: params.head,
+    cursor: params.cursor,
+    perPage: params.perPage,
+  });
   const { files, filesComplete, ...rest } = comparison;
   const items = comparison.items.map(summarizeCommit);
   const range = { ...rest, items, ...(params.files ? { files, filesComplete } : {}) };
@@ -1087,7 +1095,8 @@ export async function readRepositoryContents(
 ): Promise<ForgesToolResult<RepositoryContents>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const contents = await provider.repos.readContents(params.owner, params.repo, params.path, {
+  const contents = await provider.repos.readContents(repoOf(params), {
+    path: params.path,
     ref: params.ref,
     offset: params.offset,
     maxChars: params.maxChars,
@@ -1099,14 +1108,14 @@ export async function listTags(args: ListTagsParams): Promise<ForgesToolResult<P
   const params = repositoryTarget(args);
   const options: ListTagsOptions = { cursor: params.cursor, perPage: params.perPage };
   const provider = await readProvider(params.platform);
-  const tags = await provider.repos.listTags(params.owner, params.repo, options);
+  const tags = await provider.repos.listTags(repoOf(params), options);
   return result(tags, { platform: params.platform });
 }
 
 export async function getCommit(args: GetCommitParams): Promise<ForgesToolResult<Commit>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const commit = await provider.commits.get(params.owner, params.repo, params.sha);
+  const commit = await provider.commits.get(repoOf(params), { sha: params.sha });
   return result(commit, { platform: params.platform });
 }
 
@@ -1116,7 +1125,7 @@ export async function listCommitChecks(
   const params = repositoryTarget(args);
   const options: ListCommitChecksOptions = { cursor: params.cursor, perPage: params.perPage };
   const provider = await readProvider(params.platform);
-  const checks = await provider.commits.listChecks(params.owner, params.repo, params.ref, options);
+  const checks = await provider.commits.listChecks(repoOf(params), { ref: params.ref, ...options });
   return result(checks, { platform: params.platform });
 }
 
@@ -1125,7 +1134,8 @@ export async function readCommitPatch(
 ): Promise<ForgesToolResult<CommitPatch>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const patch = await provider.commits.readPatch(params.owner, params.repo, params.sha, {
+  const patch = await provider.commits.readPatch(repoOf(params), {
+    sha: params.sha,
     path: params.path,
     offset: params.offset,
     maxChars: params.maxChars,
@@ -1149,7 +1159,7 @@ export async function listReleases(
     perPage: params.perPage,
   };
   const provider = await readProvider(params.platform);
-  const releases = await provider.releases.list(params.owner, params.repo, options);
+  const releases = await provider.releases.list(repoOf(params), options);
   return result(summarizeReleasePage(releases), {
     platform: params.platform,
     note: "Release notes are omitted from list output; use forges_releases_get with the tag to read its notes.",
@@ -1163,7 +1173,7 @@ export async function getRelease(
   const notes = { offset: params.offset, maxChars: params.maxChars, notesHash: params.notesHash };
   assertReleaseNotesOptions(notes, params.platform);
   const provider = await readProvider(params.platform);
-  const release = await provider.releases.get(params.owner, params.repo, params.tag);
+  const release = await provider.releases.get(repoOf(params), { tag: params.tag });
   return result(sliceReleaseNotes(release, { ...notes, platform: params.platform }), {
     platform: params.platform,
   });
@@ -1173,7 +1183,7 @@ export async function createRelease(args: CreateReleaseParams): Promise<ForgesTo
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
-    const release = await provider.releases.create(params.owner, params.repo, {
+    const release = await provider.releases.create(repoOf(params), {
       tag: params.tag,
       name: params.name,
       body: params.body,
@@ -1189,7 +1199,8 @@ export async function updateRelease(args: UpdateReleaseParams): Promise<ForgesTo
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
-    const release = await provider.releases.update(params.owner, params.repo, params.tag, {
+    const release = await provider.releases.update(repoOf(params), {
+      tag: params.tag,
       name: params.name,
       body: params.body,
       draft: params.draft,
@@ -1204,7 +1215,7 @@ export async function listIssues(
 ): Promise<ForgesToolResult<PageResult<Omit<Issue, "body">>>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const issues = await provider.issues.list(params.owner, params.repo, listOptions(params));
+  const issues = await provider.issues.list(repoOf(params), listOptions(params));
   return result(summarizeIssuePage(issues), {
     platform: params.platform,
     note: "Issue bodies are omitted from list output; use forges_issues_get to read one body.",
@@ -1245,12 +1256,10 @@ export async function searchIssues(
 ): Promise<ForgesToolResult<SearchPageResult<Omit<Issue, "body">>>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const issues = await provider.issues.search(
-    params.owner,
-    params.repo,
-    params.query,
-    listOptions(params),
-  );
+  const issues = await provider.issues.search(repoOf(params), {
+    query: params.query,
+    ...listOptions(params),
+  });
   return result(summarizeIssuePage(issues), {
     platform: params.platform,
     note: "Issue bodies are omitted from search output; use forges_issues_get to read one body.",
@@ -1260,7 +1269,7 @@ export async function searchIssues(
 export async function getIssue(args: GetRepositoryItemParams): Promise<ForgesToolResult<Issue>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const issue = await provider.issues.get(params.owner, params.repo, params.number);
+  const issue = await provider.issues.get(issueOf(params));
   return result(issue, { platform: params.platform });
 }
 
@@ -1276,12 +1285,7 @@ export async function listIssueComments(
 ): Promise<ForgesToolResult<PageResult<Comment>>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const comments = await provider.issues.listComments(
-    params.owner,
-    params.repo,
-    params.number,
-    commentListOptions(params),
-  );
+  const comments = await provider.issues.listComments(issueOf(params), commentListOptions(params));
   return result(summarizeCommentPage(comments), {
     platform: params.platform,
     note: "Comment bodies are truncated in list output; use forges_issues_comments_get to read one in full.",
@@ -1291,12 +1295,9 @@ export async function listIssueComments(
 export async function getIssueComment(args: GetCommentParams): Promise<ForgesToolResult<Comment>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const comment = await provider.issues.getComment(
-    params.owner,
-    params.repo,
-    params.number,
-    params.commentId,
-  );
+  const comment = await provider.issues.getComment(issueOf(params), {
+    commentId: params.commentId,
+  });
   return result(comment, { platform: params.platform });
 }
 
@@ -1306,7 +1307,7 @@ export async function createIssueComment(
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
-    const comment = await provider.issues.createComment(params.owner, params.repo, params.number, {
+    const comment = await provider.issues.createComment(issueOf(params), {
       body: params.body,
     });
     return result(comment, { platform: params.platform });
@@ -1323,9 +1324,7 @@ export async function listIssueReactions(
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const reactions = await provider.issues.listReactions(
-    params.owner,
-    params.repo,
-    params.number,
+    issueOf(params),
     reactionListOptions(params),
   );
   return result(reactions, { platform: params.platform });
@@ -1336,10 +1335,10 @@ export async function listSubIssues(
 ): Promise<ForgesToolResult<PageResult<Omit<SubIssue, "body">>>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const subIssues = await provider.issues.listSubIssues(
-    { owner: params.owner, repo: params.repo, number: params.number },
-    { cursor: params.cursor, perPage: params.perPage },
-  );
+  const subIssues = await provider.issues.listSubIssues(issueOf(params), {
+    cursor: params.cursor,
+    perPage: params.perPage,
+  });
   return result(summarizeIssuePage(subIssues), {
     platform: params.platform,
     note: "Issue bodies are omitted from list output; use forges_issues_get to read one body.",
@@ -1350,10 +1349,10 @@ export async function addSubIssue(args: AddSubIssueParams): Promise<ForgesToolRe
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
-    const parent = await provider.issues.addSubIssue(
-      { owner: params.owner, repo: params.repo, number: params.number },
-      { subIssue: params.subIssue, replaceParent: params.replaceParent },
-    );
+    const parent = await provider.issues.addSubIssue(issueOf(params), {
+      subIssue: params.subIssue,
+      replaceParent: params.replaceParent,
+    });
     return result(parent, { platform: params.platform });
   });
 }
@@ -1362,10 +1361,9 @@ export async function removeSubIssue(args: SubIssueParams): Promise<ForgesToolRe
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
-    const parent = await provider.issues.removeSubIssue(
-      { owner: params.owner, repo: params.repo, number: params.number },
-      { subIssue: params.subIssue },
-    );
+    const parent = await provider.issues.removeSubIssue(issueOf(params), {
+      subIssue: params.subIssue,
+    });
     return result(parent, { platform: params.platform });
   });
 }
@@ -1375,7 +1373,7 @@ export async function createIssue(args: CreateIssueParams): Promise<ForgesToolRe
   assertAssignees(params.assignees, params.platform);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
-    const issue = await provider.issues.create(params.owner, params.repo, {
+    const issue = await provider.issues.create(repoOf(params), {
       title: params.title,
       body: params.body,
       labels: params.labels,
@@ -1393,11 +1391,7 @@ export async function listPullRequests(
 ): Promise<ForgesToolResult<PageResult<Omit<PullRequest, "body">>>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const pullRequests = await provider.pullRequests.list(
-    params.owner,
-    params.repo,
-    listOptions(params),
-  );
+  const pullRequests = await provider.pullRequests.list(repoOf(params), listOptions(params));
   const page = summarizeIssuePage(pullRequests);
   return result(page, {
     platform: params.platform,
@@ -1415,12 +1409,7 @@ export async function listPullRequestFiles(
     perPage: params.perPage,
   };
   const provider = await readProvider(params.platform);
-  const files = await provider.pullRequests.listFiles(
-    params.owner,
-    params.repo,
-    params.number,
-    options,
-  );
+  const files = await provider.pullRequests.listFiles(issueOf(params), options);
   return result(files, { platform: params.platform });
 }
 
@@ -1429,14 +1418,17 @@ export async function listPullRequestChecks(
 ): Promise<ForgesToolResult<CheckPage | WaitedCheckPage>> {
   const params = repositoryTarget(args);
   if (params.headSha?.trim() === "") {
-    throw new ForgesError("Checks headSha must not be empty", 400, params.platform);
+    throw new ForgesError("Checks headSha must not be empty", {
+      status: 400,
+      platform: params.platform,
+    });
   }
   const provider = await readProvider(params.platform);
   const readPage = (cursor: string | undefined) => {
     const options: ListPullRequestChecksOptions = { cursor, perPage: params.perPage };
-    return provider.pullRequests.listChecks(params.owner, params.repo, params.number, options);
+    return provider.pullRequests.listChecks(issueOf(params), options);
   };
-  const readPullRequest = () => provider.pullRequests.get(params.owner, params.repo, params.number);
+  const readPullRequest = () => provider.pullRequests.get(issueOf(params));
   const expectedHead: ExpectedHead | undefined =
     params.headSha === undefined
       ? undefined
@@ -1465,12 +1457,7 @@ export async function listPullRequestReviews(
     perPage: params.perPage,
   };
   const provider = await readProvider(params.platform);
-  const reviews = await provider.pullRequests.listReviews(
-    params.owner,
-    params.repo,
-    params.number,
-    options,
-  );
+  const reviews = await provider.pullRequests.listReviews(issueOf(params), options);
   return result(summarizeReviewPage(reviews), {
     platform: params.platform,
     note: "Review bodies are truncated in list output; use forges_pull_requests_reviews_get to read one in full on GitHub or Gitea. GitLab entries are reviewer stances, not review bodies. Inline review comments are the threads forges_threads_list reads.",
@@ -1482,12 +1469,9 @@ export async function getPullRequestReview(
 ): Promise<ForgesToolResult<PullRequestReview>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const review = await provider.pullRequests.getReview(
-    params.owner,
-    params.repo,
-    params.number,
-    params.reviewId,
-  );
+  const review = await provider.pullRequests.getReview(issueOf(params), {
+    reviewId: params.reviewId,
+  });
   return result(review, { platform: params.platform });
 }
 
@@ -1523,12 +1507,10 @@ export async function searchPullRequests(
 ): Promise<ForgesToolResult<SearchPageResult<Omit<PullRequestSearchItem, "body">>>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const pullRequests = await provider.pullRequests.search(
-    params.owner,
-    params.repo,
-    params.query,
-    listOptions(params),
-  );
+  const pullRequests = await provider.pullRequests.search(repoOf(params), {
+    query: params.query,
+    ...listOptions(params),
+  });
   return result(summarizeIssuePage(pullRequests), {
     platform: params.platform,
     note: "Pull-request bodies and revision details are omitted from search output; use forges_pull_requests_get to read one in full.",
@@ -1540,7 +1522,7 @@ export async function getPullRequest(
 ): Promise<ForgesToolResult<PullRequest>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const pullRequest = await provider.pullRequests.get(params.owner, params.repo, params.number, {
+  const pullRequest = await provider.pullRequests.get(issueOf(params), {
     closingIssues: params.closingIssues,
   });
   return result(pullRequest, { platform: params.platform });
@@ -1552,9 +1534,7 @@ export async function listPullRequestComments(
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const comments = await provider.pullRequests.listComments(
-    params.owner,
-    params.repo,
-    params.number,
+    issueOf(params),
     commentListOptions(params),
   );
   return result(summarizeCommentPage(comments), {
@@ -1568,12 +1548,9 @@ export async function getPullRequestComment(
 ): Promise<ForgesToolResult<Comment>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const comment = await provider.pullRequests.getComment(
-    params.owner,
-    params.repo,
-    params.number,
-    params.commentId,
-  );
+  const comment = await provider.pullRequests.getComment(issueOf(params), {
+    commentId: params.commentId,
+  });
   return result(comment, { platform: params.platform });
 }
 
@@ -1583,12 +1560,9 @@ export async function createPullRequestComment(
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
-    const comment = await provider.pullRequests.createComment(
-      params.owner,
-      params.repo,
-      params.number,
-      { body: params.body },
-    );
+    const comment = await provider.pullRequests.createComment(issueOf(params), {
+      body: params.body,
+    });
     return result(comment, { platform: params.platform });
   });
 }
@@ -1599,9 +1573,7 @@ export async function listPullRequestReactions(
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
   const reactions = await provider.pullRequests.listReactions(
-    params.owner,
-    params.repo,
-    params.number,
+    issueOf(params),
     reactionListOptions(params),
   );
   return result(reactions, { platform: params.platform });
@@ -1614,7 +1586,7 @@ export async function createPullRequest(
   assertAssignees(params.assignees, params.platform);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
-    const pullRequest = await provider.pullRequests.create(params.owner, params.repo, {
+    const pullRequest = await provider.pullRequests.create(repoOf(params), {
       title: params.title,
       body: params.body,
       sourceBranch: params.sourceBranch,
@@ -1643,7 +1615,7 @@ export async function updateIssue(args: UpdateIssueParams): Promise<ForgesToolRe
   assertIssueUpdate(input, params.platform);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
-    const issue = await provider.issues.update(params.owner, params.repo, params.number, input);
+    const issue = await provider.issues.update(issueOf(params), input);
     return result(issue, {
       platform: params.platform,
       note: reassignmentNote(input, issue.assignees),
@@ -1667,12 +1639,7 @@ export async function updatePullRequest(
   assertPullRequestUpdate(input, params.platform);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
-    const pullRequest = await provider.pullRequests.update(
-      params.owner,
-      params.repo,
-      params.number,
-      input,
-    );
+    const pullRequest = await provider.pullRequests.update(issueOf(params), input);
     return result(pullRequest, {
       platform: params.platform,
       note: reassignmentNote(input, pullRequest.assignees),
@@ -1693,12 +1660,7 @@ export async function mergePullRequest(
   assertMergeInput(input, params.platform);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
-    const pullRequest = await provider.pullRequests.merge(
-      params.owner,
-      params.repo,
-      params.number,
-      input,
-    );
+    const pullRequest = await provider.pullRequests.merge(issueOf(params), input);
     return result(pullRequest, { platform: params.platform });
   });
 }
@@ -1782,12 +1744,7 @@ export async function listThreads(
 ): Promise<ForgesToolResult<PageResult<Thread>>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const threads = await provider.threads.list(
-    params.owner,
-    params.repo,
-    params.number,
-    threadListOptions(params),
-  );
+  const threads = await provider.threads.list(issueOf(params), threadListOptions(params));
   return result(summarizeThreadPage(threads), {
     platform: params.platform,
     note: "Comment bodies are truncated in list output; use forges_threads_get to read one full thread.",
@@ -1797,12 +1754,7 @@ export async function listThreads(
 export async function getThread(args: GetThreadParams): Promise<ForgesToolResult<Thread>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  const thread = await provider.threads.get(
-    params.owner,
-    params.repo,
-    params.number,
-    params.threadId,
-  );
+  const thread = await provider.threads.get(issueOf(params), { threadId: params.threadId });
   return result(thread, { platform: params.platform });
 }
 
@@ -1812,13 +1764,10 @@ export async function replyToThread(
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
-    const comment = await provider.threads.reply(
-      params.owner,
-      params.repo,
-      params.number,
-      params.threadId,
-      { body: params.body },
-    );
+    const comment = await provider.threads.reply(issueOf(params), {
+      threadId: params.threadId,
+      body: params.body,
+    });
     return result(comment, { platform: params.platform });
   });
 }
@@ -1827,12 +1776,7 @@ export async function resolveThread(args: ThreadStateParams): Promise<ForgesTool
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
-    const thread = await provider.threads.resolve(
-      params.owner,
-      params.repo,
-      params.number,
-      params.threadId,
-    );
+    const thread = await provider.threads.resolve(issueOf(params), { threadId: params.threadId });
     return result(thread, { platform: params.platform });
   });
 }
@@ -1841,12 +1785,7 @@ export async function unresolveThread(args: ThreadStateParams): Promise<ForgesTo
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
-    const thread = await provider.threads.unresolve(
-      params.owner,
-      params.repo,
-      params.number,
-      params.threadId,
-    );
+    const thread = await provider.threads.unresolve(issueOf(params), { threadId: params.threadId });
     return result(thread, { platform: params.platform });
   });
 }

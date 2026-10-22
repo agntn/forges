@@ -134,7 +134,7 @@ describe("createProvider", () => {
     const artifacts = await createProvider("artifacts", { token: "cf-token", accountId: ACCOUNT });
 
     expect(artifacts).toBeInstanceOf(ArtifactsProvider);
-    await artifacts.repos.get("tools", "notes");
+    await artifacts.repos.get({ owner: "tools", repo: "notes" });
     const { url, headers } = sent(fetch);
     expect(url.href).toBe(REPO_URL);
     expect(headers.get("authorization")).toBe("Bearer cf-token");
@@ -145,7 +145,7 @@ describe("createProvider", () => {
     const fetch = serve(at(REPO_URL, () => envelope(repository())));
 
     const artifacts = await createProvider("artifacts");
-    await artifacts.repos.get("tools", "notes");
+    await artifacts.repos.get({ owner: "tools", repo: "notes" });
 
     expect(mocks.resolve).toHaveBeenCalledWith({ token: undefined, accountId: undefined });
     expect(mocks.resolve).toHaveBeenLastCalledWith({
@@ -183,7 +183,7 @@ describe("credentials", () => {
         : undefined,
     );
 
-    const repo = await new ArtifactsProvider({}).repos.get("tools", "notes");
+    const repo = await new ArtifactsProvider({}).repos.get({ owner: "tools", repo: "notes" });
 
     expect(repo.name).toBe("notes");
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -200,7 +200,7 @@ describe("credentials", () => {
     );
 
     const error = await provider()
-      .repos.get("tools", "notes")
+      .repos.get({ owner: "tools", repo: "notes" })
       .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(AuthenticationError);
@@ -213,7 +213,7 @@ describe("repos", () => {
   it("maps a repository with the namespace as owner", async () => {
     serve(at(REPO_URL, () => envelope(repository({ description: "Field notes" }))));
 
-    expect(await provider().repos.get("tools", "notes")).toEqual({
+    expect(await provider().repos.get({ owner: "tools", repo: "notes" })).toEqual({
       id: "a1b2c3d4e5f6g7h8",
       name: "notes",
       fullName: "tools/notes",
@@ -233,7 +233,7 @@ describe("repos", () => {
   it("points a fork at the repository it came from", async () => {
     serve(at(REPO_URL, () => envelope(repository({ source: "artifacts:archive/notes" }))));
 
-    const repo = await provider().repos.get("tools", "notes");
+    const repo = await provider().repos.get({ owner: "tools", repo: "notes" });
 
     expect(repo.isFork).toBe(true);
     expect(repo.parent).toEqual({
@@ -246,7 +246,7 @@ describe("repos", () => {
     serve(at(REPO_URL, () => failure(404, { code: 10200, message: "Repository not found" })));
 
     const error = await provider()
-      .repos.get("tools", "notes")
+      .repos.get({ owner: "tools", repo: "notes" })
       .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(NotFoundError);
@@ -339,7 +339,10 @@ describe("repos.readContents", () => {
   it("reads a file at the commit HEAD resolves to", async () => {
     const fetch = serve(atHead, files);
 
-    const file = await provider().repos.readContents("tools", "notes", "README.md");
+    const file = await provider().repos.readContents(
+      { owner: "tools", repo: "notes" },
+      { path: "README.md" },
+    );
 
     expect(file).toEqual({
       type: "file",
@@ -360,7 +363,10 @@ describe("repos.readContents", () => {
   it("lists a directory the file route refused", async () => {
     serve(atHead, files, trees);
 
-    const contents = await provider().repos.readContents("tools", "notes", "docs");
+    const contents = await provider().repos.readContents(
+      { owner: "tools", repo: "notes" },
+      { path: "docs" },
+    );
 
     expect(contents).toEqual({
       type: "directory",
@@ -374,7 +380,10 @@ describe("repos.readContents", () => {
   it("lists the root with every entry type mapped", async () => {
     const fetch = serve(atHead, trees);
 
-    const contents = await provider().repos.readContents("tools", "notes", "");
+    const contents = await provider().repos.readContents(
+      { owner: "tools", repo: "notes" },
+      { path: "" },
+    );
 
     expect(contents.type === "directory" && contents.entries.map((entry) => entry.type)).toEqual([
       "file",
@@ -389,7 +398,7 @@ describe("repos.readContents", () => {
     serve(atHead, files, trees);
 
     await expect(
-      provider().repos.readContents("tools", "notes", "docs/missing.md"),
+      provider().repos.readContents({ owner: "tools", repo: "notes" }, { path: "docs/missing.md" }),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
@@ -397,7 +406,7 @@ describe("repos.readContents", () => {
     serve(atHead, files, trees);
 
     await expect(
-      provider().repos.readContents("tools", "notes", "run.sh/inner"),
+      provider().repos.readContents({ owner: "tools", repo: "notes" }, { path: "run.sh/inner" }),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
@@ -405,7 +414,7 @@ describe("repos.readContents", () => {
     serve(atHead, files, trees);
 
     const error = await provider()
-      .repos.readContents("tools", "notes", "vendor")
+      .repos.readContents({ owner: "tools", repo: "notes" }, { path: "vendor" })
       .catch((caught: unknown) => caught);
 
     expect((error as ForgesError).status).toBe(422);
@@ -420,7 +429,7 @@ describe("repos.readContents", () => {
     );
 
     const error = await provider()
-      .repos.readContents("tools", "notes", "README.md")
+      .repos.readContents({ owner: "tools", repo: "notes" }, { path: "README.md" })
       .catch((caught: unknown) => caught);
 
     expect((error as ForgesError).status).toBe(400);
@@ -430,7 +439,10 @@ describe("repos.readContents", () => {
   it("leaves an explicit HEAD out of the log, which reads it as an unknown ref", async () => {
     const fetch = serve(atHead, files);
 
-    await provider().repos.readContents("tools", "notes", "README.md", { ref: "HEAD" });
+    await provider().repos.readContents(
+      { owner: "tools", repo: "notes" },
+      { path: "README.md", ref: "HEAD" },
+    );
 
     expect(sent(fetch, 0).url.searchParams.has("ref")).toBe(false);
   });
@@ -438,9 +450,9 @@ describe("repos.readContents", () => {
   it("says an empty repository has no commits yet", async () => {
     serve(at(`${REPO_URL}/log`, () => envelope([])));
 
-    await expect(provider().repos.readContents("tools", "notes", "README.md")).rejects.toThrow(
-      "The repository has no commits yet",
-    );
+    await expect(
+      provider().repos.readContents({ owner: "tools", repo: "notes" }, { path: "README.md" }),
+    ).rejects.toThrow("The repository has no commits yet");
   });
 
   it("reads a full SHA as a commit without the log", async () => {
@@ -449,7 +461,10 @@ describe("repos.readContents", () => {
       files,
     );
 
-    await provider().repos.readContents("tools", "notes", "README.md", { ref: HEAD });
+    await provider().repos.readContents(
+      { owner: "tools", repo: "notes" },
+      { path: "README.md", ref: HEAD },
+    );
 
     expect(fetch.mock.calls.some(([url]) => String(url).includes("/log"))).toBe(false);
   });
@@ -458,7 +473,10 @@ describe("repos.readContents", () => {
     serve(at(`${REPO_URL}/log`, () => envelope([])));
 
     await expect(
-      provider().repos.readContents("tools", "notes", "README.md", { ref: "nope" }),
+      provider().repos.readContents(
+        { owner: "tools", repo: "notes" },
+        { path: "README.md", ref: "nope" },
+      ),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });
@@ -475,15 +493,18 @@ describe("commits", () => {
       ),
     );
 
-    const page = await provider().commits.list("tools", "notes", {
-      ref: "main",
-      cursor: cursorFor("commits.list", {
-        page: 2,
-        subject: ["tools", "notes"],
-        filters: { ref: "main", perPage: 2 },
-      }),
-      perPage: 2,
-    });
+    const page = await provider().commits.list(
+      { owner: "tools", repo: "notes" },
+      {
+        ref: "main",
+        cursor: cursorFor("commits.list", {
+          page: 2,
+          subject: ["tools", "notes"],
+          filters: { ref: "main", perPage: 2 },
+        }),
+        perPage: 2,
+      },
+    );
 
     const { url } = sent(fetch);
     expect(url.searchParams.get("offset")).toBe("2");
@@ -504,15 +525,15 @@ describe("commits", () => {
   it("answers an unknown ref with NotFoundError", async () => {
     serve(at(`${REPO_URL}/log`, () => envelope([])));
 
-    await expect(provider().commits.list("tools", "notes", { ref: "nope" })).rejects.toBeInstanceOf(
-      NotFoundError,
-    );
+    await expect(
+      provider().commits.list({ owner: "tools", repo: "notes" }, { ref: "nope" }),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("gives an empty repository an empty page", async () => {
     serve(at(`${REPO_URL}/log`, () => envelope([])));
 
-    expect(await provider().commits.list("tools", "notes")).toEqual({
+    expect(await provider().commits.list({ owner: "tools", repo: "notes" })).toEqual({
       items: [],
     });
   });
@@ -521,7 +542,7 @@ describe("commits", () => {
     const fetch = serve();
 
     const error = await provider()
-      .commits.list("tools", "notes", { path: "README.md" })
+      .commits.list({ owner: "tools", repo: "notes" }, { path: "README.md" })
       .catch((caught: unknown) => caught);
 
     expect((error as ForgesError).status).toBe(501);
@@ -535,7 +556,7 @@ describe("commits", () => {
       ),
     );
 
-    const read = await provider().commits.get("tools", "notes", HEAD);
+    const read = await provider().commits.get({ owner: "tools", repo: "notes" }, { sha: HEAD });
 
     expect(read.author.date).toBe("");
     expect(read.committer.date).toBe("2026-09-21T14:14:20.000Z");
@@ -544,7 +565,7 @@ describe("commits", () => {
   it("reads a commit by SHA and leaves its files unknown", async () => {
     serve(at(`${REPO_URL}/commit/${HEAD}`, () => envelope(commit(HEAD, { parents: [PARENT] }))));
 
-    const read = await provider().commits.get("tools", "notes", HEAD);
+    const read = await provider().commits.get({ owner: "tools", repo: "notes" }, { sha: HEAD });
 
     expect(read.sha).toBe(HEAD);
     expect(read.files).toEqual([]);
@@ -556,7 +577,7 @@ describe("commits", () => {
       at(`${REPO_URL}/log`, () => envelope([commit(HEAD, { parents: [PARENT] })])),
     );
 
-    const read = await provider().commits.get("tools", "notes", "main");
+    const read = await provider().commits.get({ owner: "tools", repo: "notes" }, { sha: "main" });
 
     expect(read.sha).toBe(HEAD);
     expect(sent(fetch).url.searchParams.get("ref")).toBe("main");
@@ -565,18 +586,29 @@ describe("commits", () => {
 
 describe("unsupported resources", () => {
   it.each([
-    ["issues", (artifacts: ArtifactsProvider) => artifacts.issues.list("tools", "notes")],
+    [
+      "issues",
+      (artifacts: ArtifactsProvider) => artifacts.issues.list({ owner: "tools", repo: "notes" }),
+    ],
     [
       "pull requests",
-      (artifacts: ArtifactsProvider) => artifacts.pullRequests.get("tools", "notes", 1),
+      (artifacts: ArtifactsProvider) =>
+        artifacts.pullRequests.get({ owner: "tools", repo: "notes", number: 1 }),
     ],
     ["users", (artifacts: ArtifactsProvider) => artifacts.users.authenticated()],
     [
       "review threads",
-      (artifacts: ArtifactsProvider) => artifacts.threads.list("tools", "notes", 1),
+      (artifacts: ArtifactsProvider) =>
+        artifacts.threads.list({ owner: "tools", repo: "notes", number: 1 }),
     ],
-    ["releases", (artifacts: ArtifactsProvider) => artifacts.releases.list("tools", "notes")],
-    ["CI runs", (artifacts: ArtifactsProvider) => artifacts.ciRuns.list("tools", "notes")],
+    [
+      "releases",
+      (artifacts: ArtifactsProvider) => artifacts.releases.list({ owner: "tools", repo: "notes" }),
+    ],
+    [
+      "CI runs",
+      (artifacts: ArtifactsProvider) => artifacts.ciRuns.list({ owner: "tools", repo: "notes" }),
+    ],
   ])("answers %s with 501 and no request", async (_name, call) => {
     const fetch = serve();
 

@@ -54,7 +54,8 @@ describe("global pull-request search", () => {
       order: "desc",
       perPage: 2,
     });
-    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/search/issues", {
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+      url: "/search/issues",
       query: { q: `${query} is:pr`, sort: "created", order: "desc", per_page: "2", page: "1" },
     });
     expect(result.items.map((item) => item.repository)).toEqual(["other/project", "Second/Repo"]);
@@ -109,7 +110,7 @@ describe("global pull-request search", () => {
         "repo" in scope ? ["other/project"] : ["other/project", "other/sibling"],
       );
       expect(result.incomplete).toBe(true);
-      expect(mocks.rawFetch.mock.calls[0]?.[2].query.q).toBe(
+      expect(mocks.rawFetch.mock.calls[0]?.[1].query.q).toBe(
         `author:contributor is:pr ${qualifier}`,
       );
     },
@@ -191,7 +192,7 @@ describe("global pull-request search", () => {
     const resource = new GitHubProvider({ token: "" }).pullRequests;
     await resource.searchGlobal("fix", { author: "contributor" });
     await resource.searchGlobal("", { author: "contributor" });
-    expect(mocks.rawFetch.mock.calls.map(([, , options]) => options.query.q)).toEqual([
+    expect(mocks.rawFetch.mock.calls.map(([, options]) => options.query.q)).toEqual([
       "fix is:pr author:contributor",
       "is:pr author:contributor",
     ]);
@@ -246,7 +247,8 @@ describe("Gitea global pull-request search", () => {
     const result = await new GiteaProvider({ token: "" }).pullRequests.searchGlobal("fix", {
       perPage: 2,
     });
-    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/repos/issues/search", {
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+      url: "/repos/issues/search",
       query: { q: "fix", type: "pulls", state: "all", page: "1", limit: "2" },
     });
     expect(result.items.map((item) => [item.repository, item.merged, item.draft])).toEqual([
@@ -271,7 +273,8 @@ describe("Gitea global pull-request search", () => {
   ])("scopes %j through %s", async (scope, path, extra) => {
     mocks.rawFetch.mockResolvedValue({ data: [], headers: new Headers() });
     const result = await new GiteaProvider({ token: "" }).pullRequests.searchGlobal("fix", scope);
-    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, path, {
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+      url: path,
       query: { q: "fix", type: "pulls", state: "all", page: "1", limit: "30", ...extra },
     });
     expect(result).toMatchObject({ items: [], incomplete: false });
@@ -297,7 +300,8 @@ describe("Gitea global pull-request search", () => {
     const resource = new GiteaProvider({ token: "" }).pullRequests;
     mocks.rawFetch.mockResolvedValueOnce({ data: [giteaHit], headers: new Headers() });
     const result = await resource.searchGlobal("", { author: "Contributor" });
-    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/repos/issues/search", {
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+      url: "/repos/issues/search",
       query: { created_by: "Contributor", type: "pulls", state: "all", page: "1", limit: "30" },
     });
     expect(result.items).toHaveLength(1);
@@ -370,7 +374,8 @@ describe("GitLab global pull-request search", () => {
     const result = await new GitLabProvider({ token: "" }).pullRequests.searchGlobal("fix", {
       perPage: 2,
     });
-    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, "/merge_requests", {
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+      url: "/merge_requests",
       query: {
         scope: "all",
         search: "fix",
@@ -406,7 +411,8 @@ describe("GitLab global pull-request search", () => {
   ])("scopes %j through %s", async (scope, path) => {
     mocks.rawFetch.mockResolvedValue({ data: [], headers: new Headers() });
     const result = await new GitLabProvider({ token: "" }).pullRequests.searchGlobal("fix", scope);
-    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, path, {
+    expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+      url: path,
       query: {
         search: "fix",
         state: "all",
@@ -426,7 +432,7 @@ describe("GitLab global pull-request search", () => {
     const resource = new GitLabProvider({ token: "" }).pullRequests;
     await resource.searchGlobal("", { author: "eighthave", sort: "updated", order: "asc" });
     await resource.searchGlobal(" gradle author:eighthave ");
-    expect(mocks.rawFetch.mock.calls.map(([, , options]) => options.query)).toEqual([
+    expect(mocks.rawFetch.mock.calls.map(([, options]) => options.query)).toEqual([
       expect.objectContaining({
         author_username: "eighthave",
         order_by: "updated_at",
@@ -434,8 +440,8 @@ describe("GitLab global pull-request search", () => {
       }),
       expect.objectContaining({ search: "gradle author:eighthave" }),
     ]);
-    expect(mocks.rawFetch.mock.calls[0]![2].query).not.toHaveProperty("search");
-    expect(mocks.rawFetch.mock.calls[1]![2].query).not.toHaveProperty("author_username");
+    expect(mocks.rawFetch.mock.calls[0]![1].query).not.toHaveProperty("search");
+    expect(mocks.rawFetch.mock.calls[1]![1].query).not.toHaveProperty("author_username");
   });
 
   it("drops hits without a repository and marks the page incomplete", async () => {
@@ -501,8 +507,8 @@ describe("pull-request search scoped to an owner, without a query", () => {
   ] as const)("lists every pull request of the owner on %s", async (_, provider, path, query) => {
     mocks.rawFetch.mockResolvedValue({ data: [], headers: new Headers() });
     await provider().pullRequests.searchGlobal("", { owner: "agntn" });
-    expect(mocks.rawFetch.mock.calls[0]?.[1]).toBe(path);
-    expect(mocks.rawFetch.mock.calls[0]?.[2].query).toEqual(query);
+    expect(mocks.rawFetch.mock.calls[0]?.[1]?.url).toBe(path);
+    expect(mocks.rawFetch.mock.calls[0]?.[1].query).toEqual(query);
   });
 
   it("still refuses a search with no scope at all and says how to narrow it", async () => {

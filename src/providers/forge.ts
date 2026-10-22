@@ -241,7 +241,11 @@ export abstract class ForgeBackedProvider<
         this.#token === ""
           ? `${(error as Error).message} without a token; pass one if this forge serves it to signed-in accounts only`
           : (error as Error).message;
-      return new ForgesError(reason, 501, this.#platform, error as Error);
+      return new ForgesError(reason, {
+        status: 501,
+        platform: this.#platform,
+        originalError: error as Error,
+      });
     }
     return normalizeError(toFetchError(error), this.#platform);
   }
@@ -286,7 +290,11 @@ export abstract class ForgeBackedProvider<
     if (at === undefined) return page;
     if ("url" in at) page.cursor = { nextUrl: at.url };
     else if ("token" in at) page.cursor = { token: at.token };
-    else throw new ForgesError("cursor is not one this listing returned", 400, this.#platform);
+    else
+      throw new ForgesError("cursor is not one this listing returned", {
+        status: 400,
+        platform: this.#platform,
+      });
     return page;
   }
 
@@ -456,7 +464,10 @@ export abstract class ForgeBackedProvider<
   #date(value: string, field: string): Date {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
-      throw new ForgesError(`${field} must be an ISO 8601 date`, 400, this.#platform);
+      throw new ForgesError(`${field} must be an ISO 8601 date`, {
+        status: 400,
+        platform: this.#platform,
+      });
     }
     return date;
   }
@@ -688,7 +699,7 @@ export abstract class ForgeBackedProvider<
           return this.mapComment(this.forgePayload(comment) as never);
         }
       }
-      throw new NotFoundError(`Comment not found: ${commentId}`, this.#platform);
+      throw new NotFoundError(`Comment not found: ${commentId}`, { platform: this.#platform });
     });
   }
 
@@ -697,7 +708,7 @@ export abstract class ForgeBackedProvider<
     const thread = await forge.threads.get(ref);
     if (thread.kind !== ref.kind) {
       const kind = ref.kind === "issue" ? "Issue" : "Pull request";
-      throw new NotFoundError(`${kind} not found: ${ref.number}`, this.#platform);
+      throw new NotFoundError(`${kind} not found: ${ref.number}`, { platform: this.#platform });
     }
     return thread;
   }
@@ -739,7 +750,7 @@ export abstract class ForgeBackedProvider<
       const conversation = await this.#conversation(forge, pull, threadId);
       const [opening] = conversation.comments;
       if (opening === undefined)
-        throw new NotFoundError(`Thread not found: ${threadId}`, this.#platform);
+        throw new NotFoundError(`Thread not found: ${threadId}`, { platform: this.#platform });
       const reply = await forge.threads.replyToReviewComment(
         this.threadRef(forge, owner, repo, "pull_request", number),
         opening,
@@ -787,7 +798,7 @@ export abstract class ForgeBackedProvider<
       (candidate) => candidate.id === threadId,
     );
     if (conversation === undefined) {
-      throw new NotFoundError(`Thread not found: ${threadId}`, this.#platform);
+      throw new NotFoundError(`Thread not found: ${threadId}`, { platform: this.#platform });
     }
     return conversation;
   }

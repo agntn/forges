@@ -63,7 +63,7 @@ const mocks = vi.hoisted(() => {
 
       return {
         contributionTemplates: {
-          list: vi.fn(async (_owner: string, _repo: string, kind: string, options: unknown) => ({
+          list: vi.fn(async (_repo: unknown, { kind, ...options }: { kind: string }) => ({
             items: [
               {
                 kind,
@@ -80,7 +80,7 @@ const mocks = vi.hoisted(() => {
             hasNextPage: false,
             options,
           })),
-          get: vi.fn(async (_owner: string, _repo: string, kind: string, key: string) => ({
+          get: vi.fn(async (_repo: unknown, { kind, key }: { kind: string; key: string }) => ({
             kind,
             key,
             name: "bug",
@@ -109,34 +109,35 @@ const mocks = vi.hoisted(() => {
         },
         repos: {
           list: vi.fn(),
-          get: vi.fn(async (owner: string, repo: string) => {
+          get: vi.fn(async ({ owner, repo }: { owner: string; repo: string }) => {
             if (revoked) {
-              throw new AuthenticationError(
-                "Authentication failed: 401: 401 Unauthorized",
+              throw new AuthenticationError("Authentication failed: 401: 401 Unauthorized", {
                 platform,
-                new FetchError("401"),
-              );
+                originalError: new FetchError("401"),
+              });
             }
             if (repo === "expired-session") {
-              throw new AuthenticationError(
-                "Authentication failed: 401: Authentication error",
+              throw new AuthenticationError("Authentication failed: 401: Authentication error", {
                 platform,
-                new FetchError("401"),
-              );
+                originalError: new FetchError("401"),
+              });
             }
             if (repo === "missing" || (repo === "hidden" && anonymous)) {
-              throw new NotFoundError("Resource not found: 404 ", "github", new FetchError("404"));
+              throw new NotFoundError("Resource not found: 404 ", {
+                platform: "github",
+                originalError: new FetchError("404"),
+              });
             }
             if (repo === "shared" && anonymous) throw sharedRefusal.current;
             if (repo === "busy" && anonymous) {
-              throw new RateLimitError(
-                "Rate limit exceeded: 403",
-                60,
-                "github",
-                new FetchError("403"),
-              );
+              throw new RateLimitError("Rate limit exceeded: 403", {
+                retryAfter: 60,
+                platform: "github",
+                originalError: new FetchError("403"),
+              });
             }
-            if (repo === "gone") throw new NotFoundError("Repository not found: gone", "github");
+            if (repo === "gone")
+              throw new NotFoundError("Repository not found: gone", { platform: "github" });
             return {
               id: "1",
               name: repo,
@@ -148,7 +149,7 @@ const mocks = vi.hoisted(() => {
           }),
         },
         issues: {
-          create: vi.fn(async (_owner: string, _repo: string, input: { title: string }) => {
+          create: vi.fn(async (_repo: unknown, input: { title: string }) => {
             if (anonymous) {
               anonymousWrites.current += 1;
             }
@@ -162,13 +163,13 @@ const mocks = vi.hoisted(() => {
               author: { login },
             };
           }),
-          createComment: vi.fn(async (_owner: string, _repo: string, _number: number) => {
+          createComment: vi.fn(async () => {
             if (anonymous) {
               anonymousWrites.current += 1;
             }
             return { id: "31", body: "posted", author: { login } };
           }),
-          update: vi.fn(async (_owner: string, _repo: string, number: number) => {
+          update: vi.fn(async ({ number }: { number: number }) => {
             if (anonymous) {
               anonymousWrites.current += 1;
             }
@@ -177,13 +178,13 @@ const mocks = vi.hoisted(() => {
         },
         pullRequests: {
           // A platform that keeps its one assignee, the way GitLab Free does.
-          update: vi.fn(async (_owner: string, _repo: string, number: number) => ({
+          update: vi.fn(async ({ number }: { number: number }) => ({
             number,
             assignees: [{ login: "maintainer" }],
             updatedBy: login,
           })),
           createComment: vi.fn(async () => ({ id: "32", body: "posted", author: { login } })),
-          merge: vi.fn(async (_owner: string, _repo: string, number: number) => ({
+          merge: vi.fn(async ({ number }: { number: number }) => ({
             number,
             merged: true,
             mergedBy: { login },
@@ -234,11 +235,10 @@ beforeEach(() => {
   mocks.ghLogins.current = new Set(["aeitwoen", "oritwoen"]);
   mocks.envCredential.current = false;
   mocks.issueAuthors.current = [];
-  mocks.sharedRefusal.current = new NotFoundError(
-    "Resource not found: 404",
-    "gitlab",
-    new FetchError("404"),
-  );
+  mocks.sharedRefusal.current = new NotFoundError("Resource not found: 404", {
+    platform: "gitlab",
+    originalError: new FetchError("404"),
+  });
   mocks.resolveToken.mockClear();
   mocks.createProvider.mockClear();
   vi.stubEnv("FORGES_GITHUB_BASE_URL", undefined);

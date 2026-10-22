@@ -23,6 +23,18 @@ export interface PaginationOptions {
   maxPages?: number;
 }
 
+/** Where a walk starts and how far it goes. */
+export interface PaginationRequest extends PaginationOptions {
+  url: string;
+}
+
+/** A bare URL from plain JavaScript would read as no URL at all, so it's refused by name. */
+function assertPaginationRequest(request: PaginationRequest, call: string): void {
+  if (typeof request !== "object" || request === null || typeof request.url !== "string") {
+    throw new TypeError(`${call} takes { url, ...options } as its second argument`);
+  }
+}
+
 function resolveMaxPages(maxPages: number | undefined): number {
   if (maxPages === undefined) {
     return Infinity;
@@ -127,15 +139,15 @@ export function buildPageResult<TRaw, TMapped>(
  */
 export async function* paginate<T>(
   fetcher: (url: string) => Promise<{ data: T[]; headers: Headers }>,
-  url: string,
-  options: PaginationOptions = {},
+  request: PaginationRequest,
 ): AsyncGenerator<T[], void, unknown> {
-  const { perPage = 30, perPageParam = "per_page" } = options;
+  assertPaginationRequest(request, "paginate");
+  const { url, perPage = 30, perPageParam = "per_page" } = request;
   const normalizedPerPageParam = perPageParam.trim();
   if (!normalizedPerPageParam) {
     throwPaginationError("perPageParam must be a non-empty query parameter name");
   }
-  const maxPages = resolveMaxPages(options.maxPages);
+  const maxPages = resolveMaxPages(request.maxPages);
   let baseURL: string;
   try {
     baseURL = new URL(url).origin;
@@ -215,12 +227,12 @@ export async function* paginate<T>(
  */
 export async function fetchAllPages<T>(
   fetcher: (url: string) => Promise<{ data: T[]; headers: Headers }>,
-  url: string,
-  options: PaginationOptions = {},
+  request: PaginationRequest,
 ): Promise<T[]> {
+  assertPaginationRequest(request, "fetchAllPages");
   const results: T[] = [];
 
-  for await (const page of paginate(fetcher, url, options)) {
+  for await (const page of paginate(fetcher, request)) {
     results.push(...page);
   }
 

@@ -11,7 +11,7 @@ import { ForgesError } from "../errors.ts";
 export function encodePathSegment(value: string | number, field = "Identifier"): string {
   const segment = String(value);
   if (typeof value === "number" && (!Number.isSafeInteger(value) || value < 1)) {
-    throw new ForgesError(`${field} must be a positive integer`, 400);
+    throw new ForgesError(`${field} must be a positive integer`, { status: 400 });
   }
   if (
     segment.length === 0 ||
@@ -25,7 +25,7 @@ export function encodePathSegment(value: string | number, field = "Identifier"):
   ) {
     throw new ForgesError(
       `${field} must be one path segment: not empty, "." or "..", and without "/", "\\", "%" or control characters`,
-      400,
+      { status: 400 },
     );
   }
 
@@ -59,7 +59,7 @@ export function encodeApiResponsePathSegment(value: string): string {
  */
 export function encodeLabelPathSegment(name: string): string {
   if (name.length === 0 || name === "." || name === "..") {
-    throw new ForgesError('Label name must not be empty, "." or ".."', 400);
+    throw new ForgesError('Label name must not be empty, "." or ".."', { status: 400 });
   }
 
   return encodeURIComponent(name);
@@ -81,7 +81,7 @@ const INVALID_REF_NAME =
  */
 export function encodeRefPathSegment(value: string, field = "Ref"): string {
   if (value.length === 0 || INVALID_REF_NAME.test(value)) {
-    throw new ForgesError(`${field} must be a ref name git accepts`, 400);
+    throw new ForgesError(`${field} must be a ref name git accepts`, { status: 400 });
   }
 
   return encodeURIComponent(value);
@@ -102,7 +102,7 @@ export function encodeRevisionPathSegment(value: string, field = "Revision"): st
   if (name.length === 0 || INVALID_REF_NAME.test(name)) {
     throw new ForgesError(
       `${field} must be a ref name git accepts, optionally with ~N or ^N steps`,
-      400,
+      { status: 400 },
     );
   }
 

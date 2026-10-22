@@ -68,7 +68,7 @@ const needsState = computed(() => operation.value === "issues" || operation.valu
 const libraryCall = computed(() => {
   const owner = parsed.value?.owner ?? "owner";
   const repo = parsed.value?.repo ?? "repo";
-  const target = `"${owner}", "${repo}"`;
+  const target = `{ owner: "${owner}", repo: "${repo}" }`;
   switch (operation.value) {
     case "repo":
       return `await forge.repos.get(${target});`;
@@ -81,7 +81,7 @@ const libraryCall = computed(() => {
     case "ci":
       return `await forge.ciRuns.list(${target}, { perPage: 10 });`;
     case "threads":
-      return `await forge.threads.list(${target}, ${number.value === "" ? "number" : number.value}, { perPage: 5 });`;
+      return `await forge.threads.list({ owner: "${owner}", repo: "${repo}", number${number.value === "" ? "" : `: ${number.value}`} }, { perPage: 5 });`;
     case "user":
       return `await forge.users.get("${username.value.trim()}");`;
     default:

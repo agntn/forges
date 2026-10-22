@@ -40,6 +40,7 @@ import type {
   Issue,
   IssueRef,
   IssueResource,
+  RepoRef,
   ListCiJobsOptions,
   ListCiRunsOptions,
   ListCommentOptions,
@@ -155,7 +156,7 @@ function paginationPageValue(
     (maximum !== undefined && resolved > maximum)
   ) {
     const range = maximum === undefined ? "a positive integer" : `an integer from 1 to ${maximum}`;
-    throw new ForgesError(`${label} must be ${range}`, 400, platform);
+    throw new ForgesError(`${label} must be ${range}`, { status: 400, platform });
   }
   return resolved;
 }
@@ -172,23 +173,43 @@ interface Listing<O> {
   options: O | undefined;
 }
 
-/** A guessed `owner, repo, number` row would go out as `/repos/undefined/...`, so it's refused. */
-function assertIssueRef(issue: IssueRef, call: string): void {
-  const ref: Partial<IssueRef> = typeof issue === "object" && issue !== null ? issue : {};
-  if (
-    typeof ref.owner !== "string" ||
-    typeof ref.repo !== "string" ||
-    !Number.isInteger(ref.number)
-  ) {
-    throw new TypeError(`issues.${call} takes { owner, repo, number } as its first argument`);
+/** The fields one argument must carry, each a string or an integer. */
+type ArgumentShape = Readonly<Record<string, "string" | "number">>;
+
+const REPO_REF: ArgumentShape = { owner: "string", repo: "string" };
+const ISSUE_REF: ArgumentShape = { ...REPO_REF, number: "number" };
+
+/** An old positional call would go out as `/repos/undefined`, so it's refused with its shape. */
+function assertArgument(
+  value: unknown,
+  about: { call: string; shape: ArgumentShape; position: "first" | "second" },
+): void {
+  const { call, shape, position } = about;
+  const fields =
+    typeof value === "object" && value !== null && !ArrayBuffer.isView(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  const fits =
+    fields !== undefined &&
+    Object.entries(shape).every(([key, type]) => typeof fields[key] === type);
+  if (!fits) {
+    throw new TypeError(
+      `${call} takes { ${Object.keys(shape).join(", ")} } as its ${position} argument`,
+    );
   }
 }
 
-/** The child goes in an object, so a bare number in its place is refused the same way. */
-function assertSubIssueInput(input: SubIssueInput, call: string): void {
-  if (typeof input !== "object" || input === null || !Number.isInteger(input.subIssue)) {
-    throw new TypeError(`issues.${call} takes { subIssue } as its second argument`);
-  }
+function assertRepoRef(repo: RepoRef, call: string): void {
+  assertArgument(repo, { call, shape: REPO_REF, position: "first" });
+}
+
+function assertIssueRef(issue: IssueRef, call: string): void {
+  assertArgument(issue, { call, shape: ISSUE_REF, position: "first" });
+}
+
+/** The second argument, which names what the call acts on inside the first. */
+function assertInput(input: unknown, about: { call: string; shape: ArgumentShape }): void {
+  assertArgument(input, { ...about, position: "second" });
 }
 
 function contributionTemplatePagination(
@@ -219,7 +240,7 @@ function paginateContributionTemplates(
 
 function assertReleaseTag(tag: string, platform?: string): void {
   if (tag.trim() === "") {
-    throw new ForgesError("Release tag must not be empty", 400, platform);
+    throw new ForgesError("Release tag must not be empty", { status: 400, platform });
   }
 }
 
@@ -230,10 +251,16 @@ function assertGlobalSearch(
 ): void {
   const { query, platform, ...options } = search;
   if (options.author !== undefined && !/^[^\s:'"]+$/u.test(options.author)) {
-    throw new ForgesError(`${noun} search author must be a single login`, 400, platform);
+    throw new ForgesError(`${noun} search author must be a single login`, {
+      status: 400,
+      platform,
+    });
   }
   if (options.owner !== undefined && !/^\S+$/u.test(options.owner)) {
-    throw new ForgesError(`${noun} search owner must be one name without spaces`, 400, platform);
+    throw new ForgesError(`${noun} search owner must be one name without spaces`, {
+      status: 400,
+      platform,
+    });
   }
   const labelled = noun === "Issue" && (options.labels?.length ?? 0) > 0;
   const scoped = options.author !== undefined || options.owner !== undefined || labelled;
@@ -242,12 +269,14 @@ function assertGlobalSearch(
       noun === "Issue"
         ? "Issue search needs a query, an author, a label or an owner"
         : `${noun} search needs a query, an author or an owner`,
-      400,
-      platform,
+      { status: 400, platform },
     );
   }
   if (options.repo !== undefined && options.owner === undefined) {
-    throw new ForgesError(`${noun} search repository scope requires an owner`, 400, platform);
+    throw new ForgesError(`${noun} search repository scope requires an owner`, {
+      status: 400,
+      platform,
+    });
   }
 }
 
@@ -257,17 +286,19 @@ function assertGlobalIssueFilters(
   platform?: string,
 ): void {
   if (options?.state !== undefined && !["open", "closed", "all"].includes(options.state)) {
-    throw new ForgesError("Issue search state must be open, closed or all", 400, platform);
+    throw new ForgesError("Issue search state must be open, closed or all", {
+      status: 400,
+      platform,
+    });
   }
   if ((options?.labels?.length ?? 0) > 10) {
-    throw new ForgesError("Issue search takes at most 10 labels", 400, platform);
+    throw new ForgesError("Issue search takes at most 10 labels", { status: 400, platform });
   }
   for (const [index, label] of (options?.labels ?? []).entries()) {
     if (label.trim() === "" || /[,"\p{Cc}]/u.test(label)) {
       throw new ForgesError(
         `Issue search label ${index + 1} must be a name without commas or double quotes`,
-        400,
-        platform,
+        { status: 400, platform },
       );
     }
   }
@@ -276,7 +307,7 @@ function assertGlobalIssueFilters(
 /** A blank comment is never what the caller meant, so it fails here without a request. */
 function assertCommentBody(body: string, platform?: string): void {
   if (body.trim() === "") {
-    throw new ForgesError("Comment body must not be empty", 400, platform);
+    throw new ForgesError("Comment body must not be empty", { status: 400, platform });
   }
 }
 
@@ -307,38 +338,59 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         this.#paged({ listing: "repos.list", subject: [owner], options }, (positioned) =>
           this.listRepos(owner, positioned),
         ),
-      get: (owner, repo) => this.getRepo(owner, repo),
-      readContents: async (owner, repo, path, options) => {
+      get: async (ref) => {
+        assertRepoRef(ref, "repos.get");
+        return this.getRepo(ref.owner, ref.repo);
+      },
+      readContents: async (ref, request) => {
+        assertRepoRef(ref, "repos.readContents");
+        assertInput(request, { call: "repos.readContents", shape: { path: "string" } });
+        const { path, ...options } = request;
         assertRepositoryContentsOptions(options, this.#platform);
         const normalizedPath = normalizeRepositoryPath(path, this.#platform);
-        return this.readRepositoryContents(owner, repo, normalizedPath, options);
+        return this.readRepositoryContents(ref.owner, ref.repo, normalizedPath, options);
       },
-      listTags: (owner, repo, options) =>
-        this.#paged({ listing: "repos.listTags", subject: [owner, repo], options }, (positioned) =>
-          this.listTags(owner, repo, positioned),
-        ),
+      listTags: async (ref, options) => {
+        assertRepoRef(ref, "repos.listTags");
+        const { owner, repo } = ref;
+        return this.#paged(
+          { listing: "repos.listTags", subject: [owner, repo], options },
+          (positioned) => this.listTags(owner, repo, positioned),
+        );
+      },
     };
     this.contributionTemplates = {
-      list: (owner, repo, kind, options) =>
-        this.#paged(
+      list: async (ref, request) => {
+        assertRepoRef(ref, "contributionTemplates.list");
+        assertInput(request, { call: "contributionTemplates.list", shape: { kind: "string" } });
+        const { owner, repo } = ref;
+        const { kind, ...options } = request;
+        return this.#paged(
           { listing: "contributionTemplates.list", subject: [owner, repo, kind], options },
           async (paged) => {
             const pagination = contributionTemplatePagination(paged, this.#platform);
             const templates = await this.listContributionTemplates(owner, repo, kind);
             return paginateContributionTemplates(templates, pagination);
           },
-        ),
-      get: async (owner, repo, kind, key) => {
+        );
+      },
+      get: async (ref, request) => {
+        assertRepoRef(ref, "contributionTemplates.get");
+        assertInput(request, {
+          call: "contributionTemplates.get",
+          shape: { kind: "string", key: "string" },
+        });
+        const { owner, repo } = ref;
+        const { kind, key } = request;
         if (key.length === 0) {
           throw this.#refusal("Contribution template key must not be empty");
         }
         const templates = await this.listContributionTemplates(owner, repo, kind);
         const template = templates.find((candidate) => candidate.key === key);
         if (!template) {
-          throw new NotFoundError(
-            `Contribution template not found: ${kind}/${key}`,
-            this.#platform,
-          );
+          throw new NotFoundError(`Contribution template not found: ${kind}/${key}`, {
+            platform: this.#platform,
+          });
         }
         const content = await this.readContributionTemplate(owner, repo, template);
         return { ...template, content };
@@ -358,13 +410,21 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       },
     };
     this.ciRuns = {
-      list: (owner, repo, options) =>
-        this.#paged({ listing: "ciRuns.list", subject: [owner, repo], options }, (positioned) =>
-          this.listCiRuns(owner, repo, positioned),
-        ),
-      listJobs: async (owner, repo, runId, options) => {
+      list: async (ref, options) => {
+        assertRepoRef(ref, "ciRuns.list");
+        const { owner, repo } = ref;
+        return this.#paged(
+          { listing: "ciRuns.list", subject: [owner, repo], options },
+          (positioned) => this.listCiRuns(owner, repo, positioned),
+        );
+      },
+      listJobs: async (ref, request) => {
+        assertRepoRef(ref, "ciRuns.listJobs");
+        assertInput(request, { call: "ciRuns.listJobs", shape: { runId: "string" } });
+        const { owner, repo } = ref;
+        const { runId, ...options } = request;
         assertCiId(runId, { kind: "run", platform: this.#platform });
-        const perPage = paginationPageValue(options?.perPage, {
+        const perPage = paginationPageValue(options.perPage, {
           ...PER_PAGE,
           platform: this.#platform,
         });
@@ -373,10 +433,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           (positioned) => this.listCiJobs(owner, repo, runId, { ...positioned, perPage }),
         );
       },
-      readJobLog: async (owner, repo, jobId, options) => {
+      readJobLog: async (ref, request) => {
+        assertRepoRef(ref, "ciRuns.readJobLog");
+        assertInput(request, { call: "ciRuns.readJobLog", shape: { jobId: "string" } });
+        const { jobId, ...options } = request;
         assertCiId(jobId, { kind: "job", platform: this.#platform });
         assertCiJobLogOptions(options, this.#platform);
-        return this.readCiJobLog(owner, repo, jobId, options);
+        return this.readCiJobLog(ref.owner, ref.repo, jobId, options);
       },
     };
     this.commits = {
@@ -391,24 +454,43 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           this.searchCommits(query, paged),
         );
       },
-      list: (owner, repo, options) =>
-        this.#paged({ listing: "commits.list", subject: [owner, repo], options }, (positioned) =>
-          this.listCommits(owner, repo, positioned),
-        ),
-      get: (owner, repo, sha) => this.getCommit(owner, repo, sha),
-      listChecks: async (owner, repo, ref, options) => {
-        if (ref.trim() === "") {
+      list: async (ref, options) => {
+        assertRepoRef(ref, "commits.list");
+        const { owner, repo } = ref;
+        return this.#paged(
+          { listing: "commits.list", subject: [owner, repo], options },
+          (positioned) => this.listCommits(owner, repo, positioned),
+        );
+      },
+      get: async (ref, commit) => {
+        assertRepoRef(ref, "commits.get");
+        assertInput(commit, { call: "commits.get", shape: { sha: "string" } });
+        return this.getCommit(ref.owner, ref.repo, commit.sha);
+      },
+      listChecks: async (ref, request) => {
+        assertRepoRef(ref, "commits.listChecks");
+        assertInput(request, { call: "commits.listChecks", shape: { ref: "string" } });
+        const { owner, repo } = ref;
+        const { ref: revision, ...options } = request;
+        if (revision.trim() === "") {
           throw this.#refusal("Commit checks need a SHA, branch or tag");
         }
         return this.#paged(
-          { listing: "commits.listChecks", subject: [owner, repo, ref], options },
+          { listing: "commits.listChecks", subject: [owner, repo, revision], options },
           (paged) => {
             this.#assertCheckPage(paged);
-            return this.listCommitChecks(owner, repo, ref, paged);
+            return this.listCommitChecks(owner, repo, revision, paged);
           },
         );
       },
-      compare: async (owner, repo, base, head, options) => {
+      compare: async (ref, request) => {
+        assertRepoRef(ref, "commits.compare");
+        assertInput(request, {
+          call: "commits.compare",
+          shape: { base: "string", head: "string" },
+        });
+        const { owner, repo } = ref;
+        const { base, head, ...options } = request;
         if (base.trim() === "" || head.trim() === "") {
           throw this.#refusal("Commit comparison needs a base and a head ref");
         }
@@ -417,37 +499,51 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           (paged) =>
             this.compareCommits(owner, repo, base, head, {
               page: paged.page ?? 1,
-              perPage: paginationPageValue(options?.perPage, {
+              perPage: paginationPageValue(options.perPage, {
                 ...PER_PAGE,
                 platform: this.#platform,
               }),
             }),
         );
       },
-      readPatch: async (owner, repo, sha, options) => {
+      readPatch: async (ref, request) => {
+        assertRepoRef(ref, "commits.readPatch");
+        assertInput(request, { call: "commits.readPatch", shape: { sha: "string" } });
+        const { sha, ...options } = request;
         assertCommitPatchOptions(options, this.#platform);
-        return this.readCommitPatch(owner, repo, sha, options);
+        return this.readCommitPatch(ref.owner, ref.repo, sha, options);
       },
     };
     this.releases = {
-      list: (owner, repo, options) =>
-        this.#paged({ listing: "releases.list", subject: [owner, repo], options }, (positioned) =>
-          this.listReleases(owner, repo, positioned),
-        ),
-      get: async (owner, repo, tag) => {
-        assertReleaseTag(tag, this.#platform);
-        return this.getRelease(owner, repo, tag);
+      list: async (ref, options) => {
+        assertRepoRef(ref, "releases.list");
+        const { owner, repo } = ref;
+        return this.#paged(
+          { listing: "releases.list", subject: [owner, repo], options },
+          (positioned) => this.listReleases(owner, repo, positioned),
+        );
       },
-      create: async (owner, repo, input) => {
+      get: async (ref, release) => {
+        assertRepoRef(ref, "releases.get");
+        assertInput(release, { call: "releases.get", shape: { tag: "string" } });
+        assertReleaseTag(release.tag, this.#platform);
+        return this.getRelease(ref.owner, ref.repo, release.tag);
+      },
+      create: async (ref, input) => {
+        assertRepoRef(ref, "releases.create");
+        assertInput(input, { call: "releases.create", shape: { tag: "string" } });
         assertReleaseTag(input.tag, this.#platform);
-        return this.createRelease(owner, repo, input);
+        return this.createRelease(ref.owner, ref.repo, input);
       },
-      update: async (owner, repo, tag, input) => {
+      update: async (ref, request) => {
+        assertRepoRef(ref, "releases.update");
+        assertInput(request, { call: "releases.update", shape: { tag: "string" } });
+        const { tag, ...input } = request;
         assertReleaseTag(tag, this.#platform);
         if (Object.values(input).every((value) => value === undefined)) {
           throw this.#refusal("Release update needs at least one field");
         }
-        return this.updateRelease(owner, repo, tag, input);
+        return this.updateRelease(ref.owner, ref.repo, tag, input);
       },
     };
     this.issues = {
@@ -458,11 +554,19 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           this.searchIssuesGlobal(query, paged),
         );
       },
-      list: (owner, repo, options) =>
-        this.#paged({ listing: "issues.list", subject: [owner, repo], options }, (positioned) =>
-          this.listIssues(owner, repo, positioned),
-        ),
-      search: async (owner, repo, query, options) => {
+      list: async (ref, options) => {
+        assertRepoRef(ref, "issues.list");
+        const { owner, repo } = ref;
+        return this.#paged(
+          { listing: "issues.list", subject: [owner, repo], options },
+          (positioned) => this.listIssues(owner, repo, positioned),
+        );
+      },
+      search: async (ref, request) => {
+        assertRepoRef(ref, "issues.search");
+        assertInput(request, { call: "issues.search", shape: { query: "string" } });
+        const { owner, repo } = ref;
+        const { query, ...options } = request;
         if (query.trim() === "") {
           throw this.#refusal("Issue search query must not be empty");
         }
@@ -471,16 +575,23 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           (paged) => this.searchIssues(owner, repo, query, paged),
         );
       },
-      get: (owner, repo, number) => this.getIssue(owner, repo, number),
-      create: async (owner, repo, input) => {
+      get: async (issue) => {
+        this.#assertIssue(issue, "issues.get");
+        return this.getIssue(issue.owner, issue.repo, issue.number);
+      },
+      create: async (ref, input) => {
+        assertRepoRef(ref, "issues.create");
         assertAssignees(input.assignees, this.#platform);
-        return this.createIssue(owner, repo, input);
+        return this.createIssue(ref.owner, ref.repo, input);
       },
-      update: async (owner, repo, number, input) => {
+      update: async (issue, input) => {
+        this.#assertIssue(issue, "issues.update");
         assertIssueUpdate(input, this.#platform);
-        return this.updateIssue(owner, repo, number, input);
+        return this.updateIssue(issue.owner, issue.repo, issue.number, input);
       },
-      listComments: async (owner, repo, number, options) => {
+      listComments: async (issue, options) => {
+        this.#assertIssue(issue, "issues.listComments");
+        const { owner, repo, number } = issue;
         return this.#paged(
           { listing: "issues.listComments", subject: [owner, repo, number], options },
           (paged) => {
@@ -489,13 +600,19 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           },
         );
       },
-      getComment: (owner, repo, number, commentId) =>
-        this.getIssueComment(owner, repo, number, commentId),
-      createComment: async (owner, repo, number, input) => {
-        assertCommentBody(input.body, this.#platform);
-        return this.createIssueComment(owner, repo, number, input);
+      getComment: async (issue, comment) => {
+        this.#assertIssue(issue, "issues.getComment");
+        assertInput(comment, { call: "issues.getComment", shape: { commentId: "string" } });
+        return this.getIssueComment(issue.owner, issue.repo, issue.number, comment.commentId);
       },
-      listReactions: async (owner, repo, number, options) => {
+      createComment: async (issue, input) => {
+        this.#assertIssue(issue, "issues.createComment");
+        assertCommentBody(input.body, this.#platform);
+        return this.createIssueComment(issue.owner, issue.repo, issue.number, input);
+      },
+      listReactions: async (issue, options) => {
+        this.#assertIssue(issue, "issues.listReactions");
+        const { owner, repo, number } = issue;
         return this.#paged(
           { listing: "issues.listReactions", subject: [owner, repo, number], options },
           (paged) => {
@@ -505,7 +622,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         );
       },
       listSubIssues: async (issue, options) => {
-        assertIssueRef(issue, "listSubIssues");
+        this.#assertIssue(issue, "issues.listSubIssues");
         const { owner, repo, number } = issue;
         return this.#paged(
           { listing: "issues.listSubIssues", subject: [owner, repo, number], options },
@@ -532,31 +649,51 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           (paged) => this.searchPullRequestsGlobal(query, paged),
         );
       },
-      list: (owner, repo, options) =>
-        this.#paged({ listing: "pullRequests.list", subject: [owner, repo], options }, (paged) =>
-          this.listPullRequests(owner, repo, paged),
-        ),
-      listFiles: (owner, repo, number, options) =>
-        this.#paged(
+      list: async (ref, options) => {
+        assertRepoRef(ref, "pullRequests.list");
+        const { owner, repo } = ref;
+        return this.#paged(
+          { listing: "pullRequests.list", subject: [owner, repo], options },
+          (paged) => this.listPullRequests(owner, repo, paged),
+        );
+      },
+      listFiles: async (pull, options) => {
+        this.#assertIssue(pull, "pullRequests.listFiles");
+        const { owner, repo, number } = pull;
+        return this.#paged(
           { listing: "pullRequests.listFiles", subject: [owner, repo, number], options },
           (paged) => this.listPullRequestFiles(owner, repo, number, paged),
-        ),
-      listChecks: (owner, repo, number, options) =>
-        this.#paged(
+        );
+      },
+      listChecks: async (pull, options) => {
+        this.#assertIssue(pull, "pullRequests.listChecks");
+        const { owner, repo, number } = pull;
+        return this.#paged(
           { listing: "pullRequests.listChecks", subject: [owner, repo, number], options },
           (paged) => {
             this.#assertCheckPage(paged);
             return this.listPullRequestChecks(owner, repo, number, paged);
           },
-        ),
-      listReviews: (owner, repo, number, options) =>
-        this.#paged(
+        );
+      },
+      listReviews: async (pull, options) => {
+        this.#assertIssue(pull, "pullRequests.listReviews");
+        const { owner, repo, number } = pull;
+        return this.#paged(
           { listing: "pullRequests.listReviews", subject: [owner, repo, number], options },
           (paged) => this.listPullRequestReviews(owner, repo, number, paged),
-        ),
-      getReview: (owner, repo, number, reviewId) =>
-        this.getPullRequestReview(owner, repo, number, reviewId),
-      search: async (owner, repo, query, options) => {
+        );
+      },
+      getReview: async (pull, review) => {
+        this.#assertIssue(pull, "pullRequests.getReview");
+        assertInput(review, { call: "pullRequests.getReview", shape: { reviewId: "string" } });
+        return this.getPullRequestReview(pull.owner, pull.repo, pull.number, review.reviewId);
+      },
+      search: async (ref, request) => {
+        assertRepoRef(ref, "pullRequests.search");
+        assertInput(request, { call: "pullRequests.search", shape: { query: "string" } });
+        const { owner, repo } = ref;
+        const { query, ...options } = request;
         if (query.trim() === "") {
           throw this.#refusal("Pull-request search query must not be empty");
         }
@@ -565,7 +702,9 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           (paged) => this.searchPullRequests(owner, repo, query, paged),
         );
       },
-      get: async (owner, repo, number, options) => {
+      get: async (pull, options) => {
+        this.#assertIssue(pull, "pullRequests.get");
+        const { owner, repo, number } = pull;
         if (options?.closingIssues !== true) return this.getPullRequest(owner, repo, number);
         const [pullRequest, closingIssues] = await Promise.all([
           this.getPullRequest(owner, repo, number),
@@ -573,19 +712,24 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         ]);
         return { ...pullRequest, closingIssues };
       },
-      create: async (owner, repo, input) => {
+      create: async (ref, input) => {
+        assertRepoRef(ref, "pullRequests.create");
         assertAssignees(input.assignees, this.#platform);
-        return this.createPullRequest(owner, repo, input);
+        return this.createPullRequest(ref.owner, ref.repo, input);
       },
-      update: async (owner, repo, number, input) => {
+      update: async (pull, input) => {
+        this.#assertIssue(pull, "pullRequests.update");
         assertPullRequestUpdate(input, this.#platform);
-        return this.updatePullRequest(owner, repo, number, input);
+        return this.updatePullRequest(pull.owner, pull.repo, pull.number, input);
       },
-      merge: async (owner, repo, number, input = {}) => {
+      merge: async (pull, input = {}) => {
+        this.#assertIssue(pull, "pullRequests.merge");
         assertMergeInput(input, this.#platform);
-        return this.mergePullRequest(owner, repo, number, input);
+        return this.mergePullRequest(pull.owner, pull.repo, pull.number, input);
       },
-      listComments: async (owner, repo, number, options) => {
+      listComments: async (pull, options) => {
+        this.#assertIssue(pull, "pullRequests.listComments");
+        const { owner, repo, number } = pull;
         return this.#paged(
           { listing: "pullRequests.listComments", subject: [owner, repo, number], options },
           (paged) => {
@@ -594,13 +738,19 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           },
         );
       },
-      getComment: (owner, repo, number, commentId) =>
-        this.getPullRequestComment(owner, repo, number, commentId),
-      createComment: async (owner, repo, number, input) => {
-        assertCommentBody(input.body, this.#platform);
-        return this.createPullRequestComment(owner, repo, number, input);
+      getComment: async (pull, comment) => {
+        this.#assertIssue(pull, "pullRequests.getComment");
+        assertInput(comment, { call: "pullRequests.getComment", shape: { commentId: "string" } });
+        return this.getPullRequestComment(pull.owner, pull.repo, pull.number, comment.commentId);
       },
-      listReactions: async (owner, repo, number, options) => {
+      createComment: async (pull, input) => {
+        this.#assertIssue(pull, "pullRequests.createComment");
+        assertCommentBody(input.body, this.#platform);
+        return this.createPullRequestComment(pull.owner, pull.repo, pull.number, input);
+      },
+      listReactions: async (pull, options) => {
+        this.#assertIssue(pull, "pullRequests.listReactions");
+        const { owner, repo, number } = pull;
         return this.#paged(
           { listing: "pullRequests.listReactions", subject: [owner, repo, number], options },
           (paged) => {
@@ -615,16 +765,35 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       authenticated: () => this.getAuthenticatedUser(),
     };
     this.threads = {
-      list: (owner, repo, number, options) =>
-        this.#paged({ listing: "threads.list", subject: [owner, repo, number], options }, (paged) =>
-          this.listThreads(owner, repo, number, paged),
-        ),
-      get: (owner, repo, number, threadId) => this.getThread(owner, repo, number, threadId),
-      reply: (owner, repo, number, threadId, input) =>
-        this.replyToThread(owner, repo, number, threadId, input),
-      resolve: (owner, repo, number, threadId) => this.resolveThread(owner, repo, number, threadId),
-      unresolve: (owner, repo, number, threadId) =>
-        this.unresolveThread(owner, repo, number, threadId),
+      list: async (pull, options) => {
+        this.#assertIssue(pull, "threads.list");
+        const { owner, repo, number } = pull;
+        return this.#paged(
+          { listing: "threads.list", subject: [owner, repo, number], options },
+          (paged) => this.listThreads(owner, repo, number, paged),
+        );
+      },
+      get: async (pull, thread) => {
+        this.#assertIssue(pull, "threads.get");
+        assertInput(thread, { call: "threads.get", shape: { threadId: "string" } });
+        return this.getThread(pull.owner, pull.repo, pull.number, thread.threadId);
+      },
+      reply: async (pull, request) => {
+        this.#assertIssue(pull, "threads.reply");
+        assertInput(request, { call: "threads.reply", shape: { threadId: "string" } });
+        const { threadId, ...input } = request;
+        return this.replyToThread(pull.owner, pull.repo, pull.number, threadId, input);
+      },
+      resolve: async (pull, thread) => {
+        this.#assertIssue(pull, "threads.resolve");
+        assertInput(thread, { call: "threads.resolve", shape: { threadId: "string" } });
+        return this.resolveThread(pull.owner, pull.repo, pull.number, thread.threadId);
+      },
+      unresolve: async (pull, thread) => {
+        this.#assertIssue(pull, "threads.unresolve");
+        assertInput(thread, { call: "threads.unresolve", shape: { threadId: "string" } });
+        return this.unresolveThread(pull.owner, pull.repo, pull.number, thread.threadId);
+      },
     };
   }
 
@@ -674,8 +843,20 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     return undefined;
   }
 
+  /** A number of the right type can still be `NaN` or `1.5`, which no forge route takes. */
+  #assertIssue(issue: IssueRef, call: string): void {
+    assertIssueRef(issue, call);
+    this.#assertPositive(issue.number, "Number");
+  }
+
+  #assertPositive(value: number, field: string): void {
+    if (!Number.isSafeInteger(value) || value < 1) {
+      throw this.#refusal(`${field} must be a positive integer`);
+    }
+  }
+
   #refusal(message: string): ForgesError {
-    return new ForgesError(message, 400, this.#platform);
+    return new ForgesError(message, { status: 400, platform: this.#platform });
   }
 
   #assertCheckPage(options: WithPage<ListPullRequestChecksOptions> | undefined): void {
@@ -697,15 +878,16 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
 
   /** An issue can't be its own child, so that call never needs the network to fail. */
   #assertSubIssue(issue: IssueRef, input: SubIssueInput, call: string): void {
-    assertIssueRef(issue, call);
-    assertSubIssueInput(input, call);
+    this.#assertIssue(issue, `issues.${call}`);
+    assertInput(input, { call: `issues.${call}`, shape: { subIssue: "number" } });
+    this.#assertPositive(input.subIssue, "Sub-issue");
     if (input.subIssue === issue.number) {
       throw this.#refusal(`Issue ${issue.number} cannot be a sub-issue of itself`);
     }
   }
 
   #unsupported(message: string): Promise<never> {
-    return Promise.reject(new ForgesError(message, 501, this.#platform));
+    return Promise.reject(new ForgesError(message, { status: 501, platform: this.#platform }));
   }
 
   protected abstract mapOwner(raw: Raw["owner"]): Owner;
