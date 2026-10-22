@@ -576,7 +576,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         );
       },
       get: async (issue) => {
-        assertIssueRef(issue, "issues.get");
+        this.#assertIssue(issue, "issues.get");
         return this.getIssue(issue.owner, issue.repo, issue.number);
       },
       create: async (ref, input) => {
@@ -585,12 +585,12 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         return this.createIssue(ref.owner, ref.repo, input);
       },
       update: async (issue, input) => {
-        assertIssueRef(issue, "issues.update");
+        this.#assertIssue(issue, "issues.update");
         assertIssueUpdate(input, this.#platform);
         return this.updateIssue(issue.owner, issue.repo, issue.number, input);
       },
       listComments: async (issue, options) => {
-        assertIssueRef(issue, "issues.listComments");
+        this.#assertIssue(issue, "issues.listComments");
         const { owner, repo, number } = issue;
         return this.#paged(
           { listing: "issues.listComments", subject: [owner, repo, number], options },
@@ -601,17 +601,17 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         );
       },
       getComment: async (issue, comment) => {
-        assertIssueRef(issue, "issues.getComment");
+        this.#assertIssue(issue, "issues.getComment");
         assertInput(comment, { call: "issues.getComment", shape: { commentId: "string" } });
         return this.getIssueComment(issue.owner, issue.repo, issue.number, comment.commentId);
       },
       createComment: async (issue, input) => {
-        assertIssueRef(issue, "issues.createComment");
+        this.#assertIssue(issue, "issues.createComment");
         assertCommentBody(input.body, this.#platform);
         return this.createIssueComment(issue.owner, issue.repo, issue.number, input);
       },
       listReactions: async (issue, options) => {
-        assertIssueRef(issue, "issues.listReactions");
+        this.#assertIssue(issue, "issues.listReactions");
         const { owner, repo, number } = issue;
         return this.#paged(
           { listing: "issues.listReactions", subject: [owner, repo, number], options },
@@ -622,7 +622,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         );
       },
       listSubIssues: async (issue, options) => {
-        assertIssueRef(issue, "issues.listSubIssues");
+        this.#assertIssue(issue, "issues.listSubIssues");
         const { owner, repo, number } = issue;
         return this.#paged(
           { listing: "issues.listSubIssues", subject: [owner, repo, number], options },
@@ -658,7 +658,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         );
       },
       listFiles: async (pull, options) => {
-        assertIssueRef(pull, "pullRequests.listFiles");
+        this.#assertIssue(pull, "pullRequests.listFiles");
         const { owner, repo, number } = pull;
         return this.#paged(
           { listing: "pullRequests.listFiles", subject: [owner, repo, number], options },
@@ -666,7 +666,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         );
       },
       listChecks: async (pull, options) => {
-        assertIssueRef(pull, "pullRequests.listChecks");
+        this.#assertIssue(pull, "pullRequests.listChecks");
         const { owner, repo, number } = pull;
         return this.#paged(
           { listing: "pullRequests.listChecks", subject: [owner, repo, number], options },
@@ -677,7 +677,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         );
       },
       listReviews: async (pull, options) => {
-        assertIssueRef(pull, "pullRequests.listReviews");
+        this.#assertIssue(pull, "pullRequests.listReviews");
         const { owner, repo, number } = pull;
         return this.#paged(
           { listing: "pullRequests.listReviews", subject: [owner, repo, number], options },
@@ -685,7 +685,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         );
       },
       getReview: async (pull, review) => {
-        assertIssueRef(pull, "pullRequests.getReview");
+        this.#assertIssue(pull, "pullRequests.getReview");
         assertInput(review, { call: "pullRequests.getReview", shape: { reviewId: "string" } });
         return this.getPullRequestReview(pull.owner, pull.repo, pull.number, review.reviewId);
       },
@@ -703,7 +703,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         );
       },
       get: async (pull, options) => {
-        assertIssueRef(pull, "pullRequests.get");
+        this.#assertIssue(pull, "pullRequests.get");
         const { owner, repo, number } = pull;
         if (options?.closingIssues !== true) return this.getPullRequest(owner, repo, number);
         const [pullRequest, closingIssues] = await Promise.all([
@@ -718,17 +718,17 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         return this.createPullRequest(ref.owner, ref.repo, input);
       },
       update: async (pull, input) => {
-        assertIssueRef(pull, "pullRequests.update");
+        this.#assertIssue(pull, "pullRequests.update");
         assertPullRequestUpdate(input, this.#platform);
         return this.updatePullRequest(pull.owner, pull.repo, pull.number, input);
       },
       merge: async (pull, input = {}) => {
-        assertIssueRef(pull, "pullRequests.merge");
+        this.#assertIssue(pull, "pullRequests.merge");
         assertMergeInput(input, this.#platform);
         return this.mergePullRequest(pull.owner, pull.repo, pull.number, input);
       },
       listComments: async (pull, options) => {
-        assertIssueRef(pull, "pullRequests.listComments");
+        this.#assertIssue(pull, "pullRequests.listComments");
         const { owner, repo, number } = pull;
         return this.#paged(
           { listing: "pullRequests.listComments", subject: [owner, repo, number], options },
@@ -739,17 +739,17 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         );
       },
       getComment: async (pull, comment) => {
-        assertIssueRef(pull, "pullRequests.getComment");
+        this.#assertIssue(pull, "pullRequests.getComment");
         assertInput(comment, { call: "pullRequests.getComment", shape: { commentId: "string" } });
         return this.getPullRequestComment(pull.owner, pull.repo, pull.number, comment.commentId);
       },
       createComment: async (pull, input) => {
-        assertIssueRef(pull, "pullRequests.createComment");
+        this.#assertIssue(pull, "pullRequests.createComment");
         assertCommentBody(input.body, this.#platform);
         return this.createPullRequestComment(pull.owner, pull.repo, pull.number, input);
       },
       listReactions: async (pull, options) => {
-        assertIssueRef(pull, "pullRequests.listReactions");
+        this.#assertIssue(pull, "pullRequests.listReactions");
         const { owner, repo, number } = pull;
         return this.#paged(
           { listing: "pullRequests.listReactions", subject: [owner, repo, number], options },
@@ -766,7 +766,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     };
     this.threads = {
       list: async (pull, options) => {
-        assertIssueRef(pull, "threads.list");
+        this.#assertIssue(pull, "threads.list");
         const { owner, repo, number } = pull;
         return this.#paged(
           { listing: "threads.list", subject: [owner, repo, number], options },
@@ -774,23 +774,23 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         );
       },
       get: async (pull, thread) => {
-        assertIssueRef(pull, "threads.get");
+        this.#assertIssue(pull, "threads.get");
         assertInput(thread, { call: "threads.get", shape: { threadId: "string" } });
         return this.getThread(pull.owner, pull.repo, pull.number, thread.threadId);
       },
       reply: async (pull, request) => {
-        assertIssueRef(pull, "threads.reply");
+        this.#assertIssue(pull, "threads.reply");
         assertInput(request, { call: "threads.reply", shape: { threadId: "string" } });
         const { threadId, ...input } = request;
         return this.replyToThread(pull.owner, pull.repo, pull.number, threadId, input);
       },
       resolve: async (pull, thread) => {
-        assertIssueRef(pull, "threads.resolve");
+        this.#assertIssue(pull, "threads.resolve");
         assertInput(thread, { call: "threads.resolve", shape: { threadId: "string" } });
         return this.resolveThread(pull.owner, pull.repo, pull.number, thread.threadId);
       },
       unresolve: async (pull, thread) => {
-        assertIssueRef(pull, "threads.unresolve");
+        this.#assertIssue(pull, "threads.unresolve");
         assertInput(thread, { call: "threads.unresolve", shape: { threadId: "string" } });
         return this.unresolveThread(pull.owner, pull.repo, pull.number, thread.threadId);
       },
@@ -843,6 +843,18 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     return undefined;
   }
 
+  /** A number of the right type can still be `NaN` or `1.5`, which no forge route takes. */
+  #assertIssue(issue: IssueRef, call: string): void {
+    assertIssueRef(issue, call);
+    this.#assertPositive(issue.number, "Number");
+  }
+
+  #assertPositive(value: number, field: string): void {
+    if (!Number.isSafeInteger(value) || value < 1) {
+      throw this.#refusal(`${field} must be a positive integer`);
+    }
+  }
+
   #refusal(message: string): ForgesError {
     return new ForgesError(message, { status: 400, platform: this.#platform });
   }
@@ -866,8 +878,9 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
 
   /** An issue can't be its own child, so that call never needs the network to fail. */
   #assertSubIssue(issue: IssueRef, input: SubIssueInput, call: string): void {
-    assertIssueRef(issue, `issues.${call}`);
+    this.#assertIssue(issue, `issues.${call}`);
     assertInput(input, { call: `issues.${call}`, shape: { subIssue: "number" } });
+    this.#assertPositive(input.subIssue, "Sub-issue");
     if (input.subIssue === issue.number) {
       throw this.#refusal(`Issue ${issue.number} cannot be a sub-issue of itself`);
     }

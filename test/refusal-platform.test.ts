@@ -62,6 +62,15 @@ const refusals: [string, (provider: Provider) => Promise<unknown>][] = [
     "issue reaction page",
     (p) => p.issues.listReactions({ owner: "o", repo: "r", number: 1 }, { perPage: 0 }),
   ],
+  ["issue number", (p) => p.issues.get({ owner: "o", repo: "r", number: 1.5 })],
+  [
+    "thread pull request number",
+    (p) => p.threads.get({ owner: "o", repo: "r", number: Number.NaN }, { threadId: "t" }),
+  ],
+  [
+    "sub-issue number",
+    (p) => p.issues.addSubIssue({ owner: "o", repo: "r", number: 1 }, { subIssue: 0 }),
+  ],
   ["global pull request search", (p) => p.pullRequests.searchGlobal(" ")],
   [
     "check page",
