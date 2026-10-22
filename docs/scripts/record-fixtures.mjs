@@ -99,20 +99,21 @@ for (const target of TARGETS) {
     baseURL: target.baseURL,
     cache: { enabled: false },
   });
-  const repository = await provider.repos.get(target.owner, target.repo);
-  const issues = await settle(
-    provider.issues.list(target.owner, target.repo, { state: "open", perPage: 5 }),
-    { items: [], hasNextPage: false },
-  );
-  const pulls = await settle(
-    provider.pullRequests.list(target.owner, target.repo, { state: "open", perPage: 5 }),
-    { items: [], hasNextPage: false },
-  );
-  const commits = await settle(provider.commits.list(target.owner, target.repo, { perPage: 5 }), {
+  const ref = { owner: target.owner, repo: target.repo };
+  const repository = await provider.repos.get(ref);
+  const issues = await settle(provider.issues.list(ref, { state: "open", perPage: 5 }), {
     items: [],
     hasNextPage: false,
   });
-  const ci = await settle(provider.ciRuns.list(target.owner, target.repo, { perPage: 5 }), {
+  const pulls = await settle(provider.pullRequests.list(ref, { state: "open", perPage: 5 }), {
+    items: [],
+    hasNextPage: false,
+  });
+  const commits = await settle(provider.commits.list(ref, { perPage: 5 }), {
+    items: [],
+    hasNextPage: false,
+  });
+  const ci = await settle(provider.ciRuns.list(ref, { perPage: 5 }), {
     items: [],
     hasNextPage: false,
   });
@@ -120,7 +121,7 @@ for (const target of TARGETS) {
   let threads = { number: null, items: [] };
   for (const pr of pulls.items) {
     const page = await settle(
-      provider.threads.list(target.owner, target.repo, pr.number, { perPage: 4, state: "all" }),
+      provider.threads.list({ ...ref, number: pr.number }, { perPage: 4, state: "all" }),
       null,
     );
     if (page && page.items.length > 0) {
