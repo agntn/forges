@@ -12,6 +12,8 @@ import {
   listPullRequests,
   listRepositories,
   resetPinnedProviders,
+  resolveThread,
+  unresolveThread,
 } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
@@ -1315,6 +1317,46 @@ describe("forges MCP server", () => {
     );
     expect(JSON.parse(text(full.content))).toEqual({ platform: "github", result: review });
   });
+
+  it.each([
+    ["forges_threads_resolve", "resolve", resolveThread, true],
+    ["forges_threads_unresolve", "unresolve", unresolveThread, false],
+  ] as const)(
+    "answers %s with the thread state, not its comments",
+    async (name, method, operation, flag) => {
+      const comment = {
+        id: "4313777002",
+        body: "Bind each cursor to its original request.\n\n".repeat(20),
+        author: { login: "chatgpt-codex-connector" },
+        url: "https://github.com/agntn/forges/pull/303#discussion_r4313777002",
+        createdAt: "2026-10-19T12:25:50Z",
+      };
+      const thread = {
+        id: "PRRT_kwDORfLBQs6t6mq7",
+        isResolved: flag,
+        isOutdated: false,
+        path: "src/provider.ts",
+        line: 784,
+        startLine: null,
+        comments: [comment, { ...comment, id: "4313777003" }],
+      };
+      mocks.threads[method].mockResolvedValue(thread);
+      const client = await connectTestClient();
+
+      const response = await client.callTool({
+        name,
+        arguments: { repo: "agntn/forges", number: 303, threadId: thread.id },
+      });
+
+      const { comments: _comments, ...state } = thread;
+      expect(JSON.parse(text(response.content))).toEqual({
+        platform: "github",
+        result: { ...state, commentCount: 2 },
+      });
+      const direct = await operation({ repo: "agntn/forges", number: 303, threadId: thread.id });
+      expect(direct.details.result).toEqual(thread);
+    },
+  );
 
   it("passes closingIssues through to the pull-request read", async () => {
     const closingIssues = [

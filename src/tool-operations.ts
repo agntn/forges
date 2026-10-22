@@ -1772,12 +1772,19 @@ export async function replyToThread(
   });
 }
 
+type ThreadStateRow = Omit<Thread, "comments"> & { commentCount: number };
+
+/** A state change flips one flag and leaves the comments alone, so the model gets just a count. */
+function threadStateText({ comments, ...thread }: Thread): ThreadStateRow {
+  return { ...thread, commentCount: comments.length };
+}
+
 export async function resolveThread(args: ThreadStateParams): Promise<ForgesToolResult<Thread>> {
   const params = repositoryTarget(args);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
     const thread = await provider.threads.resolve(issueOf(params), { threadId: params.threadId });
-    return result(thread, { platform: params.platform });
+    return result(thread, { platform: params.platform, modelValue: threadStateText(thread) });
   });
 }
 
@@ -1786,7 +1793,7 @@ export async function unresolveThread(args: ThreadStateParams): Promise<ForgesTo
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
     const thread = await provider.threads.unresolve(issueOf(params), { threadId: params.threadId });
-    return result(thread, { platform: params.platform });
+    return result(thread, { platform: params.platform, modelValue: threadStateText(thread) });
   });
 }
 
