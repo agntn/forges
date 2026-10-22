@@ -13,3 +13,6 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - "@agntn/*"
+
+# Stops pnpm 12 from opening the lockfile with an env document, which GitHub reads as zero dependencies.
+pmOnFail: ignore
