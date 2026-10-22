@@ -9,7 +9,9 @@ const emit = defineEmits<{ step: [delta: number]; pause: [paused: boolean] }>();
 /** One key per sample, so the cursor, the scan and the reticle move only when the repository does. */
 const key = computed(() => `${props.sample.platform}:${props.sample.owner}/${props.sample.repo}`);
 const repo = computed(() => props.sample.repository);
-const call = computed(() => `repos.get("${props.sample.owner}", "${props.sample.repo}")`);
+const call = computed(
+  () => `repos.get({ owner: "${props.sample.owner}", repo: "${props.sample.repo}" })`,
+);
 
 const explorer = computed(
   () =>
@@ -161,7 +163,7 @@ const green = computed(() => ticks.value.filter((tick) => !tick.open).length);
             name="forges-roll"
             mode="out-in"
             ><span :key="key" class="forges-roll-slot tok-str"
-              >"{{ sample.owner }}", "{{ sample.repo }}"</span
+              >"{{ sample.owner }}/{{ sample.repo }}"</span
             ></Transition
           >)</span
         >
