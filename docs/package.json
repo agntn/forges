@@ -13,16 +13,16 @@
     "@agntn/credentials": "0.0.2",
     "@agntn/hashes": "0.6.3",
     "better-sqlite3": "12.11.1",
-    "docus": "5.13.0",
+    "docus": "5.15.0",
     "forges": "0.2.0",
-    "nuxt": "4.5.2",
+    "nuxt": "4.6.2",
     "unstorage": "1.17.5"
   },
   "devDependencies": {
     "@iconify-json/lucide": "1.2.144",
     "@iconify-json/simple-icons": "1.2.100",
     "@iconify-json/vscode-icons": "1.2.89",
-    "wrangler": "4.128.0"
+    "wrangler": "4.151.3"
   },
   "packageManager": "pnpm@12.11.2"
 }
