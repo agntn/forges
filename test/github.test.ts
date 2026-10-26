@@ -2771,6 +2771,413 @@ describe("GitHubProvider", () => {
 
   // --- Pull Requests ---
 
+  describe("issue types and fields", () => {
+    const repo = { owner: "agntn", repo: "forges" };
+    const issue = { ...repo, number: 325 };
+    const issuePath = "/repos/agntn/forges/issues/325";
+    const forgesApiUrl = "https://api.github.com/repos/agntn/forges";
+    /** Trimmed from GET /repos/agntn/forges/issue-types, 2026-10-26, plus one disabled type. */
+    const ghTypes = [
+      { name: "Task", description: "A specific piece of work", is_enabled: true },
+      { name: "Bug", description: "An unexpected problem or behavior", is_enabled: true },
+      { name: "Feature", description: "A request, idea, or new functionality", is_enabled: true },
+      { name: "Epic", description: null, is_enabled: false },
+    ];
+    /** Trimmed from GET /orgs/agntn/issue-fields, 2026-10-26, plus a kind forges doesn't know. */
+    const ghFields = [
+      {
+        id: 45466268,
+        name: "Priority",
+        description: "Current importance level assigned to this issue",
+        data_type: "single_select",
+        options: [
+          { name: "High", priority: 2 },
+          { name: "Low", priority: 4 },
+          { name: "Medium", priority: 3 },
+          { name: "Urgent", priority: 1 },
+        ],
+      },
+      {
+        id: 45466269,
+        name: "Start date",
+        description: "Date when work on issue will begin",
+        data_type: "date",
+      },
+      {
+        id: 45466271,
+        name: "Effort",
+        description: null,
+        data_type: "single_select",
+        options: [{ name: "High" }, { name: "Medium" }, { name: "Low" }],
+      },
+      { id: 45466272, name: "Points", description: "", data_type: "number" },
+      {
+        id: 45466273,
+        name: "Areas",
+        description: "",
+        data_type: "multi_select",
+        options: [{ name: "Docs" }, { name: "CLI" }],
+      },
+      { id: 45466274, name: "Owner", description: "", data_type: "user" },
+    ];
+    /** Trimmed from GET /repos/agntn/forges/issues/325, 2026-10-26. */
+    const ghTyped = {
+      ...ghIssue,
+      number: 325,
+      html_url: "https://github.com/agntn/forges/issues/325",
+      type: { id: 36000803, name: "Feature", description: "A request, idea, or new functionality" },
+      issue_field_values: [
+        {
+          issue_field_id: 45466268,
+          issue_field_name: "Priority",
+          data_type: "single_select",
+          value: 79578239,
+          single_select_option: { id: 79578239, name: "Medium", color: "yellow" },
+        },
+        {
+          issue_field_id: 45466271,
+          issue_field_name: "Effort",
+          data_type: "single_select",
+          value: 79578242,
+          single_select_option: { id: 79578242, name: "Medium", color: "yellow" },
+        },
+      ],
+    };
+    /** Answers the definition reads by route and every issue read or write with `answer`. */
+    const serve = (answer: object = ghTyped) =>
+      mocks.client.mockImplementation(async (url: string) => {
+        if (url.endsWith("/issue-types")) return ghTypes;
+        if (url.endsWith("/issue-fields")) return ghFields;
+        return answer;
+      });
+    const writes = () =>
+      mocks.client.mock.calls.filter(
+        ([, options]) => (options as { method?: string } | undefined)?.method !== undefined,
+      );
+
+    it("reads the type and field values of an issue by name", async () => {
+      mocks.client.mockResolvedValueOnce(ghTyped);
+
+      const result = await gh.issues.get(issue);
+
+      expect(result.type).toBe("Feature");
+      expect(result.fields).toEqual({ Priority: "Medium", Effort: "Medium" });
+    });
+
+    it("reads a multi-select and a plain value, and keeps an untyped issue at null", async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...ghIssue,
+        type: null,
+        issue_field_values: [
+          {
+            issue_field_name: "Areas",
+            data_type: "multi_select",
+            value: "Docs,CLI",
+            multi_select_options: [{ name: "Docs" }, { name: "CLI" }],
+          },
+          { issue_field_name: "Points", data_type: "number", value: 3 },
+          { issue_field_name: "Start date", data_type: "date", value: null },
+        ],
+      });
+
+      const result = await gh.issues.get(issue);
+
+      expect(result.type).toBeNull();
+      expect(result.fields).toEqual({ Areas: ["Docs", "CLI"], Points: 3 });
+    });
+
+    it("leaves both out where the host sends neither, as GitBucket does", async () => {
+      mocks.client.mockResolvedValueOnce(ghIssue);
+
+      const result = await gh.issues.get(issue);
+
+      expect(result).not.toHaveProperty("type");
+      expect(result).not.toHaveProperty("fields");
+    });
+
+    it("reads the bare type name search sends, and drops the null a pull request hit carries", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: {
+          items: [
+            { ...ghTyped, type: "Feature", repository_url: forgesApiUrl },
+            { ...ghIssue, pull_request: {}, type: null, repository_url: forgesApiUrl },
+          ],
+          incomplete_results: false,
+        },
+        headers: makeHeaders(),
+      });
+
+      const result = await gh.issues.searchGlobal("fields", { owner: "agntn" });
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({ type: "Feature", fields: { Priority: "Medium" } });
+
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: {
+          items: [
+            {
+              ...ghIssue,
+              pull_request: {},
+              type: null,
+              issue_field_values: [],
+              repository_url: forgesApiUrl,
+            },
+          ],
+          incomplete_results: false,
+        },
+        headers: makeHeaders(),
+      });
+      const pulls = await gh.pullRequests.searchGlobal("fields", { owner: "agntn" });
+      expect(pulls.items[0]).not.toHaveProperty("type");
+      expect(pulls.items[0]).not.toHaveProperty("fields");
+    });
+
+    it("lists the enabled types and the fields it knows how to write", async () => {
+      serve();
+
+      const result = await gh.issues.getFields(repo);
+
+      expect(mocks.client).toHaveBeenCalledWith("/repos/agntn/forges/issue-types");
+      expect(mocks.client).toHaveBeenCalledWith("/orgs/agntn/issue-fields");
+      expect(result.types.map(({ name }) => name)).toEqual(["Task", "Bug", "Feature"]);
+      expect(result.fields).toEqual([
+        {
+          name: "Priority",
+          kind: "singleSelect",
+          description: "Current importance level assigned to this issue",
+          options: ["Urgent", "High", "Medium", "Low"],
+        },
+        {
+          name: "Start date",
+          kind: "date",
+          description: "Date when work on issue will begin",
+          options: [],
+        },
+        {
+          name: "Effort",
+          kind: "singleSelect",
+          description: "",
+          options: ["High", "Medium", "Low"],
+        },
+        { name: "Points", kind: "number", description: "", options: [] },
+        { name: "Areas", kind: "multiSelect", description: "", options: ["Docs", "CLI"] },
+      ]);
+    });
+
+    it("answers no fields for a personal account and no types where the route is missing", async () => {
+      mocks.client.mockImplementation(async (url: string) => {
+        if (url.endsWith("/issue-types") || url.endsWith("/issue-fields")) {
+          throw makeFetchError(404);
+        }
+        return ghRepo;
+      });
+
+      const result = await gh.issues.getFields({ owner: "octocat", repo: "hello-world" });
+
+      expect(result).toEqual({ types: [], fields: [] });
+      expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world");
+    });
+
+    it("still reports a repository that does not exist", async () => {
+      mocks.client.mockRejectedValue(makeFetchError(404));
+
+      await expect(gh.issues.getFields({ owner: "octocat", repo: "gone" })).rejects.toThrow(
+        NotFoundError,
+      );
+    });
+
+    it("creates an issue with its type and fields in one request, spelled as the repository spells them", async () => {
+      serve();
+
+      const result = await gh.issues.create(repo, {
+        title: "Set issue type and fields",
+        body: "",
+        type: "feature",
+        fields: { priority: "high", "Start date": "2026-11-02", Points: 3, Areas: "docs" },
+      });
+
+      expect(writes()).toEqual([
+        [
+          "/repos/agntn/forges/issues",
+          {
+            method: "POST",
+            body: {
+              title: "Set issue type and fields",
+              body: "",
+              labels: undefined,
+              assignees: undefined,
+              type: "Feature",
+              issue_field_values: [
+                { field_id: 45466268, value: "High" },
+                { field_id: 45466269, value: "2026-11-02" },
+                { field_id: 45466272, value: 3 },
+                { field_id: 45466273, value: ["Docs"] },
+              ],
+            },
+          },
+        ],
+      ]);
+      expect(result).toMatchObject({ number: 325, type: "Feature" });
+    });
+
+    it("sends no type or field key and reads no definitions when none is asked", async () => {
+      mocks.client.mockResolvedValueOnce(ghIssue);
+
+      await gh.issues.create(repo, { title: "Plain", body: "" });
+
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+      expect(mocks.client.mock.calls[0]?.[1]).toEqual({
+        method: "POST",
+        body: { title: "Plain", body: "", labels: undefined, assignees: undefined },
+      });
+    });
+
+    it.each([
+      [{ type: "Chore" }, 'No issue type "Chore" here. Types: Task, Bug, Feature'],
+      [
+        { fields: { Severity: "High" } },
+        'No issue field "Severity" here. Fields: Priority, Start date, Effort, Points, Areas',
+      ],
+      [{ fields: { Owner: "octocat" } }, 'No issue field "Owner" here'],
+      [
+        { fields: { Priority: "P0" } },
+        'Priority has no option "P0". Options: Urgent, High, Medium, Low',
+      ],
+      [{ fields: { Priority: ["High"] } }, "Priority takes one option name"],
+      [{ fields: { Points: "3" } }, "Points takes a number"],
+      [{ fields: { "Start date": "2026-02-30" } }, "Start date takes a date as YYYY-MM-DD"],
+      [{ fields: { "Start date": "next week" } }, "Start date takes a date as YYYY-MM-DD"],
+      [{ fields: { Areas: ["Docs", "Web"] } }, 'Areas has no option "Web"'],
+    ])("refuses %j before the issue is written", async (metadata, message) => {
+      serve();
+
+      await expect(
+        gh.issues.create(repo, { title: "x", body: "", ...metadata }),
+      ).rejects.toMatchObject({ status: 422, message: expect.stringContaining(message) });
+      expect(writes()).toEqual([]);
+    });
+
+    it("refuses fields for an account without them before the issue is written", async () => {
+      mocks.client.mockImplementation(async (url: string) => {
+        if (url.endsWith("/issue-fields")) throw makeFetchError(404);
+        return ghIssue;
+      });
+
+      await expect(
+        gh.issues.create(
+          { owner: "octocat", repo: "hello-world" },
+          { title: "x", body: "", fields: { Priority: "High" } },
+        ),
+      ).rejects.toMatchObject({
+        status: 422,
+        message:
+          "No issue fields here: GitHub keeps them per organization, and only where they are turned on",
+      });
+      expect(writes()).toEqual([]);
+    });
+
+    it.each([
+      [{ type: " " }, "Issue type must be a non-empty name"],
+      [{ fields: { Priority: "" } }, 'Field "Priority" needs a non-empty string'],
+      [{ fields: { Points: Number.NaN } }, 'Field "Points" needs a non-empty string'],
+      [{ fields: ["High"] }, "fields must map field names to values"],
+    ])("refuses the malformed %j with 400 before any request", async (metadata, message) => {
+      await expect(
+        gh.issues.create(repo, { title: "x", body: "", ...(metadata as object) }),
+      ).rejects.toMatchObject({ status: 400, message: expect.stringContaining(message) });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("sets the type in the PATCH, adds fields without touching the others, and empties one", async () => {
+      serve();
+
+      const result = await gh.issues.update(issue, {
+        type: "Bug",
+        fields: { Priority: "Urgent" },
+        clearFields: ["effort"],
+      });
+
+      expect(JSON.parse(JSON.stringify(writes()))).toEqual([
+        [issuePath, { method: "PATCH", body: { type: "Bug" } }],
+        [
+          `${issuePath}/issue-field-values`,
+          {
+            method: "POST",
+            body: { issue_field_values: [{ field_id: 45466268, value: "Urgent" }] },
+          },
+        ],
+        [`${issuePath}/issue-field-values/45466271`, { method: "DELETE" }],
+      ]);
+      expect(mocks.client).toHaveBeenLastCalledWith(issuePath);
+      expect(result.number).toBe(325);
+    });
+
+    it("clears the type with null and shrugs at emptying a field that holds nothing", async () => {
+      mocks.client.mockImplementation(async (url: string, options?: { method?: string }) => {
+        if (url.endsWith("/issue-fields")) return ghFields;
+        if (options?.method === "DELETE") throw makeFetchError(404);
+        return ghTyped;
+      });
+
+      await gh.issues.update(issue, { clearType: true, clearFields: ["Start date"] });
+
+      expect(writes()).toEqual([
+        [
+          issuePath,
+          {
+            method: "PATCH",
+            body: { title: undefined, body: undefined, state: undefined, type: null },
+          },
+        ],
+        [`${issuePath}/issue-field-values/45466269`, { method: "DELETE" }],
+      ]);
+    });
+
+    it("never sends an empty field list, which would wipe every value", async () => {
+      serve();
+
+      await gh.issues.update(issue, { title: "Renamed" });
+
+      expect(
+        mocks.client.mock.calls.some(([url]) => String(url).includes("issue-field-values")),
+      ).toBe(false);
+      expect(mocks.client).not.toHaveBeenCalledWith("/orgs/agntn/issue-fields");
+    });
+
+    it.each([
+      [{ type: "Bug", clearType: true }, "Cannot both set and clear the issue type"],
+      [
+        { fields: { Priority: "High" }, clearFields: ["priority"] },
+        'Cannot both set and clear: "priority"',
+      ],
+      [{ clearFields: [""] }, "clearFields must be an array of field names"],
+    ])("refuses the contradictory %j before any request", async (input, message) => {
+      await expect(gh.issues.update(issue, input as UpdateIssueInput)).rejects.toMatchObject({
+        status: 400,
+        message,
+      });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("counts a type or field change as a change", async () => {
+      serve();
+
+      await expect(gh.issues.update(issue, { clearType: true })).resolves.toMatchObject({
+        number: 325,
+      });
+    });
+
+    it("refuses a type or fields on a pull request update", async () => {
+      await expect(
+        gh.pullRequests.update({ owner: "octocat", repo: "hello-world", number: 99 }, {
+          title: "x",
+          type: "Bug",
+        } as UpdatePullRequestInput),
+      ).rejects.toMatchObject({ status: 400, message: "Pull requests take no type" });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+  });
+
   describe("pullRequests.list", () => {
     it("returns mapped pull requests", async () => {
       mocks.rawFetch.mockResolvedValueOnce({

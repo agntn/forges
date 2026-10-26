@@ -53,7 +53,10 @@ import type {
   ContributionTemplateSummary,
   AddSubIssueInput,
   Issue,
+  IssueFields,
+  IssueFieldValue,
   IssueRef,
+  IssueType,
   SubIssue,
   SubIssueInput,
   ListCommentOptions,
@@ -109,6 +112,20 @@ import {
   encodeRefPathSegment,
   encodeRevisionPathSegment,
 } from "./base-url.ts";
+import { matchIssueType } from "../issue-fields.ts";
+import {
+  fieldClears,
+  fieldWrites,
+  issueFieldValues,
+  issueTypeName,
+  mapIssueFields,
+  mapIssueTypes,
+  type GitHubIssueField,
+  type GitHubIssueFieldValue,
+  type GitHubIssueType,
+  type GitHubIssueTypeValue,
+  type ResolvedIssueField,
+} from "./github-issue-fields.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import { mergeSettings } from "../repository-merge.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
@@ -314,6 +331,8 @@ interface GitHubIssue {
   repository_url?: string;
   pull_request?: GitHubPullRequestSearchMetadata;
   draft?: boolean;
+  type?: GitHubIssueTypeValue;
+  issue_field_values?: GitHubIssueFieldValue[] | null;
 }
 
 interface GitHubIssueSearchResponse {
@@ -657,6 +676,16 @@ function issuePath({ owner, repo, number }: IssueRef): string {
   return `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`;
 }
 
+/** Type and fields only where the payload carries them: GitBucket and older hosts send neither. */
+function issueMetadata(raw: GitHubIssue): Pick<Issue, "type" | "fields"> {
+  const type = issueTypeName(raw.type);
+  const fields = issueFieldValues(raw.issue_field_values);
+  return {
+    ...(type !== undefined && { type }),
+    ...(fields !== undefined && { fields }),
+  };
+}
+
 /** `owner/name` from a `repository_url` such as `https://api.github.com/repos/agntn/web`. */
 function repositoryFromApiUrl(url: string | undefined): string | undefined {
   if (url === undefined) return undefined;
@@ -667,6 +696,13 @@ function repositoryFromApiUrl(url: string | undefined): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** A type and the field writes, resolved against the repository before anything is sent. */
+interface ResolvedIssueMetadata {
+  type: string | undefined;
+  writes: Array<{ field_id: number; value: IssueFieldValue }>;
+  clears: number[];
 }
 
 // --- Provider ---
@@ -1052,12 +1088,15 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       createdAt: raw.created_at,
       updatedAt: raw.updated_at,
       url: raw.html_url,
+      ...issueMetadata(raw),
     };
   }
 
+  /** Search sends a pull request's type and fields as null, and a pull request has neither. */
   private mapPullRequestSearchItem(raw: GitHubIssue): PullRequestSearchItem {
+    const { type: _type, fields: _fields, ...issue } = this.mapIssue(raw);
     return {
-      ...this.mapIssue(raw),
+      ...issue,
       merged: raw.pull_request?.merged_at != null,
       draft: raw.draft ?? false,
     };
@@ -1744,6 +1783,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
             body: input.body,
             labels: input.labels,
             assignees: input.assignees,
+            ...(await this.issueMetadataBody({ owner, repo }, input)),
           },
         },
       );
@@ -1751,6 +1791,111 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     } catch (error) {
       throw normalizeError(error, "github");
     }
+  }
+
+  protected override supportsIssueFields(): boolean {
+    return true;
+  }
+
+  protected override async getIssueFields(ref: RepoRef): Promise<IssueFields> {
+    try {
+      const [types, fields] = await Promise.all([
+        this.issueTypes(ref),
+        this.issueFieldDefinitions(ref),
+      ]);
+      return { types, fields: fields.map(({ id: _id, ...field }) => field) };
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /** GitBucket 404s the route and so does a missing repository, so a 404 reads the repository. */
+  private async issueTypes({ owner, repo }: RepoRef): Promise<IssueType[]> {
+    const repoPath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
+    try {
+      return mapIssueTypes(await this.client<GitHubIssueType[]>(`${repoPath}/issue-types`));
+    } catch (error) {
+      if (!(error instanceof FetchError && error.status === 404)) throw error;
+      await this.client(repoPath);
+      return [];
+    }
+  }
+
+  /** Fields belong to the organization; a personal account, or one without them, answers 404. */
+  private async issueFieldDefinitions({ owner }: RepoRef): Promise<ResolvedIssueField[]> {
+    try {
+      return mapIssueFields(
+        await this.client<GitHubIssueField[]>(
+          `/orgs/${encodePathSegment(owner, "Owner")}/issue-fields`,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof FetchError && error.status === 404) return [];
+      throw error;
+    }
+  }
+
+  /** The type and field writes, every name and value checked first, so a typo writes nothing. */
+  private async resolveIssueMetadata(
+    ref: RepoRef,
+    input: Pick<UpdateIssueInput, "type" | "fields" | "clearFields">,
+  ): Promise<ResolvedIssueMetadata> {
+    const fields = input.fields ?? {};
+    const clears = input.clearFields ?? [];
+    const wantsFields = Object.keys(fields).length > 0 || clears.length > 0;
+    const definitions = wantsFields ? await this.issueFieldDefinitions(ref) : [];
+    if (wantsFields && definitions.length === 0) {
+      throw new ForgesError(
+        "No issue fields here: GitHub keeps them per organization, and only where they are turned on",
+        { status: 422, platform: "github" },
+      );
+    }
+    return {
+      type:
+        input.type === undefined
+          ? undefined
+          : matchIssueType(await this.issueTypes(ref), { name: input.type, platform: "github" }),
+      writes: fieldWrites(definitions, fields),
+      clears: fieldClears(definitions, clears),
+    };
+  }
+
+  /** What a create adds to its body; GitHub takes the type by name and the fields by id. */
+  private async issueMetadataBody(
+    ref: RepoRef,
+    input: CreateIssueInput,
+  ): Promise<{ type?: string; issue_field_values?: ResolvedIssueMetadata["writes"] }> {
+    const { type, writes } = await this.resolveIssueMetadata(ref, {
+      type: input.type,
+      fields: input.fields,
+    });
+    return {
+      ...(type !== undefined && { type }),
+      ...(writes.length > 0 && { issue_field_values: writes }),
+    };
+  }
+
+  /** POST keeps the rest, PUT wouldn't, an empty POST wipes it all; DELETE 404s an empty field. */
+  private async writeIssueFields(
+    issuePath: string,
+    { writes, clears }: Readonly<ResolvedIssueMetadata>,
+  ): Promise<boolean> {
+    if (writes.length > 0) {
+      await this.client(`${issuePath}/issue-field-values`, {
+        method: "POST",
+        body: { issue_field_values: writes },
+      });
+    }
+    for (const id of clears) {
+      try {
+        await this.client(`${issuePath}/issue-field-values/${encodePathSegment(id, "Field")}`, {
+          method: "DELETE",
+        });
+      } catch (error) {
+        if (!(error instanceof FetchError && error.status === 404)) throw error;
+      }
+    }
+    return writes.length > 0 || clears.length > 0;
   }
 
   // --- Pull Requests ---
@@ -2260,10 +2405,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   /**
-   * Title, body and state go out in one PATCH, assignees and labels through the
-   * add and remove endpoints, which leave the rest alone. The issue is read
-   * first, because this route answers for a pull request number too, and read
-   * again after the list writes so the result shows them.
+   * Title, body, state and type go out in one PATCH, assignees, labels and
+   * fields through the add and remove endpoints, which leave the rest alone.
+   * The issue is read first, because this route answers for a pull request
+   * number too, and read again after those writes so the result shows them.
    */
   protected override async updateIssue(
     { owner, repo, number: issueNumber }: IssueRef,
@@ -2272,16 +2417,23 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     try {
       const issuePath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(issueNumber, "Number")}`;
       const removedLabelPaths = this.removedLabelPaths(issuePath, input.removeLabels);
+      const metadata = await this.resolveIssueMetadata({ owner, repo }, input);
       let data = await this.client<GitHubIssue>(issuePath);
       if (data.pull_request !== undefined) {
         throw new NotFoundError(`Issue not found: ${issueNumber}`, { platform: "github" });
       }
-      const fields = { title: input.title, body: input.body, state: input.state };
+      const fields = {
+        title: input.title,
+        body: input.body,
+        state: input.state,
+        type: input.clearType === true ? null : metadata.type,
+      };
       if (Object.values(fields).some((value) => value !== undefined)) {
         data = await this.client<GitHubIssue>(issuePath, { method: "PATCH", body: fields });
       }
 
-      if (await this.writeIssueLists({ issuePath, removedLabelPaths }, input)) {
+      const listsWritten = await this.writeIssueLists({ issuePath, removedLabelPaths }, input);
+      if ((await this.writeIssueFields(issuePath, metadata)) || listsWritten) {
         data = await this.client<GitHubIssue>(issuePath);
       }
       return this.mapIssue(data);

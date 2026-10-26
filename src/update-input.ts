@@ -1,5 +1,6 @@
 import { assertAssignees } from "./assignees.ts";
 import { ForgesError } from "./errors.ts";
+import { assertIssueMetadata, assertNoIssueMetadata, hasIssueMetadata } from "./issue-fields.ts";
 import type { MergePullRequestInput, UpdateIssueInput } from "./types.ts";
 
 const MAX_LABELS = 100;
@@ -45,9 +46,9 @@ function overlap(
  */
 function assertUpdate(
   input: UpdateIssueInput,
-  about: Readonly<{ subject: string; platform?: string }>,
+  about: Readonly<{ subject: string; platform?: string; metadata?: boolean }>,
 ): void {
-  const { subject, platform } = about;
+  const { subject, platform, metadata = false } = about;
   assertAssignees(input.addAssignees, platform);
   assertAssignees(input.removeAssignees, platform);
   assertLabels(input.addLabels, { field: "addLabels", platform });
@@ -73,6 +74,7 @@ function assertUpdate(
   }
 
   const changes =
+    metadata ||
     input.title !== undefined ||
     input.body !== undefined ||
     input.state !== undefined ||
@@ -85,10 +87,12 @@ function assertUpdate(
 }
 
 export function assertIssueUpdate(input: UpdateIssueInput, platform?: string): void {
-  assertUpdate(input, { subject: "Issue", platform });
+  assertIssueMetadata(input, platform);
+  assertUpdate(input, { subject: "Issue", platform, metadata: hasIssueMetadata(input) });
 }
 
 export function assertPullRequestUpdate(input: UpdateIssueInput, platform?: string): void {
+  assertNoIssueMetadata(input, platform);
   assertUpdate(input, { subject: "Pull request", platform });
 }
 

@@ -363,7 +363,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_issues_get",
       title: forgeToolTitle("forges_issues_get", "Get Issue"),
       description:
-        "Get one issue by number with its body, one bounded slice at a time. offset and nextOffset are UTF-16 positions in the body, length is its full size, and truncated is true while more is left: while nextOffset is not null, call again with the same number, offset set to nextOffset and the returned bodyHash, or raise maxChars to read a long body in fewer calls. A continuation fails with 409 when the body was edited in between, so start again from offset 0. The number is the one the web UI shows, which on GitLab is the project-scoped iid rather than the global id.",
+        "Get one issue by number with its body, one bounded slice at a time, and on GitHub its type and field values. offset and nextOffset are UTF-16 positions in the body, length is its full size, and truncated is true while more is left: while nextOffset is not null, call again with the same number, offset set to nextOffset and the returned bodyHash, or raise maxChars to read a long body in fewer calls. A continuation fails with 409 when the body was edited in between, so start again from offset 0. The number is the one the web UI shows, which on GitLab is the project-scoped iid rather than the global id.",
       snippet: "Get one repository issue from GitHub, GitLab, or Gitea.",
       guidelines: ["Use forges_issues_get when the exact issue number is known."],
       ...effect("forges_issues_get"),
@@ -423,10 +423,23 @@ function defineTools(): ToolDefinition[] {
       execute: (args) => call((operations) => operations.createIssueComment(args)),
     }),
     defineTool({
+      name: "forges_issues_fields",
+      title: forgeToolTitle("forges_issues_fields", "List Issue Types and Fields"),
+      description:
+        "List the issue types and issue fields one repository accepts, each field with its kind (text, number, date, singleSelect, multiSelect) and the option names a select takes. These are the names forges_issues_create and forges_issues_update set. GitHub only: issue types work in any repository, fields only in an organization that turned them on, so elsewhere fields is an empty list. GitLab and Gitea answer that types and fields are not supported.",
+      snippet: "See which issue types and fields a GitHub repository takes.",
+      guidelines: [
+        "Use forges_issues_fields before setting a type or field with forges_issues_create or forges_issues_update, instead of guessing names or calling gh api .../issue-types.",
+      ],
+      ...effect("forges_issues_fields"),
+      input: schemas.issuesFieldsParameters,
+      execute: (args) => call((operations) => operations.getIssueFields(args)),
+    }),
+    defineTool({
       name: "forges_issues_create",
       title: forgeToolTitle("forges_issues_create", "Create Issue"),
       description:
-        "Create an issue in one repository. This writes to the hosted platform as the account the local credentials belong to, so confirm the target with the user first; forges_users_authenticated names that account.",
+        "Create an issue in one repository, on GitHub optionally with an issue type and field values named as forges_issues_fields lists them; a name or value the repository lacks is refused before anything is written. This writes to the hosted platform as the account the local credentials belong to, so confirm the target with the user first; forges_users_authenticated names that account. Returns the created issue, with a note when an assignee, type or field did not land.",
       snippet: "Create a repository issue on GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_issues_create only when the user explicitly asks to create an issue.",
@@ -439,7 +452,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_issues_update",
       title: forgeToolTitle("forges_issues_update", "Update Issue"),
       description:
-        "Change an issue: its title, its body, its open or closed state, and assignees or labels to add or remove. Pass at least one change; everything not named keeps its value. A new body replaces the old one, so read the issue first and confirm the text with the user; this writes as the account the local credentials belong to. Returns the issue as it is after the update, with a note when an assignee change did not apply.",
+        "Change an issue: its title, its body, its open or closed state, assignees or labels to add or remove, and on GitHub its issue type and field values, set or cleared by the names forges_issues_fields lists. Pass at least one change; everything not named keeps its value. A new body replaces the old one, so read the issue first and confirm the text with the user; this writes as the account the local credentials belong to. Returns the issue as it is after the update, with a note when an assignee, type or field change did not apply.",
       snippet: "Edit or close an issue on GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_issues_update only when the user explicitly asks to change an issue; read it with forges_issues_get first, a new body replaces the old one.",

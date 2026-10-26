@@ -97,6 +97,22 @@ function releaseApprovalMessage(
   ].join("\n");
 }
 
+/** Type and field lines show up only when an issue update touches them. */
+function metadataLines(params: Partial<ForgesTools.UpdateIssueParams>): string[] {
+  const type =
+    params.clearType === true ? "Clear" : params.type ? approvalField(params.type) : undefined;
+  const fields = [
+    ...Object.entries(params.fields ?? {}).map(
+      ([name, value]) => `${approvalField(name)}=${approvalField(String(value))}`,
+    ),
+    ...(params.clearFields ?? []).map((name) => `-${approvalField(name)}`),
+  ].join(", ");
+  return [
+    ...(type === undefined ? [] : [`Type        ${type}`]),
+    ...(fields === "" ? [] : [`Fields      ${fields}`]),
+  ];
+}
+
 /** An update lists only what it changes; everything else stays as it is. */
 function updateApprovalMessage(params: Resolved<ForgesTools.UpdateIssueParams>): string {
   const changes = (added: string[] | undefined, removed: string[] | undefined) =>
@@ -113,6 +129,7 @@ function updateApprovalMessage(params: Resolved<ForgesTools.UpdateIssueParams>):
     `State       ${state}`,
     `Assignees   ${changes(params.addAssignees, params.removeAssignees)}`,
     `Labels      ${changes(params.addLabels, params.removeLabels)}`,
+    ...metadataLines(params),
     "",
     "Title",
     params.title === undefined ? "(unchanged)" : approvalField(params.title),

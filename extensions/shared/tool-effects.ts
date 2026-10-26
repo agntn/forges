@@ -37,6 +37,7 @@ export const toolEffects = {
   forges_issues_comments_get: "hostedRead",
   forges_issues_reactions: "hostedRead",
   forges_issues_comments_create: "remoteCreate",
+  forges_issues_fields: "hostedRead",
   forges_issues_create: "remoteCreate",
   forges_issues_update: "remoteUpdate",
   forges_issues_sub_issues: "hostedRead",

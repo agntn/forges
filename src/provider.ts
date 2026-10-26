@@ -8,6 +8,7 @@ import { ForgesError, NotFoundError } from "./errors.ts";
 import { assertCommitPatchOptions } from "./commit-patch.ts";
 import { assertCiId, assertCiJobLogOptions } from "./ci-job-log.ts";
 import { assertIssueUpdate, assertMergeInput, assertPullRequestUpdate } from "./update-input.ts";
+import { assertIssueMetadata, hasIssueMetadata } from "./issue-fields.ts";
 import { assertRepositoryContentsOptions, normalizeRepositoryPath } from "./repository-contents.ts";
 import type {
   AddSubIssueInput,
@@ -38,6 +39,7 @@ import type {
   CreatePullRequestInput,
   CreateReleaseInput,
   Issue,
+  IssueFields,
   IssueRef,
   IssueResource,
   RepoRef,
@@ -178,6 +180,8 @@ type ArgumentShape = Readonly<Record<string, "string" | "number">>;
 
 const REPO_REF: ArgumentShape = { owner: "string", repo: "string" };
 const ISSUE_REF: ArgumentShape = { ...REPO_REF, number: "number" };
+
+const ISSUE_FIELDS_UNSUPPORTED = "Issue types and fields are not supported by this provider";
 
 /** An old positional call would go out as `/repos/undefined`, so it's refused with its shape. */
 function assertArgument(
@@ -578,12 +582,19 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       create: async (ref, input) => {
         assertRepoRef(ref, "issues.create");
         assertAssignees(input.assignees, this.#platform);
+        assertIssueMetadata(input, this.#platform);
+        await this.#assertIssueFieldsSupported(input);
         return this.createIssue(ref, input);
       },
       update: async (issue, input) => {
         this.#assertIssue(issue, "issues.update");
         assertIssueUpdate(input, this.#platform);
+        await this.#assertIssueFieldsSupported(input);
         return this.updateIssue(issue, input);
+      },
+      getFields: async (ref) => {
+        assertRepoRef(ref, "issues.getFields");
+        return this.getIssueFields(ref);
       },
       listComments: async (issue, options) => {
         this.#assertIssue(issue, "issues.listComments");
@@ -883,6 +894,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     }
   }
 
+  /** A forge without types or fields would drop them without a word, so the write never starts. */
+  async #assertIssueFieldsSupported(input: UpdateIssueInput): Promise<void> {
+    if (!this.supportsIssueFields() && hasIssueMetadata(input)) {
+      await this.#unsupported(ISSUE_FIELDS_UNSUPPORTED);
+    }
+  }
+
   #unsupported(message: string): Promise<never> {
     return Promise.reject(new ForgesError(message, { status: 501, platform: this.#platform }));
   }
@@ -1023,6 +1041,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   protected abstract createIssue(repo: RepoRef, input: CreateIssueInput): Promise<Issue>;
   protected updateIssue(_issue: IssueRef, _input: UpdateIssueInput): Promise<Issue> {
     return this.#unsupported("Issue updates are not supported by this provider");
+  }
+  /** Whether `createIssue` and `updateIssue` set the type and fields they are given. */
+  protected supportsIssueFields(): boolean {
+    return false;
+  }
+  protected getIssueFields(_repo: RepoRef): Promise<IssueFields> {
+    return this.#unsupported(ISSUE_FIELDS_UNSUPPORTED);
   }
   /** A provider that counts pages reads `page`; one that follows the forge's own cursor reads `at`. */
   protected abstract listPullRequests(

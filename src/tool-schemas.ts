@@ -577,6 +577,29 @@ export function forgesToolSchemas() {
     body: Type.String({ description: "Comment body in the platform's Markdown", minLength: 1 }),
     account,
   });
+  const issueType = Type.Optional(
+    Type.String({
+      description:
+        "Issue type name from forges_issues_fields, such as Bug. GitHub only; elsewhere the write is refused.",
+      minLength: 1,
+    }),
+  );
+  /** One record schema for both writes; the update adds that unnamed fields stay put. */
+  const issueFields = (more = "") =>
+    Type.Optional(
+      Type.Record(
+        Type.String({ minLength: 1 }),
+        Type.Union([
+          Type.String({ minLength: 1 }),
+          Type.Number(),
+          Type.Array(Type.String({ minLength: 1 })),
+        ]),
+        {
+          description: `Field name to value, names from forges_issues_fields: text, a YYYY-MM-DD date or an option name as a string, a number, or a list of option names for a multi-select, such as {"Priority": "High"}. GitHub organizations only; elsewhere the write is refused.${more}`,
+        },
+      ),
+    );
+  const issuesFieldsParameters = closed({ platform, owner, repo });
   const createIssueParameters = closed({
     platform,
     owner,
@@ -585,6 +608,8 @@ export function forgesToolSchemas() {
     body: Type.String({ description: "Issue body" }),
     labels: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     assignees,
+    type: issueType,
+    fields: issueFields(),
     account,
   });
   const createPullRequestParameters = closed({
@@ -640,6 +665,15 @@ export function forgesToolSchemas() {
       }),
     ),
     ...listChanges,
+    type: issueType,
+    clearType: Type.Optional(Type.Boolean({ description: "Take the issue type off" })),
+    fields: issueFields(" Fields not named keep their values."),
+    clearFields: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description: "Field names to empty; the others keep their values",
+        maxItems: 25,
+      }),
+    ),
     account,
   });
   const updatePullRequestParameters = closed({
@@ -825,6 +859,7 @@ export function forgesToolSchemas() {
     addSubIssueParameters,
     removeSubIssueParameters,
     createCommentParameters,
+    issuesFieldsParameters,
     createIssueParameters,
     updateIssueParameters,
     createPullRequestParameters,

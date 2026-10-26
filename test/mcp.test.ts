@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => {
     searchGlobal: vi.fn(),
     get: vi.fn(),
     create: vi.fn(),
+    getFields: vi.fn(),
     listReactions: vi.fn(),
   };
   const pullRequests = {
@@ -121,6 +122,7 @@ const toolNames = [
   "forges_issues_comments_get",
   "forges_issues_reactions",
   "forges_issues_comments_create",
+  "forges_issues_fields",
   "forges_issues_create",
   "forges_issues_update",
   "forges_issues_sub_issues",
@@ -1981,6 +1983,61 @@ describe("forges MCP server", () => {
       },
     );
     expect(JSON.parse(text(response.content))).toEqual({ platform: "gitlab", result: issue });
+  });
+
+  it("lists the issue types and fields through the shared operation", async () => {
+    const fields = {
+      types: [{ name: "Bug", description: "An unexpected problem or behavior" }],
+      fields: [{ name: "Priority", kind: "singleSelect", description: "", options: ["High"] }],
+    };
+    mocks.issues.getFields.mockResolvedValue(fields);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_issues_fields",
+      arguments: { repo: "agntn/forges" },
+    });
+
+    expect(mocks.issues.getFields).toHaveBeenCalledWith({ owner: "agntn", repo: "forges" });
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: fields });
+  });
+
+  it("hands a type and fields to the create and refuses a field value of the wrong shape", async () => {
+    mocks.issues.create.mockResolvedValue({
+      id: "43",
+      number: 43,
+      title: "Bug",
+      body: "",
+      state: "open",
+      assignees: [],
+      type: "Bug",
+      fields: { Priority: "High", Points: 3 },
+    });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_issues_create",
+      arguments: {
+        repo: "agntn/forges",
+        title: "Bug",
+        body: "",
+        type: "Bug",
+        fields: { Priority: "High", Points: 3 },
+      },
+    });
+
+    expect(mocks.issues.create).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      expect.objectContaining({ type: "Bug", fields: { Priority: "High", Points: 3 } }),
+    );
+    expect(JSON.parse(text(response.content))).not.toHaveProperty("note");
+
+    const refused = await client.callTool({
+      name: "forges_issues_create",
+      arguments: { repo: "agntn/forges", title: "Bug", body: "", fields: { Priority: true } },
+    });
+    expect(refused.isError).toBe(true);
+    expect(mocks.issues.create).toHaveBeenCalledTimes(1);
   });
 
   it("returns the created object when requested assignees are missing", async () => {
