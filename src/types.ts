@@ -327,6 +327,8 @@ export interface PullRequest extends PullRequestSearchItem {
    * never reads as none.
    */
   closingIssues?: ClosingIssue[] | null;
+  /** Why assignees asked for on `create` didn't land. Only a create that lost some has it. */
+  assignmentError?: string;
 }
 
 /** An issue a pull request closes on merge; it may live in another repository. */

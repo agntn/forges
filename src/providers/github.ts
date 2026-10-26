@@ -159,6 +159,8 @@ const GITHUB_DIRECTORY_ENTRY_LIMIT = 1000;
 const GITHUB_SEARCH_RESULT_LIMIT = 1000;
 const GITHUB_ISSUE_TEMPLATE_DIRECTORY = ".github/ISSUE_TEMPLATE";
 const GITHUB_COMMUNITY_FILE_DIRECTORIES = [".github", "", "docs"] as const;
+/** An assignment refused right after the create can pass seconds later, so it gets one retry. */
+const ASSIGNMENT_RETRY_DELAY = 1000;
 
 // --- GitHub API response types (snake_case) ---
 
@@ -2329,18 +2331,47 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         return this.mapPullRequest(data);
       }
 
-      try {
-        const assigned = await this.client<GitHubIssue>(
-          `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(data.number)}/assignees`,
-          { method: "POST", body: { assignees: input.assignees } },
-        );
-        return this.mapPullRequest({ ...data, assignees: assigned.assignees });
-      } catch {
-        return this.mapPullRequest(data);
-      }
+      const assigned = await this.assignCreatedPullRequest(
+        { owner, repo, number: data.number },
+        input.assignees,
+      );
+      const pullRequest = this.mapPullRequest({
+        ...data,
+        assignees: assigned.assignees ?? data.assignees,
+      });
+      return assigned.error === undefined
+        ? pullRequest
+        : { ...pullRequest, assignmentError: assigned.error };
     } catch (error) {
       throw normalizeError(error, "github");
     }
+  }
+
+  /** Tries the assignment twice. A silent 201 drop outranks a later failure as the reason. */
+  private async assignCreatedPullRequest(
+    pull: IssueRef,
+    logins: string[],
+  ): Promise<{ assignees?: Array<{ login: string }> | null; error?: string }> {
+    let assignees: Array<{ login: string }> | null | undefined;
+    let dropped: string | undefined;
+    let failed = "";
+    for (const wait of [0, ASSIGNMENT_RETRY_DELAY]) {
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+      try {
+        ({ assignees } = await this.client<GitHubIssue>(`${issuePath(pull)}/assignees`, {
+          method: "POST",
+          body: { assignees: logins },
+        }));
+        const assigned = new Set((assignees ?? []).map(({ login }) => login.toLowerCase()));
+        const missing = logins.filter((login) => !assigned.has(login.toLowerCase()));
+        if (missing.length === 0) return { assignees };
+        dropped =
+          "GitHub answered 201 without assigning them, which it does when the account lacks push access";
+      } catch (failure) {
+        failed = normalizeError(failure, "github").message;
+      }
+    }
+    return { assignees, error: dropped ?? failed };
   }
 
   /**
