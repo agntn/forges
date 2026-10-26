@@ -93,7 +93,7 @@
   },
   "dependencies": {
     "@agntn/credentials": "0.0.2",
-    "@agntn/hashes": "0.6.7",
+    "@agntn/hashes": "0.7.2",
     "@agntn/tools": "0.2.4",
     "@modelcontextprotocol/server": "2.2.0",
     "forges": "0.2.0",
