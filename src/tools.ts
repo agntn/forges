@@ -46,8 +46,31 @@ let tools: readonly ToolDefinition[] | undefined;
 
 /** Every tool for every surface, built on the first call so an import parses nothing. */
 export function forgesTools(): readonly ToolDefinition[] {
-  tools ??= defineTools();
+  tools ??= defineTools().map(cancellable);
   return tools;
+}
+
+/** A cancelled read lets the host go; a write waits, since the forge may already have it. */
+function cancellable(tool: ToolDefinition): ToolDefinition {
+  if (tool.effect !== "read") return tool;
+  return {
+    ...tool,
+    execute: async (input, context) => {
+      const { signal } = context;
+      signal?.throwIfAborted();
+      return await untilCancelled(Promise.resolve(tool.execute(input, context)), signal);
+    },
+  };
+}
+
+/** The call's outcome, unless the signal aborts first; a late failure is still caught. */
+function untilCancelled<T>(call: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (signal === undefined) return call;
+  return new Promise((resolve, reject) => {
+    const abort = (): void => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    void call.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
 }
 
 function defineTools(): ToolDefinition[] {
