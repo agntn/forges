@@ -80,7 +80,7 @@ export function forgesToolSchemas() {
   const until = Type.Optional(
     Type.String({ description: "Only commits at or before this ISO-8601 date", minLength: 1 }),
   );
-  /** Every sliced read (file, patch, log, notes) takes the same size bounds as `readTextWindow`. */
+  /** Every sliced read takes the same size bounds as `readTextWindow`. */
   const maxChars = (what: string) =>
     Type.Optional(
       Type.Integer({
@@ -441,12 +441,36 @@ export function forgesToolSchemas() {
     perPage,
     state,
   });
-  const repositoryItemParameters = closed({ platform, owner, repo, number });
+  /** A long issue or pull-request body reads in slices, like release notes. */
+  const bodyOffset = Type.Optional(
+    Type.Integer({
+      description: "UTF-16 code-unit offset into the body; pass the previous read's nextOffset",
+      minimum: 0,
+    }),
+  );
+  const bodyHash = Type.Optional(
+    Type.String({
+      description: "bodyHash from the previous read; required whenever offset is above 0",
+      pattern: "^[0-9a-f]{16}$",
+    }),
+  );
+  const issueParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    offset: bodyOffset,
+    maxChars: maxChars("body"),
+    bodyHash,
+  });
   const pullRequestParameters = closed({
     platform,
     owner,
     repo,
     number,
+    offset: bodyOffset,
+    maxChars: maxChars("body"),
+    bodyHash,
     closingIssues: Type.Optional(
       Type.Boolean({
         description:
@@ -788,7 +812,7 @@ export function forgesToolSchemas() {
     updateReleaseParameters,
     listRepositoryItemsParameters,
     searchRepositoryItemsParameters,
-    repositoryItemParameters,
+    issueParameters,
     pullRequestParameters,
     listCommentsParameters,
     listPullRequestFilesParameters,

@@ -363,11 +363,11 @@ function defineTools(): ToolDefinition[] {
       name: "forges_issues_get",
       title: forgeToolTitle("forges_issues_get", "Get Issue"),
       description:
-        "Get one issue by number, including its body. The number is the one the web UI shows, which on GitLab is the project-scoped iid rather than the global id.",
+        "Get one issue by number with its body, one bounded slice at a time. offset and nextOffset are UTF-16 positions in the body, length is its full size, and truncated is true while more is left: while nextOffset is not null, call again with the same number, offset set to nextOffset and the returned bodyHash, or raise maxChars to read a long body in fewer calls. A continuation fails with 409 when the body was edited in between, so start again from offset 0. The number is the one the web UI shows, which on GitLab is the project-scoped iid rather than the global id.",
       snippet: "Get one repository issue from GitHub, GitLab, or Gitea.",
       guidelines: ["Use forges_issues_get when the exact issue number is known."],
       ...effect("forges_issues_get"),
-      input: schemas.repositoryItemParameters,
+      input: schemas.issueParameters,
       execute: (args) => call((operations) => operations.getIssue(args)),
     }),
     defineTool({
@@ -533,7 +533,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_pull_requests_get",
       title: forgeToolTitle("forges_pull_requests_get", "Get Pull Request"),
       description:
-        "Get one pull request, called a merge request on GitLab, by number: body, branches, head revision, draft and merged state, mergeability, provider merge status, and the landed merge commit SHA. Pass closingIssues to also list the issues it closes on merge.",
+        "Get one pull request, called a merge request on GitLab, by number: body, branches, head revision, draft and merged state, mergeability, provider merge status, and the landed merge commit SHA. Pass closingIssues to also list the issues it closes on merge. The body comes one bounded slice at a time, like forges_issues_get: while nextOffset is not null, call again with offset set to nextOffset and the returned bodyHash, or raise maxChars; a 409 means the body was edited in between, so start again from offset 0.",
       snippet: "Get one pull request from GitHub, GitLab, or Gitea.",
       guidelines: ["Use forges_pull_requests_get when the exact pull-request number is known."],
       ...effect("forges_pull_requests_get"),
