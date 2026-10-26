@@ -229,6 +229,37 @@ export interface Issue {
   createdAt: string;
   updatedAt: string;
   url: string;
+  /** Name of the issue type, null when it has none. Missing where the forge has no types. */
+  type?: string | null;
+  /** Field name to value. Missing where the forge has no issue fields. */
+  fields?: Record<string, IssueFieldValue>;
+}
+
+/** Text, a YYYY-MM-DD date or an option name; a number; or a multi-select's option names. */
+export type IssueFieldValue = string | number | string[];
+
+/** How an issue field holds its value. */
+export type IssueFieldKind = "text" | "number" | "date" | "singleSelect" | "multiSelect";
+
+/** One issue type a repository accepts. */
+export interface IssueType {
+  name: string;
+  description: string;
+}
+
+/** One issue field a repository accepts. */
+export interface IssueField {
+  name: string;
+  kind: IssueFieldKind;
+  description: string;
+  /** The option names a select field takes; empty for the other kinds. */
+  options: string[];
+}
+
+/** Every issue type and field a repository accepts, for a create or update to name. */
+export interface IssueFields {
+  types: IssueType[];
+  fields: IssueField[];
 }
 
 /** A search hit keeps the repository needed to open the issue. */
@@ -622,6 +653,10 @@ export interface CreateIssueInput {
   labels?: string[];
   /** Assignee logins. GitLab Free accepts only one. */
   assignees?: string[];
+  /** Issue type name, one of `issues.getFields`. GitHub only. */
+  type?: string;
+  /** Field name to value, names from `issues.getFields`. GitHub organizations only. */
+  fields?: Record<string, IssueFieldValue>;
 }
 
 /**
@@ -642,7 +677,19 @@ export interface CreatePullRequestInput {
  * assignee and label lists change by the logins and names given, so the ones
  * already there stay unless they are removed.
  */
-export interface UpdateIssueInput {
+export interface UpdateIssueInput extends UpdateDiscussionInput {
+  /** Issue type name to set, one of `issues.getFields`. GitHub only. */
+  type?: string;
+  /** Drops the issue type. */
+  clearType?: boolean;
+  /** Field name to value; fields not named keep theirs. GitHub organizations only. */
+  fields?: Record<string, IssueFieldValue>;
+  /** Field names to empty. */
+  clearFields?: string[];
+}
+
+/** What an issue and a pull request update share. */
+export interface UpdateDiscussionInput {
   title?: string;
   body?: string;
   /** Closes or reopens it. */
@@ -659,7 +706,7 @@ export interface UpdateIssueInput {
  * Input for updating a pull request, with the same rules as an issue update.
  * `draft` stays out: none of the three REST edit routes takes it.
  */
-export interface UpdatePullRequestInput extends UpdateIssueInput {
+export interface UpdatePullRequestInput extends UpdateDiscussionInput {
   /** Closes or reopens it. A merged pull request stays merged. */
   state?: IssueState;
 }
@@ -931,6 +978,8 @@ export interface IssueResource {
   get(issue: IssueRef): Promise<Issue>;
   create(repo: RepoRef, input: CreateIssueInput): Promise<Issue>;
   update(issue: IssueRef, input: UpdateIssueInput): Promise<Issue>;
+  /** The issue types and fields `create` and `update` can set in this repository. */
+  getFields(repo: RepoRef): Promise<IssueFields>;
   listComments(issue: IssueRef, options?: ListCommentOptions): Promise<PageResult<Comment>>;
   getComment(issue: IssueRef, comment: { commentId: string }): Promise<Comment>;
   createComment(issue: IssueRef, input: CreateCommentInput): Promise<Comment>;

@@ -2120,6 +2120,26 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("issue types and fields", () => {
+    const repo = { owner: "testowner", repo: "test-repo" };
+
+    it.each([
+      ["create", () => provider.issues.create(repo, { title: "x", body: "", type: "Bug" })],
+      [
+        "update",
+        () => provider.issues.update({ ...repo, number: 1 }, { fields: { Priority: "High" } }),
+      ],
+      ["update", () => provider.issues.update({ ...repo, number: 1 }, { clearType: true })],
+      ["read", () => provider.issues.getFields(repo)],
+    ])("refuses a %s with 501 instead of dropping them", async (_kind, call) => {
+      await expect(call()).rejects.toMatchObject({
+        status: 501,
+        message: "Issue types and fields are not supported by this provider",
+      });
+      expect(mockClient).not.toHaveBeenCalled();
+    });
+  });
+
   describe("issues.create", () => {
     it("creates and returns a mapped issue", async () => {
       mockClient.mockResolvedValueOnce(

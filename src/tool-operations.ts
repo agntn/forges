@@ -6,6 +6,7 @@ import type {
   VerifyLocalMergeOptions,
 } from "./local.ts";
 import { assertAssignees } from "./assignees.ts";
+import { quoted } from "./issue-fields.ts";
 import { assertIssueUpdate, assertMergeInput, assertPullRequestUpdate } from "./update-input.ts";
 import {
   readChecks,
@@ -57,6 +58,8 @@ import type {
   CreatePullRequestInput,
   CreateReleaseInput,
   Issue,
+  IssueFields,
+  IssueFieldValue,
   IssueRef,
   IssueState,
   ListCiRunsOptions,
@@ -661,6 +664,10 @@ export interface GetRepositoryItemParams extends RepositoryParams {
 
 export type CreateIssueParams = RepositoryParams & AccountParams & CreateIssueInput;
 
+type IssueMetadataParams = Pick<UpdateIssueInput, "type" | "clearType" | "fields" | "clearFields">;
+
+export type IssueFieldsParams = RepositoryParams;
+
 export type CreatePullRequestParams = RepositoryParams & AccountParams & CreatePullRequestInput;
 
 export type UpdateIssueParams = GetRepositoryItemParams & AccountParams & UpdateIssueInput;
@@ -763,6 +770,58 @@ function assignmentNote(
   const missing = requested.filter((login) => !assigned.has(login.toLowerCase()));
   if (missing.length === 0) return undefined;
   return `Creation succeeded, but requested assignees are missing: ${missing.join(", ")}. Do not retry the create call; the result is the created object.`;
+}
+
+function sameFieldValue(wanted: IssueFieldValue, actual: IssueFieldValue | undefined): boolean {
+  const names = (value: IssueFieldValue | undefined) =>
+    (Array.isArray(value) ? value : [value]).map((entry) => String(entry).toLowerCase()).toSorted();
+  return actual !== undefined && names(wanted).join("\n") === names(actual).join("\n");
+}
+
+/** GitHub drops what an account without push access sets, so the result is checked against it. */
+function metadataProblems(params: IssueMetadataParams, issue: Issue): string[] {
+  const actual = new Map(
+    Object.entries(issue.fields ?? {}).map(([name, value]) => [name.toLowerCase(), value]),
+  );
+  const problems = Object.entries(params.fields ?? {})
+    .filter(([name, value]) => !sameFieldValue(value, actual.get(name.toLowerCase())))
+    .map(([name]) => `${quoted(name)} not set`);
+  problems.push(
+    ...(params.clearFields ?? [])
+      .filter((name) => actual.has(name.toLowerCase()))
+      .map((name) => `${quoted(name)} still set`),
+  );
+  if (params.type !== undefined && issue.type?.toLowerCase() !== params.type.toLowerCase()) {
+    problems.unshift(`type not ${quoted(params.type)}`);
+  }
+  if (params.clearType === true && issue.type !== null && issue.type !== undefined) {
+    problems.unshift(`type still ${quoted(issue.type)}`);
+  }
+  return problems;
+}
+
+function metadataNote(
+  params: IssueMetadataParams,
+  about: Readonly<{ issue: Issue; verb: "Creation" | "Update" }>,
+): string | undefined {
+  const problems = metadataProblems(params, about.issue);
+  if (problems.length === 0) return undefined;
+  return `${about.verb} succeeded, but the issue type and fields did not land as asked (${problems.join("; ")}). GitHub drops them without push access; the result shows what the issue carries now.`;
+}
+
+/** OMP fills an unused field with "" or false, which means nothing was asked. */
+function issueMetadataParams(params: IssueMetadataParams): IssueMetadataParams {
+  return {
+    type: params.type === "" ? undefined : params.type,
+    clearType: params.clearType === true ? true : undefined,
+    fields: Object.keys(params.fields ?? {}).length > 0 ? params.fields : undefined,
+    clearFields: params.clearFields?.length ? params.clearFields : undefined,
+  };
+}
+
+function joinNotes(...notes: Array<string | undefined>): string | undefined {
+  const present = notes.filter((note) => note !== undefined);
+  return present.length > 0 ? present.join(" ") : undefined;
 }
 
 /** A platform can accept an assignee change and still not apply it, GitLab Free past one. */
@@ -947,6 +1006,14 @@ export async function getRepository(
   const provider = await readProvider(params.platform);
   const repository = await provider.repos.get(repoOf(params));
   return result(repository, { platform: params.platform });
+}
+
+export async function getIssueFields(
+  args: IssueFieldsParams,
+): Promise<ForgesToolResult<IssueFields>> {
+  const params = repositoryTarget(args);
+  const provider = await readProvider(params.platform);
+  return result(await provider.issues.getFields(repoOf(params)), { platform: params.platform });
 }
 
 export async function listContributionTemplates(
@@ -1387,15 +1454,21 @@ export async function createIssue(args: CreateIssueParams): Promise<ForgesToolRe
   assertAssignees(params.assignees, params.platform);
   return withCredentialOperation(params.platform, async () => {
     const provider = await authenticatedProvider(params.platform, params.account);
+    const metadata = issueMetadataParams(params);
     const issue = await provider.issues.create(repoOf(params), {
       title: params.title,
       body: params.body,
       labels: params.labels,
       assignees: params.assignees,
+      type: metadata.type,
+      fields: metadata.fields,
     });
     return result(issue, {
       platform: params.platform,
-      note: assignmentNote(params.assignees, issue.assignees),
+      note: joinNotes(
+        assignmentNote(params.assignees, issue.assignees),
+        metadataNote(metadata, { issue, verb: "Creation" }),
+      ),
     });
   });
 }
@@ -1628,6 +1701,7 @@ export async function updateIssue(args: UpdateIssueParams): Promise<ForgesToolRe
     removeAssignees: params.removeAssignees,
     addLabels: params.addLabels,
     removeLabels: params.removeLabels,
+    ...issueMetadataParams(params),
   };
   assertIssueUpdate(input, params.platform);
   return withCredentialOperation(params.platform, async () => {
@@ -1635,7 +1709,10 @@ export async function updateIssue(args: UpdateIssueParams): Promise<ForgesToolRe
     const issue = await provider.issues.update(issueOf(params), input);
     return result(issue, {
       platform: params.platform,
-      note: reassignmentNote(input, issue.assignees),
+      note: joinNotes(
+        reassignmentNote(input, issue.assignees),
+        metadataNote(input, { issue, verb: "Update" }),
+      ),
     });
   });
 }

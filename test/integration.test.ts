@@ -68,6 +68,7 @@ describe("createProvider factory", () => {
     ["listSubIssues", "Sub-issues are not supported by this provider"],
     ["addSubIssue", "Sub-issues are not supported by this provider"],
     ["removeSubIssue", "Sub-issues are not supported by this provider"],
+    ["getIssueFields", "Issue types and fields are not supported by this provider"],
     ["searchIssues", "Issue search is not supported by this provider"],
     ["searchPullRequests", "Pull-request search is not supported by this provider"],
   ])("keeps a default %s fallback for custom providers", async (method, message) => {
