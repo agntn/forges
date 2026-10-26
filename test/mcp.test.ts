@@ -1842,6 +1842,48 @@ describe("forges MCP server", () => {
     }
   });
 
+  it.each(["answers", "fails"])(
+    "lets Pi and OMP go the moment a read is cancelled, then the forge %s",
+    async (outcome) => {
+      const pending = Promise.withResolvers<{ fullName: string }>();
+      mocks.repos.get.mockReturnValue(pending.promise);
+      const get = forgesTools().find((tool) => tool.name === "forges_repos_get")!;
+      const cancel = new AbortController();
+
+      const call = get.execute({ repo: "agntn/forges" }, { signal: cancel.signal });
+      await vi.waitFor(() => expect(mocks.repos.get).toHaveBeenCalledTimes(1));
+      cancel.abort();
+
+      await expect(call).rejects.toMatchObject({ name: "AbortError" });
+      if (outcome === "answers") pending.resolve({ fullName: "agntn/forges" });
+      else pending.reject(new Error("socket hang up"));
+      await pending.promise.catch(() => undefined);
+    },
+  );
+
+  it("sends no read at all once the call arrives cancelled", async () => {
+    const get = forgesTools().find((tool) => tool.name === "forges_repos_get")!;
+
+    await expect(
+      get.execute({ repo: "agntn/forges" }, { signal: AbortSignal.abort() }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(mocks.repos.get).not.toHaveBeenCalled();
+  });
+
+  it("waits out a cancelled write, since the host may already have it", async () => {
+    const pending = Promise.withResolvers<{ id: string; number: number; title: string }>();
+    mocks.issues.create.mockReturnValue(pending.promise);
+    const create = forgesTools().find((tool) => tool.name === "forges_issues_create")!;
+    const cancel = new AbortController();
+
+    const call = create.execute({ repo: "agntn/forges", title: "Bug" }, { signal: cancel.signal });
+    await vi.waitFor(() => expect(mocks.issues.create).toHaveBeenCalledTimes(1));
+    cancel.abort();
+    pending.resolve({ id: "42", number: 42, title: "Bug" });
+
+    await expect(call).resolves.toMatchObject({ details: { result: { number: 42 } } });
+  });
+
   it.each([
     [{ marker: "pr-lens:sticky", cursor: "next" }, "take no cursor"],
     [{ since: "yesterday" }, "since must be an ISO 8601 date"],
