@@ -12,8 +12,8 @@ importers:
         specifier: 0.0.2
         version: 0.0.2(ai@7.0.91(zod@4.5.4))
       '@agntn/hashes':
-        specifier: 0.6.3
-        version: 0.6.3(ai@7.0.91(zod@4.5.4))
+        specifier: 0.6.7
+        version: 0.6.7(ai@7.0.91(zod@4.5.4))
       better-sqlite3:
         specifier: 12.11.1
         version: 12.11.1
@@ -61,12 +61,12 @@ packages:
       ai:
         optional: true
 
-  '@agntn/hashes@0.6.3':
-    resolution: {integrity: sha512-/0GejNXPCrSQGge/BoQ5iu2h+hUn9XXEDx/hhrSWKV1RYAuImWtx4WDDnn3LCLIAFzFTPK40RkNhbROExjZxkw==}
+  '@agntn/hashes@0.6.7':
+    resolution: {integrity: sha512-dzMenq6k5KdhQXUOLREXzD2/K58EotQadV8IJIXCEqbRKmVJgpuZIQERDM1fKPD6NUOojCBTt4+DACrstRqT9g==}
     engines: {node: '>=26'}
     hasBin: true
     peerDependencies:
-      '@earendil-works/pi-coding-agent': '>=0.87.1 <1'
+      '@earendil-works/pi-coding-agent': '>=0.87.1 <2'
       '@oh-my-pi/pi-coding-agent': '>=18.4.2 <19'
       ai: '>=7.0.0'
     peerDependenciesMeta:
@@ -77,14 +77,15 @@ packages:
       ai:
         optional: true
 
-  '@agntn/tools@0.0.0':
-    resolution: {integrity: sha512-tGH2t1GDyxqaRrbJeqH3ce6OCD5pS30mneLAoCW0FhlkEWGJF1o/3J522hcIZvTHr3mz+64YQ3nCq4qRcUDxnQ==}
-    engines: {node: '>=24'}
+  '@agntn/tools@0.2.0':
+    resolution: {integrity: sha512-LjQv7gZrAIoiGgS4Da9I9RgtKMbkSqgkMmTZkbtsAKvKPlCy36Ws3THf7BKKLP+rbqeQw/QjulxnanVdUNzknA==}
+    engines: {node: '>=26'}
     peerDependencies:
-      '@earendil-works/pi-coding-agent': '>=0.84.2 <1'
+      '@earendil-works/pi-coding-agent': '>=0.84.2 <2'
       '@modelcontextprotocol/server': '>=2.2.0 <3'
       '@oh-my-pi/pi-coding-agent': '>=18.0.0 <19'
       ai: '>=7.0.0 <8'
+      h3-mcp: '>=0.2.0 <0.3'
     peerDependenciesMeta:
       '@earendil-works/pi-coding-agent':
         optional: true
@@ -93,6 +94,8 @@ packages:
       '@oh-my-pi/pi-coding-agent':
         optional: true
       ai:
+        optional: true
+      h3-mcp:
         optional: true
 
   '@agntn/tools@0.2.1':
@@ -7370,15 +7373,17 @@ snapshots:
     transitivePeerDependencies:
       - h3-mcp
 
-  '@agntn/hashes@0.6.3(ai@7.0.91(zod@4.5.4))':
+  '@agntn/hashes@0.6.7(ai@7.0.91(zod@4.5.4))':
     dependencies:
-      '@agntn/tools': 0.0.0(@modelcontextprotocol/server@2.2.0)(ai@7.0.91(zod@4.5.4))
+      '@agntn/tools': 0.2.0(@modelcontextprotocol/server@2.2.0)(ai@7.0.91(zod@4.5.4))
       '@modelcontextprotocol/server': 2.2.0
       citty: 0.2.2
     optionalDependencies:
       ai: 7.0.91(zod@4.5.4)
+    transitivePeerDependencies:
+      - h3-mcp
 
-  '@agntn/tools@0.0.0(@modelcontextprotocol/server@2.2.0)(ai@7.0.91(zod@4.5.4))':
+  '@agntn/tools@0.2.0(@modelcontextprotocol/server@2.2.0)(ai@7.0.91(zod@4.5.4))':
     optionalDependencies:
       '@modelcontextprotocol/server': 2.2.0
       ai: 7.0.91(zod@4.5.4)
