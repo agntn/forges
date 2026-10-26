@@ -19,9 +19,9 @@
     "unstorage": "1.17.5"
   },
   "devDependencies": {
-    "@iconify-json/lucide": "1.2.144",
+    "@iconify-json/lucide": "1.2.147",
     "@iconify-json/simple-icons": "1.2.100",
-    "@iconify-json/vscode-icons": "1.2.89",
+    "@iconify-json/vscode-icons": "1.2.92",
     "wrangler": "4.128.0"
   },
   "packageManager": "pnpm@12.11.2"
