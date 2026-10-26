@@ -1,5 +1,5 @@
 import { quoted } from "./issue-fields.ts";
-import { delay, MAX_SCAN_PAGES, MAX_WAIT_SECONDS, nextPollDelay } from "./poll.ts";
+import { delay, MAX_SCAN_PAGES, MAX_WAIT_SECONDS, nextPollDelay, untilAborted } from "./poll.ts";
 import type { Comment, PageResult, Reaction } from "./types.ts";
 
 /** Reads one page of a discussion listing at a cursor; a scan calls it until the last page. */
@@ -32,6 +32,8 @@ export interface ReactionFilter {
 
 export interface DiscussionReadOptions {
   waitSeconds?: number;
+  /** The host's cancel: an aborted wait rejects with its reason instead of polling on. */
+  signal?: AbortSignal;
 }
 
 export interface DiscussionResult<T, W extends DiscussionWait> {
@@ -87,6 +89,7 @@ async function pollForChange<T, C>(
     read: () => Promise<Scan<T>>;
     change: (scan: Scan<T>) => C | undefined;
     waitSeconds: number;
+    signal: AbortSignal | undefined;
   }>,
 ): Promise<Polled<T, C>> {
   const budgetMs = Math.min(poll.waitSeconds, MAX_WAIT_SECONDS) * 1_000;
@@ -100,7 +103,7 @@ async function pollForChange<T, C>(
     if (settled || !scan.examinedEveryPage || waitedMs >= budgetMs) {
       return { scan, change, wait: { settled, waitedMs, polls } };
     }
-    await delay(nextPollDelay(polls, budgetMs - waitedMs));
+    await delay(nextPollDelay(polls, budgetMs - waitedMs), poll.signal);
     scan = await poll.read();
     polls += 1;
   }
@@ -119,13 +122,13 @@ export async function readComments(
   read: ReadDiscussionPage<Comment>,
   options: CommentFilter & DiscussionReadOptions,
 ): Promise<DiscussionResult<Comment, DiscussionWait>> {
-  const { marker, since, waitSeconds } = options;
+  const { marker, since, waitSeconds, signal } = options;
   const from = sinceMs(since);
   const keep = (comment: Comment) =>
     (marker === undefined || comment.body.includes(marker)) &&
     (from === undefined || Date.parse(comment.updatedAt) >= from);
   const scanKept = async () => {
-    const scan = await scanAll(read);
+    const scan = await scanAll(untilAborted(read, signal));
     return { ...scan, items: scan.items.filter(keep) };
   };
 
@@ -145,6 +148,7 @@ export async function readComments(
           : scan.items,
       ),
     waitSeconds,
+    signal,
   });
   return {
     page: { items: polled.change ?? [], wait: polled.wait },
@@ -179,12 +183,12 @@ export async function readReactions(
   read: ReadDiscussionPage<Reaction>,
   options: ReactionFilter & DiscussionReadOptions,
 ): Promise<DiscussionResult<Reaction, ReactionWait>> {
-  const { author, since, waitSeconds } = options;
+  const { author, since, waitSeconds, signal } = options;
   const from = sinceMs(since);
   const recent = (reaction: Reaction) =>
     from === undefined || Date.parse(reaction.createdAt) >= from;
   const scanAuthored = async () => {
-    const scan = await scanAll(read);
+    const scan = await scanAll(untilAborted(read, signal));
     if (author === undefined) return scan;
     return { ...scan, items: scan.items.filter((item) => sameLogin(item.user.login, author)) };
   };
@@ -207,6 +211,7 @@ export async function readReactions(
       return landed.length > 0 || removed.length > 0 ? { landed, removed } : undefined;
     },
     waitSeconds,
+    signal,
   });
   const wait: ReactionWait = { ...polled.wait, removed: polled.change?.removed ?? [] };
   return {

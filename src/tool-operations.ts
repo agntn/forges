@@ -356,9 +356,10 @@ const ANONYMOUS_REFUSALS = new Set([401, 403, 404, 429]);
 /** Failures already explained, since callers sharing one in-flight load get the same error. */
 const explainedFailures = new WeakSet<ForgesError>();
 
-/** A failure as the model reads it: no endpoint, and the status when the message is empty. */
+/** A failure as the model reads it: no endpoint, a status for an empty message, an abort as is. */
 export function toolFailure(error: unknown): Error {
   if (error instanceof ForgesError && explainedFailures.has(error)) return error;
+  if (error instanceof Error && error.name === "AbortError") return error;
   const failure = error instanceof Error ? error : new Error(String(error));
   const status = failure instanceof ForgesError ? failure.status : undefined;
   failure.message =
@@ -473,6 +474,12 @@ export interface AccountParams {
 
 export interface OwnerParams extends PlatformParams {
   owner?: string;
+}
+
+/** What the host hands an executor next to its arguments. */
+export interface CallOptions {
+  /** Aborted when the host cancels the call; a wait stops polling on it. */
+  signal?: AbortSignal;
 }
 
 export interface RepositoryParams extends OwnerParams {
@@ -1531,6 +1538,7 @@ export async function listPullRequestFiles(
 
 export async function listPullRequestChecks(
   args: ListPullRequestChecksParams,
+  options: CallOptions = {},
 ): Promise<ForgesToolResult<CheckPage | WaitedCheckPage>> {
   const params = repositoryTarget(args);
   if (params.headSha?.trim() === "") {
@@ -1560,6 +1568,7 @@ export async function listPullRequestChecks(
     waitSeconds: params.waitSeconds,
     readLastChange,
     expectedHead,
+    signal: options.signal,
   });
   return result(waited.page, { platform: params.platform, note: waited.note });
 }
@@ -1697,6 +1706,7 @@ const PULL_REQUEST_COMMENT_TRUNCATION_NOTE =
 
 export async function listPullRequestComments(
   args: ListPullRequestCommentsParams,
+  options: CallOptions = {},
 ): Promise<ForgesToolResult<PageResult<Comment> & { wait?: DiscussionWait }>> {
   const params = repositoryTarget(args);
   const { marker, since, waitSeconds } = params;
@@ -1716,7 +1726,12 @@ export async function listPullRequestComments(
   const perPage = params.perPage ?? DISCUSSION_SCAN_PER_PAGE;
   const readPage = (cursor: string | undefined) =>
     provider.pullRequests.listComments(issueOf(params), { cursor, perPage, since });
-  const answer = await readComments(readPage, { marker, since, waitSeconds });
+  const answer = await readComments(readPage, {
+    marker,
+    since,
+    waitSeconds,
+    signal: options.signal,
+  });
   return result(summarizeCommentPage(answer.page), {
     platform: params.platform,
     note: joinNotes(answer.note, PULL_REQUEST_COMMENT_TRUNCATION_NOTE),
@@ -1749,6 +1764,7 @@ export async function createPullRequestComment(
 
 export async function listPullRequestReactions(
   args: ListPullRequestReactionsParams,
+  options: CallOptions = {},
 ): Promise<ForgesToolResult<PageResult<Reaction> & { wait?: ReactionWait }>> {
   const params = repositoryTarget(args);
   const { author, since, waitSeconds } = params;
@@ -1769,7 +1785,12 @@ export async function listPullRequestReactions(
       cursor,
       perPage,
     });
-  const answer = await readReactions(readPage, { author, since, waitSeconds });
+  const answer = await readReactions(readPage, {
+    author,
+    since,
+    waitSeconds,
+    signal: options.signal,
+  });
   return result(answer.page, { platform: params.platform, note: answer.note });
 }
 

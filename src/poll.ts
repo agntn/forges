@@ -15,10 +15,32 @@ export const MAX_SCAN_PAGES = 20;
 const POLL_STEP_MS = 2_000;
 const MAX_POLL_INTERVAL_MS = 10_000;
 
-export function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
+/** Sleeps between polls, and rejects with the signal's reason the moment the caller gives up. */
+export function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const stop = (): void => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", stop);
+      resolve();
+    }, milliseconds);
+    if (signal?.aborted) stop();
+    else signal?.addEventListener("abort", stop, { once: true });
   });
+}
+
+/** Wraps a page read so a cancelled wait stops before its next request, not after its scan. */
+export function untilAborted<T>(
+  read: (cursor: string | undefined) => Promise<T>,
+  signal: AbortSignal | undefined,
+): (cursor: string | undefined) => Promise<T> {
+  if (signal === undefined) return read;
+  return (cursor) => {
+    signal.throwIfAborted();
+    return read(cursor);
+  };
 }
 
 /** Two seconds after the first read, then two more each time, up to ten. */
