@@ -1,6 +1,8 @@
 # docs/
 
-Cloudflare Workers Builds deploys this site to forges.agntn.dev, with `docs` as the root directory set in the dashboard. That build installs `docs/` alone and takes Node.js from the root `.node-version`, never from `engines`.
+Cloudflare Workers Builds deploys this site to forges.agntn.dev, with `docs` as the root directory set in the dashboard. Its `pnpm install` in `docs/` walks up to the root lockfile and fills the whole workspace. So a bare import in `../src` resolves from the root, same as on your machine.
+
+`dist/` never exists there, and Node.js comes from the root `.node-version`, never from `engines`.
 
 Resources on the Cloudflare account, bound by id in `wrangler.jsonc`:
 
