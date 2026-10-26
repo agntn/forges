@@ -7,6 +7,7 @@ import { NotFoundError, RateLimitError } from "../src/errors.ts";
 import { createMcpServer } from "../src/mcp.ts";
 import { hashReleaseNotes } from "../src/release-notes.ts";
 import { hashBody } from "../src/body-window.ts";
+import { forgesTools } from "../src/tools.ts";
 import {
   listCommits,
   listPullRequestChecks,
@@ -1773,6 +1774,72 @@ describe("forges MCP server", () => {
     const payload = JSON.parse(text(response.content));
     expect(payload.result.items.map((item: { content: string }) => item.content)).toEqual(["+1"]);
     expect(payload.result.wait).toMatchObject({ settled: true, polls: 1, removed: [] });
+  });
+
+  it.each([
+    {
+      name: "forges_pull_requests_checks",
+      read: mocks.pullRequests.listChecks,
+      page: { items: [{ id: "1", name: "build", status: "in_progress", conclusion: null }] },
+      filter: {},
+    },
+    {
+      name: "forges_pull_requests_comments",
+      read: mocks.pullRequests.listComments,
+      page: { items: [] },
+      filter: { marker: "codex-pull-request-review-summary" },
+    },
+    {
+      name: "forges_pull_requests_reactions",
+      read: mocks.pullRequests.listReactions,
+      page: { items: [] },
+      filter: { author: "chatgpt-codex-connector[bot]" },
+    },
+  ])("stops polling for $name once the client cancels the call", async (wait) => {
+    mocks.pullRequests.get.mockResolvedValue({ number: 339, updatedAt: "2026-01-01T00:00:00Z" });
+    wait.read.mockResolvedValue(wait.page);
+    const client = await connectTestClient();
+    const cancel = new AbortController();
+    vi.useFakeTimers();
+    try {
+      const call = client.callTool(
+        {
+          name: wait.name,
+          arguments: { repo: "agntn/forges", number: 339, ...wait.filter, waitSeconds: 300 },
+        },
+        { signal: cancel.signal },
+      );
+      await vi.waitFor(() => expect(wait.read).toHaveBeenCalledTimes(1));
+      cancel.abort();
+      await expect(call).rejects.toThrow();
+      await vi.advanceTimersByTimeAsync(300_000);
+
+      expect(wait.read).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("hands Pi and OMP the abort itself when a wait is cancelled", async () => {
+    mocks.pullRequests.get.mockResolvedValue({ number: 339, updatedAt: "2026-01-01T00:00:00Z" });
+    mocks.pullRequests.listChecks.mockResolvedValue({
+      items: [{ id: "1", name: "build", status: "in_progress", conclusion: null }],
+    });
+    const checks = forgesTools().find((tool) => tool.name === "forges_pull_requests_checks")!;
+    const cancel = new AbortController();
+    vi.useFakeTimers();
+    try {
+      const call = checks.execute(
+        { repo: "agntn/forges", number: 339, waitSeconds: 300 },
+        { signal: cancel.signal },
+      );
+      await vi.waitFor(() => expect(mocks.pullRequests.listChecks).toHaveBeenCalledTimes(1));
+      cancel.abort();
+
+      await expect(call).rejects.toMatchObject({ name: "AbortError" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it.each([

@@ -291,6 +291,19 @@ describe("check wait", () => {
     expect(bounded.wait.polls).toBe(1);
     expect(note).toContain("pages of checks");
   });
+
+  it("reads no further page once the caller aborts mid scan", async () => {
+    const cancel = new AbortController();
+    const read: ReadCheckPage = vi.fn(async () => {
+      cancel.abort();
+      return page([check("lint", true)], "second");
+    });
+
+    await expect(
+      waitForChecks(read, { waitSeconds: 60, readLastChange: changedAt(0), signal: cancel.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(read).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("check wait on an expected head", () => {

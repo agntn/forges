@@ -1,4 +1,4 @@
-import { delay, MAX_SCAN_PAGES, MAX_WAIT_SECONDS, nextPollDelay } from "./poll.ts";
+import { delay, MAX_SCAN_PAGES, MAX_WAIT_SECONDS, nextPollDelay, untilAborted } from "./poll.ts";
 import type { PageResult, PullRequestCheck } from "./types.ts";
 
 export { MAX_WAIT_SECONDS as MAX_CHECK_WAIT_SECONDS };
@@ -54,6 +54,8 @@ export interface CheckReadOptions {
 export interface CheckWaitOptions extends CheckReadOptions {
   waitSeconds: number;
   readLastChange: ReadLastChange;
+  /** The host's cancel: an aborted wait rejects with its reason instead of polling on. */
+  signal?: AbortSignal;
 }
 
 export interface CheckWaitResult {
@@ -218,7 +220,8 @@ export async function waitForChecks(
   read: ReadCheckPage,
   options: CheckWaitOptions,
 ): Promise<CheckWaitResult> {
-  const { cursor: requestedCursor, waitSeconds, readLastChange, expectedHead } = options;
+  const { cursor: requestedCursor, waitSeconds, readLastChange, expectedHead, signal } = options;
+  const readPage = untilAborted(read, signal);
   const budgetMs = Math.min(waitSeconds, MAX_WAIT_SECONDS) * 1_000;
   const startedAt = performance.now();
   let polls = 0;
@@ -226,7 +229,7 @@ export async function waitForChecks(
 
   while (true) {
     polls += 1;
-    const outcome = await readAtHead(expectedHead, () => scanChecks(read, requestedCursor));
+    const outcome = await readAtHead(expectedHead, () => scanChecks(readPage, requestedCursor));
     const stale = outcome.stale;
     if (stale) {
       emptyRun = undefined;
@@ -235,7 +238,7 @@ export async function waitForChecks(
         const wait: CheckWait = { settled: false, waitedMs, polls, pending: [] };
         return { page: { ...staleHeadPage(stale), wait }, note: staleHeadNote(stale, waitSeconds) };
       }
-      await delay(nextPollDelay(polls, budgetMs - waitedMs));
+      await delay(nextPollDelay(polls, budgetMs - waitedMs), signal);
       continue;
     }
     const scan = outcome.value;
@@ -264,6 +267,6 @@ export async function waitForChecks(
       };
     }
 
-    await delay(nextPollDelay(polls, remainingMs));
+    await delay(nextPollDelay(polls, remainingMs), signal);
   }
 }
