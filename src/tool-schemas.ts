@@ -481,7 +481,7 @@ export function forgesToolSchemas() {
   const listCommentsParameters = closed({ platform, owner, repo, number, cursor, perPage });
   /**
    * The waiting mode of the check listing. The bound repeats
-   * `MAX_CHECK_WAIT_SECONDS` from `src/check-wait.ts`, which this file cannot
+   * `MAX_WAIT_SECONDS` from `src/poll.ts`, which this file cannot
    * import: it ships to npm and `src/` does not.
    */
   const waitSeconds = Type.Optional(
@@ -518,20 +518,71 @@ export function forgesToolSchemas() {
     reviewId: Type.String({ description: "Review id returned by the reviews list", minLength: 1 }),
   });
   const commentParameters = closed({ platform, owner, repo, number, commentId });
+  const reactionCommentId = Type.Optional(
+    Type.String({
+      description:
+        "Read the reactions on this discussion comment, by the id the comment list returned, instead of on the issue or pull request itself",
+      minLength: 1,
+    }),
+  );
   const listReactionsParameters = closed({
     platform,
     owner,
     repo,
     number,
-    commentId: Type.Optional(
+    commentId: reactionCommentId,
+    cursor,
+    perPage,
+  });
+  /** The waiting mode of the comment and reaction reads, under the same bound as the checks. */
+  const discussionWaitSeconds = Type.Optional(
+    Type.Integer({
+      description:
+        "Wait up to this many seconds for a matching item to change, instead of reading once; give it with since to catch a bot's next edit after a push",
+      minimum: 1,
+      maximum: 300,
+    }),
+  );
+  const sinceTime = (items: string) =>
+    Type.Optional(
+      Type.String({
+        description: `Only ${items} at or after this ISO-8601 time, such as the moment you pushed`,
+        minLength: 1,
+      }),
+    );
+  const listPullRequestCommentsParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    cursor,
+    perPage,
+    marker: Type.Optional(
       Type.String({
         description:
-          "Read the reactions on this discussion comment, by the id the comment list returned, instead of on the issue or pull request itself",
+          "Only comments whose body contains this text, such as a review bot's hidden sticky marker (codex-pull-request-review-summary, pr-lens:sticky)",
         minLength: 1,
       }),
     ),
+    since: sinceTime("comments created or edited"),
+    waitSeconds: discussionWaitSeconds,
+  });
+  const listPullRequestReactionsParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    commentId: reactionCommentId,
     cursor,
     perPage,
+    author: Type.Optional(
+      Type.String({
+        description: "Only reactions left by this login, such as a review bot's",
+        minLength: 1,
+      }),
+    ),
+    since: sinceTime("reactions left"),
+    waitSeconds: discussionWaitSeconds,
   });
   const parent = Type.Integer({ description: "Number of the parent issue", minimum: 1 });
   const subIssue = Type.Integer({
@@ -855,6 +906,8 @@ export function forgesToolSchemas() {
     pullRequestReviewParameters,
     commentParameters,
     listReactionsParameters,
+    listPullRequestCommentsParameters,
+    listPullRequestReactionsParameters,
     listSubIssuesParameters,
     addSubIssueParameters,
     removeSubIssueParameters,

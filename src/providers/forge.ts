@@ -507,7 +507,10 @@ export abstract class ForgeBackedProvider<
   ): Promise<ContinuedPage<Comment>> {
     return this.forgeCall((forge) =>
       this.forgePage(
-        forge.threads.comments(this.threadRef(forge, thread), this.forgePageOptions(options)),
+        forge.threads.comments(this.threadRef(forge, thread), {
+          ...this.forgePageOptions(options),
+          ...(options?.since ? { since: this.#date(options.since, "since") } : {}),
+        }),
         (comment) => this.mapComment(this.forgePayload(comment) as never),
       ),
     );

@@ -3387,6 +3387,22 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("pullRequests.listComments since", () => {
+    it("keeps only notes edited from then on, since GitLab takes no such filter", async () => {
+      mockProjectResolve(278964);
+      const edited = { ...glNote, id: 2203, updated_at: "2024-03-14T10:00:00Z" };
+      mocks.rawFetch.mockResolvedValueOnce({ data: [glNote, edited], headers: glHeaders() });
+
+      const result = await gl.pullRequests.listComments(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 8 },
+        { since: "2024-03-14T00:00:00Z" },
+      );
+
+      expect(result.items.map((comment) => comment.id)).toEqual(["2203"]);
+      expect(result.totalCount).toBeUndefined();
+    });
+  });
+
   describe("pullRequests.getComment", () => {
     it("reads one note scoped to its merge request", async () => {
       mockProjectResolve(278964);
