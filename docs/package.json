@@ -16,7 +16,7 @@
     "docus": "5.13.0",
     "forges": "0.2.0",
     "nuxt": "4.5.2",
-    "unstorage": "1.17.5"
+    "unstorage": "1.17.6"
   },
   "devDependencies": {
     "@iconify-json/lucide": "1.2.147",
