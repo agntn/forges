@@ -1,4 +1,11 @@
-import type { H3Event } from "h3";
+import { useStorage } from "nitropack/runtime";
+import {
+  createError,
+  getRequestHeader,
+  getRequestIP,
+  isNuxtError,
+  type RequestEvent,
+} from "nuxt/server";
 import { hash } from "ohash";
 import {
   AuthenticationError,
@@ -43,8 +50,8 @@ export function readString(query: Query, key: string, max: number): string | und
   }
   if (value.length > max) {
     throw createError({
-      statusCode: 400,
-      statusMessage: `${key} must be at most ${max} characters`,
+      status: 400,
+      statusText: `${key} must be at most ${max} characters`,
     });
   }
   return value;
@@ -53,7 +60,7 @@ export function readString(query: Query, key: string, max: number): string | und
 export function requireString(query: Query, key: string, max: number): string {
   const value = readString(query, key, max);
   if (!value) {
-    throw createError({ statusCode: 400, statusMessage: `${key} is required` });
+    throw createError({ status: 400, statusText: `${key} is required` });
   }
   return value;
 }
@@ -66,8 +73,8 @@ export function readInt(query: Query, key: string, min: number, max: number): nu
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
     throw createError({
-      statusCode: 400,
-      statusMessage: `${key} must be an integer between ${min} and ${max}`,
+      status: 400,
+      statusText: `${key} must be an integer between ${min} and ${max}`,
     });
   }
   return parsed;
@@ -78,8 +85,8 @@ export function readName(query: Query, key: string): string {
   const value = requireString(query, key, LIMITS.name);
   if (!/^[\w.-]+$/u.test(value) || value === "." || value === "..") {
     throw createError({
-      statusCode: 400,
-      statusMessage: `${key} must be a repository owner or name`,
+      status: 400,
+      statusText: `${key} must be a repository owner or name`,
     });
   }
   return value;
@@ -89,7 +96,7 @@ export function readName(query: Query, key: string): string {
 export function readState(query: Query): "open" | "closed" | "all" {
   const value = readString(query, "state", 8) ?? "open";
   if (value !== "open" && value !== "closed" && value !== "all") {
-    throw createError({ statusCode: 400, statusMessage: "state must be open, closed or all" });
+    throw createError({ status: 400, statusText: "state must be open, closed or all" });
   }
   return value;
 }
@@ -111,53 +118,47 @@ export function failureText(message: string): string {
 
 /** Turns a library error into the status the browser can show; the typed hierarchy decides the code. */
 export function toHttpError(error: unknown): never {
-  if (
-    error &&
-    typeof error === "object" &&
-    "statusCode" in error &&
-    !(error instanceof ForgesError)
-  ) {
+  if (isNuxtError(error)) {
     throw error;
   }
   if (error instanceof NotFoundError) {
     throw createError({
-      statusCode: 404,
-      statusMessage: `${error.platform} answered 404: no such repository, issue or user, or it is private`,
+      status: 404,
+      statusText: `${error.platform} answered 404: no such repository, issue or user, or it is private`,
     });
   }
   if (error instanceof AuthenticationError) {
     throw createError({
-      statusCode: 503,
-      statusMessage: `${error.platform} wants a token for this call and the docs worker has none`,
+      status: 503,
+      statusText: `${error.platform} wants a token for this call and the docs worker has none`,
     });
   }
   if (error instanceof PermissionError) {
     throw createError({
-      statusCode: 403,
-      statusMessage: `${error.platform} refused the docs worker's access`,
+      status: 403,
+      statusText: `${error.platform} refused the docs worker's access`,
     });
   }
   if (error instanceof RateLimitError) {
     const retry = error.retryAfter ? ` Retry after ${error.retryAfter}s.` : "";
     throw createError({
-      statusCode: 429,
-      statusMessage: `${error.platform} is rate limiting the docs worker.${retry}`,
+      status: 429,
+      statusText: `${error.platform} is rate limiting the docs worker.${retry}`,
     });
   }
   if (error instanceof ForgesError) {
     const status = error.status ? ` HTTP ${error.status}.` : "";
     throw createError({
-      statusCode: 502,
-      statusMessage: `${error.platform ?? "The platform"} failed: ${failureText(error.message)}.${status}`,
+      status: 502,
+      statusText: `${error.platform ?? "The platform"} failed: ${failureText(error.message)}.${status}`,
     });
   }
   const message = error instanceof Error ? error.message : String(error);
-  throw createError({ statusCode: 502, statusMessage: failureText(message) });
+  throw createError({ status: 502, statusText: failureText(message) });
 }
 
-export function markPublic(event: H3Event, seconds: number): void {
-  setResponseHeader(
-    event,
+export function markPublic(event: RequestEvent, seconds: number): void {
+  event.res.headers.set(
     "Cache-Control",
     `public, max-age=${seconds}, stale-while-revalidate=${seconds * 4}`,
   );
@@ -178,7 +179,7 @@ const localCounts = new Map<string, number>();
  * The address a request came from, as Cloudflare saw it. `X-Forwarded-For` is left out: its first
  * entry is whatever the caller sent, so it would let one client rotate its own key.
  */
-function clientAddress(event: H3Event): string {
+function clientAddress(event: RequestEvent): string {
   return getRequestHeader(event, "cf-connecting-ip") ?? getRequestIP(event) ?? "unknown";
 }
 
@@ -213,10 +214,12 @@ function rateLimitSubject(address: string): string {
 }
 
 /** Counts uncached requests per client and minute; cache hits are free, so a warm demo never trips it. */
-export async function assertRateLimit(event: H3Event): Promise<void> {
+export async function assertRateLimit(event: RequestEvent): Promise<void> {
   const key = hash(rateLimitSubject(clientAddress(event)));
-  const limiter = (event.context.cloudflare?.env as { PLATFORM_LIMIT?: RateLimiter } | undefined)
-    ?.PLATFORM_LIMIT;
+  const cloudflare = event.context.cloudflare as
+    | { env?: { PLATFORM_LIMIT?: RateLimiter } }
+    | undefined;
+  const limiter = cloudflare?.env?.PLATFORM_LIMIT;
   let allowed: boolean;
   if (limiter) {
     allowed = (await limiter.limit({ key })).success;
@@ -233,10 +236,10 @@ export async function assertRateLimit(event: H3Event): Promise<void> {
     allowed = count <= RATE_LIMIT;
   }
   if (!allowed) {
-    setResponseHeader(event, "Retry-After", 60);
+    event.res.headers.set("Retry-After", "60");
     throw createError({
-      statusCode: 429,
-      statusMessage: `More than ${RATE_LIMIT} new platform requests in a minute from one address, or one /64 on IPv6; cached answers are not counted. Wait a moment.`,
+      status: 429,
+      statusText: `More than ${RATE_LIMIT} new platform requests in a minute from one address, or one /64 on IPv6; cached answers are not counted. Wait a moment.`,
     });
   }
 }
@@ -251,7 +254,7 @@ interface CachedEntry<T> {
  * goes through it: anonymous GitHub reads share one rate limit per address, and the page runs on it.
  */
 export async function cachedAnswer<T>(
-  event: H3Event,
+  event: RequestEvent,
   prefix: string,
   params: Readonly<Record<string, unknown>>,
   ttl: number,

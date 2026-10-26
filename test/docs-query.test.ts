@@ -1,24 +1,58 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-// CI installs the root only; without `docs/node_modules` the one docs dependency is stood in for.
-vi.mock("ohash", () => ({ hash: (value: unknown) => `h:${String(value)}` }));
-
-const { assertRateLimit, cachedAnswer, RATE_LIMIT, TTL } =
-  await import("../docs/server/utils/query.ts");
-
 type Env = Readonly<Record<string, unknown>>;
 
 interface FakeEvent {
   readonly headers: Readonly<Record<string, string>>;
   readonly context: Readonly<{ cloudflare?: Readonly<{ env: Env }> }>;
+  readonly res: Readonly<{ headers: Pick<Headers, "set"> }>;
 }
 
 /** Headers the code under test set on the response, cleared before each test. */
 const sentHeaders = new Map<string, unknown>();
 
+/** `nuxt/server` and Nitro storage, reduced to what the rate limit and the cache read. */
+const docsServer = vi.hoisted(() => {
+  const state = { storage: undefined as unknown };
+  return {
+    state,
+    nitro: () => ({ useStorage: () => state.storage }),
+    nuxt: () => ({
+      createError: (input: Readonly<{ status: number; statusText: string }>) =>
+        Object.assign(new Error(input.statusText), input, { __nuxt_error: true }),
+      isNuxtError: (error: unknown) => error instanceof Error && "__nuxt_error" in error,
+      getRequestHeader: (event: Readonly<FakeEvent>, name: string) =>
+        event.headers[name.toLowerCase()],
+      getRequestIP: (
+        event: Readonly<FakeEvent>,
+        options?: Readonly<{ xForwardedFor?: boolean }>,
+      ) =>
+        options?.xForwardedFor
+          ? event.headers["x-forwarded-for"]?.split(",")[0]?.trim()
+          : undefined,
+    }),
+  };
+});
+
+/* Bare names for CI, which installs the root only, and docs paths for a local install. */
+vi.mock("ohash", () => ({ hash: (value: unknown) => `h:${String(value)}` }));
+vi.mock("nuxt/server", docsServer.nuxt);
+vi.mock("../docs/node_modules/nuxt/dist/server/index.js", docsServer.nuxt);
+vi.mock("nitropack/runtime", docsServer.nitro);
+vi.mock("../docs/node_modules/nitropack/dist/runtime/index.mjs", docsServer.nitro);
+
+const { assertRateLimit, cachedAnswer, RATE_LIMIT, toHttpError, TTL } =
+  await import("../docs/server/utils/query.ts");
+const { createError } = await import("nuxt/server");
+const { ForgesError } = await import("@agntn/forges");
+
 function fakeEvent(headers: Readonly<Record<string, string>>, env?: Env): never {
-  const event: FakeEvent = { headers, context: env ? { cloudflare: { env } } : {} };
+  const event: FakeEvent = {
+    headers,
+    context: env ? { cloudflare: { env } } : {},
+    res: { headers: { set: (name, value) => void sentHeaders.set(name, value) } },
+  };
   return event as never;
 }
 
@@ -35,26 +69,6 @@ function memoryStorage() {
       items.set(key, value);
     }),
   };
-}
-
-/** The h3 and Nitro auto-imports, reduced to what the rate limit and the cache read. */
-function stubAutoImports(storage: ReturnType<typeof memoryStorage>): void {
-  vi.stubGlobal(
-    "getRequestHeader",
-    (event: Readonly<FakeEvent>, name: string) => event.headers[name.toLowerCase()],
-  );
-  vi.stubGlobal(
-    "getRequestIP",
-    (event: Readonly<FakeEvent>, options?: Readonly<{ xForwardedFor?: boolean }>) =>
-      options?.xForwardedFor ? event.headers["x-forwarded-for"]?.split(",")[0]?.trim() : undefined,
-  );
-  vi.stubGlobal("setResponseHeader", (_event: unknown, name: string, value: unknown) => {
-    sentHeaders.set(name, value);
-  });
-  vi.stubGlobal("createError", (input: Readonly<{ statusCode: number; statusMessage: string }>) =>
-    Object.assign(new Error(input.statusMessage), input),
-  );
-  vi.stubGlobal("useStorage", () => storage);
 }
 
 /** The key `assertRateLimit` hands the `PLATFORM_LIMIT` binding for one client address. */
@@ -76,12 +90,11 @@ let storage: ReturnType<typeof memoryStorage>;
 beforeEach(() => {
   sentHeaders.clear();
   storage = memoryStorage();
-  stubAutoImports(storage);
+  docsServer.state.storage = storage;
 });
 
 afterEach(() => {
   vi.useRealTimers();
-  vi.unstubAllGlobals();
 });
 
 describe("docs rate limit", () => {
@@ -115,8 +128,8 @@ describe("docs rate limit", () => {
       { PLATFORM_LIMIT: { limit: async () => ({ success: false }) } },
     );
 
-    await expect(assertRateLimit(event)).rejects.toMatchObject({ statusCode: 429 });
-    expect(sentHeaders.get("Retry-After")).toBe(60);
+    await expect(assertRateLimit(event)).rejects.toMatchObject({ status: 429 });
+    expect(sentHeaders.get("Retry-After")).toBe("60");
   });
 
   it("ignores a rotated X-Forwarded-For without the binding", async () => {
@@ -238,5 +251,28 @@ describe("docs answer cache", () => {
     await cachedAnswer(event, "repo", { owner: "agntn" }, TTL.repo, async () => "answer");
 
     expect(storage.setItem.mock.calls.map((call) => call[2])).toEqual([{ ttl: TTL.repo }]);
+  });
+});
+
+describe("docs error mapping", () => {
+  it("passes an HTTP error through untouched", () => {
+    const error = createError({ status: 429, statusText: "slow down" });
+
+    let thrown: unknown;
+    try {
+      toHttpError(error);
+    } catch (caught) {
+      thrown = caught;
+    }
+
+    expect(thrown).toBe(error);
+  });
+
+  it("turns a library failure into a 502 with the platform named", () => {
+    const failure = new ForgesError("Boom: GET /repos/a/b", { platform: "gitea", status: 500 });
+
+    expect(() => toHttpError(failure)).toThrow(
+      expect.objectContaining({ status: 502, statusText: "gitea failed: Boom. HTTP 500." }),
+    );
   });
 });

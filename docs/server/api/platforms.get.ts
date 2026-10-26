@@ -1,3 +1,4 @@
+import { defineEventHandler } from "nuxt/server";
 import { version } from "../../../package.json";
 
 export interface PlatformsAnswer {

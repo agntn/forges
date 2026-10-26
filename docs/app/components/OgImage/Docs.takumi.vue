@@ -14,7 +14,7 @@ const { title, description, headline } = defineProps<{
 
 const { name: siteName } = useSiteConfig();
 
-/** A platform page shows the platform's facts. The description would arrive with its commas stripped. */
+/** A platform page shows its auth and threads, which say more than its description. */
 const entry = PLATFORMS.find((row) => row.label === title);
 
 const subtitle = entry

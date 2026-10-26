@@ -1,3 +1,5 @@
+import { defineEventHandler, getQuery } from "nuxt/server";
+
 /** One page of pull requests as `pullRequests.list` returns it, without bodies. */
 export interface PullsAnswer {
   platform: Platform;

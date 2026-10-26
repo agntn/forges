@@ -1,4 +1,5 @@
 import type { User } from "@agntn/forges";
+import { defineEventHandler, getQuery } from "nuxt/server";
 
 /** One profile as `users.get` returns it, without the email the platform may attach. */
 export interface UserAnswer {

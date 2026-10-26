@@ -1,3 +1,5 @@
+import { defineEventHandler, getQuery } from "nuxt/server";
+
 /** One page of commits as `commits.list` returns it: metadata only, no files, no patches. */
 export interface CommitsAnswer {
   platform: Platform;
