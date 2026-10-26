@@ -2071,6 +2071,41 @@ describe("forges MCP server", () => {
     });
   });
 
+  it("says why a created pull request is missing its assignees, endpoint left out", async () => {
+    const pullRequest = {
+      id: "7",
+      number: 7,
+      title: "Fix",
+      body: "",
+      state: "open",
+      assignees: [],
+    };
+    mocks.pullRequests.create.mockResolvedValue({
+      ...pullRequest,
+      assignmentError:
+        '[POST] "https://x:ghp_secret@ghe.example/api/v3/repos/agntn/forges/issues/7/assignees": 422 Unprocessable Entity: Validation Failed',
+    });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_create",
+      arguments: {
+        repo: "agntn/forges",
+        title: "Fix",
+        body: "",
+        sourceBranch: "fix/a",
+        targetBranch: "main",
+        assignees: ["aeitwoen"],
+      },
+    });
+
+    expect(JSON.parse(text(response.content))).toEqual({
+      platform: "github",
+      result: pullRequest,
+      note: "Creation succeeded, but requested assignees are missing: aeitwoen (422 Unprocessable Entity: Validation Failed). Do not retry the create call; the result is the created object.",
+    });
+  });
+
   it("reports a failed operation as a tool error instead of a transport failure", async () => {
     mocks.repos.get.mockRejectedValue(new Error("Repository not found: agntn/nope"));
     const client = await connectTestClient();

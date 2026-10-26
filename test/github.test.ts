@@ -52,7 +52,7 @@ import {
   sharedForge,
 } from "./support/forge.ts";
 import { cursorFor } from "./support/cursor.ts";
-import type { UpdateIssueInput, UpdatePullRequestInput } from "../src/types.ts";
+import type { PullRequest, UpdateIssueInput, UpdatePullRequestInput } from "../src/types.ts";
 
 // --- Fixtures (snake_case matching real GitHub API) ---
 
@@ -4512,25 +4512,79 @@ describe("GitHubProvider", () => {
       expect(pr.url).toBe("https://github.com/octocat/hello-world/pull/99");
     });
 
-    it("returns the created pull request when assignment fails", async () => {
+    const assignedCreate = {
+      title: "Add dark mode",
+      body: "Implements it",
+      sourceBranch: "feature/dark-mode",
+      targetBranch: "main",
+      assignees: ["maintainer"],
+    };
+
+    /* Runs the create past the pause before the second assignment. */
+    async function createWithRetry(): Promise<PullRequest> {
+      vi.useFakeTimers();
+      try {
+        const created = gh.pullRequests.create(
+          { owner: "octocat", repo: "hello-world" },
+          assignedCreate,
+        );
+        await vi.runAllTimersAsync();
+        return await created;
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+
+    it("returns the created pull request with the reason when assignment keeps failing", async () => {
+      const route = "/repos/octocat/hello-world/issues/99/assignees";
       mocks.client
         .mockResolvedValueOnce({ ...ghPullRequest, assignees: [] })
-        .mockRejectedValueOnce(makeFetchError(403));
+        .mockRejectedValueOnce(makeFetchError(422))
+        .mockRejectedValueOnce(
+          Object.assign(makeFetchError(422, `[POST] "${route}": 422 Unprocessable Entity`), {
+            data: { message: "Validation Failed" },
+          }),
+        );
 
-      const pr = await gh.pullRequests.create(
-        { owner: "octocat", repo: "hello-world" },
-        {
-          title: "Add dark mode",
-          body: "Implements it",
-          sourceBranch: "feature/dark-mode",
-          targetBranch: "main",
-          assignees: ["maintainer"],
-        },
-      );
+      const pr = await createWithRetry();
 
-      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(mocks.client).toHaveBeenCalledTimes(3);
+      expect(mocks.client).toHaveBeenNthCalledWith(3, route, {
+        method: "POST",
+        body: { assignees: ["maintainer"] },
+      });
       expect(pr.number).toBe(99);
       expect(pr.assignees).toEqual([]);
+      expect(pr.assignmentError).toBe(
+        `[POST] "${route}": 422 Unprocessable Entity: Validation Failed`,
+      );
+    });
+
+    it("assigns on the second try after the first one fails", async () => {
+      mocks.client
+        .mockResolvedValueOnce({ ...ghPullRequest, assignees: [] })
+        .mockRejectedValueOnce(makeFetchError(404))
+        .mockResolvedValueOnce({ ...ghIssue, assignees: [{ login: "Maintainer" }] });
+
+      const pr = await createWithRetry();
+
+      expect(mocks.client).toHaveBeenCalledTimes(3);
+      expect(pr.assignees).toEqual([{ login: "Maintainer" }]);
+      expect(pr).not.toHaveProperty("assignmentError");
+    });
+
+    it("says so when GitHub accepts the assignment and leaves the login out", async () => {
+      mocks.client
+        .mockResolvedValueOnce({ ...ghPullRequest, assignees: [] })
+        .mockResolvedValue({ ...ghIssue, assignees: [] });
+
+      const pr = await createWithRetry();
+
+      expect(mocks.client).toHaveBeenCalledTimes(3);
+      expect(pr.assignees).toEqual([]);
+      expect(pr.assignmentError).toBe(
+        "GitHub answered 201 without assigning them, which it does when the account lacks push access",
+      );
     });
   });
 

@@ -764,12 +764,14 @@ function result<T>(value: T, meta: ResultMeta): ForgesToolResult<T> {
 function assignmentNote(
   requested: string[] | undefined,
   actual: Array<{ login: string }>,
+  reason?: string,
 ): string | undefined {
   if (!requested?.length) return undefined;
   const assigned = new Set(actual.map(({ login }) => login.toLowerCase()));
   const missing = requested.filter((login) => !assigned.has(login.toLowerCase()));
   if (missing.length === 0) return undefined;
-  return `Creation succeeded, but requested assignees are missing: ${missing.join(", ")}. Do not retry the create call; the result is the created object.`;
+  const why = reason === undefined ? "" : ` (${reason})`;
+  return `Creation succeeded, but requested assignees are missing: ${missing.join(", ")}${why}. Do not retry the create call; the result is the created object.`;
 }
 
 function sameFieldValue(wanted: IssueFieldValue, actual: IssueFieldValue | undefined): boolean {
@@ -1684,9 +1686,12 @@ export async function createPullRequest(
       draft: params.draft,
       assignees: params.assignees,
     });
-    return result(pullRequest, {
+    const { assignmentError, ...created } = pullRequest;
+    const reason = assignmentError === undefined ? undefined : redactEndpoint(assignmentError);
+    return result(reason === undefined ? created : { ...created, assignmentError: reason }, {
       platform: params.platform,
-      note: assignmentNote(params.assignees, pullRequest.assignees),
+      note: assignmentNote(params.assignees, pullRequest.assignees, reason),
+      modelValue: created,
     });
   });
 }
