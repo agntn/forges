@@ -20,6 +20,7 @@ import type {
   Repo,
   Review,
   ReviewComment,
+  ReviewThread,
   Tag as ForgeTag,
   Thread as ForgeThread,
   User as ForgeUser,
@@ -51,12 +52,8 @@ import type {
   User,
 } from "../types.ts";
 
-/** One review conversation: its comments in order, gathered from every review. */
-export interface ReviewConversation {
-  id: string;
-  resolved: boolean;
-  comments: ReviewComment[];
-}
+/** One review conversation, from the forge itself or gathered from every review. */
+export type ReviewConversation = Omit<ReviewThread, "raw">;
 
 /** The terminal outcome a normalised check state carries on its own. */
 const CHECK_CONCLUSIONS: Readonly<Record<CheckState, CiRunConclusion>> = {
@@ -298,16 +295,16 @@ export function threadCommentFromModel(comment: ReviewComment): ThreadComment {
   };
 }
 
-/** The model marks neither outdated comments nor a range's first line. */
+/** A conversation gathered from reviews has no place of its own, so its first comment lends one. */
 export function threadFromModel(conversation: ReviewConversation): Thread {
   const first = conversation.comments[0];
   return {
     id: conversation.id,
     isResolved: conversation.resolved,
-    isOutdated: false,
-    path: first?.path ?? "",
-    line: first?.line ?? null,
-    startLine: null,
+    isOutdated: conversation.outdated ?? false,
+    path: conversation.path ?? first?.path ?? "",
+    line: conversation.line ?? first?.line ?? null,
+    startLine: conversation.startLine ?? null,
     comments: conversation.comments.map(threadCommentFromModel),
   };
 }
