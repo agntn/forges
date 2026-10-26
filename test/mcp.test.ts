@@ -10,6 +10,8 @@ import { hashBody } from "../src/body-window.ts";
 import {
   listCommits,
   listPullRequestChecks,
+  listPullRequestComments,
+  listPullRequestReactions,
   listPullRequests,
   listRepositories,
   resetPinnedProviders,
@@ -49,6 +51,7 @@ const mocks = vi.hoisted(() => {
     search: vi.fn(),
     get: vi.fn(),
     create: vi.fn(),
+    listComments: vi.fn(),
     listReactions: vi.fn(),
   };
   const users = { get: vi.fn(), authenticated: vi.fn() };
@@ -1704,6 +1707,94 @@ describe("forges MCP server", () => {
       },
     );
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: page });
+  });
+
+  it("waits on a review bot's sticky comment through the MCP tool", async () => {
+    const sticky = {
+      id: "6426956585",
+      body: "<!-- codex-pull-request-review-summary -->\n| Code Review | Completed | `b1ac3c7` |",
+      author: { login: "chatgpt-codex-connector[bot]" },
+      url: "https://github.com/agntn/forges/pull/339#issuecomment-6426956585",
+      createdAt: "2026-10-26T20:47:44Z",
+      updatedAt: "2026-10-26T20:55:29Z",
+    };
+    mocks.pullRequests.listComments.mockResolvedValue({ items: [sticky] });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_comments",
+      arguments: {
+        repo: "agntn/forges",
+        number: 339,
+        marker: "codex-pull-request-review-summary",
+        since: "2026-10-26T20:50:00Z",
+        waitSeconds: 30,
+      },
+    });
+
+    expect(mocks.pullRequests.listComments).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 339 },
+      { cursor: undefined, perPage: 100, since: "2026-10-26T20:50:00Z" },
+    );
+    const payload = JSON.parse(text(response.content));
+    expect(payload.result.items).toEqual([sticky]);
+    expect(payload.result.wait).toMatchObject({ settled: true, polls: 1 });
+    expect(payload.result).not.toHaveProperty("nextCursor");
+  });
+
+  it("waits for a review bot's reaction through the MCP tool", async () => {
+    mocks.pullRequests.listReactions.mockResolvedValue({
+      items: [
+        {
+          content: "+1",
+          user: { login: "chatgpt-codex-connector[bot]" },
+          createdAt: "2026-10-26T20:53:00Z",
+        },
+        { content: "heart", user: { login: "oritwoen" }, createdAt: "2026-10-26T20:54:00Z" },
+      ],
+    });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_reactions",
+      arguments: {
+        repo: "agntn/forges",
+        number: 339,
+        author: "chatgpt-codex-connector[bot]",
+        since: "2026-10-26T20:50:00Z",
+        waitSeconds: 30,
+      },
+    });
+
+    expect(mocks.pullRequests.listReactions).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 339 },
+      { commentId: undefined, cursor: undefined, perPage: 100 },
+    );
+    const payload = JSON.parse(text(response.content));
+    expect(payload.result.items.map((item: { content: string }) => item.content)).toEqual(["+1"]);
+    expect(payload.result.wait).toMatchObject({ settled: true, polls: 1, removed: [] });
+  });
+
+  it.each([
+    [{ marker: "pr-lens:sticky", cursor: "next" }, "take no cursor"],
+    [{ since: "yesterday" }, "since must be an ISO 8601 date"],
+    [{ marker: "  " }, "marker must not be empty"],
+    [{ waitSeconds: 1.5 }, "waitSeconds must be a whole number from 1 to 300"],
+  ])("refuses a comment read with %o before any request", async (extra, message) => {
+    await expect(
+      listPullRequestComments({ repo: "agntn/forges", number: 339, ...extra }),
+    ).rejects.toMatchObject({ status: 400, message: expect.stringContaining(message) });
+    expect(mocks.pullRequests.listComments).not.toHaveBeenCalled();
+  });
+
+  it("refuses a reaction wait with a cursor before any request", async () => {
+    await expect(
+      listPullRequestReactions({ repo: "agntn/forges", number: 339, author: "x", cursor: "next" }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining("author, since, waitSeconds"),
+    });
+    expect(mocks.pullRequests.listReactions).not.toHaveBeenCalled();
   });
 
   it("reads an issue's own reactions and refuses an empty comment id", async () => {

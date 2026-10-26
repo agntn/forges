@@ -1,20 +1,8 @@
+import { delay, MAX_SCAN_PAGES, MAX_WAIT_SECONDS, nextPollDelay } from "./poll.ts";
 import type { PageResult, PullRequestCheck } from "./types.ts";
 
-/**
- * The longest one call may wait, matching the bound `@agntn/memory` puts on its
- * recall wait. The tool schemas repeat the number, because they are built with
- * TypeBox in the published extension packages and cannot import from `src/`.
- */
-export const MAX_CHECK_WAIT_SECONDS = 300;
+export { MAX_WAIT_SECONDS as MAX_CHECK_WAIT_SECONDS };
 
-const POLL_STEP_MS = 2_000;
-const MAX_POLL_INTERVAL_MS = 10_000;
-/**
- * A poll reads every page before it calls the run finished, so the scan needs a
- * bound of its own: a repository with more checks than this reports what it saw
- * rather than claiming a settlement it never proved.
- */
-const MAX_SCAN_PAGES = 20;
 /** A long pending list belongs in the payload, not repeated in full in the note. */
 const NOTE_PENDING_LIMIT = 10;
 /** CI lists a fresh head seconds after the push, so an empty list proves nothing before this. */
@@ -87,12 +75,6 @@ interface Scan {
   pending: string[];
   /** False when the check set outran the scan bound, so settlement cannot be claimed. */
   examinedEveryPage: boolean;
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
 }
 
 /**
@@ -180,10 +162,6 @@ function waitNote(
   return `Checks were still running when the ${waitSeconds}s budget ran out: ${pendingText(wait.pending)}. Call again with waitSeconds to keep waiting; do not treat the pull request as finished.`;
 }
 
-function nextPollDelay(polls: number, remainingMs: number): number {
-  return Math.min(polls * POLL_STEP_MS, MAX_POLL_INTERVAL_MS, remainingMs);
-}
-
 /** Forges answer with lowercase hex, while a caller may pass the same SHA in capitals. */
 async function findStaleHead(expected: ExpectedHead | undefined): Promise<StaleHead | undefined> {
   if (expected === undefined) return undefined;
@@ -241,7 +219,7 @@ export async function waitForChecks(
   options: CheckWaitOptions,
 ): Promise<CheckWaitResult> {
   const { cursor: requestedCursor, waitSeconds, readLastChange, expectedHead } = options;
-  const budgetMs = Math.min(waitSeconds, MAX_CHECK_WAIT_SECONDS) * 1_000;
+  const budgetMs = Math.min(waitSeconds, MAX_WAIT_SECONDS) * 1_000;
   const startedAt = performance.now();
   let polls = 0;
   let emptyRun: EmptyRun | undefined;

@@ -2272,6 +2272,34 @@ describe("GitHubProvider", () => {
       expect(result.nextCursor).toEqual(expect.any(String));
     });
 
+    it("hands since to the forge, which GitHub filters on edits as well", async () => {
+      forge.threads.comments.mockReturnValueOnce(listing({ items: raws(ghComment) }));
+
+      const result = await gh.pullRequests.listComments(
+        { owner: "octocat", repo: "hello-world", number: 42 },
+        { since: "2024-01-17T09:30:00Z" },
+      );
+
+      expect(forge.threads.comments).toHaveBeenCalledWith(
+        expect.objectContaining({ number: "42" }),
+        {
+          perPage: 30,
+          since: new Date("2024-01-17T09:30:00Z"),
+        },
+      );
+      expect(result.items.map((comment) => comment.id)).toEqual(["3001"]);
+    });
+
+    it("refuses a since that is no date before the request", async () => {
+      await expect(
+        gh.pullRequests.listComments(
+          { owner: "octocat", repo: "hello-world", number: 42 },
+          { since: "after lunch" },
+        ),
+      ).rejects.toMatchObject({ status: 400, message: "since must be an ISO 8601 date" });
+      expect(forge.threads.comments).not.toHaveBeenCalled();
+    });
+
     it("maps a ghost author and missing body to empty strings", async () => {
       forge.threads.comments.mockReturnValueOnce(
         listing({ items: raws({ ...ghComment, body: null, user: null }) }),

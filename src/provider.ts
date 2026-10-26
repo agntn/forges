@@ -315,6 +315,13 @@ function assertCommentBody(body: string, platform?: string): void {
   }
 }
 
+/** Only GitHub filters by since on the server, so the cut lands here for every forge. */
+function commentsSince<P extends PageResult<Comment>>(page: P, since: number): P {
+  const { totalCount: _total, ...rest } = page;
+  const items = page.items.filter((comment) => Date.parse(comment.updatedAt) >= since);
+  return { ...rest, items } as P;
+}
+
 /**
  * Abstract base for every git provider.
  *
@@ -598,14 +605,16 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       },
       listComments: async (issue, options) => {
         this.#assertIssue(issue, "issues.listComments");
+        const since = this.#sinceTime(options?.since);
         const { owner, repo, number } = issue;
-        return this.#paged(
+        const page = await this.#paged<ListCommentOptions, PageResult<Comment>>(
           { listing: "issues.listComments", subject: [owner, repo, number], options },
           (paged) => {
             this.#assertListPage(paged);
             return this.listIssueComments(issue, paged);
           },
         );
+        return since === undefined ? page : commentsSince(page, since);
       },
       getComment: async (issue, comment) => {
         this.#assertIssue(issue, "issues.getComment");
@@ -735,14 +744,16 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
       },
       listComments: async (pull, options) => {
         this.#assertIssue(pull, "pullRequests.listComments");
+        const since = this.#sinceTime(options?.since);
         const { owner, repo, number } = pull;
-        return this.#paged(
+        const page = await this.#paged<ListCommentOptions, PageResult<Comment>>(
           { listing: "pullRequests.listComments", subject: [owner, repo, number], options },
           (paged) => {
             this.#assertListPage(paged);
             return this.listPullRequestComments(pull, paged);
           },
         );
+        return since === undefined ? page : commentsSince(page, since);
       },
       getComment: async (pull, comment) => {
         this.#assertIssue(pull, "pullRequests.getComment");
@@ -862,6 +873,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
 
   #refusal(message: string): ForgesError {
     return new ForgesError(message, { status: 400, platform: this.#platform });
+  }
+
+  #sinceTime(since: string | undefined): number | undefined {
+    if (since === undefined) return undefined;
+    const time = Date.parse(since);
+    if (Number.isNaN(time)) throw this.#refusal("since must be an ISO 8601 date");
+    return time;
   }
 
   #assertCheckPage(options: WithPage<ListPullRequestChecksOptions> | undefined): void {

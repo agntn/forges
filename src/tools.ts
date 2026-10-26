@@ -613,13 +613,17 @@ function defineTools(): ToolDefinition[] {
       name: "forges_pull_requests_comments",
       title: forgeToolTitle("forges_pull_requests_comments", "List Pull Request Comments"),
       description:
-        "List the conversation comments under one pull request, oldest first: the discussion, not the code-review threads that forges_threads_list reads. Comment bodies are truncated here; read one whole with forges_pull_requests_comments_get, and bound the volume with perPage and nextCursor.",
+        "List the conversation comments under one pull request, oldest first: the discussion, not the code-review threads that forges_threads_list reads. Comment bodies are truncated here; read one whole with forges_pull_requests_comments_get, and bound the volume with perPage and nextCursor. " +
+        "marker keeps the comments whose body contains it and since the ones created or edited from then on; either reads every page itself, so it takes no cursor and returns no nextCursor. " +
+        "A review bot that reports through a sticky comment edits it when its round starts and again when it ends, so pass waitSeconds instead of polling: with since, the call returns once a matching comment is created or edited after that time, and without it once one changes after the call starts. " +
+        "The result then holds only the changed comments, plus a wait field with settled, waitedMs and polls; a timeout is settled false with an empty list, not an error.",
       snippet: "Read the conversation under a pull request on GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_pull_requests_comments for the pull-request conversation; review threads come from forges_threads_list.",
+        "To wait for a review bot's round, call forges_pull_requests_comments with the bot's sticky marker, the push time as since and waitSeconds, then call again without since to wait for the next edit, rather than polling in the shell.",
       ],
       ...effect("forges_pull_requests_comments"),
-      input: schemas.listCommentsParameters,
+      input: schemas.listPullRequestCommentsParameters,
       execute: (args) => call((operations) => operations.listPullRequestComments(args)),
     }),
     defineTool({
@@ -639,13 +643,17 @@ function defineTools(): ToolDefinition[] {
       name: "forges_pull_requests_reactions",
       title: forgeToolTitle("forges_pull_requests_reactions", "List Pull Request Reactions"),
       description:
-        "List the emoji reactions on one pull request, oldest first, or on one of its conversation comments when commentId is an id forges_pull_requests_comments returned. Some review bots answer with a reaction and nothing else, eyes while they review and +1 when they have nothing to say, so compare createdAt with the latest push before trusting one. Each row names the reaction the way GitHub does (+1, -1, laugh, confused, heart, hooray, rocket, eyes), who reacted and createdAt; an emoji GitHub has no reaction for keeps the forge's own name. An issue number answers not found. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.",
+        "List the emoji reactions on one pull request, oldest first, or on one of its conversation comments when commentId is an id forges_pull_requests_comments returned. Some review bots answer with a reaction and nothing else, eyes while they review and +1 when they have nothing to say, so compare createdAt with the latest push before trusting one. Each row names the reaction the way GitHub does (+1, -1, laugh, confused, heart, hooray, rocket, eyes), who reacted and createdAt; an emoji GitHub has no reaction for keeps the forge's own name. An issue number answers not found. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything. " +
+        "author keeps one login's reactions and since the ones left from then on; either reads every page itself and takes no cursor. " +
+        "With waitSeconds the call returns once a matching reaction lands, after since or after the call starts, or once one the first read saw goes away, as a bot's eyes do when its round ends with findings. " +
+        "The result then holds the reactions that landed and a wait field with settled, waitedMs, polls and removed; a timeout is settled false, not an error.",
       snippet: "Read the reactions on a pull request or its comments on GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_pull_requests_reactions instead of gh api .../reactions to see whether a review bot reacted after the latest push.",
+        "Give forges_pull_requests_reactions the bot's login as author, the push time as since and waitSeconds to wait for its +1 or for its eyes to go away.",
       ],
       ...effect("forges_pull_requests_reactions"),
-      input: schemas.listReactionsParameters,
+      input: schemas.listPullRequestReactionsParameters,
       execute: (args) => call((operations) => operations.listPullRequestReactions(args)),
     }),
     defineTool({

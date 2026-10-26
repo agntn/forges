@@ -15,6 +15,13 @@ import {
   type ExpectedHead,
   type WaitedCheckPage,
 } from "./check-wait.ts";
+import {
+  readComments,
+  readReactions,
+  type DiscussionWait,
+  type ReactionWait,
+} from "./discussion-wait.ts";
+import { MAX_WAIT_SECONDS } from "./poll.ts";
 import { AuthenticationError, FetchError, ForgesError, RateLimitError } from "./errors.ts";
 import { redactEndpoint } from "./redact-endpoint.ts";
 import {
@@ -709,6 +716,26 @@ export interface GetPullRequestReviewParams extends GetRepositoryItemParams {
 
 export interface ListReactionsParams extends ListCommentsParams {
   commentId?: string;
+}
+
+/** The pull-request conversation, optionally narrowed and waited on for a bot's next edit. */
+export interface ListPullRequestCommentsParams extends ListCommentsParams {
+  /** Only comments whose body contains this text, such as a bot's hidden sticky marker. */
+  marker?: string;
+  /** Only comments created or edited at or after this ISO 8601 time. */
+  since?: string;
+  /** Seconds to wait for a matching comment to be created or edited; absent reads once. */
+  waitSeconds?: number;
+}
+
+/** Reactions on a pull request, optionally narrowed and waited on for a bot's next one. */
+export interface ListPullRequestReactionsParams extends ListReactionsParams {
+  /** Only reactions left by this login. */
+  author?: string;
+  /** Only reactions left at or after this ISO 8601 time. */
+  since?: string;
+  /** Seconds to wait for a matching reaction to land or go away; absent reads once. */
+  waitSeconds?: number;
 }
 
 export type ListSubIssuesParams = ListCommentsParams;
@@ -1620,18 +1647,79 @@ export async function getPullRequest(
   return result(sliceItemBody(pullRequest, { ...window, about }), { platform: params.platform });
 }
 
+/** A filtered read walks every page itself, so the biggest page costs the fewest requests. */
+const DISCUSSION_SCAN_PER_PAGE = 100;
+
+function discussionInputError(message: string, platform: ForgesPlatform): ForgesError {
+  return new ForgesError(message, { status: 400, platform });
+}
+
+/** Checks a filter or a wait before any request; such a call reads every page, so no cursor. */
+function assertDiscussionRead(
+  params: Readonly<{
+    platform: ForgesPlatform;
+    cursor?: string;
+    since?: string;
+    waitSeconds?: number;
+  }>,
+  texts: Readonly<Record<string, string | undefined>>,
+): boolean {
+  const { platform, cursor, since, waitSeconds } = params;
+  for (const [name, value] of Object.entries(texts)) {
+    if (value?.trim() === "") throw discussionInputError(`${name} must not be empty`, platform);
+  }
+  if (since !== undefined && Number.isNaN(Date.parse(since))) {
+    throw discussionInputError("since must be an ISO 8601 date", platform);
+  }
+  if (
+    waitSeconds !== undefined &&
+    (!Number.isInteger(waitSeconds) || waitSeconds < 1 || waitSeconds > MAX_WAIT_SECONDS)
+  ) {
+    throw discussionInputError(
+      `waitSeconds must be a whole number from 1 to ${MAX_WAIT_SECONDS}`,
+      platform,
+    );
+  }
+  const names = [...Object.keys(texts), "since", "waitSeconds"];
+  const given = { ...texts, since, waitSeconds };
+  const filtered = Object.values(given).some((value) => value !== undefined);
+  if (filtered && cursor !== undefined) {
+    throw discussionInputError(
+      `${names.join(", ")} read every page themselves, so they take no cursor; drop it`,
+      platform,
+    );
+  }
+  return filtered;
+}
+
+const PULL_REQUEST_COMMENT_TRUNCATION_NOTE =
+  "Comment bodies are truncated in list output; use forges_pull_requests_comments_get to read one in full.";
+
 export async function listPullRequestComments(
-  args: ListCommentsParams,
-): Promise<ForgesToolResult<PageResult<Comment>>> {
+  args: ListPullRequestCommentsParams,
+): Promise<ForgesToolResult<PageResult<Comment> & { wait?: DiscussionWait }>> {
   const params = repositoryTarget(args);
+  const { marker, since, waitSeconds } = params;
+  const filtered = assertDiscussionRead(params, { marker });
   const provider = await readProvider(params.platform);
-  const comments = await provider.pullRequests.listComments(
-    issueOf(params),
-    commentListOptions(params),
-  );
-  return result(summarizeCommentPage(comments), {
+  if (!filtered) {
+    const comments = await provider.pullRequests.listComments(
+      issueOf(params),
+      commentListOptions(params),
+    );
+    return result(summarizeCommentPage(comments), {
+      platform: params.platform,
+      note: PULL_REQUEST_COMMENT_TRUNCATION_NOTE,
+    });
+  }
+
+  const perPage = params.perPage ?? DISCUSSION_SCAN_PER_PAGE;
+  const readPage = (cursor: string | undefined) =>
+    provider.pullRequests.listComments(issueOf(params), { cursor, perPage, since });
+  const answer = await readComments(readPage, { marker, since, waitSeconds });
+  return result(summarizeCommentPage(answer.page), {
     platform: params.platform,
-    note: "Comment bodies are truncated in list output; use forges_pull_requests_comments_get to read one in full.",
+    note: joinNotes(answer.note, PULL_REQUEST_COMMENT_TRUNCATION_NOTE),
   });
 }
 
@@ -1660,15 +1748,29 @@ export async function createPullRequestComment(
 }
 
 export async function listPullRequestReactions(
-  args: ListReactionsParams,
-): Promise<ForgesToolResult<PageResult<Reaction>>> {
+  args: ListPullRequestReactionsParams,
+): Promise<ForgesToolResult<PageResult<Reaction> & { wait?: ReactionWait }>> {
   const params = repositoryTarget(args);
+  const { author, since, waitSeconds } = params;
+  const filtered = assertDiscussionRead(params, { author });
   const provider = await readProvider(params.platform);
-  const reactions = await provider.pullRequests.listReactions(
-    issueOf(params),
-    reactionListOptions(params),
-  );
-  return result(reactions, { platform: params.platform });
+  if (!filtered) {
+    const reactions = await provider.pullRequests.listReactions(
+      issueOf(params),
+      reactionListOptions(params),
+    );
+    return result(reactions, { platform: params.platform });
+  }
+
+  const perPage = params.perPage ?? DISCUSSION_SCAN_PER_PAGE;
+  const readPage = (cursor: string | undefined) =>
+    provider.pullRequests.listReactions(issueOf(params), {
+      commentId: params.commentId,
+      cursor,
+      perPage,
+    });
+  const answer = await readReactions(readPage, { author, since, waitSeconds });
+  return result(answer.page, { platform: params.platform, note: answer.note });
 }
 
 export async function createPullRequest(

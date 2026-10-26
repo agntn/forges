@@ -759,6 +759,8 @@ export interface Comment {
 export interface ListCommentOptions {
   cursor?: string;
   perPage?: number;
+  /** Only comments created or edited at or after this ISO 8601 time, sticky edits included. */
+  since?: string;
 }
 
 /**
