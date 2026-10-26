@@ -16,7 +16,7 @@ catalogs:
     "@modelcontextprotocol/server": 2.2.0
     better-sqlite3: 12.11.1
     docus: 5.15.0
-    forges: 0.2.0
+    forges: 0.3.0
     h3: 1.15.11
     nitropack: 2.13.4
     nuxt: 4.6.2

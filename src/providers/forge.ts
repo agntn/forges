@@ -761,16 +761,25 @@ export abstract class ForgeBackedProvider<
     return conversation;
   }
 
-  /** Every review is read, as a reply can land in a later one; an issue number fails the kind check first. */
+  /** An issue number fails the kind check first, whichever read gives up sooner. */
   async #conversations(forge: Forge, pull: IssueRef): Promise<ReviewConversation[]> {
     const ref = this.threadRef(forge, { ...pull, kind: "pull_request" });
-    const [thread, reviews] = await Promise.allSettled([
+    const [thread, conversations] = await Promise.allSettled([
       this.#readThread(forge, ref),
-      Array.fromAsync(forge.threads.reviews(ref, { perPage: 100 })),
+      this.#readConversations(forge, ref),
     ]);
     if (thread.status === "rejected") throw thread.reason;
-    if (reviews.status === "rejected") throw reviews.reason;
-    return reviewConversations(reviews.value);
+    if (conversations.status === "rejected") throw conversations.reason;
+    return conversations.value;
+  }
+
+  /** The forge's own conversations where it has them; elsewhere every review is read, as a reply can land in a later one. */
+  async #readConversations(forge: Forge, ref: ThreadRef): Promise<ReviewConversation[]> {
+    const support = forge.capabilities.threads.reviewThreads;
+    if (support === true || support === "emulated") {
+      return Array.fromAsync(forge.threads.reviewThreads(ref, { perPage: 100 }));
+    }
+    return reviewConversations(await Array.fromAsync(forge.threads.reviews(ref, { perPage: 100 })));
   }
 
   protected threadRef(forge: Forge, thread: KindedThread): ThreadRef {

@@ -1,5 +1,5 @@
 import type { ForgeProvider, Repo, Review, ReviewComment, Thread } from "forges";
-import { fake } from "forges/fake";
+import { fake, type FakeOptions } from "forges/fake";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { NotFoundError } from "../src/errors.ts";
@@ -11,6 +11,7 @@ import {
   repositoryFromModel,
   reviewConversations,
   tagFromModel,
+  threadFromModel,
 } from "../src/providers/forge-model.ts";
 
 const NOW = new Date("2026-10-01T12:00:00.000Z");
@@ -31,8 +32,9 @@ class FactoryOnlyProvider extends ForgeBackedProvider {
   }
 }
 
-function seeded() {
+function seeded(support?: FakeOptions["support"]) {
   const forge = fake({
+    ...(support === undefined ? {} : { support }),
     viewer: "octo",
     now: () => NOW,
     seed: {
@@ -310,8 +312,12 @@ describe("a provider built on nothing but a forges factory", () => {
     });
   });
 
-  it("lists, answers and resolves review threads", async () => {
-    const { forge, provider } = seeded();
+  it.each([
+    ["its own conversations", undefined, "reviewThreads"],
+    ["conversations gathered from reviews", { "threads.reviewThreads": false }, "reviews"],
+  ] as const)("lists, answers and resolves review threads from %s", async (_, support, read) => {
+    const { forge, provider } = seeded(support);
+    const reads = vi.spyOn(forge.threads, read);
     const pull = {
       forge: forge.forge,
       instance: forge.instance,
@@ -359,14 +365,15 @@ describe("a provider built on nothing but a forges factory", () => {
     await expect(
       provider.threads.get({ owner: "acme", repo: "widgets", number: 2 }, { threadId: thread!.id }),
     ).resolves.toEqual(reopened);
+    expect(reads).toHaveBeenCalled();
   });
 
   it("finds no review threads behind an issue number, whichever read fails first", async () => {
     const { forge, provider } = seeded();
-    vi.spyOn(forge.threads, "reviews").mockReturnValue({
-      page: () => Promise.reject(new Error("reviews gave up first")),
+    vi.spyOn(forge.threads, "reviewThreads").mockReturnValue({
+      page: () => Promise.reject(new Error("review threads gave up first")),
       [Symbol.asyncIterator]: () => ({
-        next: () => Promise.reject(new Error("reviews gave up first")),
+        next: () => Promise.reject(new Error("review threads gave up first")),
       }),
     });
 
@@ -401,6 +408,33 @@ function reviewComment(id: string, inReplyTo?: string): ReviewComment {
 function review(comments: ReviewComment[]): Review {
   return { comments, state: "commented", raw: {} } as unknown as Review;
 }
+
+describe("threadFromModel", () => {
+  it("keeps where the forge's own conversation sits and whether it went stale", () => {
+    const thread = threadFromModel({
+      id: "PRRT_1",
+      resolved: false,
+      outdated: true,
+      path: "widget.ts",
+      line: 9,
+      startLine: 7,
+      comments: [{ ...reviewComment("1"), path: "old.ts", line: 2 }],
+    });
+
+    expect(thread).toMatchObject({ isOutdated: true, path: "widget.ts", line: 9, startLine: 7 });
+  });
+
+  it("places a gathered conversation at its first comment", () => {
+    const thread = threadFromModel({ id: "1", resolved: false, comments: [reviewComment("1")] });
+
+    expect(thread).toMatchObject({
+      isOutdated: false,
+      path: "widget.ts",
+      line: 1,
+      startLine: null,
+    });
+  });
+});
 
 describe("reviewConversations", () => {
   it("joins replies to the comment their chain started from when the forge names no conversation", () => {
