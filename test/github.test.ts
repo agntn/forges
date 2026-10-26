@@ -4586,6 +4586,20 @@ describe("GitHubProvider", () => {
         "GitHub answered 201 without assigning them, which it does when the account lacks push access",
       );
     });
+
+    it("keeps the silent drop as the reason when the retry fails", async () => {
+      mocks.client
+        .mockResolvedValueOnce({ ...ghPullRequest, assignees: [] })
+        .mockResolvedValueOnce({ ...ghIssue, assignees: [] })
+        .mockRejectedValueOnce(makeFetchError(503));
+
+      const pr = await createWithRetry();
+
+      expect(mocks.client).toHaveBeenCalledTimes(3);
+      expect(pr.assignmentError).toBe(
+        "GitHub answered 201 without assigning them, which it does when the account lacks push access",
+      );
+    });
   });
 
   describe("pullRequests.update", () => {

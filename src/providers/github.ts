@@ -2347,13 +2347,14 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     }
   }
 
-  /** Tries the assignment twice and keeps GitHub's reason when logins are still missing. */
+  /** Tries the assignment twice. A silent 201 drop outranks a later failure as the reason. */
   private async assignCreatedPullRequest(
     pull: IssueRef,
     logins: string[],
   ): Promise<{ assignees?: Array<{ login: string }> | null; error?: string }> {
     let assignees: Array<{ login: string }> | null | undefined;
-    let error = "";
+    let dropped: string | undefined;
+    let failed = "";
     for (const wait of [0, ASSIGNMENT_RETRY_DELAY]) {
       if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
       try {
@@ -2364,13 +2365,13 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         const assigned = new Set((assignees ?? []).map(({ login }) => login.toLowerCase()));
         const missing = logins.filter((login) => !assigned.has(login.toLowerCase()));
         if (missing.length === 0) return { assignees };
-        error =
+        dropped =
           "GitHub answered 201 without assigning them, which it does when the account lacks push access";
       } catch (failure) {
-        error = normalizeError(failure, "github").message;
+        failed = normalizeError(failure, "github").message;
       }
     }
-    return { assignees, error };
+    return { assignees, error: dropped ?? failed };
   }
 
   /**
