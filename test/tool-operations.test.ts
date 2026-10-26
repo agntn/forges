@@ -10,6 +10,8 @@ import {
   createRelease,
   getAuthenticatedUser,
   getContributionTemplate,
+  getIssue,
+  getPullRequest,
   getRelease,
   getRepository,
   listContributionTemplates,
@@ -862,6 +864,19 @@ describe("repository target", () => {
     await expect(getRelease({ repo: "nuxt/nuxt", tag: "v4.6.0", offset: 20_000 })).rejects.toThrow(
       "Release notes offset needs the notesHash of the read it continues",
     );
+    expect(mocks.createProvider).not.toHaveBeenCalled();
+  });
+
+  it("refuses an issue or pull-request body window before any provider loads", async () => {
+    await expect(
+      getIssue({ repo: "agntn/forges", number: 336, maxChars: 0 }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: "Issue body maxChars must be an integer from 1 to 200000",
+    });
+    await expect(
+      getPullRequest({ repo: "agntn/forges", number: 141, offset: 20_000 }),
+    ).rejects.toThrow("Pull request body offset needs the bodyHash of the read it continues");
     expect(mocks.createProvider).not.toHaveBeenCalled();
   });
 });

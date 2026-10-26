@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { NotFoundError, RateLimitError } from "../src/errors.ts";
 import { createMcpServer } from "../src/mcp.ts";
 import { hashReleaseNotes } from "../src/release-notes.ts";
+import { hashBody } from "../src/body-window.ts";
 import {
   listCommits,
   listPullRequestChecks,
@@ -1367,7 +1368,7 @@ describe("forges MCP server", () => {
         url: "https://github.com/agntn/forges/issues/162",
       },
     ];
-    mocks.pullRequests.get.mockResolvedValue({ number: 170, closingIssues });
+    mocks.pullRequests.get.mockResolvedValue({ number: 170, body: "", closingIssues });
     const client = await connectTestClient();
 
     const response = await client.callTool({
@@ -1382,6 +1383,82 @@ describe("forges MCP server", () => {
       },
     );
     expect(JSON.parse(text(response.content)).result.closingIssues).toEqual(closingIssues);
+  });
+
+  it("pages a Renovate-sized pull request body instead of answering with all of it", async () => {
+    const body = "| `vite` | devDependencies | minor | `8.1.0` → `8.2.0` |\n".repeat(1000);
+    const pullRequest = { number: 141, title: "chore(deps): update minor dependencies", body };
+    mocks.pullRequests.get.mockResolvedValue(pullRequest);
+    const client = await connectTestClient();
+    const target = { owner: "agntn", repo: "forges", number: 141 };
+
+    const first = await client.callTool({ name: "forges_pull_requests_get", arguments: target });
+    const firstResult = JSON.parse(text(first.content)).result;
+    const continuation = {
+      ...target,
+      offset: firstResult.nextOffset,
+      bodyHash: firstResult.bodyHash,
+      maxChars: 200_000,
+    };
+    const rest = await client.callTool({
+      name: "forges_pull_requests_get",
+      arguments: continuation,
+    });
+    const restResult = JSON.parse(text(rest.content)).result;
+    mocks.pullRequests.get.mockResolvedValue({ ...pullRequest, body: `Rebased.\n${body}` });
+    const edited = await client.callTool({
+      name: "forges_pull_requests_get",
+      arguments: continuation,
+    });
+
+    expect(body.length).toBe(57_000);
+    expect(text(first.content).length).toBeLessThan(22_000);
+    expect(firstResult).toMatchObject({
+      number: 141,
+      offset: 0,
+      nextOffset: 20_000,
+      truncated: true,
+      length: 57_000,
+    });
+    expect(restResult).toMatchObject({ offset: 20_000, nextOffset: null, truncated: false });
+    expect(firstResult.body + restResult.body).toBe(body);
+    expect(edited.isError).toBe(true);
+    expect(text(edited.content)).toContain("Pull request body changed since the read");
+  });
+
+  it("returns a short issue body whole, with a bodyHash nobody has to use", async () => {
+    const issue = { number: 336, title: "Page long bodies", body: "Two lines.\nThat's it." };
+    mocks.issues.get.mockResolvedValue(issue);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_issues_get",
+      arguments: { owner: "agntn", repo: "forges", number: 336 },
+    });
+
+    expect(JSON.parse(text(response.content)).result).toEqual({
+      ...issue,
+      offset: 0,
+      nextOffset: null,
+      truncated: false,
+      length: 21,
+      bodyHash: hashBody(issue.body),
+    });
+  });
+
+  it("refuses a body continuation without its bodyHash before reaching a provider", async () => {
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_issues_get",
+      arguments: { owner: "agntn", repo: "forges", number: 336, offset: 20_000 },
+    });
+
+    expect(response.isError).toBe(true);
+    expect(text(response.content)).toContain(
+      "Issue body offset needs the bodyHash of the read it continues",
+    );
+    expect(mocks.createProvider).not.toHaveBeenCalled();
   });
 
   it("reloads the pinned credential and returns the authenticated profile", async () => {

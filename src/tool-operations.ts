@@ -22,6 +22,13 @@ import {
   type ReleaseNotesOptions,
   type ReleaseNotesSlice,
 } from "./release-notes.ts";
+import {
+  assertItemBodyOptions,
+  itemBody,
+  sliceItemBody,
+  type ItemBodyOptions,
+  type ItemBodySlice,
+} from "./body-window.ts";
 import { lazy } from "../extensions/shared/lazy.ts";
 import type { ForgesPlatform } from "./tool-schemas.ts";
 import type { Provider } from "./provider.ts";
@@ -682,7 +689,9 @@ export interface ListPullRequestChecksParams extends ListCommentsParams {
   headSha?: string;
 }
 
-export interface GetPullRequestParams extends GetRepositoryItemParams {
+export interface GetIssueParams extends GetRepositoryItemParams, ItemBodyOptions {}
+
+export interface GetPullRequestParams extends GetRepositoryItemParams, ItemBodyOptions {
   /** Also list the issues the pull request closes on merge. */
   closingIssues?: boolean;
 }
@@ -1266,11 +1275,16 @@ export async function searchIssues(
   });
 }
 
-export async function getIssue(args: GetRepositoryItemParams): Promise<ForgesToolResult<Issue>> {
+export async function getIssue(
+  args: GetIssueParams,
+): Promise<ForgesToolResult<ItemBodySlice<Issue>>> {
   const params = repositoryTarget(args);
+  const window = { offset: params.offset, maxChars: params.maxChars, bodyHash: params.bodyHash };
+  const about = itemBody("Issue body", params.platform);
+  assertItemBodyOptions(window, about);
   const provider = await readProvider(params.platform);
   const issue = await provider.issues.get(issueOf(params));
-  return result(issue, { platform: params.platform });
+  return result(sliceItemBody(issue, { ...window, about }), { platform: params.platform });
 }
 
 function commentListOptions(params: ListCommentsParams): ListCommentOptions {
@@ -1519,13 +1533,16 @@ export async function searchPullRequests(
 
 export async function getPullRequest(
   args: GetPullRequestParams,
-): Promise<ForgesToolResult<PullRequest>> {
+): Promise<ForgesToolResult<ItemBodySlice<PullRequest>>> {
   const params = repositoryTarget(args);
+  const window = { offset: params.offset, maxChars: params.maxChars, bodyHash: params.bodyHash };
+  const about = itemBody("Pull request body", params.platform);
+  assertItemBodyOptions(window, about);
   const provider = await readProvider(params.platform);
   const pullRequest = await provider.pullRequests.get(issueOf(params), {
     closingIssues: params.closingIssues,
   });
-  return result(pullRequest, { platform: params.platform });
+  return result(sliceItemBody(pullRequest, { ...window, about }), { platform: params.platform });
 }
 
 export async function listPullRequestComments(

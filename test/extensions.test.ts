@@ -800,7 +800,7 @@ describe("Forges Pi extension", () => {
   });
 
   it("passes closingIssues through both extensions", async () => {
-    mocks.pullRequests.get.mockResolvedValue({ number: 5, closingIssues: null });
+    mocks.pullRequests.get.mockResolvedValue({ number: 5, body: "", closingIssues: null });
     const args = {
       platform: "gitea",
       owner: "agntn",
