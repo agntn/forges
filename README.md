@@ -172,14 +172,16 @@ A class extending `Provider`, the typed mappers, and a 501 for every method you 
 ## 🛠️ Development
 
 ```bash
-pnpm install
+pnpm install     # docs/ too, one workspace and one lockfile
 pnpm test        # vp test in watch mode
 pnpm test:run    # single run, as CI does
 pnpm typecheck   # tsc, then build, then the extension graph
 pnpm lint
-pnpm docs        # the site, it bundles src/
+pnpm run docs    # the site, it bundles src/
 pnpm run build   # obuild
 ```
+
+The `run` in `pnpm run docs` isn't decoration. Bare `pnpm docs` is pnpm 12's own command, and all you get back is `Usage: pnpm docs <PACKAGE>`. Versions live in the catalogs of `pnpm-workspace.yaml`, so one line bumps Nuxt for the site and `unstorage` for the library and the worker alike.
 
 ## 💛 Thanks
 

@@ -87,7 +87,7 @@ jobs:
           node-version: v26.11.1
           run-install: |
             - cwd: .
-              args: ['--frozen-lockfile']
+              args: ['--frozen-lockfile', '--filter', '@agntn/forges']
       - run: pnpm test:run
       # test:packed runs dist/cli.mjs, so it needs the build first.
       - run: pnpm build
@@ -114,7 +114,7 @@ jobs:
           node-version: v26.11.1
           run-install: |
             - cwd: .
-              args: ['--frozen-lockfile', '--ignore-scripts']
+              args: ['--frozen-lockfile', '--filter', '@agntn/forges', '--ignore-scripts']
       - id: pack
         uses: danielroe/uppt/pack@6ec27140623aa835e362f866d8ab0018ab057f4d # v0.6.11
         with:

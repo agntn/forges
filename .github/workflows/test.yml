@@ -16,6 +16,8 @@ jobs:
         with:
           node-version: v26.11.1
           cache: true
+          run-install: |
+            - args: ['--frozen-lockfile', '--filter', '@agntn/forges']
 
       - name: Lint
         run: pnpm lint

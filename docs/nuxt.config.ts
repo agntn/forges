@@ -1,22 +1,14 @@
 import { resolve } from "node:path";
 import { forgesTheme } from "./shiki-theme";
 
-/** Bundled from the checkout's sources: a deploy needs neither dist/ nor the root node_modules. */
+/** Bundled from the checkout's sources: no dist/ needed, their imports resolve from the root. */
 const librarySource = resolve(import.meta.dirname, "../src");
 
 export default defineNuxtConfig({
   extends: ["docus"],
-  /** The repo root is its own pnpm workspace; Nuxt must not treat it as this site's. */
-  workspaceDir: import.meta.dirname,
-  /**
-   * Nitro bundles the checkout's sources, so a bare npm import under `src/index.ts` resolves
-   * from `docs/node_modules` and needs an entry in `docs/package.json` (`unstorage`,
-   * `@agntn/credentials`), or the deploy breaks.
-   */
   alias: {
     "@agntn/forges": resolve(librarySource, "index.ts"),
   },
-  // Both would be resolved from the root workspace otherwise.
   devtools: { enabled: false },
   telemetry: false,
   site: {
