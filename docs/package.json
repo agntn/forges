@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "nuxt dev --extends docus",
-    "build": "NUXT_SITE_URL=https://forges.agntn.dev nuxt build --extends docus",
-    "generate": "NUXT_SITE_URL=https://forges.agntn.dev nuxt generate --extends docus",
-    "preview": "nuxt preview --extends docus",
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
     "deploy": "pnpm build && wrangler deploy"
   },
   "dependencies": {
@@ -14,6 +14,7 @@
     "better-sqlite3": "catalog:deps",
     "docus": "catalog:deps",
     "h3": "catalog:deps",
+    "nitropack": "catalog:deps",
     "nuxt": "catalog:deps",
     "ohash": "catalog:deps",
     "ufo": "catalog:deps"

@@ -8,9 +8,9 @@ definePageMeta({ layout: "default" });
 const title = "Explorer";
 const description =
   "Read a repository, its issues, pull requests, commits, CI runs and review threads on GitHub, GitLab or Gitea through the docs worker, in the normalized shape.";
-/** The OG pipeline drops commas from its props, so the card gets a version written without them. */
+/** The card fits two short lines, not the whole description. */
 const cardDescription =
-  "Read any repository on GitHub or GitLab or Gitea through the docs worker. Issues and pull requests and commits and CI and review threads in one shape.";
+  "Read any repository on GitHub, GitLab or Gitea through the docs worker. Issues, pull requests, commits, CI and review threads in one shape.";
 
 // Outside the content collection, so Docus does not set this page's SEO or OG image.
 useSeo({
@@ -19,6 +19,12 @@ useSeo({
   type: "article",
   breadcrumbs: [{ title, path: "/explorer" }],
 });
+
+/** `useSeo` points agents at `/explorer.md`, a twin this page doesn't have, so the link goes. */
+const dropMarkdownTwin = injectHead().hooks?.hook("tags:resolve", (ctx) => {
+  ctx.tags = ctx.tags.filter((tag) => !(tag.tag === "link" && tag.props.type === "text/markdown"));
+});
+onScopeDispose(() => dropMarkdownTwin?.());
 
 defineOgImage(
   "Docs",

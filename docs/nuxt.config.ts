@@ -15,8 +15,39 @@ export default defineNuxtConfig({
     url: "https://forges.agntn.dev",
     name: "@agntn/forges",
   },
+  /** The explorer has no markdown twin, so agents get the page itself, not a `/raw` 404. */
+  agentDiscovery: {
+    excludePrefixes: { extend: ["/explorer"] },
+  },
+  /** Docus lists `content/` only and leaves app routes out, so the explorer comes from here. */
+  sitemap: {
+    sources: ["/api/__sitemap__/pages"],
+  },
+  /** Spelled out, or agent discovery piles every page into one list and titles the landing `/`. */
   llms: {
-    domain: "https://forges.agntn.dev",
+    sections: [
+      {
+        title: "Guide",
+        contentCollection: "docs",
+        contentFilters: [{ field: "path", operator: "LIKE", value: "/guide%" }],
+      },
+      {
+        title: "Platforms",
+        contentCollection: "docs",
+        contentFilters: [{ field: "path", operator: "LIKE", value: "/platforms%" }],
+      },
+      {
+        title: "Explorer",
+        links: [
+          {
+            title: "Explorer",
+            href: "https://forges.agntn.dev/explorer",
+            description:
+              "Read a repository, its issues, pull requests, commits, CI runs and review threads on GitHub, GitLab or Gitea through the docs worker, in the normalized shape.",
+          },
+        ],
+      },
+    ],
   },
   /** Docus pages define their own OG images; the alt text is the one thing they leave unset. */
   ogImage: {
@@ -95,15 +126,16 @@ export default defineNuxtConfig({
   nitro: {
     preset: "cloudflare_module",
     compatibilityDate: "2026-09-03",
-    prerender: {
-      crawlLinks: true,
-      routes: ["/", "/explorer", "/sitemap.xml", "/robots.txt", "/llms.txt", "/llms-full.txt"],
-      ignore: ["/api"],
-    },
     cloudflare: {
       deployConfig: true,
       nodeCompat: true,
     },
+  },
+  /** Nuxt's own prerender option; `nitro.prerender` is deprecated since 4.6. */
+  prerender: {
+    crawlLinks: true,
+    routes: ["/", "/explorer", "/sitemap.xml", "/robots.txt", "/llms.txt", "/llms-full.txt"],
+    ignore: ["/api"],
   },
   compatibilityDate: "2026-09-03",
   /** In production the response cache lives in KV, so it survives isolates. */

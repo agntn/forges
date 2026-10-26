@@ -1,4 +1,5 @@
 import { createProvider, type Platform, type Provider } from "@agntn/forges";
+import { createError } from "nuxt/server";
 
 export type { Platform };
 
@@ -24,7 +25,7 @@ export function readPlatform(query: Record<string, unknown>): Platform {
   if (name === "github" || name === "gitlab" || name === "gitea") {
     return name;
   }
-  throw createError({ statusCode: 400, statusMessage: "platform must be github, gitlab or gitea" });
+  throw createError({ status: 400, statusText: "platform must be github, gitlab or gitea" });
 }
 
 /** The worker's token for a platform, or the empty string for anonymous reads. */
@@ -57,8 +58,8 @@ export function readHost(query: Record<string, unknown>, platform: Platform): st
   }
   if (platform !== "gitea" || typeof host !== "string" || !(host in GITEA_HOSTS)) {
     throw createError({
-      statusCode: 400,
-      statusMessage: "host must be gitea.com or codeberg.org, and only for gitea",
+      status: 400,
+      statusText: "host must be gitea.com or codeberg.org, and only for gitea",
     });
   }
   return GITEA_HOSTS[host];

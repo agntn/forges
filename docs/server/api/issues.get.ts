@@ -1,3 +1,5 @@
+import { defineEventHandler, getQuery } from "nuxt/server";
+
 /** One page of issues as `issues.list` returns it, without bodies. */
 export interface IssuesAnswer {
   platform: Platform;

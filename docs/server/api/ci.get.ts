@@ -1,3 +1,5 @@
+import { defineEventHandler, getQuery } from "nuxt/server";
+
 /** One page of CI runs as `ciRuns.list` returns it: GitHub Actions runs, GitLab pipelines or Gitea Actions runs. */
 export interface CiAnswer {
   platform: Platform;
