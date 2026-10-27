@@ -5,7 +5,7 @@
 [![license](https://npmx.dev/api/registry/badge/license/@agntn/forges)](https://npmx.dev/package/@agntn/forges)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/agntn/forges)
 
-⚒️ One API for Git hosts, plus tools for your agents. Ask for a pull request, not another client.
+⚒️ Four forges, ten resources, 59 agent tools. Ask for a pull request, not another client.
 
 ## Why?
 
