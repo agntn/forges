@@ -5,13 +5,13 @@
 [![license](https://npmx.dev/api/registry/badge/license/@agntn/forges)](https://npmx.dev/package/@agntn/forges)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/agntn/forges)
 
-⚒️ Four forges, ten resources, 59 agent tools. You ask for a pull request, you get a pull request.
+⚒️ Four forges, ten resources, 59 agent tools. Ask for a pull request, not another client.
 
 ## Why?
 
-Every Git host does the same job and none of them agree on the words. Pull request or merge request, `per_page` or `limit`, `Link` or `x-next-page`, and GitLab's URL number is the `iid` not the `id`. An agent with four clients will pick the wrong number. Talk to one `Provider` and let it remember which header is which.
+GitHub calls it a pull request. GitLab calls it a merge request. Even the page headers can't agree on a name. `@agntn/forges` gives your code one way to talk to both, and a few more hosts besides.
 
-Docs, and an explorer that runs the same calls: [forges.agntn.dev](https://forges.agntn.dev).
+Docs and an explorer for the same calls: [forges.agntn.dev](https://forges.agntn.dev).
 
 ## ✨ Features
 
@@ -23,7 +23,7 @@ Docs, and an explorer that runs the same calls: [forges.agntn.dev](https://forge
 - 🤖 **59 tools, four surfaces.** MCP, Pi, OMP and the CLI share one definition of each. Fourteen tools write to the host.
 - 🚫 **Missing is 501.** Code search on Gitea is not an empty page. You get a `ForgesError` with status 501.
 - 🧭 **GitBucket is GitHub plus `baseURL`.** Forgejo and Codeberg are Gitea plus `baseURL`. Same class, different host.
-- 🚚 **The plumbing is [`forges`](https://npmx.dev/package/forges).** It sends the requests, picks the endpoints and walks the pages. This package keeps the shapes your agent already reads. One HTTP client fewer in the world.
+- 🚚 **Built with [danielroe/forges](https://github.com/danielroe/forges).** It handles forge requests and pagination. This package adds its own normalized API and agent tools.
 - ☁️ **Cloudflare Artifacts too.** Git without the forge. Repos, files and the log through the same calls, with the namespace as `owner`. Ask it for issues and you get a 501, because there's nobody there to file one.
 
 ## 📦 Install
@@ -52,7 +52,7 @@ console.log(repo.fullName, repo.description, repo.defaultBranch);
 forgejo/forgejo Beyond coding. We forge. forgejo
 ```
 
-They said it, not me. No key. You still pass the host. Empty string is guest.
+They said it, not me. No key needed here. Pass the host and an empty token for guest access.
 
 Logged into `gh`? Drop the config object.
 
@@ -72,13 +72,15 @@ GitHub's first hello. Default branch is still `master`.
 
 Every agent tool is a command too. Drop the `forges_` prefix, swap underscores for dashes, and `forges_repos_get` becomes `forges repos-get`:
 
-```bash
-forges repos-get --repo octocat/Hello-World
-forges issues-search-global --owner agntn --state open --labels '["bug"]'
-forges mcp
-```
+| Want to...           | Run                                                                         |
+| -------------------- | --------------------------------------------------------------------------- |
+| Read a repository    | `forges repos-get --repo octocat/Hello-World`                               |
+| Find open bugs       | `forges issues-search-global --owner agntn --state open --labels '["bug"]'` |
+| Start the MCP server | `forges mcp`                                                                |
 
-Options are the tool's own arguments. A list or an object goes in as JSON, `--json` prints the details instead of the text. The text is exactly what a model reads, so your shell script and your agent finally get the same answer. `forges --help` lists all 55, `forges <command> --help` shows one. `pnpm add -g @agntn/forges` puts it on your `PATH`, `pnpm exec forges` works inside a project.
+Options match the tool arguments. Lists and objects go in as JSON. Add `--json` for details instead of text.
+
+Run `forges --help` for commands or `forges <command> --help` for options. Install globally with `pnpm add -g @agntn/forges`, or use `pnpm exec forges` inside your project.
 
 ## 🧠 Library
 
@@ -90,7 +92,10 @@ const hello = { owner: "octocat", repo: "Hello-World" };
 const repo = await github.repos.get(hello);
 
 const open = await github.pullRequests.list(hello, { state: "open" });
-const more = await github.pullRequests.list(hello, { state: "open", cursor: open.nextCursor });
+if (open.nextCursor) {
+  const more = await github.pullRequests.list(hello, { state: "open", cursor: open.nextCursor });
+  console.log(more.items);
+}
 
 const gitlab = await createProvider("gitlab", {
   token: "glpat-…",
@@ -102,7 +107,9 @@ const gitbucket = await createProvider("github", {
 });
 ```
 
-Ten resources on every provider. `repos`, `issues`, `pullRequests`, `threads`. Then `commits`, `ciRuns`, `releases`, `contributionTemplates`, `code`, `users`. Lists come back as `items` plus `nextCursor`. Hand it back as `cursor` and you get the next page. No cursor, no more pages. It's opaque on purpose, so don't build one by hand: the provider refuses it. `totalCount` only when the forge counted. Search adds `incomplete` when the answer is known to be partial. Guides: [Authentication](https://forges.agntn.dev/guide/auth), [Repositories](https://forges.agntn.dev/guide/repositories), [Issues](https://forges.agntn.dev/guide/issues), [Pull requests](https://forges.agntn.dev/guide/pull-requests), [Review threads](https://forges.agntn.dev/guide/threads), [Commits, CI and releases](https://forges.agntn.dev/guide/commits), [Templates](https://forges.agntn.dev/guide/templates), [Code search](https://forges.agntn.dev/guide/code-search).
+Lists return `items` and, when there is another page, `nextCursor`. Pass that cursor back unchanged. Don't make one up: the provider refuses it. Search can also report an incomplete result.
+
+Guides: [Authentication](https://forges.agntn.dev/guide/auth), [Repositories](https://forges.agntn.dev/guide/repositories), [Issues](https://forges.agntn.dev/guide/issues), [Pull requests](https://forges.agntn.dev/guide/pull-requests), [Review threads](https://forges.agntn.dev/guide/threads), [Commits, CI and releases](https://forges.agntn.dev/guide/commits), [Templates](https://forges.agntn.dev/guide/templates), [Code search](https://forges.agntn.dev/guide/code-search).
 
 ### Local Git
 
@@ -163,7 +170,7 @@ MCP, Pi and OMP all hit the same 59 tools. Fourteen write to the host, so ask `f
 
 ## 🚫 What this does not do
 
-Hosted files, trees, branches, release assets, webhooks, org admin. The review loop is the scope: what was proposed, what was said, whether it passed, what shipped.
+Repository files can be read without cloning. Branch management, release assets, webhooks and organization administration are outside the review loop.
 
 ## 🧩 Adding a provider
 
