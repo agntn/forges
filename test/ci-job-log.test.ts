@@ -201,6 +201,110 @@ describe("buildCiJobLog", () => {
     expect(log).toMatchObject({ started: false, content: "", length: 0, nextOffset: null });
   });
 
+  describe("a failing step longer than one default slice", () => {
+    /** A build that prints chunk sizes for a while and only says why it failed at the very end. */
+    const bundleLines = Array.from(
+      { length: 600 },
+      (_, index) => `dist/_chunks/chunk-${String(index).padStart(4, "0")}.mjs  12.34 kB`,
+    );
+    const longLog = [
+      "﻿2026-09-19T14:27:10.8076235Z Current runner version: '2.337.0'",
+      "2026-09-19T14:27:12.2196055Z ##[group]Run npm ci",
+      "2026-09-19T14:27:15.9000000Z added 12 packages",
+      "2026-09-19T14:27:15.9500000Z ##[group]Run npm test",
+      ...bundleLines.map((line) => `2026-09-19T14:27:15.9600000Z ${line}`),
+      "2026-09-19T14:27:16.1000000Z Found 1 warning and 6092 errors.",
+      "2026-09-19T14:27:16.2000000Z ##[error]Process completed with exit code 1.",
+      "2026-09-19T14:27:16.3000000Z Post job cleanup.",
+      "2026-09-19T14:27:16.4000000Z Cleaning up orphan processes",
+      "",
+    ].join("\n");
+    const source = { text: longLog, complete: true, timestamped: true };
+    const whole = buildCiJobLog({ job, log: source }, { maxChars: 200_000 }).content;
+
+    /** The step section that starts at `offset`, header line and body. */
+    function sectionAt(offset: number): { header: string; body: string } {
+      const headerEnd = whole.indexOf("\n", offset) + 1;
+      const next = whole.indexOf("\n--- step ", headerEnd - 1);
+      return {
+        header: whole.slice(offset, headerEnd),
+        body: whole.slice(headerEnd, next === -1 ? whole.length : next + 1),
+      };
+    }
+
+    it("opens the first small slice with the step's end", () => {
+      const first = buildCiJobLog({ job, log: source }, { maxChars: 8000 });
+
+      expect(first.content).toContain("Found 1 warning and 6092 errors.\n");
+      expect(first.content).toContain("##[error]Process completed with exit code 1.\n");
+      expect(first.content.startsWith("--- step 3 Test: failure, last ")).toBe(true);
+    });
+
+    it("points the end and the start of the step at each other", () => {
+      const tail = sectionAt(0);
+      const [, kept, total, startOffset] =
+        /^--- step 3 Test: failure, last (\d+) of (\d+) chars, first \d+ at offset (\d+)\n$/u.exec(
+          tail.header,
+        )!;
+      const head = sectionAt(Number(startOffset));
+
+      expect(head.header).toBe(
+        `--- step 3 Test: failure, first ${Number(total) - Number(kept)} of ${total} chars, last ${kept} at offset 0\n`,
+      );
+      expect(tail.body.length).toBe(Number(kept));
+      expect(head.body + tail.body).toBe(
+        ["##[group]Run npm test", ...bundleLines, "Found 1 warning and 6092 errors."]
+          .concat("##[error]Process completed with exit code 1.", "")
+          .join("\n"),
+      );
+      expect(Number(total)).toBe(head.body.length + tail.body.length);
+    });
+
+    it("starts the end at a line and keeps the other steps after the failing one", () => {
+      const tail = sectionAt(0);
+
+      expect(tail.body.length).toBeLessThanOrEqual(4000);
+      expect(tail.body.startsWith("dist/_chunks/chunk-")).toBe(true);
+      expect(whole.indexOf("--- step 1 Set up job: success\n")).toBeGreaterThan(
+        whole.indexOf("--- step 3 Test: failure, first "),
+      );
+    });
+
+    it("puts both ends first when two long steps fail, and cuts a lone long line", () => {
+      const minified = "x".repeat(30_000);
+      const twoFailures = {
+        ...job,
+        steps: job.steps.map((ran) =>
+          ran.number === 2 ? { ...ran, conclusion: "failure" as const } : ran,
+        ),
+      };
+      const text = longLog.replace(
+        "added 12 packages",
+        `added 12 packages\n2026-09-19T14:27:15.9000000Z ${minified}`,
+      );
+      const stream = buildCiJobLog(
+        { job: twoFailures, log: { text, complete: true, timestamped: true } },
+        { maxChars: 200_000 },
+      ).content;
+      const headers = [...stream.matchAll(/^--- step (\d) [^:]+: failure, (.+)$/gmu)];
+
+      expect(headers.map(([, number, rest]) => `${number} ${rest!.split(" ")[0]}`)).toEqual([
+        "2 last",
+        "3 last",
+        "2 first",
+        "3 first",
+      ]);
+      for (const header of headers) {
+        const at = Number(/offset (\d+)$/u.exec(header[0])![1]);
+        const other = header[2]!.startsWith("last") ? "first" : "last";
+        expect(stream.startsWith(`--- step ${header[1]} `, at)).toBe(true);
+        expect(stream.slice(at).split("\n")[0]).toContain(`: failure, ${other} `);
+      }
+      const minifiedEnd = stream.slice(headers[0]![0].length + 1).split("\n")[0]!;
+      expect(minifiedEnd).toBe("x".repeat(3999));
+    });
+  });
+
   it("rejects an offset past the end and an out-of-range maxChars", () => {
     const source = { text: githubLog, complete: true, timestamped: true };
 

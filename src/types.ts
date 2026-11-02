@@ -179,7 +179,8 @@ export interface CiJobLogOptions {
 /**
  * One bounded slice of a job log. Timestamps and ANSI escapes are removed; on
  * GitHub, Gitea and Forgejo 17 each step is a `--- step N name: conclusion`
- * section, failing steps first. `started` is false when no runner took the job,
+ * section, failing steps first, and a long failing step opens with its end and
+ * the offset of its start. `started` is false when no runner took the job,
  * so it has no log; Forgejo 16 answers not found for it instead.
  * `logComplete` is false when the log was longer than the read keeps and only
  * its end is here. Continue with jobId and nextOffset.

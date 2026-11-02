@@ -1,7 +1,12 @@
 import { stripVTControlCharacters } from "node:util";
 import { normalizeCiRunState } from "./ci-run.ts";
 import { ForgesError } from "./errors.ts";
-import { readTextWindow, textWindowEnd, type TextWindow } from "./text-window.ts";
+import {
+  DEFAULT_WINDOW_CHARS,
+  readTextWindow,
+  textWindowEnd,
+  type TextWindow,
+} from "./text-window.ts";
 import type { CiJob, CiJobLog, CiJobLogOptions, CiJobStep, CiRunConclusion } from "./types.ts";
 
 /** The most of one downloaded log a read keeps; a longer log keeps its end. */
@@ -255,14 +260,99 @@ export function cleanGitLabTrace(trace: string): string {
 }
 
 function stepHeader(step: CiJobStep): string {
-  return `--- step ${step.number} ${step.name}: ${step.conclusion ?? step.status}\n`;
+  return `--- step ${step.number} ${step.name}: ${step.conclusion ?? step.status}`;
+}
+
+/** A failing step longer than one default slice leads with its end, where the error usually is. */
+const FAILING_STEP_SPLIT_CHARS = DEFAULT_WINDOW_CHARS;
+/** How much of that end goes first: the summary and the exit code, with room left for the start. */
+const FAILING_STEP_TAIL_CHARS = 4000;
+
+/** One headed piece of the stream; a split step has two, each pointing at the other. */
+interface Section {
+  step: CiJobStep;
+  body: string;
+  /** `kept` counts the step's own characters, not the newline a cut inside a line adds. */
+  split?: { part: "end" | "start"; other: number; kept: number; total: number };
+}
+
+function sectionHeader(section: Section, starts: readonly number[]): string {
+  const header = stepHeader(section.step);
+  const { split } = section;
+  if (split === undefined) return `${header}\n`;
+  const { kept, total } = split;
+  const at = starts[split.other];
+  return split.part === "end"
+    ? `${header}, last ${kept} of ${total} chars, first ${total - kept} at offset ${at}\n`
+    : `${header}, first ${kept} of ${total} chars, last ${total - kept} at offset ${at}\n`;
+}
+
+/** Join the sections, redoing the split headers until the offsets they print stop moving. */
+function renderSections(sections: readonly Section[]): string {
+  let starts = sections.map(() => 0);
+  for (;;) {
+    const headers = sections.map((section) => sectionHeader(section, starts));
+    const next: number[] = [];
+    let position = 0;
+    for (const [index, header] of headers.entries()) {
+      next.push(position);
+      position += header.length + sections[index]!.body.length;
+    }
+    if (next.every((start, index) => start === starts[index])) {
+      return headers.map((header, index) => header + sections[index]!.body).join("");
+    }
+    starts = next;
+  }
+}
+
+/** Where the end of a long step starts: at a line when one starts close enough, else mid-line. */
+function tailStart(body: string): number {
+  const newline = body.indexOf("\n", body.length - FAILING_STEP_TAIL_CHARS - 1);
+  return newline !== -1 && newline + 1 < body.length
+    ? newline + 1
+    : body.length - FAILING_STEP_TAIL_CHARS;
+}
+
+/** Every failing step's end first, then the start of the long ones, then the steps that passed. */
+function orderSections(sections: readonly { step: CiJobStep; body: string }[]): Section[] {
+  const failing = sections.filter(({ step }) => failingConclusions.has(step.conclusion));
+  const ends: Section[] = [];
+  const starts: Section[] = [];
+  for (const { step, body } of failing) {
+    if (body.length <= FAILING_STEP_SPLIT_CHARS) {
+      ends.push({ step, body });
+      continue;
+    }
+    const cut = tailStart(body);
+    const total = body.length;
+    const end = ends.length;
+    const start = failing.length + starts.length;
+    const head = body.slice(0, cut);
+    ends.push({
+      step,
+      body: body.slice(cut),
+      split: { part: "end", other: start, kept: total - cut, total },
+    });
+    starts.push({
+      step,
+      body: head.endsWith("\n") ? head : `${head}\n`,
+      split: { part: "start", other: end, kept: cut, total },
+    });
+  }
+  return [
+    ...ends,
+    ...starts,
+    ...sections.filter(({ step }) => !failingConclusions.has(step.conclusion)),
+  ];
 }
 
 /**
  * Render a job log into one stable, bounded continuation stream.
  *
  * With steps, each step becomes a headed section and the failing steps come
- * first, so the first slice holds the output that explains the failure.
+ * first, so the first slice holds the output that explains the failure. A
+ * failing step too long for one slice leads with its end, and each half's
+ * header gives the other's offset.
  */
 export function buildCiJobLog(
   source: Readonly<{
@@ -282,13 +372,14 @@ export function buildCiJobLog(
     if (sections === null) {
       stream = records.map((record) => `${record.text}\n`).join("");
     } else {
-      const ordered = [
-        ...sections.filter(({ step }) => failingConclusions.has(step.conclusion)),
-        ...sections.filter(({ step }) => !failingConclusions.has(step.conclusion)),
-      ];
-      stream = ordered
-        .map(({ step, lines }) => stepHeader(step) + lines.map((line) => `${line}\n`).join(""))
-        .join("");
+      stream = renderSections(
+        orderSections(
+          sections.map(({ step, lines }) => ({
+            step,
+            body: lines.map((line) => `${line}\n`).join(""),
+          })),
+        ),
+      );
     }
   } else if (log !== null) {
     stream = log.text.length === 0 || log.text.endsWith("\n") ? log.text : `${log.text}\n`;

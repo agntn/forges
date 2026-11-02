@@ -201,7 +201,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_ci_jobs_log",
       title: forgeToolTitle("forges_ci_jobs_log", "Read CI Job Log"),
       description:
-        "Read one CI job log as a bounded text slice without timestamps or ANSI escapes. On GitHub and Gitea each step is a --- step N name: conclusion section and failing steps come first, so the first slice explains the failure; GitLab traces and Forgejo 16 logs read in order, so start near length - maxChars for the end. Continue with nextOffset. started is false when no runner took the job (Forgejo 16 answers not found instead), and logComplete is false when only the end of a very long log was kept.",
+        "Read one CI job log as a bounded text slice without timestamps or ANSI escapes. On GitHub and Gitea each step is a --- step N name: conclusion section and failing steps come first, so the first slice explains the failure; a long failing step opens with its last lines and the offset of its start; GitLab traces and Forgejo 16 logs read in order, so start near length - maxChars for the end. Continue with nextOffset. started is false when no runner took the job (Forgejo 16 answers not found instead), and logComplete is false when only the end of a very long log was kept.",
       snippet: "Read why a CI job failed from its log, failing step first.",
       guidelines: [
         "Use forges_ci_jobs_log instead of gh run view --log-failed. On GitHub a failing check id from forges_pull_requests_checks is the job id.",
