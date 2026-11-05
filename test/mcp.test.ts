@@ -1,5 +1,6 @@
 import { toolEffects } from "../extensions/shared/tool-effects.ts";
 import { readFile } from "node:fs/promises";
+import { invokeTool } from "@agntn/tools";
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -1850,7 +1851,7 @@ describe("forges MCP server", () => {
       const get = forgesTools().find((tool) => tool.name === "forges_repos_get")!;
       const cancel = new AbortController();
 
-      const call = get.execute({ repo: "agntn/forges" }, { signal: cancel.signal });
+      const call = invokeTool(get, { repo: "agntn/forges" }, { signal: cancel.signal });
       await vi.waitFor(() => expect(mocks.repos.get).toHaveBeenCalledTimes(1));
       cancel.abort();
 
@@ -1865,7 +1866,7 @@ describe("forges MCP server", () => {
     const get = forgesTools().find((tool) => tool.name === "forges_repos_get")!;
 
     await expect(
-      get.execute({ repo: "agntn/forges" }, { signal: AbortSignal.abort() }),
+      invokeTool(get, { repo: "agntn/forges" }, { signal: AbortSignal.abort() }),
     ).rejects.toMatchObject({ name: "AbortError" });
     expect(mocks.repos.get).not.toHaveBeenCalled();
   });
@@ -1876,7 +1877,11 @@ describe("forges MCP server", () => {
     const create = forgesTools().find((tool) => tool.name === "forges_issues_create")!;
     const cancel = new AbortController();
 
-    const call = create.execute({ repo: "agntn/forges", title: "Bug" }, { signal: cancel.signal });
+    const call = invokeTool(
+      create,
+      { repo: "agntn/forges", title: "Bug", body: "It broke." },
+      { signal: cancel.signal },
+    );
     await vi.waitFor(() => expect(mocks.issues.create).toHaveBeenCalledTimes(1));
     cancel.abort();
     pending.resolve({ id: "42", number: 42, title: "Bug" });
