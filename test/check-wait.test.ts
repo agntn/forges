@@ -292,6 +292,62 @@ describe("check wait", () => {
     expect(note).toContain("pages of checks");
   });
 
+  it("tells the host every 15 seconds how much of the budget has gone", async () => {
+    const progress = vi.fn();
+    const read = polls([page([check("build", true)])]);
+
+    await run(waitForChecks(read, { waitSeconds: 40, readLastChange: changedAt(0), progress }));
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(progress.mock.calls).toEqual([
+      ["Waiting for checks", { progress: 0, total: 40 }],
+      ["Waiting for checks", { progress: 15, total: 40 }],
+      ["Waiting for checks", { progress: 30, total: 40 }],
+    ]);
+  });
+
+  it("reports a wait asked for more than the maximum against the maximum", async () => {
+    const progress = vi.fn();
+    const read = polls([page([check("build", true)])]);
+
+    await run(
+      waitForChecks(read, {
+        waitSeconds: MAX_CHECK_WAIT_SECONDS * 10,
+        readLastChange: changedAt(0),
+        progress,
+      }),
+    );
+
+    expect(progress).toHaveBeenCalledWith("Waiting for checks", {
+      progress: 0,
+      total: MAX_CHECK_WAIT_SECONDS,
+    });
+    expect(progress).not.toHaveBeenCalledWith("Waiting for checks", {
+      progress: 0,
+      total: MAX_CHECK_WAIT_SECONDS * 10,
+    });
+  });
+
+  it("goes quiet once the caller aborts", async () => {
+    const cancel = new AbortController();
+    const progress = vi.fn();
+    const read = polls([page([check("build", true)])]);
+
+    const waiting = waitForChecks(read, {
+      waitSeconds: 300,
+      readLastChange: changedAt(0),
+      signal: cancel.signal,
+      progress,
+    });
+    const aborted = expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+    await vi.advanceTimersByTimeAsync(20_000);
+    cancel.abort();
+    await aborted;
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(progress).toHaveBeenCalledTimes(2);
+  });
+
   it("reads no further page once the caller aborts mid scan", async () => {
     const cancel = new AbortController();
     const read: ReadCheckPage = vi.fn(async () => {

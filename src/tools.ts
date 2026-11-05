@@ -581,8 +581,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_pull_requests_checks"),
       input: schemas.listPullRequestChecksParameters,
-      execute: (args, { signal }) =>
-        call((operations) => operations.listPullRequestChecks(args, { signal })),
+      execute: (args, { signal, progress }) =>
+        call((operations) => operations.listPullRequestChecks(args, { signal, progress })),
     }),
     defineTool({
       name: "forges_pull_requests_reviews",
@@ -625,8 +625,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_pull_requests_comments"),
       input: schemas.listPullRequestCommentsParameters,
-      execute: (args, { signal }) =>
-        call((operations) => operations.listPullRequestComments(args, { signal })),
+      execute: (args, { signal, progress }) =>
+        call((operations) => operations.listPullRequestComments(args, { signal, progress })),
     }),
     defineTool({
       name: "forges_pull_requests_comments_get",
@@ -656,8 +656,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_pull_requests_reactions"),
       input: schemas.listPullRequestReactionsParameters,
-      execute: (args, { signal }) =>
-        call((operations) => operations.listPullRequestReactions(args, { signal })),
+      execute: (args, { signal, progress }) =>
+        call((operations) => operations.listPullRequestReactions(args, { signal, progress })),
     }),
     defineTool({
       name: "forges_pull_requests_comments_create",

@@ -1821,6 +1821,55 @@ describe("forges MCP server", () => {
     }
   });
 
+  it.each([
+    {
+      name: "forges_pull_requests_checks",
+      read: mocks.pullRequests.listChecks,
+      page: { items: [{ id: "1", name: "build", status: "in_progress", conclusion: null }] },
+      filter: {},
+    },
+    {
+      name: "forges_pull_requests_comments",
+      read: mocks.pullRequests.listComments,
+      page: { items: [] },
+      filter: { marker: "codex-pull-request-review-summary" },
+    },
+    {
+      name: "forges_pull_requests_reactions",
+      read: mocks.pullRequests.listReactions,
+      page: { items: [] },
+      filter: { author: "chatgpt-codex-connector[bot]" },
+    },
+  ])("keeps $name alive past a client that drops a call after 60 quiet seconds", async (wait) => {
+    mocks.pullRequests.get.mockResolvedValue({ number: 124, updatedAt: "2026-01-01T00:00:00Z" });
+    wait.read.mockResolvedValue(wait.page);
+    const client = await connectTestClient();
+    const reports: Array<{ progress: number; total?: number }> = [];
+    vi.useFakeTimers();
+    try {
+      const call = client.callTool(
+        {
+          name: wait.name,
+          arguments: { repo: "agntn/memory", number: 124, ...wait.filter, waitSeconds: 100 },
+        },
+        {
+          timeout: 60_000,
+          resetTimeoutOnProgress: true,
+          onprogress: ({ progress, total }) => reports.push({ progress, total }),
+        },
+      );
+      await vi.advanceTimersByTimeAsync(110_000);
+      const payload = JSON.parse(text((await call).content));
+
+      expect(payload.result.wait).toMatchObject({ settled: false });
+      expect(reports).toEqual(
+        [0, 15, 30, 45, 60, 75, 90].map((progress) => ({ progress, total: 100 })),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("hands Pi and OMP the abort itself when a wait is cancelled", async () => {
     mocks.pullRequests.get.mockResolvedValue({ number: 339, updatedAt: "2026-01-01T00:00:00Z" });
     mocks.pullRequests.listChecks.mockResolvedValue({
