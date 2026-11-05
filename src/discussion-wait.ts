@@ -1,5 +1,13 @@
 import { quoted } from "./issue-fields.ts";
-import { delay, MAX_SCAN_PAGES, MAX_WAIT_SECONDS, nextPollDelay, untilAborted } from "./poll.ts";
+import {
+  delay,
+  MAX_SCAN_PAGES,
+  MAX_WAIT_SECONDS,
+  nextPollDelay,
+  reportWhileWaiting,
+  untilAborted,
+  type WaitProgress,
+} from "./poll.ts";
 import type { Comment, PageResult, Reaction } from "./types.ts";
 
 /** Reads one page of a discussion listing at a cursor; a scan calls it until the last page. */
@@ -34,6 +42,8 @@ export interface DiscussionReadOptions {
   waitSeconds?: number;
   /** The host's cancel: an aborted wait rejects with its reason instead of polling on. */
   signal?: AbortSignal;
+  /** The host's progress, told how much of the budget has gone so a quiet wait stays alive. */
+  progress?: WaitProgress;
 }
 
 export interface DiscussionResult<T, W extends DiscussionWait> {
@@ -82,15 +92,25 @@ interface Polled<T, C> {
   wait: DiscussionWait;
 }
 
+type ChangePoll<T, C> = Readonly<{
+  read: () => Promise<Scan<T>>;
+  change: (scan: Scan<T>) => C | undefined;
+  waitSeconds: number;
+  signal: AbortSignal | undefined;
+  progress: WaitProgress;
+  /** What the host shows while nothing has changed yet. */
+  message: string;
+}>;
+
 /** Polls until `change` finds something, a scan comes back partial, or the budget runs out. */
-async function pollForChange<T, C>(
+async function pollForChange<T, C>(first: Scan<T>, poll: ChangePoll<T, C>): Promise<Polled<T, C>> {
+  const { progress, message, waitSeconds } = poll;
+  return reportWhileWaiting({ progress, message, waitSeconds }, () => pollUntilChange(first, poll));
+}
+
+async function pollUntilChange<T, C>(
   first: Scan<T>,
-  poll: Readonly<{
-    read: () => Promise<Scan<T>>;
-    change: (scan: Scan<T>) => C | undefined;
-    waitSeconds: number;
-    signal: AbortSignal | undefined;
-  }>,
+  poll: ChangePoll<T, C>,
 ): Promise<Polled<T, C>> {
   const budgetMs = Math.min(poll.waitSeconds, MAX_WAIT_SECONDS) * 1_000;
   const startedAt = performance.now();
@@ -122,7 +142,7 @@ export async function readComments(
   read: ReadDiscussionPage<Comment>,
   options: CommentFilter & DiscussionReadOptions,
 ): Promise<DiscussionResult<Comment, DiscussionWait>> {
-  const { marker, since, waitSeconds, signal } = options;
+  const { marker, since, waitSeconds, signal, progress } = options;
   const from = sinceMs(since);
   const keep = (comment: Comment) =>
     (marker === undefined || comment.body.includes(marker)) &&
@@ -149,6 +169,8 @@ export async function readComments(
       ),
     waitSeconds,
     signal,
+    progress,
+    message: "Waiting for a comment",
   });
   return {
     page: { items: polled.change ?? [], wait: polled.wait },
@@ -183,7 +205,7 @@ export async function readReactions(
   read: ReadDiscussionPage<Reaction>,
   options: ReactionFilter & DiscussionReadOptions,
 ): Promise<DiscussionResult<Reaction, ReactionWait>> {
-  const { author, since, waitSeconds, signal } = options;
+  const { author, since, waitSeconds, signal, progress } = options;
   const from = sinceMs(since);
   const recent = (reaction: Reaction) =>
     from === undefined || Date.parse(reaction.createdAt) >= from;
@@ -212,6 +234,8 @@ export async function readReactions(
     },
     waitSeconds,
     signal,
+    progress,
+    message: "Waiting for a reaction",
   });
   const wait: ReactionWait = { ...polled.wait, removed: polled.change?.removed ?? [] };
   return {

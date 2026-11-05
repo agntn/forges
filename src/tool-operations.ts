@@ -21,7 +21,7 @@ import {
   type DiscussionWait,
   type ReactionWait,
 } from "./discussion-wait.ts";
-import { MAX_WAIT_SECONDS } from "./poll.ts";
+import { MAX_WAIT_SECONDS, type WaitProgress } from "./poll.ts";
 import { AuthenticationError, FetchError, ForgesError, RateLimitError } from "./errors.ts";
 import { redactEndpoint } from "./redact-endpoint.ts";
 import {
@@ -480,6 +480,8 @@ export interface OwnerParams extends PlatformParams {
 export interface CallOptions {
   /** Aborted when the host cancels the call; a wait stops polling on it. */
   signal?: AbortSignal;
+  /** Where a wait reports how long it has been at it, so the host doesn't hang up. */
+  progress?: WaitProgress;
 }
 
 export interface RepositoryParams extends OwnerParams {
@@ -1569,6 +1571,7 @@ export async function listPullRequestChecks(
     readLastChange,
     expectedHead,
     signal: options.signal,
+    progress: options.progress,
   });
   return result(waited.page, { platform: params.platform, note: waited.note });
 }
@@ -1731,6 +1734,7 @@ export async function listPullRequestComments(
     since,
     waitSeconds,
     signal: options.signal,
+    progress: options.progress,
   });
   return result(summarizeCommentPage(answer.page), {
     platform: params.platform,
@@ -1790,6 +1794,7 @@ export async function listPullRequestReactions(
     since,
     waitSeconds,
     signal: options.signal,
+    progress: options.progress,
   });
   return result(answer.page, { platform: params.platform, note: answer.note });
 }

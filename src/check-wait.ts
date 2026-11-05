@@ -1,4 +1,12 @@
-import { delay, MAX_SCAN_PAGES, MAX_WAIT_SECONDS, nextPollDelay, untilAborted } from "./poll.ts";
+import {
+  delay,
+  MAX_SCAN_PAGES,
+  MAX_WAIT_SECONDS,
+  nextPollDelay,
+  reportWhileWaiting,
+  untilAborted,
+  type WaitProgress,
+} from "./poll.ts";
 import type { PageResult, PullRequestCheck } from "./types.ts";
 
 export { MAX_WAIT_SECONDS as MAX_CHECK_WAIT_SECONDS };
@@ -56,6 +64,8 @@ export interface CheckWaitOptions extends CheckReadOptions {
   readLastChange: ReadLastChange;
   /** The host's cancel: an aborted wait rejects with its reason instead of polling on. */
   signal?: AbortSignal;
+  /** The host's progress, told how much of the budget has gone so a quiet wait stays alive. */
+  progress?: WaitProgress;
 }
 
 export interface CheckWaitResult {
@@ -217,6 +227,16 @@ function staleHeadNote(stale: Readonly<StaleHead>, waitSeconds?: number): string
  * because an error would cost the caller the state it asked for.
  */
 export async function waitForChecks(
+  read: ReadCheckPage,
+  options: CheckWaitOptions,
+): Promise<CheckWaitResult> {
+  const { progress, waitSeconds } = options;
+  return reportWhileWaiting({ progress, message: "Waiting for checks", waitSeconds }, () =>
+    pollChecks(read, options),
+  );
+}
+
+async function pollChecks(
   read: ReadCheckPage,
   options: CheckWaitOptions,
 ): Promise<CheckWaitResult> {
