@@ -16,10 +16,10 @@ catalogs:
     "@modelcontextprotocol/server": 2.4.0
     better-sqlite3: 12.11.1
     docus: 5.15.0
-    forges: 0.3.0
+    forges: 0.3.2
     h3: 1.15.11
-    nitropack: 2.13.4
-    nuxt: 4.6.2
+    nitropack: 2.13.6
+    nuxt: 4.6.4
     ohash: 2.0.12
     ufo: 1.6.4
     unstorage: 1.17.6
@@ -39,7 +39,7 @@ catalogs:
     jiti: 2.7.0
     obuild: 0.4.45
     shiki: 4.5.0
-    typebox: 1.4.3
+    typebox: 1.4.4
     typescript: 5.9.3
     wrangler: 4.152.0
 
