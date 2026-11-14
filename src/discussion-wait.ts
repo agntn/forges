@@ -80,6 +80,11 @@ function sinceMs(since: string | undefined): number | undefined {
   return since === undefined ? undefined : Date.parse(since);
 }
 
+/** A wait counts only what moved after since; a stamp equal to it is what the caller already saw. */
+function after(time: string, from: number): boolean {
+  return Date.parse(time) > from;
+}
+
 /** Logins compare without case, as every forge treats them. */
 function sameLogin(left: string, right: string): boolean {
   return left.toLowerCase() === right.toLowerCase();
@@ -137,7 +142,7 @@ function nonEmpty<T>(items: T[]): T[] | undefined {
   return items.length > 0 ? items : undefined;
 }
 
-/** With since, any edit from then on settles it; without, the next change after the first read. */
+/** With since, any edit after it settles it; without, the next change after the first read. */
 export async function readComments(
   read: ReadDiscussionPage<Comment>,
   options: CommentFilter & DiscussionReadOptions,
@@ -165,7 +170,7 @@ export async function readComments(
       nonEmpty(
         from === undefined
           ? scan.items.filter((comment) => seen.get(comment.id) !== comment.updatedAt)
-          : scan.items,
+          : scan.items.filter((comment) => after(comment.updatedAt, from)),
       ),
     waitSeconds,
     signal,
@@ -186,7 +191,7 @@ function commentWaitNote(
   if (!polled.scan.examinedEveryPage) return partialNote("comments");
   const { marker, since, waitSeconds } = options;
   const which = marker === undefined ? "No comment" : "No comment carrying the marker";
-  const when = since === undefined ? "after the call started" : `since ${quoted(since)}`;
+  const when = since === undefined ? "after the call started" : `after ${quoted(since)}`;
   return timeoutNote(waitSeconds, `${which} was created or edited ${when}`);
 }
 
@@ -228,7 +233,7 @@ export async function readReactions(
       const now = new Set(scan.items.map(reactionKey));
       const removed = first.items.filter((reaction) => !now.has(reactionKey(reaction)));
       const landed = scan.items.filter((reaction) =>
-        from === undefined ? !seen.has(reactionKey(reaction)) : recent(reaction),
+        from === undefined ? !seen.has(reactionKey(reaction)) : after(reaction.createdAt, from),
       );
       return landed.length > 0 || removed.length > 0 ? { landed, removed } : undefined;
     },
@@ -252,6 +257,6 @@ function reactionWaitNote(
   if (!polled.scan.examinedEveryPage) return partialNote("reactions");
   const { author, since, waitSeconds } = options;
   const who = author === undefined ? "" : ` from ${quoted(author)}`;
-  const when = since === undefined ? "after the call started" : `since ${quoted(since)}`;
+  const when = since === undefined ? "after the call started" : `after ${quoted(since)}`;
   return timeoutNote(waitSeconds, `No reaction${who} landed ${when}, and none went away`);
 }

@@ -76,6 +76,31 @@ describe("comment reads", () => {
     expect(note).toBeUndefined();
   });
 
+  it("waits past a sticky last edited exactly at since", async () => {
+    const since = "2026-10-26T20:50:10Z";
+    const running = comment("9", `${STICKY}\nRunning`, since);
+    const done = comment("9", `${STICKY}\nCompleted`, "2026-10-26T20:52:40Z");
+    const read = polls([[running], [running], [done]]);
+
+    const { page } = await run(readComments(read, { marker: STICKY, since, waitSeconds: 60 }));
+
+    expect(page.items).toEqual([done]);
+    expect(page.wait).toMatchObject({ settled: true, polls: 3 });
+  });
+
+  it("times out on a lone sticky whose updatedAt is since", async () => {
+    const since = "2026-10-26T20:50:10Z";
+    const read = polls([[comment("9", `${STICKY}\nRunning`, since)]]);
+
+    const { page, note } = await run(
+      readComments(read, { marker: STICKY, since, waitSeconds: 30 }),
+    );
+
+    expect(page.items).toEqual([]);
+    expect(page.wait?.settled).toBe(false);
+    expect(note).toContain(`created or edited after "${since}"`);
+  });
+
   it("waits out Running and returns only the edit that ended the round", async () => {
     const other = comment("1", "lgtm", "2026-10-26T20:01:00Z");
     const read = polls([
@@ -178,6 +203,17 @@ describe("reaction reads", () => {
 
     expect(page.items.map((item) => item.content)).toEqual(["+1"]);
     expect(page.wait).toMatchObject({ settled: true, polls: 2, removed: [] });
+  });
+
+  it("waits past a reaction left exactly at since", async () => {
+    const eyes = reaction("eyes", bot, push);
+    const plusOne = reaction("+1", bot, "2026-10-26T20:53:00Z");
+    const read = polls([[eyes], [eyes], [eyes, plusOne]]);
+
+    const { page } = await run(readReactions(read, { author: bot, since: push, waitSeconds: 60 }));
+
+    expect(page.items).toEqual([plusOne]);
+    expect(page.wait).toMatchObject({ settled: true, polls: 3, removed: [] });
   });
 
   it("settles when the eyes go away without a +1", async () => {
