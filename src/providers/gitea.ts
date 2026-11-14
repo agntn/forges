@@ -39,9 +39,11 @@ import {
   normalizeApiBaseURL,
 } from "./base-url.ts";
 import {
+  type ContinuedPage,
   type Numbered,
   type NumberedPage,
   type NumberedSearchPage,
+  type Positioned,
   type WithPage,
   type ProviderRawTypes,
 } from "../provider.ts";
@@ -86,6 +88,7 @@ import type {
   ListPullRequestChecksOptions,
   ListCommitChecksOptions,
   ListPullRequestReviewsOptions,
+  ListEventOptions,
   ListReactionOptions,
   ListThreadOptions,
   Comment,
@@ -97,6 +100,7 @@ import type {
   ReplyThreadInput,
   Thread,
   ThreadComment,
+  ThreadEvent,
   UpdateIssueInput,
   UpdatePullRequestInput,
   MergePullRequestInput,
@@ -2123,6 +2127,29 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
+  }
+
+  /** Gitea indexes pull requests as issues, so the timeline route serves both kinds. */
+  protected override async listIssueEvents(
+    issue: IssueRef,
+    options?: Positioned<ListEventOptions>,
+  ): Promise<ContinuedPage<ThreadEvent>> {
+    const [page] = await Promise.all([
+      super.listIssueEvents(issue, options),
+      this.assertIssueKind({ ...issue, pullRequest: false }),
+    ]);
+    return page;
+  }
+
+  protected override async listPullRequestEvents(
+    pull: IssueRef,
+    options?: Positioned<ListEventOptions>,
+  ): Promise<ContinuedPage<ThreadEvent>> {
+    const [page] = await Promise.all([
+      super.listPullRequestEvents(pull, options),
+      this.assertIssueKind({ ...pull, pullRequest: true }),
+    ]);
+    return page;
   }
 
   /** An issue read tells the kinds apart, so the wrong one is a 404 as on GitLab. */

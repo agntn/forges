@@ -974,22 +974,31 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     issue: IssueRef,
     options?: Positioned<ListEventOptions>,
   ): Promise<ContinuedPage<ThreadEvent>> {
-    try {
-      return await super.listIssueEvents(issue, options);
-    } catch (error) {
-      throw await this.timelineError(issue, error);
-    }
+    return this.kindedTimeline(
+      { ...issue, pullRequest: false },
+      super.listIssueEvents(issue, options),
+    );
   }
 
   protected override async listPullRequestEvents(
     pull: IssueRef,
     options?: Positioned<ListEventOptions>,
   ): Promise<ContinuedPage<ThreadEvent>> {
-    try {
-      return await super.listPullRequestEvents(pull, options);
-    } catch (error) {
-      throw await this.timelineError(pull, error);
-    }
+    return this.kindedTimeline(
+      { ...pull, pullRequest: true },
+      super.listPullRequestEvents(pull, options),
+    );
+  }
+
+  /** The route serves both kinds, so an issue read beside it refuses the wrong one. */
+  private async kindedTimeline(
+    target: KindedIssue,
+    read: Promise<ContinuedPage<ThreadEvent>>,
+  ): Promise<ContinuedPage<ThreadEvent>> {
+    const [page, kind] = await Promise.allSettled([read, this.assertIssueKind(target)]);
+    if (kind.status === "rejected") throw kind.reason;
+    if (page.status === "rejected") throw await this.timelineError(target, page.reason);
+    return page.value;
   }
 
   /** GitBucket has no timeline route, and its 404 says nothing about the issue. */

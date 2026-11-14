@@ -2524,6 +2524,10 @@ describe("GitHubProvider", () => {
       ),
     ];
 
+    beforeEach(() => {
+      mocks.client.mockResolvedValue(ghIssue);
+    });
+
     it("names who mentioned an issue, with title and state from GitHub's own entry", async () => {
       forge.threads.events.mockReturnValueOnce(listing({ items: timeline }));
 
@@ -2597,6 +2601,7 @@ describe("GitHubProvider", () => {
     });
 
     it("reads a pull request's timeline, a commit reference and an undated entry", async () => {
+      mocks.client.mockResolvedValue({ ...ghIssue, pull_request: { merged_at: null } });
       forge.threads.events.mockReturnValueOnce(
         listing({
           items: [
@@ -2669,7 +2674,19 @@ describe("GitHubProvider", () => {
       });
     });
 
+    it("refuses an issue number on the pull request timeline, which the route would serve", async () => {
+      forge.threads.events.mockReturnValueOnce(listing({ items: timeline }));
+
+      const error = await gh.pullRequests
+        .listEvents({ owner: "agntn", repo: "credentials", number: 6 })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(NotFoundError);
+      expect(error).toMatchObject({ message: "#6 is an issue, not a pull request" });
+    });
+
     it("keeps a missing issue on GitHub itself a NotFoundError", async () => {
+      mocks.client.mockRejectedValue(makeFetchError(404));
       forge.threads.events.mockReturnValueOnce(failing(makeFetchError(404)));
 
       const error = await gh.pullRequests

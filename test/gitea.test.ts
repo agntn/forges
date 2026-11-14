@@ -3794,6 +3794,7 @@ describe("Gitea Provider", () => {
     });
 
     it("calls a merged pull request merged, not closed", async () => {
+      mockClient.mockResolvedValue({ number: 1, pull_request: { merged: false } });
       forge.threads.events.mockReturnValueOnce(
         listing({
           items: [
@@ -3814,6 +3815,15 @@ describe("Gitea Provider", () => {
       });
 
       expect(result.items[0]?.reference?.state).toBe("merged");
+    });
+
+    it("refuses a pull request number on the issue timeline", async () => {
+      mockClient.mockResolvedValue({ number: 98, pull_request: { merged: true } });
+      forge.threads.events.mockReturnValueOnce(listing({ items: [] }));
+
+      await expect(
+        provider.issues.listEvents({ owner: "gitea", repo: "tea", number: 98 }),
+      ).rejects.toMatchObject({ status: 404, message: "#98 is a pull request, not an issue" });
     });
   });
 
