@@ -252,17 +252,24 @@ describe("forges MCP server", () => {
         path: "../README.md",
         claims: [
           /Four forges, ten resources, (\d+) agent tools\./,
-          /\*\*(\d+) tools, four surfaces\.\*\*/,
-          /MCP, Pi and OMP all hit the same (\d+) tools\./,
+          /\*\*(\d+) tools, five surfaces\.\*\*/,
+          /MCP, Pi, OMP and the AI SDK all hit the same (\d+) tools\./,
+          /One import, all (\d+) tools,/,
         ],
       },
       {
         path: "../docs/content/1.guide/01.index.md",
-        claims: [/\[Agents\]\(\/guide\/agents\): (\d+) tools over MCP, Pi, OMP and the CLI\./],
+        claims: [
+          /\[Agents\]\(\/guide\/agents\): (\d+) tools over MCP, Pi, OMP, the CLI and the AI SDK\./,
+        ],
       },
       {
         path: "../docs/content/1.guide/10.agents.md",
-        claims: [/description: The same (\d+) tools over MCP/, /^## (\d+) tools, four surfaces$/m],
+        claims: [
+          /description: The same (\d+) tools over MCP/,
+          /^## (\d+) tools, five surfaces$/m,
+          /gives your model all (\d+) tools,/,
+        ],
       },
     ];
     for (const { path, claims } of pages) {

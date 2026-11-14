@@ -122,9 +122,9 @@ const { samples, paused, current, step } = useLandingForge();
     </section>
 
     <LandingFeature
-      :title="`${AGENT_TOOLS} tools, three hosts`"
+      :title="`${AGENT_TOOLS} tools, four hosts`"
       to="/guide/agents"
-      link="MCP, Pi and OMP"
+      link="MCP, Pi, OMP and the AI SDK"
       :checks="[
         'Reads fall back to anonymous access, writes and forges_users_authenticated need a credential',
         'Lists drop bodies and name the tool that reads one in full, so a busy page still fits in a context',
@@ -133,9 +133,10 @@ const { samples, paused, current, step } = useLandingForge();
       reverse
     >
       <code class="forges-code">forges mcp</code> serves the tools over stdio, the Pi and OMP
-      extensions render them in the terminal. All three call the same executors, so they answer
-      identically and a fix lands once. {{ WRITE_TOOLS }} tools write, and they say so in their
-      annotations, so a client can gate them before a model gets creative.
+      extensions render them in the terminal, and `@agntn/forges/ai` hands them to the AI SDK. All
+      four call the same executors, so they answer identically and a fix lands once.
+      {{ WRITE_TOOLS }} tools write, and they say so in their annotations, so a client can gate them
+      before a model gets creative. The AI SDK map does the gating for you.
       <template #visual>
         <LandingToolCall :sample="current" @pause="paused = $event" />
       </template>
