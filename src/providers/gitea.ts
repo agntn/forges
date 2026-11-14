@@ -2129,27 +2129,35 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     }
   }
 
-  /** Gitea indexes pull requests as issues, so the timeline route serves both kinds. */
   protected override async listIssueEvents(
     issue: IssueRef,
     options?: Positioned<ListEventOptions>,
   ): Promise<ContinuedPage<ThreadEvent>> {
-    const [page] = await Promise.all([
+    return this.kindedTimeline(
+      { ...issue, pullRequest: false },
       super.listIssueEvents(issue, options),
-      this.assertIssueKind({ ...issue, pullRequest: false }),
-    ]);
-    return page;
+    );
   }
 
   protected override async listPullRequestEvents(
     pull: IssueRef,
     options?: Positioned<ListEventOptions>,
   ): Promise<ContinuedPage<ThreadEvent>> {
-    const [page] = await Promise.all([
+    return this.kindedTimeline(
+      { ...pull, pullRequest: true },
       super.listPullRequestEvents(pull, options),
-      this.assertIssueKind({ ...pull, pullRequest: true }),
-    ]);
-    return page;
+    );
+  }
+
+  /** An issue read refuses the wrong kind and wins over the 500 Gitea gives a missing one. */
+  private async kindedTimeline(
+    target: KindedIssue,
+    read: Promise<ContinuedPage<ThreadEvent>>,
+  ): Promise<ContinuedPage<ThreadEvent>> {
+    const [page, kind] = await Promise.allSettled([read, this.assertIssueKind(target)]);
+    if (kind.status === "rejected") throw normalizeError(kind.reason, PLATFORM);
+    if (page.status === "rejected") throw normalizeError(page.reason, PLATFORM);
+    return page.value;
   }
 
   /** An issue read tells the kinds apart, so the wrong one is a 404 as on GitLab. */

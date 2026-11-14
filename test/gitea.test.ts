@@ -69,7 +69,15 @@ vi.mock("forges/forgejo", async () => {
 import { rawFetch } from "../src/http.ts";
 import { cachedFetch } from "../src/cache.ts";
 import { cursorFor } from "./support/cursor.ts";
-import { forgeOptions, listing, raws, ownerRef, repoRef, sharedForge } from "./support/forge.ts";
+import {
+  failing,
+  forgeOptions,
+  listing,
+  raws,
+  ownerRef,
+  repoRef,
+  sharedForge,
+} from "./support/forge.ts";
 import { FetchError } from "../src/errors.ts";
 
 const forge = sharedForge("gitea", "gitea.com");
@@ -3766,7 +3774,8 @@ describe("Gitea Provider", () => {
     });
 
     it("takes the mentioning issue's title and state from ref_issue", async () => {
-      /** A real `issue_ref` from gitea/tea#1, trimmed to what the mapper reads. */
+      mockClient.mockResolvedValue({ number: 1, pull_request: { merged: true } });
+      /** A real `issue_ref` from pull request gitea/tea#1, trimmed to what the mapper reads. */
       const refIssue = {
         number: 97,
         title: "tea pulls clean #1",
@@ -3776,10 +3785,14 @@ describe("Gitea Provider", () => {
       };
       forge.threads.events.mockReturnValueOnce(listing({ items: [mention("97", refIssue)] }));
 
-      const result = await provider.issues.listEvents({ owner: "gitea", repo: "tea", number: 1 });
+      const result = await provider.pullRequests.listEvents({
+        owner: "gitea",
+        repo: "tea",
+        number: 1,
+      });
 
       expect(forge.threads.events).toHaveBeenCalledWith(
-        { ...origin, repo: tea, kind: "issue", number: "1" },
+        { ...origin, repo: tea, kind: "pull_request", number: "1" },
         { perPage: 30 },
       );
       expect(result.items[0]?.reference).toEqual({
@@ -3815,6 +3828,17 @@ describe("Gitea Provider", () => {
       });
 
       expect(result.items[0]?.reference?.state).toBe("merged");
+    });
+
+    it("answers a missing number with the issue read's 404, not the timeline's 500", async () => {
+      mockClient.mockRejectedValue(makeFetchError(404));
+      forge.threads.events.mockReturnValueOnce(failing(makeFetchError(500)));
+
+      const error = await provider.issues
+        .listEvents({ owner: "gitea", repo: "tea", number: 404 })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(NotFoundError);
     });
 
     it("refuses a pull request number on the issue timeline", async () => {
