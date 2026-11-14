@@ -5,7 +5,7 @@
 [![license](https://npmx.dev/api/registry/badge/license/@agntn/forges)](https://npmx.dev/package/@agntn/forges)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/agntn/forges)
 
-⚒️ Four forges, ten resources, 59 agent tools. Ask for a pull request, not another client.
+⚒️ Four forges, ten resources, 61 agent tools. Ask for a pull request, not another client.
 
 ## Why?
 
@@ -20,7 +20,7 @@ Docs and an explorer for the same calls: [forges.agntn.dev](https://forges.agntn
 - 📦 **Loads one platform.** `createProvider("github")` is async. It imports GitHub and leaves GitLab on disk.
 - 🆔 **IDs are strings.** Even when the API sent a number. A count the forge withholds is missing, not `0`.
 - 🫥 **Empty string is guest.** `{ token: "" }` is anonymous on purpose. Leave `token` out and you get `AuthenticationError`, not a quiet guest session.
-- 🤖 **59 tools, four surfaces.** MCP, Pi, OMP and the CLI share one definition of each. Fourteen tools write to the host.
+- 🤖 **61 tools, four surfaces.** MCP, Pi, OMP and the CLI share one definition of each. Fourteen tools write to the host.
 - 🚫 **Missing is 501.** Code search on Gitea is not an empty page. You get a `ForgesError` with status 501.
 - 🧭 **GitBucket is GitHub plus `baseURL`.** Forgejo and Codeberg are Gitea plus `baseURL`. Same class, different host.
 - 🚚 **Built with [danielroe/forges](https://github.com/danielroe/forges).** It handles forge requests and pagination. This package adds its own normalized API and agent tools.
@@ -166,7 +166,7 @@ omp install @agntn/forges
 }
 ```
 
-MCP, Pi and OMP all hit the same 59 tools. Fourteen write to the host, so ask `forges_users_authenticated` who you are before a model does, details in the [Agents](https://forges.agntn.dev/guide/agents) guide.
+MCP, Pi and OMP all hit the same 61 tools. Fourteen write to the host, so ask `forges_users_authenticated` who you are before a model does, details in the [Agents](https://forges.agntn.dev/guide/agents) guide.
 
 ## 🚫 What this does not do
 

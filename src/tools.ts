@@ -410,6 +410,19 @@ function defineTools(): ToolDefinition[] {
       execute: (args) => call((operations) => operations.listIssueReactions(args)),
     }),
     defineTool({
+      name: "forges_issues_events",
+      title: forgeToolTitle("forges_issues_events", "List Issue Events"),
+      description:
+        'List one issue\'s timeline, oldest first: comments, labels, assignments, state changes, mentions and references. Each row has kind, action, a summary line, actor and createdAt; comment bodies are left out, read them with forges_issues_comments. A referenced event names the issue, pull request or commit that mentioned this one in reference, with its repository as owner/name, often another repository, plus title and state on GitHub and Gitea (GitLab gives only the number). Pass kinds: ["referenced"] to keep just those. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.',
+      snippet: "Read an issue's timeline on GitHub, GitLab, or Gitea.",
+      guidelines: [
+        'Use forges_issues_events with kinds: ["referenced"] instead of gh api .../timeline to find the issues and pull requests, in any repository, that mention an issue before picking it up.',
+      ],
+      ...effect("forges_issues_events"),
+      input: schemas.listEventsParameters,
+      execute: (args) => call((operations) => operations.listIssueEvents(args)),
+    }),
+    defineTool({
       name: "forges_issues_comments_create",
       title: forgeToolTitle("forges_issues_comments_create", "Comment on Issue"),
       description:
@@ -658,6 +671,19 @@ function defineTools(): ToolDefinition[] {
       input: schemas.listPullRequestReactionsParameters,
       execute: (args, { signal, progress }) =>
         call((operations) => operations.listPullRequestReactions(args, { signal, progress })),
+    }),
+    defineTool({
+      name: "forges_pull_requests_events",
+      title: forgeToolTitle("forges_pull_requests_events", "List Pull Request Events"),
+      description:
+        'List one pull request\'s timeline, oldest first: commits, reviews, review requests, comments, labels, state changes such as merged or closed, and references. Each row has kind, action, a summary line, actor and createdAt; comment and review bodies are left out, read them with forges_pull_requests_comments or forges_pull_requests_reviews. A referenced event names the issue, pull request or commit that mentioned this one in reference, with title and state on GitHub and Gitea. Pass kinds to keep only some, such as ["commit", "review"]. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.',
+      snippet: "Read a pull request's timeline on GitHub, GitLab, or Gitea.",
+      guidelines: [
+        "Use forges_pull_requests_events instead of gh api .../timeline to see who did what on a pull request and when.",
+      ],
+      ...effect("forges_pull_requests_events"),
+      input: schemas.listEventsParameters,
+      execute: (args) => call((operations) => operations.listPullRequestEvents(args)),
     }),
     defineTool({
       name: "forges_pull_requests_comments_create",

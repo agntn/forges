@@ -3418,6 +3418,47 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("events", () => {
+    it("leaves title and state null, since a GitLab note names only the number", async () => {
+      const origin = { forge: "gitlab", instance: "gitlab.com" } as const;
+      const widgets = { ...origin, owner: "acme", name: "widgets" };
+      forge.threads.events.mockReturnValueOnce(
+        listing({
+          items: [
+            {
+              ...origin,
+              id: "901",
+              kind: "referenced",
+              kindRaw: "system",
+              action: "other",
+              summary: "maria mentioned in merge request !5",
+              occurredAt: new Date("2026-11-01T10:00:00Z"),
+              actor: { ...origin, login: "maria", id: "7" },
+              detail: {
+                type: "referenced",
+                from: { ...origin, repo: widgets, kind: "pull_request", number: "5" },
+              },
+              source: "poll",
+              payload: { id: 901, system: true, body: "mentioned in merge request !5" },
+            },
+          ],
+        }),
+      );
+
+      const result = await gl.issues.listEvents({ owner: "acme", repo: "widgets", number: 3 });
+
+      expect(result.items[0]?.reference).toEqual({
+        repository: "acme/widgets",
+        kind: "pull_request",
+        number: 5,
+        sha: null,
+        title: null,
+        state: null,
+        url: null,
+      });
+    });
+  });
+
   describe("reactions", () => {
     const glAward = (id: number, { name, created_at }: { name: string; created_at: string }) => ({
       id,

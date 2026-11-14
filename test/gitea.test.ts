@@ -3748,6 +3748,75 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("events", () => {
+    const origin = { forge: "gitea", instance: "gitea.com" } as const;
+    const tea = { ...origin, owner: "gitea", name: "tea" };
+    const mention = (number: string, refIssue: unknown) => ({
+      ...origin,
+      id: `ref-${number}`,
+      kind: "referenced",
+      kindRaw: "issue_ref",
+      action: "other",
+      summary: `lunny referenced this from #${number}`,
+      occurredAt: new Date("2020-02-25T12:24:40Z"),
+      actor: { ...origin, login: "lunny", id: "1" },
+      detail: { type: "referenced", from: { ...origin, repo: tea, kind: "issue", number } },
+      source: "poll",
+      payload: { type: "issue_ref", ref_issue: refIssue },
+    });
+
+    it("takes the mentioning issue's title and state from ref_issue", async () => {
+      /** A real `issue_ref` from gitea/tea#1, trimmed to what the mapper reads. */
+      const refIssue = {
+        number: 97,
+        title: "tea pulls clean #1",
+        state: "closed",
+        html_url: "https://gitea.com/gitea/tea/issues/97",
+        pull_request: null,
+      };
+      forge.threads.events.mockReturnValueOnce(listing({ items: [mention("97", refIssue)] }));
+
+      const result = await provider.issues.listEvents({ owner: "gitea", repo: "tea", number: 1 });
+
+      expect(forge.threads.events).toHaveBeenCalledWith(
+        { ...origin, repo: tea, kind: "issue", number: "1" },
+        { perPage: 30 },
+      );
+      expect(result.items[0]?.reference).toEqual({
+        repository: "gitea/tea",
+        kind: "issue",
+        number: 97,
+        sha: null,
+        title: "tea pulls clean #1",
+        state: "closed",
+        url: "https://gitea.com/gitea/tea/issues/97",
+      });
+    });
+
+    it("calls a merged pull request merged, not closed", async () => {
+      forge.threads.events.mockReturnValueOnce(
+        listing({
+          items: [
+            mention("98", {
+              title: "Fix it",
+              state: "closed",
+              html_url: "https://gitea.com/gitea/tea/pulls/98",
+              pull_request: { merged: true, merged_at: "2020-02-26T08:00:00Z" },
+            }),
+          ],
+        }),
+      );
+
+      const result = await provider.pullRequests.listEvents({
+        owner: "gitea",
+        repo: "tea",
+        number: 1,
+      });
+
+      expect(result.items[0]?.reference?.state).toBe("merged");
+    });
+  });
+
   describe("reactions", () => {
     const giteaReaction = (
       content: string,

@@ -33,7 +33,7 @@ export function createFakeForge(forge: string, instance: string) {
     contents: { tags: vi.fn() },
     commits: { list: vi.fn() },
     ci: { runs: vi.fn(), jobs: vi.fn() },
-    threads: { list: vi.fn(), comments: vi.fn(), files: vi.fn() },
+    threads: { list: vi.fn(), comments: vi.fn(), files: vi.fn(), events: vi.fn() },
   };
 }
 

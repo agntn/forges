@@ -20,6 +20,7 @@ import {
   type ReviewThreadRef,
   wrongIssueKind,
 } from "./forge.ts";
+import { issueReferenceSource, type ReferenceSource } from "./forge-model.ts";
 
 import { rawFetch } from "../http.ts";
 import { buildPageResult, parseLinkHeader, slicePage } from "../pagination.ts";
@@ -690,6 +691,11 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   /** The mappers here read Gitea's own payload. */
   protected override forgePayload(item: Readonly<{ raw: unknown }>): unknown {
     return item.raw;
+  }
+
+  /** An `issue_ref` or `pull_ref` entry names the mentioning thread in `ref_issue`. */
+  protected override referenceSource(payload: unknown): ReferenceSource | undefined {
+    return issueReferenceSource((payload as { ref_issue?: unknown } | null)?.ref_issue);
   }
 
   protected override mapTag(raw: CommitTag): Tag {

@@ -17,6 +17,7 @@ import {
   type ReviewThreadRef,
   wrongIssueKind,
 } from "./forge.ts";
+import { issueReferenceSource, type ReferenceSource } from "./forge-model.ts";
 
 import {
   type ContinuedPage,
@@ -78,6 +79,7 @@ import type {
   ListPullRequestChecksOptions,
   ListCommitChecksOptions,
   ListPullRequestReviewsOptions,
+  ListEventOptions,
   ListReactionOptions,
   ListThreadOptions,
   Comment,
@@ -91,6 +93,7 @@ import type {
   ReplyThreadInput,
   Thread,
   ThreadComment,
+  ThreadEvent,
   UpdateIssueInput,
   UpdatePullRequestInput,
   MergePullRequestInput,
@@ -965,6 +968,47 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   /** The mappers here read GitHub's own payload. */
   protected override forgePayload(item: Readonly<{ raw: unknown }>): unknown {
     return item.raw;
+  }
+
+  protected override async listIssueEvents(
+    issue: IssueRef,
+    options?: Positioned<ListEventOptions>,
+  ): Promise<ContinuedPage<ThreadEvent>> {
+    try {
+      return await super.listIssueEvents(issue, options);
+    } catch (error) {
+      throw await this.timelineError(issue, error);
+    }
+  }
+
+  protected override async listPullRequestEvents(
+    pull: IssueRef,
+    options?: Positioned<ListEventOptions>,
+  ): Promise<ContinuedPage<ThreadEvent>> {
+    try {
+      return await super.listPullRequestEvents(pull, options);
+    } catch (error) {
+      throw await this.timelineError(pull, error);
+    }
+  }
+
+  /** GitBucket has no timeline route, and its 404 says nothing about the issue. */
+  private async timelineError(issue: IssueRef, error: unknown): Promise<unknown> {
+    if (!(error instanceof NotFoundError) || (await this.isGitHubHost(issue.owner, issue.repo))) {
+      return error;
+    }
+    return new ForgesError("Timeline events are not supported by this GitHub-compatible host", {
+      status: 501,
+      platform: "github",
+      originalError: error,
+    });
+  }
+
+  /** A `cross-referenced` entry carries the mentioning issue whole, title and state included. */
+  protected override referenceSource(payload: unknown): ReferenceSource | undefined {
+    return issueReferenceSource(
+      (payload as { source?: { issue?: unknown } } | null)?.source?.issue,
+    );
   }
 
   protected override mapTag(raw: CommitTag): Tag {
