@@ -256,6 +256,8 @@ function mapGitHubMergeSettings(raw: GitHubRepo): RepositoryMergeSettings | null
  */
 interface GitHubCiRun {
   id: number;
+  name?: string | null;
+  event?: string;
   head_branch: string | null;
   head_sha: string;
   status: string;
@@ -1072,6 +1074,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   protected override mapCiRun(raw: GitHubCiRun): CiRun {
     return {
       id: String(raw.id),
+      name: raw.name || null,
+      event: raw.event || null,
       branch: raw.head_branch ?? "",
       revision: raw.head_sha,
       ...normalizeCiRunState(raw.status, raw.conclusion),

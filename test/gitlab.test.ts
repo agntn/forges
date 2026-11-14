@@ -104,6 +104,7 @@ const glCodeSearchItem = {
 const glPipeline = {
   id: 9001,
   project_id: 278964,
+  source: "merge_request_event",
   ref: "main",
   sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
   status: "failed",
@@ -1289,8 +1290,8 @@ describe("GitLabProvider", () => {
       forge.ci.runs.mockReturnValueOnce(
         listing({
           items: raws(
-            glPipeline,
-            { ...glPipeline, id: 9002, status: "running" },
+            { ...glPipeline, name: "Build pipeline" },
+            { ...glPipeline, id: 9002, name: null, source: "push", status: "running" },
             { ...glPipeline, id: 9003, status: "manual" },
           ),
           total: 12,
@@ -1317,13 +1318,21 @@ describe("GitLabProvider", () => {
         items: [
           {
             id: "9001",
+            name: "Build pipeline",
+            event: "merge_request_event",
             branch: "main",
             revision: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
             status: "completed",
             conclusion: "failure",
             url: "https://gitlab.com/gitlab-org/gitlab-foss/-/pipelines/9001",
           },
-          expect.objectContaining({ id: "9002", status: "in_progress", conclusion: null }),
+          expect.objectContaining({
+            id: "9002",
+            name: null,
+            event: "push",
+            status: "in_progress",
+            conclusion: null,
+          }),
           expect.objectContaining({ id: "9003", status: "waiting", conclusion: null }),
         ],
         totalCount: 12,

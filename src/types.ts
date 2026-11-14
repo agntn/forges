@@ -134,6 +134,10 @@ export type CiRunConclusion =
 /** One GitHub Actions run, GitLab pipeline, or Gitea Actions run. */
 export interface CiRun {
   id: string;
+  /** Workflow or pipeline name; the workflow file on Gitea and Forgejo. */
+  name: string | null;
+  /** What started the run, in the platform's words: `push`, `schedule`. */
+  event: string | null;
   branch: string;
   revision: string;
   status: CiRunStatus;
