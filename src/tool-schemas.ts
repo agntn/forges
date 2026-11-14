@@ -1,5 +1,7 @@
 import { Type, type TObject, type TProperties } from "@agntn/tools";
 import { DEFAULT_WINDOW_CHARS, MAX_WINDOW_CHARS } from "./text-window.ts";
+import { THREAD_EVENT_KINDS } from "./thread-event.ts";
+import type { ThreadEventKind } from "./types.ts";
 
 /** The platforms every tool surface accepts, re-exported from `src/tool-operations.ts`. */
 export type ForgesPlatform = "github" | "gitlab" | "gitea" | "artifacts";
@@ -534,6 +536,22 @@ export function forgesToolSchemas() {
     cursor,
     perPage,
   });
+  const listEventsParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    kinds: Type.Optional(
+      Type.Array(Type.Unsafe<ThreadEventKind>({ type: "string", enum: THREAD_EVENT_KINDS }), {
+        description:
+          'Keep only these event kinds, such as ["referenced"] for the issues, pull requests and commits that mention this one',
+        minItems: 1,
+        maxItems: THREAD_EVENT_KINDS.length,
+      }),
+    ),
+    cursor,
+    perPage,
+  });
   /** The waiting mode of the comment and reaction reads, under the same bound as the checks. */
   const discussionWaitSeconds = Type.Optional(
     Type.Integer({
@@ -906,6 +924,7 @@ export function forgesToolSchemas() {
     pullRequestReviewParameters,
     commentParameters,
     listReactionsParameters,
+    listEventsParameters,
     listPullRequestCommentsParameters,
     listPullRequestReactionsParameters,
     listSubIssuesParameters,

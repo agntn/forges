@@ -8,8 +8,9 @@ import { ForgesError, NotFoundError } from "./errors.ts";
 import { assertCommitPatchOptions } from "./commit-patch.ts";
 import { assertCiId, assertCiJobLogOptions } from "./ci-job-log.ts";
 import { assertIssueUpdate, assertMergeInput, assertPullRequestUpdate } from "./update-input.ts";
-import { assertIssueMetadata, hasIssueMetadata } from "./issue-fields.ts";
+import { assertIssueMetadata, hasIssueMetadata, quoted } from "./issue-fields.ts";
 import { assertRepositoryContentsOptions, normalizeRepositoryPath } from "./repository-contents.ts";
+import { eventsOfKinds, isThreadEventKind, THREAD_EVENT_KINDS } from "./thread-event.ts";
 import type {
   AddSubIssueInput,
   CiJob,
@@ -49,6 +50,7 @@ import type {
   ListCommitChecksOptions,
   ListCommitOptions,
   ListContributionTemplatesOptions,
+  ListEventOptions,
   ListOptions,
   ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
@@ -85,6 +87,8 @@ import type {
   Tag,
   Thread,
   ThreadComment,
+  ThreadEvent,
+  ThreadEventKind,
   ThreadResource,
   ThreadState,
   UpdateIssueInput,
@@ -637,6 +641,12 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           },
         );
       },
+      listEvents: async (issue, options) =>
+        this.#listEvents(issue, {
+          listing: "issues.listEvents",
+          options,
+          read: (paged) => this.listIssueEvents(issue, paged),
+        }),
       listSubIssues: async (issue, options) => {
         this.#assertIssue(issue, "issues.listSubIssues");
         const { owner, repo, number } = issue;
@@ -776,6 +786,12 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           },
         );
       },
+      listEvents: async (pull, options) =>
+        this.#listEvents(pull, {
+          listing: "pullRequests.listEvents",
+          options,
+          read: (paged) => this.listPullRequestEvents(pull, paged),
+        }),
     };
     this.users = {
       get: (username) => this.getUser(username),
@@ -897,6 +913,44 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   #assertListPage(options: WithPage<ListCommentOptions> | undefined): void {
     paginationPageValue(options?.page, { ...PAGE, platform: this.#platform });
     paginationPageValue(options?.perPage, { ...PER_PAGE, platform: this.#platform });
+  }
+
+  /** Kinds join the cursor scope, so a cursor keeps its filter. */
+  async #listEvents(
+    issue: IssueRef,
+    source: Readonly<{
+      listing: "issues.listEvents" | "pullRequests.listEvents";
+      options: ListEventOptions | undefined;
+      read: (paged: Positioned<ListEventOptions>) => Promise<ContinuedPage<ThreadEvent>>;
+    }>,
+  ): Promise<PageResult<ThreadEvent>> {
+    this.#assertIssue(issue, source.listing);
+    const kinds = this.#eventKinds(source.options?.kinds);
+    const { owner, repo, number } = issue;
+    const page = await this.#paged<ListEventOptions, PageResult<ThreadEvent>>(
+      { listing: source.listing, subject: [owner, repo, number], options: source.options },
+      (paged) => {
+        this.#assertListPage(paged);
+        return source.read(paged);
+      },
+    );
+    return kinds === undefined ? page : eventsOfKinds(page, kinds);
+  }
+
+  /** An empty list could mean every kind or none, so it's refused. */
+  #eventKinds(kinds: unknown): ReadonlySet<ThreadEventKind> | undefined {
+    if (kinds === undefined) return undefined;
+    const known = THREAD_EVENT_KINDS.join(", ");
+    if (!Array.isArray(kinds) || kinds.length === 0) {
+      throw this.#refusal(`kinds must list at least one of ${known}`);
+    }
+    const stray = kinds.findIndex((kind) => !isThreadEventKind(kind));
+    if (stray !== -1) {
+      throw this.#refusal(
+        `Unknown event kind ${quoted(String(kinds[stray]))}; kinds takes ${known}`,
+      );
+    }
+    return new Set(kinds as ThreadEventKind[]);
   }
 
   /** An issue can't be its own child, so that call never needs the network to fail. */
@@ -1150,6 +1204,18 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _options?: WithPage<ListReactionOptions>,
   ): Promise<NumberedPage<Reaction>> {
     return this.#unsupported("Issue reactions are not supported by this provider");
+  }
+  protected listIssueEvents(
+    _issue: IssueRef,
+    _options?: Positioned<ListEventOptions>,
+  ): Promise<ContinuedPage<ThreadEvent>> {
+    return this.#unsupported("Issue events are not supported by this provider");
+  }
+  protected listPullRequestEvents(
+    _pull: IssueRef,
+    _options?: Positioned<ListEventOptions>,
+  ): Promise<ContinuedPage<ThreadEvent>> {
+    return this.#unsupported("Pull request events are not supported by this provider");
   }
   protected listSubIssues(
     _issue: IssueRef,

@@ -16,6 +16,8 @@ import type {
   Comment as ForgeComment,
   Commit as ForgeCommit,
   CommitSignature,
+  EventDetail,
+  ForgeEvent,
   Release as ForgeRelease,
   Repo,
   Review,
@@ -28,6 +30,7 @@ import type {
 
 import { normalizeChangedFileStatus } from "../changed-file.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
+import { threadEventKind } from "../thread-event.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import { knownMergeMethod, mergeSettings } from "../repository-merge.ts";
 import type {
@@ -40,6 +43,7 @@ import type {
   Commit,
   CommitIdentity,
   CommitSummary,
+  EventReference,
   Issue,
   Owner,
   PullRequest,
@@ -49,8 +53,12 @@ import type {
   Tag,
   Thread,
   ThreadComment,
+  ThreadEvent,
   User,
 } from "../types.ts";
+
+/** What the forge's payload says about a reference's source. */
+export type ReferenceSource = Partial<Pick<EventReference, "title" | "state" | "url">>;
 
 /** One review conversation, from the forge itself or gathered from every review. */
 export type ReviewConversation = Omit<ReviewThread, "raw">;
@@ -344,4 +352,67 @@ export function reviewConversations(reviews: readonly Review[]): ReviewConversat
     }
   }
   return [...conversations.values()];
+}
+
+function referenceFromModel(
+  detail: EventDetail | undefined,
+  source: ReferenceSource | undefined,
+): EventReference | null {
+  if (detail?.type !== "referenced" || detail.from === undefined) return null;
+  const { from } = detail;
+  const repository = `${from.repo.owner}/${from.repo.name}`;
+  if ("sha" in from) {
+    return {
+      repository,
+      kind: "commit",
+      number: null,
+      sha: from.sha,
+      title: null,
+      state: null,
+      url: null,
+    };
+  }
+  return {
+    repository,
+    kind: from.kind,
+    number: from.number === undefined ? null : Number(from.number),
+    sha: null,
+    title: source?.title ?? null,
+    state: source?.state ?? null,
+    url: source?.url ?? null,
+  };
+}
+
+/** Bodies stay out; the comment tools read them. */
+export function eventFromModel(event: ForgeEvent, source?: ReferenceSource): ThreadEvent {
+  return {
+    id: event.id,
+    kind: threadEventKind(event.kind),
+    action: event.action,
+    summary: event.summary,
+    actor: event.actor ? { login: event.actor.login } : null,
+    createdAt: event.undated ? null : isoOrNull(event.occurredAt),
+    reference: referenceFromModel(event.detail, source),
+  };
+}
+
+/** The fields GitHub and Gitea share on a mentioning issue. */
+interface IssuePayload {
+  title?: unknown;
+  state?: unknown;
+  html_url?: unknown;
+  pull_request?: { merged?: unknown; merged_at?: unknown } | null;
+}
+
+/** Both forges call a merged pull request closed, so the merge decides. */
+export function issueReferenceSource(issue: unknown): ReferenceSource | undefined {
+  if (typeof issue !== "object" || issue === null) return undefined;
+  const { title, state, html_url: url, pull_request: pull } = issue as IssuePayload;
+  const merged =
+    pull?.merged === true || (typeof pull?.merged_at === "string" && pull.merged_at !== "");
+  return {
+    ...(typeof title === "string" ? { title } : {}),
+    ...(state === "open" || state === "closed" ? { state: merged ? "merged" : state } : {}),
+    ...(typeof url === "string" ? { url } : {}),
+  };
 }

@@ -65,6 +65,8 @@ describe("createProvider factory", () => {
     ["createPullRequestComment", "Pull request comments are not supported by this provider"],
     ["listIssueReactions", "Issue reactions are not supported by this provider"],
     ["listPullRequestReactions", "Pull request reactions are not supported by this provider"],
+    ["listIssueEvents", "Issue events are not supported by this provider"],
+    ["listPullRequestEvents", "Pull request events are not supported by this provider"],
     ["listSubIssues", "Sub-issues are not supported by this provider"],
     ["addSubIssue", "Sub-issues are not supported by this provider"],
     ["removeSubIssue", "Sub-issues are not supported by this provider"],

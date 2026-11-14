@@ -818,6 +818,60 @@ export interface ListReactionOptions {
   perPage?: number;
 }
 
+/** What a timeline event is about. `other` covers whatever the forge names some other way. */
+export type ThreadEventKind =
+  | "comment"
+  | "review"
+  | "review_comment"
+  | "commit"
+  | "label"
+  | "state_change"
+  | "assignment"
+  | "mention"
+  | "referenced"
+  | "reaction"
+  | "issue_type"
+  | "other";
+
+/** The issue, pull request or commit that mentioned the thread an event sits on. */
+export interface EventReference {
+  /** `owner/name`, often a different repository from the thread's own. */
+  repository: string;
+  kind: "issue" | "pull_request" | "discussion" | "commit";
+  /** Null for a commit, and where the forge leaves the number out. */
+  number: number | null;
+  /** Null for an issue or pull request. */
+  sha: string | null;
+  /** Null where the forge names only the number, as GitLab does. */
+  title: string | null;
+  /** `open`, `closed` or `merged`, null where the forge leaves it out. */
+  state: "open" | "closed" | "merged" | null;
+  url: string | null;
+}
+
+/** One entry on the timeline of an issue or pull request. */
+export interface ThreadEvent {
+  id: string;
+  kind: ThreadEventKind;
+  /** The verb, such as `closed` or `labelled`, else `other`. */
+  action: string;
+  /** One line in the forge's words, ready for a list row. */
+  summary: string;
+  actor: { login: string } | null;
+  /** Null when the forge gave the event no time. */
+  createdAt: string | null;
+  /** Who mentioned this thread, on a `referenced` event whose source the forge names. */
+  reference: EventReference | null;
+}
+
+/** List options for timeline events, oldest first. */
+export interface ListEventOptions {
+  /** Kinds to keep, filtered per page, so a page can come back short. */
+  kinds?: ThreadEventKind[];
+  cursor?: string;
+  perPage?: number;
+}
+
 /** List operation options for pull-request files. */
 export interface ListPullRequestFilesOptions {
   cursor?: string;
@@ -989,6 +1043,8 @@ export interface IssueResource {
   getComment(issue: IssueRef, comment: { commentId: string }): Promise<Comment>;
   createComment(issue: IssueRef, input: CreateCommentInput): Promise<Comment>;
   listReactions(issue: IssueRef, options?: ListReactionOptions): Promise<PageResult<Reaction>>;
+  /** The issue's timeline, oldest first: labels, state changes, references and the rest. */
+  listEvents(issue: IssueRef, options?: ListEventOptions): Promise<PageResult<ThreadEvent>>;
   /** The children of one issue, in the parent's order. */
   listSubIssues(issue: IssueRef, options?: ListCommentOptions): Promise<PageResult<SubIssue>>;
   /** Hangs an issue of the same repository under `issue` and returns the parent. */
@@ -1035,6 +1091,8 @@ export interface PullRequestResource {
     pullRequest: IssueRef,
     options?: ListReactionOptions,
   ): Promise<PageResult<Reaction>>;
+  /** The pull request's timeline, oldest first, the same way `issues.listEvents` reads an issue. */
+  listEvents(pullRequest: IssueRef, options?: ListEventOptions): Promise<PageResult<ThreadEvent>>;
 }
 
 /**

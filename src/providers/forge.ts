@@ -35,6 +35,7 @@ import {
   commentFromModel,
   commitFromModel,
   commitSummaryFromModel,
+  eventFromModel,
   issueFromModel,
   ownerFromModel,
   pullRequestFromModel,
@@ -45,6 +46,7 @@ import {
   threadCommentFromModel,
   threadFromModel,
   userFromModel,
+  type ReferenceSource,
   type ReviewConversation,
 } from "./forge-model.ts";
 import { ForgesError, normalizeError, NotFoundError } from "../errors.ts";
@@ -88,6 +90,7 @@ import type {
   ListCiJobsOptions,
   ListCiRunsOptions,
   ListCommitOptions,
+  ListEventOptions,
   ListOptions,
   ListReleasesOptions,
   ListTagsOptions,
@@ -98,6 +101,7 @@ import type {
   Tag,
   Thread,
   ThreadComment,
+  ThreadEvent,
   UpdateReleaseInput,
   User,
 } from "../types.ts";
@@ -523,6 +527,41 @@ export abstract class ForgeBackedProvider<
           ...(options?.since ? { since: this.#date(options.since, "since") } : {}),
         }),
         (comment) => this.mapComment(this.forgePayload(comment) as never),
+      ),
+    );
+  }
+
+  protected override listIssueEvents(
+    issue: IssueRef,
+    options?: Positioned<ListEventOptions>,
+  ): Promise<ContinuedPage<ThreadEvent>> {
+    return this.#listEvents({ ...issue, kind: "issue" }, options);
+  }
+
+  protected override listPullRequestEvents(
+    pull: IssueRef,
+    options?: Positioned<ListEventOptions>,
+  ): Promise<ContinuedPage<ThreadEvent>> {
+    return this.#listEvents({ ...pull, kind: "pull_request" }, options);
+  }
+
+  /** Title and state of a reference's source; the `forges` model carries only its number. */
+  protected referenceSource(_payload: unknown): ReferenceSource | undefined {
+    return undefined;
+  }
+
+  #listEvents(
+    thread: KindedThread,
+    options?: Positioned<ListEventOptions>,
+  ): Promise<ContinuedPage<ThreadEvent>> {
+    return this.forgeCall((forge) =>
+      this.forgePage(
+        forge.threads.events(this.threadRef(forge, thread), this.forgePageOptions(options)),
+        (event) =>
+          eventFromModel(
+            event,
+            event.kind === "referenced" ? this.referenceSource(event.payload) : undefined,
+          ),
       ),
     );
   }

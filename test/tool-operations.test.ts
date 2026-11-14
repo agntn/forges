@@ -15,6 +15,7 @@ import {
   getRelease,
   getRepository,
   listContributionTemplates,
+  listIssueEvents,
   listRepositories,
   reloadAuthentication,
   searchCode,
@@ -177,6 +178,11 @@ const mocks = vi.hoisted(() => {
             }
             return { number, state: "closed", assignees: [], updatedBy: login };
           }),
+          /** Issue 1 has a second page, issue 2 ends here. */
+          listEvents: vi.fn(async ({ number }: { number: number }) => ({
+            items: [],
+            ...(number === 1 ? { nextCursor: "next" } : {}),
+          })),
         },
         pullRequests: {
           // A platform that keeps its one assignee, the way GitLab Free does.
@@ -260,6 +266,23 @@ afterEach(() => {
 });
 
 describe("configured provider", () => {
+  it.each([
+    [{ number: 1, kinds: ["referenced" as const] }, "a short or empty page is not the end"],
+    [{ number: 1 }, undefined],
+    [{ number: 2, kinds: ["referenced" as const] }, undefined],
+  ])("warns about a short filtered page only while one follows: %j", async (args, note) => {
+    const listed = await listIssueEvents({
+      platform: "github",
+      owner: "agntn",
+      repo: "forges",
+      ...args,
+    });
+
+    const text = JSON.parse(listed.content[0].text) as { note?: string };
+    if (note === undefined) expect(text.note).toBeUndefined();
+    else expect(text.note).toContain(note);
+  });
+
   it("serializes results as compact JSON that still parses to the details", async () => {
     const read = await getContributionTemplate({
       platform: "github",

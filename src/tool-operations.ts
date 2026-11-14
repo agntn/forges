@@ -74,6 +74,7 @@ import type {
   ListCommitChecksOptions,
   ListCommitOptions,
   ListContributionTemplatesOptions,
+  ListEventOptions,
   ListOptions,
   ListPullRequestChecksOptions,
   ListPullRequestFilesOptions,
@@ -105,6 +106,8 @@ import type {
   Tag,
   Thread,
   ThreadComment,
+  ThreadEvent,
+  ThreadEventKind,
   ThreadState,
   UpdateIssueInput,
   UpdatePullRequestInput,
@@ -725,6 +728,10 @@ export interface GetPullRequestReviewParams extends GetRepositoryItemParams {
 
 export interface ListReactionsParams extends ListCommentsParams {
   commentId?: string;
+}
+
+export interface ListEventsParams extends ListCommentsParams {
+  kinds?: ThreadEventKind[];
 }
 
 /** The pull-request conversation, optionally narrowed and waited on for a bot's next edit. */
@@ -1447,6 +1454,43 @@ export async function listIssueReactions(
     reactionListOptions(params),
   );
   return result(reactions, { platform: params.platform });
+}
+
+/** Without it a model takes a short filtered page for the end. */
+const FILTERED_EVENTS_NOTE =
+  "kinds filters each page on its own, so a short or empty page is not the end: follow nextCursor.";
+
+function eventListOptions(params: ListEventsParams): ListEventOptions {
+  return { kinds: params.kinds, cursor: params.cursor, perPage: params.perPage };
+}
+
+function eventsResult(
+  events: PageResult<ThreadEvent>,
+  params: Pick<ListEventsParams, "kinds"> & { platform: ForgesPlatform },
+): ForgesToolResult<PageResult<ThreadEvent>> {
+  const filtered = params.kinds !== undefined && events.nextCursor !== undefined;
+  return result(events, {
+    platform: params.platform,
+    ...(filtered ? { note: FILTERED_EVENTS_NOTE } : {}),
+  });
+}
+
+export async function listIssueEvents(
+  args: ListEventsParams,
+): Promise<ForgesToolResult<PageResult<ThreadEvent>>> {
+  const params = repositoryTarget(args);
+  const provider = await readProvider(params.platform);
+  const events = await provider.issues.listEvents(issueOf(params), eventListOptions(params));
+  return eventsResult(events, params);
+}
+
+export async function listPullRequestEvents(
+  args: ListEventsParams,
+): Promise<ForgesToolResult<PageResult<ThreadEvent>>> {
+  const params = repositoryTarget(args);
+  const provider = await readProvider(params.platform);
+  const events = await provider.pullRequests.listEvents(issueOf(params), eventListOptions(params));
+  return eventsResult(events, params);
 }
 
 export async function listSubIssues(
