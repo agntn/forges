@@ -2146,12 +2146,17 @@ describe("GitHubProvider", () => {
       expect(issue.url).toBe("https://github.com/octocat/hello-world/issues/42");
     });
 
-    it("rejects a pull request returned by the issues endpoint", async () => {
+    it("names a pull request returned by the issues endpoint", async () => {
       mocks.client.mockResolvedValueOnce({ ...ghIssue, pull_request: {} });
 
-      await expect(
-        gh.issues.get({ owner: "octocat", repo: "hello-world", number: 42 }),
-      ).rejects.toThrow(NotFoundError);
+      const read = gh.issues.get({ owner: "octocat", repo: "hello-world", number: 42 });
+
+      await expect(read).rejects.toThrow(NotFoundError);
+      await expect(read).rejects.toMatchObject({
+        message: "#42 is a pull request, not an issue",
+        platform: "github",
+        status: 404,
+      });
     });
 
     it("reads current state on every call", async () => {
@@ -2534,11 +2539,11 @@ describe("GitHubProvider", () => {
 
       await expect(
         gh.pullRequests.listReactions({ owner: "octocat", repo: "hello-world", number: 42 }),
-      ).rejects.toThrow("Pull request not found: 42");
+      ).rejects.toThrow("#42 is an issue, not a pull request");
       serve(ghPull);
       await expect(
         gh.issues.listReactions({ owner: "agntn", repo: "forges", number: 266 }),
-      ).rejects.toThrow("Issue not found: 266");
+      ).rejects.toThrow("#266 is a pull request, not an issue");
     });
 
     it("reads a comment's reactions and checks the comment is under the issue", async () => {
@@ -2756,7 +2761,7 @@ describe("GitHubProvider", () => {
       serve({ ...ghSubIssue, pull_request: {} });
 
       await expect(gh.issues.addSubIssue(parent, { subIssue: 303 })).rejects.toThrow(
-        "Issue not found: 303",
+        "#303 is a pull request, not an issue",
       );
       expect(mocks.client.mock.calls.some(([, options]) => options !== undefined)).toBe(false);
     });
@@ -2765,9 +2770,11 @@ describe("GitHubProvider", () => {
       serve(ghSubIssue, { ...ghParent, pull_request: {} });
       mocks.rawFetch.mockResolvedValueOnce({ data: [], headers: makeHeaders() });
 
-      await expect(gh.issues.listSubIssues(parent)).rejects.toThrow("Issue not found: 292");
+      await expect(gh.issues.listSubIssues(parent)).rejects.toThrow(
+        "#292 is a pull request, not an issue",
+      );
       await expect(gh.issues.addSubIssue(parent, { subIssue: 303 })).rejects.toThrow(
-        "Issue not found: 292",
+        "#292 is a pull request, not an issue",
       );
       expect(mocks.client.mock.calls.some(([, options]) => options !== undefined)).toBe(false);
     });
@@ -5008,7 +5015,10 @@ describe("GitHubProvider", () => {
           { owner: "octocat", repo: "hello-world", number: 42 },
           { state: "closed", addLabels: ["docs"] },
         ),
-      ).rejects.toBeInstanceOf(NotFoundError);
+      ).rejects.toMatchObject({
+        name: "NotFoundError",
+        message: "#42 is a pull request, not an issue",
+      });
       expect(mocks.client).toHaveBeenCalledTimes(1);
     });
 

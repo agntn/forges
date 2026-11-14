@@ -18,6 +18,7 @@ import {
   type ForgeOptions,
   type KindedIssue,
   type ReviewThreadRef,
+  wrongIssueKind,
 } from "./forge.ts";
 
 import { rawFetch } from "../http.ts";
@@ -1372,7 +1373,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`,
       );
       if (issue.pull_request != null) {
-        throw new NotFoundError(`Issue not found: ${number}`, { platform: PLATFORM });
+        throw wrongIssueKind({ number, pullRequest: false }, PLATFORM);
       }
       return this.mapIssue(issue);
     } catch (error) {
@@ -1884,7 +1885,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       const issuePath = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`;
       const current = await this.client<GiteaIssue>(issuePath);
       if (current.pull_request != null) {
-        throw new NotFoundError(`Issue not found: ${number}`, { platform: PLATFORM });
+        throw wrongIssueKind({ number, pullRequest: false }, PLATFORM);
       }
 
       await this.writeIssueLabels({ owner, repo, issuePath, current: current.labels }, input);
@@ -2124,8 +2125,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
       `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(number, "Number")}`,
     );
     if ((issue.pull_request != null) !== pullRequest) {
-      const kind = pullRequest ? "Pull request" : "Issue";
-      throw new NotFoundError(`${kind} not found: ${number}`, { platform: PLATFORM });
+      throw wrongIssueKind({ number, pullRequest }, PLATFORM);
     }
   }
 

@@ -119,6 +119,17 @@ export type ReleaseTag = Readonly<RepoRef & { tag: string }>;
 /** An issue or pull request, with which of the two the caller expects it to be. */
 export type KindedIssue = Readonly<IssueRef & { pullRequest: boolean }>;
 
+/** Names the other kind instead of calling the number missing. */
+export function wrongIssueKind(
+  { number, pullRequest }: Pick<KindedIssue, "number" | "pullRequest">,
+  platform: string,
+): NotFoundError {
+  const [found, expected] = pullRequest
+    ? ["an issue", "a pull request"]
+    : ["a pull request", "an issue"];
+  return new NotFoundError(`#${number} is ${found}, not ${expected}`, { platform });
+}
+
 /** One review thread on a pull request. */
 export type ReviewThreadRef = Readonly<IssueRef & { threadId: string }>;
 
