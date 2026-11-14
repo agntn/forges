@@ -251,7 +251,7 @@ function defineTools(): ToolDefinition[] {
         "List the checks or pipelines that ran on one commit, given as a SHA, branch, or tag, in the rows forges_pull_requests_checks returns: name, lifecycle status, terminal conclusion, and URL. On GitHub the commit statuses come before the check runs; a host without check runs, GitBucket for one, returns the statuses alone. On GitLab the rows are the commit's pipelines, newest first, and a merged results pipeline is missing because it runs on a merge commit. On Gitea they are the combined commit statuses, Actions included. A ref the repository lacks is not found, never an empty list. Pass nextCursor back as cursor while it is present. " +
         "A branch or tag is read as the commit it points at when the call starts, named in sha, so its pages and waits stay on that commit. " +
         "Pass waitSeconds instead of polling this tool: the call returns once every check of the commit concludes, or when the budget ends, with the wait field forges_pull_requests_checks returns. " +
-        `An empty list counts only after ${EMPTY_CHECK_GRACE_SECONDS} seconds of waiting, so a call right after a merge or push waits for the first check.`,
+        "An empty list never settles this wait, since a commit can't tell a repository without CI from checks that haven't started yet: the budget ends with settled false.",
       snippet: "Read the checks for one commit, branch, or tag on GitHub, GitLab, or Gitea.",
       guidelines: [
         "Use forges_commits_checks for a commit no pull request points at: a branch pushed before its pull request, or a head the pull request has moved past.",

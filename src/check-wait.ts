@@ -61,7 +61,7 @@ export interface CheckReadOptions {
 /** How long to wait, and what tells a quiet pull request from a fresh push. */
 export interface CheckWaitOptions extends CheckReadOptions {
   waitSeconds: number;
-  /** Without it the wait itself counts as the last change, so an empty list always sits out the grace window. */
+  /** Without it an empty list never settles: nothing tells a commit without CI from one whose CI hasn't started. */
   readLastChange?: ReadLastChange;
   /** What the notes tell the caller not to treat as finished yet. */
   subject?: "pull request" | "commit";
@@ -248,8 +248,7 @@ async function pollChecks(
   const readPage = untilAborted(read, signal);
   const budgetMs = Math.min(waitSeconds, MAX_WAIT_SECONDS) * 1_000;
   const startedAt = performance.now();
-  const calledAt = new Date().toISOString();
-  const readLastChange = options.readLastChange ?? (() => Promise.resolve(calledAt));
+  const { readLastChange } = options;
   let polls = 0;
   let emptyRun: EmptyRun | undefined;
 
@@ -271,7 +270,7 @@ async function pollChecks(
     const waitedMs = Math.round(performance.now() - startedAt);
     const empty = scan.examinedEveryPage && scan.checks === 0;
     let noChecks: CheckWait["noChecks"];
-    if (empty) {
+    if (empty && readLastChange) {
       const changedAt = await lastChangeOrNothing(readLastChange);
       emptyRun = continueEmptyRun(emptyRun, { changedAt, waitedMs });
       if (emptyRun.quiet) noChecks = "quiet";

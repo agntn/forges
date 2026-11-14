@@ -109,14 +109,32 @@ describe("check wait", () => {
     expect(note).toBeUndefined();
   });
 
-  it("sits out the grace window when nothing reports a last change", async () => {
+  it("keeps an empty list open for the whole budget when nothing reports a last change", async () => {
     const read = polls([page([])]);
+
+    const { page: open, note } = await run(
+      waitForChecks(read, { waitSeconds: 90, subject: "commit" }),
+    );
+
+    expect(open.wait).toMatchObject({ settled: false, pending: [] });
+    expect(open.wait.noChecks).toBeUndefined();
+    expect(open.wait.waitedMs).toBeGreaterThanOrEqual(90_000);
+    expect(note).toBe(
+      "No check has shown up for this head within the 90s budget, which is too soon to call it final: CI may still be starting. Call again with waitSeconds; do not treat the commit as finished.",
+    );
+  });
+
+  it("picks up a check that starts long after the grace window", async () => {
+    const read = polls([
+      ...Array.from({ length: 8 }, () => page([])),
+      page([check("deploy", false)]),
+    ]);
 
     const { page: settled } = await run(waitForChecks(read, { waitSeconds: 300 }));
 
-    expect(settled.wait).toMatchObject({ settled: true, noChecks: "waited" });
-    expect(settled.wait.waitedMs).toBeGreaterThanOrEqual(30_000);
-    expect(settled.wait.waitedMs).toBeLessThan(60_000);
+    expect(settled.wait).toMatchObject({ settled: true, polls: 9, pending: [] });
+    expect(settled.wait.waitedMs).toBeGreaterThan(30_000);
+    expect(settled.items.map((item) => item.name)).toEqual(["deploy"]);
   });
 
   it("names a commit, not a pull request, when its checks outlast the budget", async () => {
