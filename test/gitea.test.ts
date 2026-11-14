@@ -2095,14 +2095,19 @@ describe("Gitea Provider", () => {
       expect(result.url).toBe("https://gitea.com/testowner/test-repo/issues/1");
     });
 
-    it("rejects a pull request returned by the issues endpoint", async () => {
+    it("names a pull request returned by the issues endpoint", async () => {
       mockClient.mockResolvedValueOnce(
         giteaIssue({ pull_request: { merged: false, draft: false } }),
       );
 
-      await expect(
-        provider.issues.get({ owner: "testowner", repo: "test-repo", number: 1 }),
-      ).rejects.toThrow(NotFoundError);
+      const read = provider.issues.get({ owner: "testowner", repo: "test-repo", number: 1 });
+
+      await expect(read).rejects.toThrow(NotFoundError);
+      await expect(read).rejects.toMatchObject({
+        message: "#1 is a pull request, not an issue",
+        platform: "gitea",
+        status: 404,
+      });
     });
 
     it("reads current state on every call", async () => {
@@ -3220,7 +3225,10 @@ describe("Gitea Provider", () => {
           { owner: "testowner", repo: "test-repo", number: 1 },
           { title: "Renamed" },
         ),
-      ).rejects.toBeInstanceOf(NotFoundError);
+      ).rejects.toMatchObject({
+        name: "NotFoundError",
+        message: "#1 is a pull request, not an issue",
+      });
       expect(mockClient).toHaveBeenCalledTimes(1);
     });
   });
@@ -3825,12 +3833,12 @@ describe("Gitea Provider", () => {
 
       await expect(
         provider.pullRequests.listReactions({ owner: "gitea", repo: "tea", number: 37 }),
-      ).rejects.toThrow("Pull request not found: 37");
+      ).rejects.toThrow("#37 is an issue, not a pull request");
       expect(mockClient).toHaveBeenCalledWith("/repos/gitea/tea/issues/37");
       mockClient.mockResolvedValue(giteaIssue({ pull_request: { merged: false } }));
       await expect(
         provider.issues.listReactions({ owner: "gitea", repo: "tea", number: 37 }),
-      ).rejects.toThrow("Issue not found: 37");
+      ).rejects.toThrow("#37 is a pull request, not an issue");
     });
 
     it("reads an empty list from the null Gitea answers with", async () => {

@@ -15,6 +15,7 @@ import {
   type KindedIssue,
   type ReleaseTag,
   type ReviewThreadRef,
+  wrongIssueKind,
 } from "./forge.ts";
 
 import {
@@ -1763,7 +1764,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/${encodePathSegment(issueNumber, "Number")}`,
       );
       if (data.pull_request !== undefined) {
-        throw new NotFoundError(`Issue not found: ${issueNumber}`, { platform: "github" });
+        throw wrongIssueKind({ number: issueNumber, pullRequest: false }, "github");
       }
       return this.mapIssue(data);
     } catch (error) {
@@ -2451,7 +2452,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       const metadata = await this.resolveIssueMetadata({ owner, repo }, input);
       let data = await this.client<GitHubIssue>(issuePath);
       if (data.pull_request !== undefined) {
-        throw new NotFoundError(`Issue not found: ${issueNumber}`, { platform: "github" });
+        throw wrongIssueKind({ number: issueNumber, pullRequest: false }, "github");
       }
       const fields = {
         title: input.title,
@@ -2743,8 +2744,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       throw normalizeError(error, "github");
     }
     if ((issue.pull_request !== undefined) !== pullRequest) {
-      const kind = pullRequest ? "Pull request" : "Issue";
-      throw new NotFoundError(`${kind} not found: ${number}`, { platform: "github" });
+      throw wrongIssueKind({ number, pullRequest }, "github");
     }
   }
 
