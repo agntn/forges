@@ -228,6 +228,7 @@ interface GitLabPipeline {
   sha: string;
   status: string;
   name?: string | null;
+  source?: string | null;
   web_url?: string | null;
 }
 
@@ -724,6 +725,8 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   protected override mapCiRun(raw: GitLabPipeline): CiRun {
     return {
       id: String(raw.id),
+      name: raw.name || null,
+      event: raw.source || null,
       branch: raw.ref ?? "",
       revision: raw.sha,
       ...normalizeCiRunState(raw.status),

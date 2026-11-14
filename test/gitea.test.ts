@@ -136,6 +136,8 @@ function giteaRepo(overrides: Record<string, unknown> = {}) {
 function giteaCiRun(overrides: Record<string, unknown> = {}) {
   return {
     id: 400,
+    path: "test.yml@refs/heads/main",
+    event: "push",
     head_branch: "main",
     head_sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
     status: "completed",
@@ -1500,9 +1502,19 @@ describe("Gitea Provider", () => {
         listing({
           items: raws(
             giteaCiRun(),
-            giteaCiRun({ id: 401, status: "in_progress", conclusion: "" }),
+            giteaCiRun({
+              id: 401,
+              path: "deploy.yaml@refs/heads/fix@home",
+              event: undefined,
+              status: "in_progress",
+              conclusion: "",
+            }),
             giteaCiRun({
               id: 402,
+              path: undefined,
+              workflow_id: "ci.yml",
+              event: "pull_request",
+              trigger_event: "pull_request_target",
               head_branch: undefined,
               head_sha: undefined,
               commit_sha: "42190a2e08172b2d2e3f63f7b848231ec566b08f",
@@ -1538,15 +1550,25 @@ describe("Gitea Provider", () => {
         items: [
           {
             id: "400",
+            name: "test.yml",
+            event: "push",
             branch: "main",
             revision: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
             status: "completed",
             conclusion: "cancelled",
             url: "https://gitea.com/testowner/test-repo/actions/runs/400",
           },
-          expect.objectContaining({ id: "401", status: "in_progress", conclusion: null }),
+          expect.objectContaining({
+            id: "401",
+            name: "deploy.yaml",
+            event: null,
+            status: "in_progress",
+            conclusion: null,
+          }),
           expect.objectContaining({
             id: "402",
+            name: "ci.yml",
+            event: "pull_request_target",
             branch: "feature-branch",
             revision: "42190a2e08172b2d2e3f63f7b848231ec566b08f",
             status: "completed",

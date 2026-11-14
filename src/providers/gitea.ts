@@ -148,6 +148,13 @@ interface GiteaIssueTemplate {
 
 interface GiteaCiRun {
   id: number;
+  /** Forgejo only. */
+  workflow_id?: string | null;
+  /** Gitea only, as `<workflow file>@<ref>`. */
+  path?: string | null;
+  event?: string | null;
+  /** Forgejo only; the `on` trigger that Gitea reports as `event`. */
+  trigger_event?: string | null;
   head_branch?: string | null;
   head_sha?: string | null;
   ref?: string | null;
@@ -471,6 +478,11 @@ function branchName(ref: string | null | undefined): string {
   return ref?.replace(/^refs\/heads\//u, "") ?? "";
 }
 
+/** The workflow file, named outright by Forgejo and inside `path` by Gitea. */
+function workflowFile(workflowId: string | null | undefined, path: string | null | undefined) {
+  return workflowId || /^(.+?\.ya?ml)@/u.exec(path ?? "")?.[1] || null;
+}
+
 /** Older Forgejo responses keep the branch only inside the webhook payload. */
 function eventPayloadBranch(eventPayload: string | null | undefined): string {
   if (!eventPayload) return "";
@@ -756,6 +768,8 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     const prettyBranch = raw.prettyref?.startsWith("#") ? "" : branchName(raw.prettyref);
     return {
       id: String(raw.id),
+      name: workflowFile(raw.workflow_id, raw.path),
+      event: raw.trigger_event || raw.event || null,
       branch:
         branchName(raw.head_branch) ||
         branchName(raw.ref) ||

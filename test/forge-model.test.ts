@@ -496,6 +496,20 @@ describe("ciRunFromModel", () => {
   ] as const)("reads %s as %s", (state, stateRaw, expected) => {
     expect(run(state, stateRaw)).toMatchObject(expected);
   });
+
+  it("names the run and its trigger, null where the forge left the trigger out", () => {
+    expect(run("success", "completed")).toMatchObject({ name: "ci", event: null });
+    expect(
+      ciRunFromModel({
+        ref: { forge: "fake", instance: "fake.test", repo: {} as never, id: "2" },
+        name: "nightly",
+        state: "success",
+        stateRaw: "completed",
+        eventRaw: "schedule",
+        raw: {},
+      }),
+    ).toMatchObject({ name: "nightly", event: "schedule" });
+  });
 });
 
 describe("repositoryFromModel", () => {

@@ -92,6 +92,8 @@ const ghCodeSearchItem = {
 
 const ghCiRun = {
   id: 9876,
+  name: "Test",
+  event: "push",
   head_branch: "main",
   head_sha: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
   status: "completed",
@@ -1475,7 +1477,14 @@ describe("GitHubProvider", () => {
     it("returns normalized paged workflow runs and filters by branch", async () => {
       forge.ci.runs.mockReturnValueOnce(
         listing({
-          items: raws(ghCiRun, { ...ghCiRun, id: 9877, status: "queued", conclusion: null }),
+          items: raws(ghCiRun, {
+            ...ghCiRun,
+            id: 9877,
+            name: null,
+            event: "schedule",
+            status: "queued",
+            conclusion: null,
+          }),
           total: 12,
           cursor: {
             nextUrl: "https://api.github.com/repos/octocat/hello-world/actions/runs?page=3",
@@ -1502,13 +1511,21 @@ describe("GitHubProvider", () => {
         items: [
           {
             id: "9876",
+            name: "Test",
+            event: "push",
             branch: "main",
             revision: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38",
             status: "completed",
             conclusion: "success",
             url: "https://github.com/octocat/hello-world/actions/runs/9876",
           },
-          expect.objectContaining({ id: "9877", status: "queued", conclusion: null }),
+          expect.objectContaining({
+            id: "9877",
+            name: null,
+            event: "schedule",
+            status: "queued",
+            conclusion: null,
+          }),
         ],
         totalCount: 12,
         nextCursor: expect.any(String),

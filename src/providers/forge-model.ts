@@ -268,6 +268,8 @@ export function changedFileFromModel(file: ForgeChangedFile): ChangedFile {
 export function ciRunFromModel(run: ForgeCiRun): CiRun {
   return {
     id: run.ref.id,
+    name: run.name,
+    event: run.eventRaw ?? null,
     branch: run.branch ?? "",
     revision: run.sha ?? "",
     ...ciState(run),
