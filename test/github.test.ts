@@ -45,6 +45,7 @@ import { GitHubProvider } from "../src/providers/github.ts";
 import {
   failing,
   forgeOptions,
+  iterable,
   listing,
   raws,
   ownerRef,
@@ -2496,6 +2497,22 @@ describe("GitHubProvider", () => {
         gh.issues.updateComment(issue, { commentId: "3001", body: "Fixed" }),
       ).rejects.toThrow(NotFoundError);
       expect(forge.threads.updateComment).not.toHaveBeenCalled();
+    });
+
+    it("checks the issue's own list when the comment names no issue", async () => {
+      mocks.client.mockResolvedValueOnce({ ...ghComment, issue_url: undefined });
+      forge.threads.get.mockResolvedValueOnce({ kind: "issue" });
+      forge.threads.comments.mockReturnValueOnce(iterable([]));
+
+      await expect(gh.issues.deleteComment(issue, { commentId: "3001" })).rejects.toMatchObject({
+        status: 404,
+        message: "Comment not found: 3001",
+      });
+      expect(forge.threads.comments).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "issue", number: "42" }),
+        { perPage: 100 },
+      );
+      expect(forge.threads.deleteComment).not.toHaveBeenCalled();
     });
 
     it("refuses a blank body before any request", async () => {

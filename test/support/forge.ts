@@ -7,6 +7,15 @@ export interface FakePage {
   cursor?: { nextUrl?: string; token?: string };
 }
 
+/** A `forges` listing walked with `for await`, over `items`. */
+export function iterable(items: unknown[]) {
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield* items;
+    },
+  };
+}
+
 /** A `forges` listing whose single page is `page`. */
 export function listing(page: FakePage) {
   return { page: vi.fn(async () => page) };
@@ -34,6 +43,7 @@ export function createFakeForge(forge: string, instance: string) {
     commits: { list: vi.fn() },
     ci: { runs: vi.fn(), jobs: vi.fn() },
     threads: {
+      get: vi.fn(),
       list: vi.fn(),
       comments: vi.fn(),
       files: vi.fn(),

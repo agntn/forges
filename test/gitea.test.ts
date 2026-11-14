@@ -72,6 +72,7 @@ import { cursorFor } from "./support/cursor.ts";
 import {
   failing,
   forgeOptions,
+  iterable,
   listing,
   raws,
   ownerRef,
@@ -4363,6 +4364,20 @@ describe("Gitea Provider", () => {
         "Fixed in 1.22.1",
       );
       expect(comment.body).toBe("Fixed in 1.22.1");
+    });
+
+    it("checks the issue's own list when the comment names neither issue nor pull", async () => {
+      mockClient.mockResolvedValueOnce(giteaComment({ issue_url: "" }));
+      forge.threads.get.mockResolvedValueOnce({ kind: "issue" });
+      forge.threads.comments.mockReturnValueOnce(iterable([]));
+
+      await expect(
+        provider.issues.updateComment(
+          { owner: "testowner", repo: "test-repo", number: 1 },
+          { commentId: "21", body: "Fixed" },
+        ),
+      ).rejects.toMatchObject({ status: 404, message: "Comment not found: 21" });
+      expect(forge.threads.updateComment).not.toHaveBeenCalled();
     });
 
     it("keeps a review comment away from the conversation edit", async () => {

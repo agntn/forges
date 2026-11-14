@@ -768,6 +768,14 @@ export abstract class ForgeBackedProvider<
     };
   }
 
+  /** A write trusts only the thread's own list, never a read by id alone. */
+  protected override readCommentToWrite(
+    home: Readonly<IssueRef & { kind: "issue" | "pull_request" }>,
+    { commentId }: { commentId: string },
+  ): Promise<Comment> {
+    return this.#findComment(home, commentId);
+  }
+
   /** Searched in the thread's own comments: some forges read one by id alone, from any thread. */
   #findComment(thread: KindedThread, commentId: string): Promise<Comment> {
     return this.forgeCall(async (forge) => {

@@ -4115,6 +4115,25 @@ describe("GitLabProvider", () => {
       expect(comment).toMatchObject({ id: "2201", body: "Fixed" });
     });
 
+    it("sends a review discussion reply to the thread tools", async () => {
+      route({
+        "/projects/278964/merge_requests/33/notes/1129": {
+          ...glNote,
+          id: 1129,
+          type: "DiscussionNote",
+          resolvable: true,
+        },
+      });
+
+      await expect(
+        gl.pullRequests.updateComment(mr, { commentId: "1129", body: "Edited" }),
+      ).rejects.toMatchObject({
+        status: 400,
+        message: "Comment 1129 sits in a review thread: edit or delete it through threads",
+      });
+      expect(forge.threads.updateComment).not.toHaveBeenCalled();
+    });
+
     it("keeps diff notes away from the conversation edit", async () => {
       route({ "/projects/278964/merge_requests/33/notes/2203": glDiffNote });
 

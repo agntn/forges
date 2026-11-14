@@ -2611,9 +2611,25 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
    * check rather than failing reads that worked before.
    */
   protected override async getIssueComment(
-    { owner, repo, number }: IssueRef,
+    issue: IssueRef,
     { commentId }: { commentId: string },
   ): Promise<Comment> {
+    return this.mapComment(await this.#fetchIssueComment(issue, commentId));
+  }
+
+  /** Without issue_url the read proves nothing, so a write falls back to the issue's own list. */
+  protected override async readCommentToWrite(
+    home: Readonly<IssueRef & { kind: "issue" | "pull_request" }>,
+    comment: { commentId: string },
+  ): Promise<Comment> {
+    const data = await this.#fetchIssueComment(home, comment.commentId);
+    return data.issue_url ? this.mapComment(data) : super.readCommentToWrite(home, comment);
+  }
+
+  async #fetchIssueComment(
+    { owner, repo, number }: IssueRef,
+    commentId: string,
+  ): Promise<GitHubComment> {
     try {
       const data = await this.client<GitHubComment>(
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/comments/${encodePathSegment(commentId, "Comment id")}`,
@@ -2621,7 +2637,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (data.issue_url && !data.issue_url.endsWith(`/issues/${number}`)) {
         throw new NotFoundError(`Comment not found: ${commentId}`, { platform: "github" });
       }
-      return this.mapComment(data);
+      return data;
     } catch (error) {
       throw normalizeError(error, "github");
     }

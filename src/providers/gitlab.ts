@@ -365,6 +365,7 @@ interface GitLabNote {
   created_at: string;
   updated_at: string;
   system: boolean;
+  resolvable?: boolean;
 }
 
 interface GitLabReviewUser {
@@ -2461,10 +2462,33 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
    * id space, so a note the list would drop answers 404 instead of passing as
    * a discussion comment.
    */
-  private async getNote(
+  private async getNote(noteable: Noteable, commentId: string): Promise<Comment> {
+    return this.mapComment(await this.#fetchNote(noteable, commentId));
+  }
+
+  /**
+   * A note of a review discussion is a thread comment, and the discussion cache
+   * only drops on the thread route, so the conversation write refuses it.
+   */
+  protected override async readCommentToWrite(
+    home: Readonly<IssueRef & { kind: "issue" | "pull_request" }>,
+    { commentId }: { commentId: string },
+  ): Promise<Comment> {
+    const resource = home.kind === "issue" ? "issues" : "merge_requests";
+    const note = await this.#fetchNote({ ...home, resource }, commentId);
+    if (note.resolvable === true) {
+      throw new ForgesError(
+        `Comment ${commentId} sits in a review thread: edit or delete it through threads`,
+        { status: 400, platform: "gitlab" },
+      );
+    }
+    return this.mapComment(note);
+  }
+
+  async #fetchNote(
     { owner, repo, resource, number }: Noteable,
     commentId: string,
-  ): Promise<Comment> {
+  ): Promise<GitLabNote> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const note = await this.client<GitLabNote>(
@@ -2473,7 +2497,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       if (!this.isDiscussionNote(note)) {
         throw new NotFoundError(`Comment not found: ${commentId}`, { platform: "gitlab" });
       }
-      return this.mapComment(note);
+      return note;
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }

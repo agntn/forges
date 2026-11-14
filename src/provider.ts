@@ -639,14 +639,14 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         assertInput(input, { call: "issues.updateComment", shape: COMMENT_EDIT });
         assertCommentBody(input.body, this.#platform);
         const { commentId, body } = input;
-        await this.getIssueComment(issue, { commentId });
+        await this.readCommentToWrite({ ...issue, kind: "issue" }, { commentId });
         return this.updateIssueComment(issue, { commentId, body });
       },
       deleteComment: async (issue, comment) => {
         this.#assertIssue(issue, "issues.deleteComment");
         assertInput(comment, { call: "issues.deleteComment", shape: { commentId: "string" } });
         const { commentId } = comment;
-        await this.getIssueComment(issue, { commentId });
+        await this.readCommentToWrite({ ...issue, kind: "issue" }, { commentId });
         return this.deleteIssueComment(issue, { commentId });
       },
       listReactions: async (issue, options) => {
@@ -799,7 +799,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         assertInput(input, { call: "pullRequests.updateComment", shape: COMMENT_EDIT });
         assertCommentBody(input.body, this.#platform);
         const { commentId, body } = input;
-        await this.getPullRequestComment(pull, { commentId });
+        await this.readCommentToWrite({ ...pull, kind: "pull_request" }, { commentId });
         return this.updatePullRequestComment(pull, { commentId, body });
       },
       deleteComment: async (pull, comment) => {
@@ -809,7 +809,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
           shape: { commentId: "string" },
         });
         const { commentId } = comment;
-        await this.getPullRequestComment(pull, { commentId });
+        await this.readCommentToWrite({ ...pull, kind: "pull_request" }, { commentId });
         return this.deletePullRequestComment(pull, { commentId });
       },
       listReactions: async (pull, options) => {
@@ -1264,6 +1264,15 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _input: CreateCommentInput,
   ): Promise<Comment> {
     return this.#unsupported("Pull request comments are not supported by this provider");
+  }
+  /** The read every comment write starts with. It has to prove the comment sits on `home`. */
+  protected readCommentToWrite(
+    home: Readonly<IssueRef & { kind: "issue" | "pull_request" }>,
+    comment: { commentId: string },
+  ): Promise<Comment> {
+    return home.kind === "issue"
+      ? this.getIssueComment(home, comment)
+      : this.getPullRequestComment(home, comment);
   }
   protected updateIssueComment(
     _issue: IssueRef,
