@@ -4,7 +4,7 @@
  * Detection chain per platform:
  *   1. Explicit token (passed in config)
  *   2. Environment variables (GH_TOKEN, GITLAB_TOKEN, etc.)
- *   3. CLI tools (gh, glab)
+ *   3. CLI tools (gh, glab, tea)
  *   4. The CLI's config file, for a machine with the config but not the CLI
  */
 
@@ -20,6 +20,8 @@ export type Platform = "github" | "gitlab" | "gitea";
 export interface AuthResult {
   token: string;
   source: "explicit" | "env" | "cli" | "config";
+  /** Where the token came from, such as `GL_TOKEN` or `gh hosts.yml`. */
+  origin: string;
 }
 
 const resolvers = {

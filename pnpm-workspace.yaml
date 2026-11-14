@@ -10,7 +10,7 @@ catalog:
 # One version per name for the library and docs/, which bundles the library from ../src.
 catalogs:
   deps:
-    "@agntn/credentials": 0.0.2
+    "@agntn/credentials": 0.1.0
     "@agntn/hashes": 0.7.2
     "@agntn/tools": 0.3.0
     "@modelcontextprotocol/server": 2.4.0

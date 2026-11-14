@@ -35,6 +35,8 @@ const mocks = vi.hoisted(() => {
   const credentialToken = { current: "test-token" as string | null };
   /** The step of the chain that found credentialToken. */
   const credentialSource = { current: "env" as "env" | "cli" | "config" };
+  /** Where credentialToken came from, the second GitHub variable by default. */
+  const credentialOrigin = { current: "GITHUB_TOKEN" };
   const anonymousWrites = { current: 0 };
   const issueCreateGate = { current: undefined as Promise<void> | undefined };
   /** Logins `gh auth token --user` can answer for; the token names its owner. */
@@ -49,11 +51,13 @@ const mocks = vi.hoisted(() => {
     const account = options?.account;
     if (account !== undefined && !envCredential.current) {
       return ghLogins.current.has(account)
-        ? { token: `account:${account}`, source: "cli" as const }
+        ? { token: `account:${account}`, source: "cli" as const, origin: "gh" }
         : null;
     }
     const token = credentialToken.current;
-    return token === null ? null : { token, source: credentialSource.current };
+    return token === null
+      ? null
+      : { token, source: credentialSource.current, origin: credentialOrigin.current };
   });
 
   const createProvider = vi.fn(
@@ -209,6 +213,7 @@ const mocks = vi.hoisted(() => {
     localLogin,
     credentialToken,
     credentialSource,
+    credentialOrigin,
     anonymousWrites,
     issueCreateGate,
     ghLogins,
@@ -246,6 +251,7 @@ beforeEach(() => {
   mocks.localLogin.current = "aeitwoen";
   mocks.credentialToken.current = "test-token";
   mocks.credentialSource.current = "env";
+  mocks.credentialOrigin.current = "GITHUB_TOKEN";
   mocks.anonymousWrites.current = 0;
   mocks.issueCreateGate.current = undefined;
   mocks.ghLogins.current = new Set(["aeitwoen", "oritwoen"]);
@@ -602,28 +608,38 @@ describe("configured provider", () => {
     }
   });
 
-  it("says where a rejected token came from and how to replace it", async () => {
+  it("names the one variable, CLI or file a rejected token came from", async () => {
     mocks.credentialToken.current = "revoked-token";
 
     const fromVariable = getRepository({ repo: "agntn/forges" });
 
     await expect(fromVariable).rejects.toThrow(AuthenticationError);
     await expect(fromVariable).rejects.toThrow(
-      "Authentication failed: 401: 401 Unauthorized. The github token from GH_TOKEN or GITHUB_TOKEN was rejected, so it has likely expired or been revoked. That variable wins over the `gh` login: replace or unset it, then call forges_auth_reload and retry.",
+      "Authentication failed: 401: 401 Unauthorized. The github token from GITHUB_TOKEN was rejected, so it has likely expired or been revoked. That variable wins over the `gh` login: replace or unset it, then call forges_auth_reload and retry.",
     );
 
+    mocks.credentialSource.current = "env";
+    mocks.credentialOrigin.current = "GL_TOKEN";
+
+    await expect(getRepository({ platform: "gitlab", repo: "gitlab-org/gitlab" })).rejects.toThrow(
+      "Authentication failed: 401: 401 Unauthorized. The gitlab token from GL_TOKEN was rejected, so it has likely expired or been revoked. That variable wins over the `glab` login: replace or unset it, then call forges_auth_reload and retry.",
+    );
+
+    /* The rejected GL_TOKEN stays pinned until a reload, so start the next lookup fresh. */
+    resetPinnedProviders();
     mocks.credentialSource.current = "cli";
+    mocks.credentialOrigin.current = "glab";
 
     await expect(
       getRepository({ platform: "gitlab", repo: "gitlab-org/gitlab-runner" }),
     ).rejects.toThrow(
       "Authentication failed: 401: 401 Unauthorized. The gitlab token of the local `glab` login was rejected, so it has likely expired or been revoked. Log in again with `glab auth login`, then call forges_auth_reload and retry.",
     );
-    /* tea hands out no token, so a tea login only ever comes from its config file. */
     mocks.credentialSource.current = "config";
+    mocks.credentialOrigin.current = "tea config.yml";
 
     await expect(getRepository({ platform: "gitea", repo: "gitea/tea" })).rejects.toThrow(
-      "Authentication failed: 401: 401 Unauthorized. The gitea token saved in the `tea` config file was rejected, so it has likely expired or been revoked. Set GITEA_TOKEN, which wins over that file, or redo the login with `tea login add`, then call forges_auth_reload and retry.",
+      "Authentication failed: 401: 401 Unauthorized. The gitea token saved in `tea config.yml` was rejected, so it has likely expired or been revoked. Set GITEA_TOKEN, which wins over that file, or redo the login with `tea login add`, then call forges_auth_reload and retry.",
     );
   });
 
@@ -809,7 +825,7 @@ describe("named account", () => {
     const write = createIssue({ ...issueParams, account: "oritwoen" });
 
     await expect(write).rejects.toThrow(AuthenticationError);
-    await expect(write).rejects.toThrow(/belongs to "aeitwoen"\. GH_TOKEN or GITHUB_TOKEN/);
+    await expect(write).rejects.toThrow(/belongs to "aeitwoen"\. GITHUB_TOKEN is set/);
     expect(mocks.issueAuthors.current).toEqual([]);
   });
 
