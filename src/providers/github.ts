@@ -94,6 +94,7 @@ import type {
   Thread,
   ThreadComment,
   ThreadEvent,
+  UpdateCommentInput,
   UpdateIssueInput,
   UpdatePullRequestInput,
   MergePullRequestInput,
@@ -652,6 +653,21 @@ function threadMatchesPullRequest(
 function reviewCommentId(comment: GitHubGraphQLReviewComment): string {
   const id = comment.fullDatabaseId ?? comment.databaseId;
   return id === null || id === undefined ? "" : String(id);
+}
+
+function reviewThreadComment(data: GitHubReviewComment): ThreadComment {
+  return {
+    id: String(data.id),
+    body: data.body,
+    author: { login: data.user?.login ?? "" },
+    url: data.html_url,
+    createdAt: data.created_at,
+  };
+}
+
+/** GitHub keys a review comment by repository and id, with no pull request in the route. */
+function reviewCommentPath({ owner, repo }: RepoRef, commentId: string): string {
+  return `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/comments/${encodePathSegment(commentId, "Comment id")}`;
 }
 
 function presentGraphQLNodes<T>(nodes: Array<T | null> | null | undefined): T[] {
@@ -2595,9 +2611,25 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
    * check rather than failing reads that worked before.
    */
   protected override async getIssueComment(
-    { owner, repo, number }: IssueRef,
+    issue: IssueRef,
     { commentId }: { commentId: string },
   ): Promise<Comment> {
+    return this.mapComment(await this.#fetchIssueComment(issue, commentId));
+  }
+
+  /** Without issue_url the read proves nothing, so a write falls back to the issue's own list. */
+  protected override async readCommentToWrite(
+    home: Readonly<IssueRef & { kind: "issue" | "pull_request" }>,
+    comment: { commentId: string },
+  ): Promise<Comment> {
+    const data = await this.#fetchIssueComment(home, comment.commentId);
+    return data.issue_url ? this.mapComment(data) : super.readCommentToWrite(home, comment);
+  }
+
+  async #fetchIssueComment(
+    { owner, repo, number }: IssueRef,
+    commentId: string,
+  ): Promise<GitHubComment> {
     try {
       const data = await this.client<GitHubComment>(
         `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/comments/${encodePathSegment(commentId, "Comment id")}`,
@@ -2605,7 +2637,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       if (data.issue_url && !data.issue_url.endsWith(`/issues/${number}`)) {
         throw new NotFoundError(`Comment not found: ${commentId}`, { platform: "github" });
       }
-      return this.mapComment(data);
+      return data;
     } catch (error) {
       throw normalizeError(error, "github");
     }
@@ -2898,13 +2930,34 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
           body: { body: input.body },
         },
       );
-      return {
-        id: String(data.id),
-        body: data.body,
-        author: { login: data.user?.login ?? "" },
-        url: data.html_url,
-        createdAt: data.created_at,
-      };
+      return reviewThreadComment(data);
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /** Review comments sit on their own route, apart from the issue comments the conversation edits. */
+  protected override async updateThreadComment(
+    pull: IssueRef,
+    { commentId, body }: UpdateCommentInput & { threadId: string; commentId: string },
+  ): Promise<ThreadComment> {
+    try {
+      const data = await this.client<GitHubReviewComment>(reviewCommentPath(pull, commentId), {
+        method: "PATCH",
+        body: { body },
+      });
+      return reviewThreadComment(data);
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async deleteThreadComment(
+    pull: IssueRef,
+    { commentId }: { threadId: string; commentId: string },
+  ): Promise<void> {
+    try {
+      await this.client(reviewCommentPath(pull, commentId), { method: "DELETE" });
     } catch (error) {
       throw normalizeError(error, "github");
     }

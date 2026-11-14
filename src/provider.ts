@@ -91,6 +91,7 @@ import type {
   ThreadEventKind,
   ThreadResource,
   ThreadState,
+  UpdateCommentInput,
   UpdateIssueInput,
   UpdatePullRequestInput,
   UpdateReleaseInput,
@@ -186,6 +187,9 @@ const REPO_REF: ArgumentShape = { owner: "string", repo: "string" };
 const ISSUE_REF: ArgumentShape = { ...REPO_REF, number: "number" };
 
 const ISSUE_FIELDS_UNSUPPORTED = "Issue types and fields are not supported by this provider";
+
+const COMMENT_EDIT: ArgumentShape = { commentId: "string", body: "string" };
+const THREAD_COMMENT: ArgumentShape = { threadId: "string", commentId: "string" };
 
 /** An old positional call would go out as `/repos/undefined`, so it's refused with its shape. */
 function assertArgument(
@@ -630,6 +634,21 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         assertCommentBody(input.body, this.#platform);
         return this.createIssueComment(issue, input);
       },
+      updateComment: async (issue, input) => {
+        this.#assertIssue(issue, "issues.updateComment");
+        assertInput(input, { call: "issues.updateComment", shape: COMMENT_EDIT });
+        assertCommentBody(input.body, this.#platform);
+        const { commentId, body } = input;
+        await this.readCommentToWrite({ ...issue, kind: "issue" }, { commentId });
+        return this.updateIssueComment(issue, { commentId, body });
+      },
+      deleteComment: async (issue, comment) => {
+        this.#assertIssue(issue, "issues.deleteComment");
+        assertInput(comment, { call: "issues.deleteComment", shape: { commentId: "string" } });
+        const { commentId } = comment;
+        await this.readCommentToWrite({ ...issue, kind: "issue" }, { commentId });
+        return this.deleteIssueComment(issue, { commentId });
+      },
       listReactions: async (issue, options) => {
         this.#assertIssue(issue, "issues.listReactions");
         const { owner, repo, number } = issue;
@@ -775,6 +794,24 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         assertCommentBody(input.body, this.#platform);
         return this.createPullRequestComment(pull, input);
       },
+      updateComment: async (pull, input) => {
+        this.#assertIssue(pull, "pullRequests.updateComment");
+        assertInput(input, { call: "pullRequests.updateComment", shape: COMMENT_EDIT });
+        assertCommentBody(input.body, this.#platform);
+        const { commentId, body } = input;
+        await this.readCommentToWrite({ ...pull, kind: "pull_request" }, { commentId });
+        return this.updatePullRequestComment(pull, { commentId, body });
+      },
+      deleteComment: async (pull, comment) => {
+        this.#assertIssue(pull, "pullRequests.deleteComment");
+        assertInput(comment, {
+          call: "pullRequests.deleteComment",
+          shape: { commentId: "string" },
+        });
+        const { commentId } = comment;
+        await this.readCommentToWrite({ ...pull, kind: "pull_request" }, { commentId });
+        return this.deletePullRequestComment(pull, { commentId });
+      },
       listReactions: async (pull, options) => {
         this.#assertIssue(pull, "pullRequests.listReactions");
         const { owner, repo, number } = pull;
@@ -826,7 +863,36 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         assertInput(thread, { call: "threads.unresolve", shape: { threadId: "string" } });
         return this.unresolveThread(pull, { threadId: thread.threadId });
       },
+      updateComment: async (pull, input) => {
+        this.#assertIssue(pull, "threads.updateComment");
+        assertInput(input, {
+          call: "threads.updateComment",
+          shape: { ...THREAD_COMMENT, body: "string" },
+        });
+        assertCommentBody(input.body, this.#platform);
+        const { threadId, commentId, body } = input;
+        await this.#assertThreadComment(pull, { threadId, commentId });
+        return this.updateThreadComment(pull, { threadId, commentId, body });
+      },
+      deleteComment: async (pull, comment) => {
+        this.#assertIssue(pull, "threads.deleteComment");
+        assertInput(comment, { call: "threads.deleteComment", shape: THREAD_COMMENT });
+        const { threadId, commentId } = comment;
+        await this.#assertThreadComment(pull, { threadId, commentId });
+        return this.deleteThreadComment(pull, { threadId, commentId });
+      },
     };
+  }
+
+  /** Several forges address a review comment by id alone, so the thread vouches for it before any write. */
+  async #assertThreadComment(
+    pull: IssueRef,
+    { threadId, commentId }: Readonly<{ threadId: string; commentId: string }>,
+  ): Promise<void> {
+    const thread = await this.getThread(pull, { threadId });
+    if (!thread.comments.some((comment) => comment.id === commentId)) {
+      throw new NotFoundError(`Comment not found: ${commentId}`, { platform: this.#platform });
+    }
   }
 
   /** Reads the page a cursor names and writes the next; URLs stay on {@link cursorOrigin}. */
@@ -1198,6 +1264,48 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _input: CreateCommentInput,
   ): Promise<Comment> {
     return this.#unsupported("Pull request comments are not supported by this provider");
+  }
+  /** The read every comment write starts with. It has to prove the comment sits on `home`. */
+  protected readCommentToWrite(
+    home: Readonly<IssueRef & { kind: "issue" | "pull_request" }>,
+    comment: { commentId: string },
+  ): Promise<Comment> {
+    return home.kind === "issue"
+      ? this.getIssueComment(home, comment)
+      : this.getPullRequestComment(home, comment);
+  }
+  protected updateIssueComment(
+    _issue: IssueRef,
+    _input: UpdateCommentInput & { commentId: string },
+  ): Promise<Comment> {
+    return this.#unsupported("Editing issue comments is not supported by this provider");
+  }
+  protected deleteIssueComment(_issue: IssueRef, _comment: { commentId: string }): Promise<void> {
+    return this.#unsupported("Deleting issue comments is not supported by this provider");
+  }
+  protected updatePullRequestComment(
+    _pull: IssueRef,
+    _input: UpdateCommentInput & { commentId: string },
+  ): Promise<Comment> {
+    return this.#unsupported("Editing pull request comments is not supported by this provider");
+  }
+  protected deletePullRequestComment(
+    _pull: IssueRef,
+    _comment: { commentId: string },
+  ): Promise<void> {
+    return this.#unsupported("Deleting pull request comments is not supported by this provider");
+  }
+  protected updateThreadComment(
+    _pull: IssueRef,
+    _input: UpdateCommentInput & { threadId: string; commentId: string },
+  ): Promise<ThreadComment> {
+    return this.#unsupported("Editing review thread comments is not supported by this provider");
+  }
+  protected deleteThreadComment(
+    _pull: IssueRef,
+    _comment: { threadId: string; commentId: string },
+  ): Promise<void> {
+    return this.#unsupported("Deleting review thread comments is not supported by this provider");
   }
   protected listIssueReactions(
     _issue: IssueRef,

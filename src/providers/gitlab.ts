@@ -93,6 +93,7 @@ import type {
   Tag,
   Thread,
   ThreadComment,
+  UpdateCommentInput,
   UpdateIssueInput,
   UpdatePullRequestInput,
   MergePullRequestInput,
@@ -364,6 +365,7 @@ interface GitLabNote {
   created_at: string;
   updated_at: string;
   system: boolean;
+  resolvable?: boolean;
 }
 
 interface GitLabReviewUser {
@@ -478,6 +480,17 @@ function encodeNamespacePath(namespace: string): string {
 /** GitLab serves GraphQL beside REST, at `api/graphql` under the same instance. */
 function gitlabGraphqlUrl(apiBaseURL: string): string {
   return new URL("graphql", apiBaseURL.replace(/\/v4\/*$/u, "/")).toString();
+}
+
+/** GitLab sends no web URL for a note, so the comment goes out without one. */
+function discussionThreadComment(note: GitLabDiscussionNote): ThreadComment {
+  return {
+    id: String(note.id),
+    body: note.body,
+    author: { login: note.author.username },
+    url: "",
+    createdAt: note.created_at,
+  };
 }
 
 /**
@@ -879,13 +892,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       line: position?.new_line ?? position?.old_line ?? null,
       startLine:
         position?.line_range?.start?.new_line ?? position?.line_range?.start?.old_line ?? null,
-      comments: notes.map((note) => ({
-        id: String(note.id),
-        body: note.body,
-        author: { login: note.author.username },
-        url: "",
-        createdAt: note.created_at,
-      })),
+      comments: notes.map(discussionThreadComment),
     };
   }
 
@@ -2455,10 +2462,33 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
    * id space, so a note the list would drop answers 404 instead of passing as
    * a discussion comment.
    */
-  private async getNote(
+  private async getNote(noteable: Noteable, commentId: string): Promise<Comment> {
+    return this.mapComment(await this.#fetchNote(noteable, commentId));
+  }
+
+  /**
+   * A note of a review discussion is a thread comment, and the discussion cache
+   * only drops on the thread route, so the conversation write refuses it.
+   */
+  protected override async readCommentToWrite(
+    home: Readonly<IssueRef & { kind: "issue" | "pull_request" }>,
+    { commentId }: { commentId: string },
+  ): Promise<Comment> {
+    const resource = home.kind === "issue" ? "issues" : "merge_requests";
+    const note = await this.#fetchNote({ ...home, resource }, commentId);
+    if (note.resolvable === true) {
+      throw new ForgesError(
+        `Comment ${commentId} sits in a review thread: edit or delete it through threads`,
+        { status: 400, platform: "gitlab" },
+      );
+    }
+    return this.mapComment(note);
+  }
+
+  async #fetchNote(
     { owner, repo, resource, number }: Noteable,
     commentId: string,
-  ): Promise<Comment> {
+  ): Promise<GitLabNote> {
     try {
       const projectId = await this.resolveProjectId(owner, repo);
       const note = await this.client<GitLabNote>(
@@ -2467,7 +2497,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       if (!this.isDiscussionNote(note)) {
         throw new NotFoundError(`Comment not found: ${commentId}`, { platform: "gitlab" });
       }
-      return this.mapComment(note);
+      return note;
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }
@@ -2553,13 +2583,40 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
         body: { body: input.body },
       });
       await this.dropCachedDiscussion(url);
-      return {
-        id: String(note.id),
-        body: note.body,
-        author: { login: note.author.username },
-        url: "",
-        createdAt: note.created_at,
-      };
+      return discussionThreadComment(note);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  /** The discussion route scopes the note, so a note from another thread answers 404 here too. */
+  protected override async updateThreadComment(
+    { owner, repo, number }: IssueRef,
+    { threadId, commentId, body }: UpdateCommentInput & { threadId: string; commentId: string },
+  ): Promise<ThreadComment> {
+    try {
+      const url = await this.discussionUrl({ owner, repo, number, threadId });
+      const note = await this.client<GitLabDiscussionNote>(
+        `${url}/notes/${encodePathSegment(commentId, "Comment id")}`,
+        { method: "PUT", body: { body } },
+      );
+      await this.dropCachedDiscussion(url);
+      return discussionThreadComment(note);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async deleteThreadComment(
+    { owner, repo, number }: IssueRef,
+    { threadId, commentId }: { threadId: string; commentId: string },
+  ): Promise<void> {
+    try {
+      const url = await this.discussionUrl({ owner, repo, number, threadId });
+      await this.client(`${url}/notes/${encodePathSegment(commentId, "Comment id")}`, {
+        method: "DELETE",
+      });
+      await this.dropCachedDiscussion(url);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }

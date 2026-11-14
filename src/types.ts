@@ -771,6 +771,11 @@ export interface CreateCommentInput {
   body: string;
 }
 
+/** The new body of a comment that already exists. It replaces the old one whole. */
+export interface UpdateCommentInput {
+  body: string;
+}
+
 /** One repository by its owner and name, the first argument of every repository call. */
 export interface RepoRef {
   owner: string;
@@ -1042,6 +1047,13 @@ export interface IssueResource {
   listComments(issue: IssueRef, options?: ListCommentOptions): Promise<PageResult<Comment>>;
   getComment(issue: IssueRef, comment: { commentId: string }): Promise<Comment>;
   createComment(issue: IssueRef, input: CreateCommentInput): Promise<Comment>;
+  /** Rewrites a comment of this issue, read first, so an id from another issue is not found. */
+  updateComment(
+    issue: IssueRef,
+    input: UpdateCommentInput & { commentId: string },
+  ): Promise<Comment>;
+  /** Deletes a comment of this issue, read first like `updateComment`. There is no undo. */
+  deleteComment(issue: IssueRef, comment: { commentId: string }): Promise<void>;
   listReactions(issue: IssueRef, options?: ListReactionOptions): Promise<PageResult<Reaction>>;
   /** The issue's timeline, oldest first: labels, state changes, references and the rest. */
   listEvents(issue: IssueRef, options?: ListEventOptions): Promise<PageResult<ThreadEvent>>;
@@ -1087,6 +1099,13 @@ export interface PullRequestResource {
   listComments(pullRequest: IssueRef, options?: ListCommentOptions): Promise<PageResult<Comment>>;
   getComment(pullRequest: IssueRef, comment: { commentId: string }): Promise<Comment>;
   createComment(pullRequest: IssueRef, input: CreateCommentInput): Promise<Comment>;
+  /** Rewrites a conversation comment of this pull request, never a review thread comment. */
+  updateComment(
+    pullRequest: IssueRef,
+    input: UpdateCommentInput & { commentId: string },
+  ): Promise<Comment>;
+  /** Deletes a conversation comment of this pull request. There is no undo. */
+  deleteComment(pullRequest: IssueRef, comment: { commentId: string }): Promise<void>;
   listReactions(
     pullRequest: IssueRef,
     options?: ListReactionOptions,
@@ -1115,4 +1134,14 @@ export interface ThreadResource {
   ): Promise<ThreadComment>;
   resolve(pullRequest: IssueRef, thread: { threadId: string }): Promise<Thread>;
   unresolve(pullRequest: IssueRef, thread: { threadId: string }): Promise<Thread>;
+  /** Rewrites one comment of the thread. A comment outside it is not found. */
+  updateComment(
+    pullRequest: IssueRef,
+    input: UpdateCommentInput & { threadId: string; commentId: string },
+  ): Promise<ThreadComment>;
+  /** Deletes one comment of the thread. There is no undo. */
+  deleteComment(
+    pullRequest: IssueRef,
+    comment: { threadId: string; commentId: string },
+  ): Promise<void>;
 }

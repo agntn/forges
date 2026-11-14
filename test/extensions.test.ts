@@ -34,6 +34,8 @@ const mocks = vi.hoisted(() => {
     create: vi.fn(),
     listComments: vi.fn(),
     createComment: vi.fn(),
+    updateComment: vi.fn(),
+    deleteComment: vi.fn(),
     update: vi.fn(),
   };
   const pullRequests = {
@@ -49,6 +51,8 @@ const mocks = vi.hoisted(() => {
     merge: vi.fn(),
     listComments: vi.fn(),
     createComment: vi.fn(),
+    updateComment: vi.fn(),
+    deleteComment: vi.fn(),
   };
   const users = { get: vi.fn(), authenticated: vi.fn() };
   const threads = {
@@ -57,6 +61,8 @@ const mocks = vi.hoisted(() => {
     reply: vi.fn(),
     resolve: vi.fn(),
     unresolve: vi.fn(),
+    updateComment: vi.fn(),
+    deleteComment: vi.fn(),
   };
   const provider = {
     repos,
@@ -130,6 +136,8 @@ const toolNames = [
   "forges_issues_reactions",
   "forges_issues_events",
   "forges_issues_comments_create",
+  "forges_issues_comments_update",
+  "forges_issues_comments_delete",
   "forges_issues_fields",
   "forges_issues_create",
   "forges_issues_update",
@@ -149,6 +157,8 @@ const toolNames = [
   "forges_pull_requests_reactions",
   "forges_pull_requests_events",
   "forges_pull_requests_comments_create",
+  "forges_pull_requests_comments_update",
+  "forges_pull_requests_comments_delete",
   "forges_pull_requests_create",
   "forges_pull_requests_update",
   "forges_pull_requests_merge",
@@ -158,6 +168,8 @@ const toolNames = [
   "forges_threads_list",
   "forges_threads_get",
   "forges_threads_reply",
+  "forges_threads_comments_update",
+  "forges_threads_comments_delete",
   "forges_threads_resolve",
   "forges_threads_unresolve",
   "forges_local_inspect",
@@ -1295,6 +1307,73 @@ describe("Forges Pi extension", () => {
     expect(issue.details.result).toMatchObject({ id: "31" });
   });
 
+  it("shows the new comment body and edits it after Pi approval", async () => {
+    const confirm = vi.fn().mockResolvedValue(true);
+    mocks.issues.updateComment.mockResolvedValue({ id: "31", body: "Fixed in #44." });
+    const tool = requirePiTool(await registerPiTools(), "forges_issues_comments_update");
+
+    const result = await tool.execute(
+      "test",
+      { repo: "agntn/forges", number: 42, commentId: "31", body: "Fixed in #44." },
+      undefined,
+      undefined,
+      approvalPiContext(confirm),
+    );
+
+    expect(confirm).toHaveBeenCalledWith(
+      "Edit issue comment?",
+      [
+        "Repository  agntn/forges on GitHub",
+        "Number      #42",
+        "Comment     31",
+        "",
+        "New body",
+        "Fixed in #44.",
+      ].join("\n"),
+      { signal: undefined },
+    );
+    expect(mocks.issues.updateComment).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 42 },
+      { commentId: "31", body: "Fixed in #44." },
+    );
+    expect(result.details.result).toMatchObject({ id: "31", body: "Fixed in #44." });
+  });
+
+  it("names the thread comment it deletes and keeps it when Pi is declined", async () => {
+    const tool = requirePiTool(await registerPiTools(), "forges_threads_comments_delete");
+    const params = { repo: "agntn/forges", number: 5, threadId: "PRRT_1", commentId: "9001" };
+    const declined = vi.fn().mockResolvedValue(false);
+
+    await expect(
+      tool.execute("test", params, undefined, undefined, approvalPiContext(declined)),
+    ).rejects.toThrow("forges_threads_comments_delete was cancelled by the user");
+    expect(declined).toHaveBeenCalledWith(
+      "Delete review thread comment?",
+      [
+        "Repository  agntn/forges on GitHub",
+        "Number      #5",
+        "Thread      PRRT_1",
+        "Comment     9001",
+      ].join("\n"),
+      { signal: undefined },
+    );
+    expect(mocks.threads.deleteComment).not.toHaveBeenCalled();
+
+    const result = await tool.execute(
+      "test",
+      params,
+      undefined,
+      undefined,
+      approvalPiContext(vi.fn().mockResolvedValue(true)),
+    );
+
+    expect(mocks.threads.deleteComment).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges", number: 5 },
+      { threadId: "PRRT_1", commentId: "9001" },
+    );
+    expect(result.details.result).toEqual({ deleted: true, commentId: "9001" });
+  });
+
   it("fails closed when pull-request creation has no approval UI", async () => {
     const confirm = vi.fn();
     const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_create");
@@ -1767,14 +1846,20 @@ describe("Forges OMP extension", () => {
       forges_issues_sub_issues_add: true,
       forges_issues_sub_issues_remove: true,
       forges_issues_comments_create: true,
+      forges_issues_comments_update: true,
+      forges_issues_comments_delete: true,
       forges_pull_requests_create: true,
       forges_pull_requests_comments_create: true,
+      forges_pull_requests_comments_update: true,
+      forges_pull_requests_comments_delete: true,
       forges_pull_requests_update: true,
       forges_pull_requests_merge: true,
       forges_releases_create: true,
       forges_releases_update: true,
       forges_auth_reload: true,
       forges_threads_reply: true,
+      forges_threads_comments_update: true,
+      forges_threads_comments_delete: true,
       forges_threads_resolve: true,
       forges_threads_unresolve: true,
     };

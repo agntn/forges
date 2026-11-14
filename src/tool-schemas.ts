@@ -647,6 +647,20 @@ export function forgesToolSchemas() {
     body: Type.String({ description: "Comment body in the platform's Markdown", minLength: 1 }),
     account,
   });
+  const newCommentBody = Type.String({
+    description: "The whole new body in the platform's Markdown, which replaces the old one",
+    minLength: 1,
+  });
+  const updateCommentParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    commentId,
+    body: newCommentBody,
+    account,
+  });
+  const deleteCommentParameters = closed({ platform, owner, repo, number, commentId, account });
   const issueType = Type.Optional(
     Type.String({
       description:
@@ -823,6 +837,29 @@ export function forgesToolSchemas() {
     body: Type.String({ description: "Reply body", minLength: 1 }),
     account,
   });
+  const threadCommentId = Type.String({
+    description: "Id of one comment in the thread, as forges_threads_get lists them",
+    minLength: 1,
+  });
+  const updateThreadCommentParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    threadId,
+    commentId: threadCommentId,
+    body: newCommentBody,
+    account,
+  });
+  const deleteThreadCommentParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    threadId,
+    commentId: threadCommentId,
+    account,
+  });
 
   const localMergeParameters = closed({
     cwd: Type.String({ description: "Local checkout directory", minLength: 1 }),
@@ -932,6 +969,8 @@ export function forgesToolSchemas() {
     addSubIssueParameters,
     removeSubIssueParameters,
     createCommentParameters,
+    updateCommentParameters,
+    deleteCommentParameters,
     issuesFieldsParameters,
     createIssueParameters,
     updateIssueParameters,
@@ -944,6 +983,8 @@ export function forgesToolSchemas() {
     threadParameters,
     threadStateParameters,
     replyThreadParameters,
+    updateThreadCommentParameters,
+    deleteThreadCommentParameters,
   };
 }
 

@@ -157,6 +157,30 @@ function mergeApprovalMessage(params: Resolved<ForgesTools.MergePullRequestParam
   ].join("\n");
 }
 
+type CommentTarget = Resolved<ForgesTools.DeleteCommentParams> &
+  Partial<Pick<ForgesTools.UpdateThreadCommentParams, "threadId" | "body">>;
+
+/** An edit shows the new body whole, and a delete names the comment it takes away. */
+function commentApprovalMessage(params: CommentTarget): string {
+  return [
+    `Repository  ${approvalField(params.owner)}/${approvalField(params.repo)} on ${platformLabels[params.platform]}`,
+    ...accountLine(params.account),
+    `Number      #${params.number}`,
+    ...(params.threadId === undefined ? [] : [`Thread      ${approvalField(params.threadId)}`]),
+    `Comment     ${approvalField(params.commentId)}`,
+    ...(params.body === undefined
+      ? []
+      : ["", "New body", sanitizeApprovalText(params.body) || "(none)"]),
+  ].join("\n");
+}
+
+function commentConfirm(title: string): PiConfirm {
+  return async (input) => ({
+    title,
+    message: commentApprovalMessage(await resolved<ForgesTools.DeleteCommentParams>(input)),
+  });
+}
+
 /** Current source in development, the built package in distributions. */
 function fromCheckout(module: string): string {
   const source = new URL(`../../src/${module}.ts`, import.meta.url);
@@ -203,6 +227,12 @@ const confirm: Record<string, PiConfirm> = {
     title: "Merge pull request?",
     message: mergeApprovalMessage(await resolved<ForgesTools.MergePullRequestParams>(input)),
   }),
+  forges_issues_comments_update: commentConfirm("Edit issue comment?"),
+  forges_issues_comments_delete: commentConfirm("Delete issue comment?"),
+  forges_pull_requests_comments_update: commentConfirm("Edit pull request comment?"),
+  forges_pull_requests_comments_delete: commentConfirm("Delete pull request comment?"),
+  forges_threads_comments_update: commentConfirm("Edit review thread comment?"),
+  forges_threads_comments_delete: commentConfirm("Delete review thread comment?"),
 };
 
 function statusRenderers(name: string, title: string): PiRenderers {
@@ -225,7 +255,7 @@ function statusRenderers(name: string, title: string): PiRenderers {
   };
 }
 
-/** Registers the forges tools, with their status lines and the six approval dialogs. */
+/** Registers the forges tools, with their status lines and the approval dialogs. */
 export default async function forgesExtension(pi: ExtensionAPI): Promise<void> {
   const { forgesTools } = (await import(fromCheckout("tools"))) as typeof ForgesToolList;
   const tools = forgesTools();

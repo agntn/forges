@@ -155,6 +155,22 @@ describe("a provider built on nothing but a forges factory", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
+  it("edits and deletes a comment only under the thread it belongs to", async () => {
+    const { provider } = seeded();
+    const issue = { owner: "acme", repo: "widgets", number: 1 };
+    const [comment] = (await provider.issues.listComments(issue)).items;
+    const commentId = comment!.id;
+
+    await expect(
+      provider.pullRequests.deleteComment({ ...issue, number: 2 }, { commentId }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    const edited = await provider.issues.updateComment(issue, { commentId, body: "Same, fixed" });
+    await provider.issues.deleteComment(issue, { commentId });
+
+    expect(edited).toMatchObject({ id: commentId, body: "Same, fixed" });
+    expect((await provider.issues.listComments(issue)).items).toEqual([]);
+  });
+
   it("creates an issue", async () => {
     const { provider } = seeded();
 

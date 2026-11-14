@@ -4072,6 +4072,122 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("comment edits", () => {
+    const mr = { owner: "gitlab-org", repo: "gitlab-foss", number: 33 };
+    const discussionUrl = `/projects/278964/merge_requests/33/discussions/${glDiscussion.id}`;
+
+    /** Answers by route, so a cached project id cannot shift the queue. */
+    function route(responses: Record<string, unknown>) {
+      mocks.client.mockImplementation(async (request: unknown, options?: { method?: string }) => {
+        /* The discussion read goes through the GET cache, which hands the client { url }. */
+        const url = typeof request === "string" ? request : (request as { url: string }).url;
+        const key = options?.method === undefined ? url : `${options.method} ${url}`;
+        if (key in responses) return responses[key];
+        if (url.startsWith("/projects/gitlab-org")) return { id: 278964 };
+        throw new Error(`unexpected request ${key}`);
+      });
+    }
+
+    it("rewrites an issue note through forges once the issue owns it", async () => {
+      route({ "/projects/278964/issues/7/notes/2201": glNote });
+      forge.threads.updateComment.mockResolvedValueOnce({ raw: { ...glNote, body: "Fixed" } });
+
+      const comment = await gl.issues.updateComment(
+        { owner: "gitlab-org", repo: "gitlab-foss", number: 7 },
+        { commentId: "2201", body: "Fixed" },
+      );
+
+      expect(forge.threads.updateComment).toHaveBeenCalledWith(
+        {
+          forge: "gitlab",
+          instance: "gitlab.com",
+          thread: {
+            forge: "gitlab",
+            instance: "gitlab.com",
+            repo: repoRef(forge, { owner: "gitlab-org", name: "gitlab-foss" }),
+            kind: "issue",
+            number: "7",
+          },
+          id: "2201",
+        },
+        "Fixed",
+      );
+      expect(comment).toMatchObject({ id: "2201", body: "Fixed" });
+    });
+
+    it("sends a review discussion reply to the thread tools", async () => {
+      route({
+        "/projects/278964/merge_requests/33/notes/1129": {
+          ...glNote,
+          id: 1129,
+          type: "DiscussionNote",
+          resolvable: true,
+        },
+      });
+
+      await expect(
+        gl.pullRequests.updateComment(mr, { commentId: "1129", body: "Edited" }),
+      ).rejects.toMatchObject({
+        status: 400,
+        message: "Comment 1129 sits in a review thread: edit or delete it through threads",
+      });
+      expect(forge.threads.updateComment).not.toHaveBeenCalled();
+    });
+
+    it("keeps diff notes away from the conversation edit", async () => {
+      route({ "/projects/278964/merge_requests/33/notes/2203": glDiffNote });
+
+      await expect(gl.pullRequests.deleteComment(mr, { commentId: "2203" })).rejects.toThrow(
+        NotFoundError,
+      );
+      expect(forge.threads.deleteComment).not.toHaveBeenCalled();
+    });
+
+    it("rewrites a thread note on its discussion route and drops the cached discussion", async () => {
+      const edited = { ...glDiscussion.notes[0], body: "Extracted, thanks" };
+      route({ [discussionUrl]: glDiscussion, [`PUT ${discussionUrl}/notes/1126`]: edited });
+
+      const comment = await gl.threads.updateComment(mr, {
+        threadId: glDiscussion.id,
+        commentId: "1126",
+        body: "Extracted, thanks",
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(`${discussionUrl}/notes/1126`, {
+        method: "PUT",
+        body: { body: "Extracted, thanks" },
+      });
+      expect(mocks.invalidateCache).toHaveBeenCalledWith(mocks.client, { url: discussionUrl });
+      expect(comment).toEqual({
+        id: "1126",
+        body: "Extracted, thanks",
+        author: { login: "reviewer" },
+        url: "",
+        createdAt: "2024-03-12T09:00:00Z",
+      });
+    });
+
+    it("deletes a thread note on its discussion route", async () => {
+      route({ [discussionUrl]: glDiscussion, [`DELETE ${discussionUrl}/notes/1126`]: "" });
+
+      await gl.threads.deleteComment(mr, { threadId: glDiscussion.id, commentId: "1126" });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(`${discussionUrl}/notes/1126`, {
+        method: "DELETE",
+      });
+      expect(mocks.invalidateCache).toHaveBeenCalledWith(mocks.client, { url: discussionUrl });
+    });
+
+    it("deletes nothing when the note sits in another discussion", async () => {
+      route({ [discussionUrl]: glDiscussion });
+
+      await expect(
+        gl.threads.deleteComment(mr, { threadId: glDiscussion.id, commentId: "2201" }),
+      ).rejects.toMatchObject({ status: 404, message: "Comment not found: 2201" });
+      expect(mocks.client).not.toHaveBeenCalledWith(expect.any(String), { method: "DELETE" });
+    });
+  });
+
   describe("threads", () => {
     it("lists only resolvable merge-request discussions", async () => {
       mockProjectResolve();
