@@ -109,6 +109,26 @@ describe("check wait", () => {
     expect(note).toBeUndefined();
   });
 
+  it("sits out the grace window when nothing reports a last change", async () => {
+    const read = polls([page([])]);
+
+    const { page: settled } = await run(waitForChecks(read, { waitSeconds: 300 }));
+
+    expect(settled.wait).toMatchObject({ settled: true, noChecks: "waited" });
+    expect(settled.wait.waitedMs).toBeGreaterThanOrEqual(30_000);
+    expect(settled.wait.waitedMs).toBeLessThan(60_000);
+  });
+
+  it("names a commit, not a pull request, when its checks outlast the budget", async () => {
+    const read = polls([page([check("deploy", true)])]);
+
+    const { note } = await run(waitForChecks(read, { waitSeconds: 10, subject: "commit" }));
+
+    expect(note).toBe(
+      "Checks were still running when the 10s budget ran out: deploy. Call again with waitSeconds to keep waiting; do not treat the commit as finished.",
+    );
+  });
+
   it("starts the window over when the pull request changes during it", async () => {
     const read = polls([page([])]);
     const before = new Date(Date.now()).toISOString();

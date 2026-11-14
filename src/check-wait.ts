@@ -61,7 +61,10 @@ export interface CheckReadOptions {
 /** How long to wait, and what tells a quiet pull request from a fresh push. */
 export interface CheckWaitOptions extends CheckReadOptions {
   waitSeconds: number;
-  readLastChange: ReadLastChange;
+  /** Without it the wait itself counts as the last change, so an empty list always sits out the grace window. */
+  readLastChange?: ReadLastChange;
+  /** What the notes tell the caller not to treat as finished yet. */
+  subject?: "pull request" | "commit";
   /** The host's cancel: an aborted wait rejects with its reason instead of polling on. */
   signal?: AbortSignal;
   /** The host's progress, told how much of the budget has gone so a quiet wait stays alive. */
@@ -161,17 +164,17 @@ function pendingText(pending: string[]): string {
 
 function waitNote(
   wait: CheckWait,
-  scan: { examinedEveryPage: boolean; waitSeconds: number },
+  scan: { examinedEveryPage: boolean; waitSeconds: number; subject: string },
 ): string | undefined {
-  const { examinedEveryPage, waitSeconds } = scan;
+  const { examinedEveryPage, waitSeconds, subject } = scan;
   if (wait.settled) return undefined;
   if (!examinedEveryPage) {
-    return `The wait stopped after ${MAX_SCAN_PAGES} pages of checks without reaching the end of the set; read the remaining pages before treating this pull request as finished.`;
+    return `The wait stopped after ${MAX_SCAN_PAGES} pages of checks without reaching the end of the set; read the remaining pages before treating this ${subject} as finished.`;
   }
   if (wait.pending.length === 0) {
-    return `No check has shown up for this head within the ${waitSeconds}s budget, which is too soon to call it final: CI may still be starting. Call again with waitSeconds; do not treat the pull request as finished.`;
+    return `No check has shown up for this head within the ${waitSeconds}s budget, which is too soon to call it final: CI may still be starting. Call again with waitSeconds; do not treat the ${subject} as finished.`;
   }
-  return `Checks were still running when the ${waitSeconds}s budget ran out: ${pendingText(wait.pending)}. Call again with waitSeconds to keep waiting; do not treat the pull request as finished.`;
+  return `Checks were still running when the ${waitSeconds}s budget ran out: ${pendingText(wait.pending)}. Call again with waitSeconds to keep waiting; do not treat the ${subject} as finished.`;
 }
 
 /** Forges answer with lowercase hex, while a caller may pass the same SHA in capitals. */
@@ -240,10 +243,13 @@ async function pollChecks(
   read: ReadCheckPage,
   options: CheckWaitOptions,
 ): Promise<CheckWaitResult> {
-  const { cursor: requestedCursor, waitSeconds, readLastChange, expectedHead, signal } = options;
+  const { cursor: requestedCursor, waitSeconds, expectedHead, signal } = options;
+  const subject = options.subject ?? "pull request";
   const readPage = untilAborted(read, signal);
   const budgetMs = Math.min(waitSeconds, MAX_WAIT_SECONDS) * 1_000;
   const startedAt = performance.now();
+  const calledAt = new Date().toISOString();
+  const readLastChange = options.readLastChange ?? (() => Promise.resolve(calledAt));
   let polls = 0;
   let emptyRun: EmptyRun | undefined;
 
@@ -283,7 +289,7 @@ async function pollChecks(
       if (noChecks) wait.noChecks = noChecks;
       return {
         page: { ...scan.requested, wait },
-        note: waitNote(wait, { examinedEveryPage: scan.examinedEveryPage, waitSeconds }),
+        note: waitNote(wait, { examinedEveryPage: scan.examinedEveryPage, waitSeconds, subject }),
       };
     }
 

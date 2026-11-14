@@ -283,6 +283,19 @@ export function forgesToolSchemas() {
     perPage,
   });
   const commitParameters = closed({ platform: gitPlatform, owner, repo, sha });
+  /**
+   * The waiting mode of the check listing. The bound repeats
+   * `MAX_WAIT_SECONDS` from `src/poll.ts`, which this file cannot
+   * import: it ships to npm and `src/` does not.
+   */
+  const waitSeconds = Type.Optional(
+    Type.Integer({
+      description:
+        "Wait up to this many seconds for every check to conclude, instead of reading the current state once",
+      minimum: 1,
+      maximum: 300,
+    }),
+  );
   const listCommitChecksParameters = closed({
     platform,
     owner,
@@ -294,6 +307,7 @@ export function forgesToolSchemas() {
     }),
     cursor,
     perPage,
+    waitSeconds,
   });
   const commitPatchParameters = closed({
     platform,
@@ -481,19 +495,6 @@ export function forgesToolSchemas() {
     ),
   });
   const listCommentsParameters = closed({ platform, owner, repo, number, cursor, perPage });
-  /**
-   * The waiting mode of the check listing. The bound repeats
-   * `MAX_WAIT_SECONDS` from `src/poll.ts`, which this file cannot
-   * import: it ships to npm and `src/` does not.
-   */
-  const waitSeconds = Type.Optional(
-    Type.Integer({
-      description:
-        "Wait up to this many seconds for every check to conclude, instead of reading the current state once",
-      minimum: 1,
-      maximum: 300,
-    }),
-  );
   const listPullRequestFilesParameters = listCommentsParameters;
   const listPullRequestChecksParameters = closed({
     platform,

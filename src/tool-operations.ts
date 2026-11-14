@@ -636,7 +636,8 @@ export type ReadCommitPatchParams = RepositoryParams & CommitPatchOptions & { sh
 
 export type ListCommitsParams = RepositoryParams & ListCommitOptions;
 
-export type ListCommitChecksParams = RepositoryParams & ListCommitChecksOptions & { ref: string };
+export type ListCommitChecksParams = RepositoryParams &
+  ListCommitChecksOptions & { ref: string; waitSeconds?: number };
 
 export type CompareCommitsParams = RepositoryParams &
   CompareCommitsOptions & { base: string; head: string; files?: boolean };
@@ -1252,12 +1253,43 @@ export async function getCommit(args: GetCommitParams): Promise<ForgesToolResult
 
 export async function listCommitChecks(
   args: ListCommitChecksParams,
-): Promise<ForgesToolResult<PageResult<PullRequestCheck>>> {
+  options: CallOptions = {},
+): Promise<ForgesToolResult<PageResult<PullRequestCheck> | (WaitedCheckPage & { sha: string })>> {
   const params = repositoryTarget(args);
-  const options: ListCommitChecksOptions = { cursor: params.cursor, perPage: params.perPage };
   const provider = await readProvider(params.platform);
-  const checks = await provider.commits.listChecks(repoOf(params), { ref: params.ref, ...options });
-  return result(checks, { platform: params.platform });
+  if (params.waitSeconds === undefined) {
+    const page: ListCommitChecksOptions = { cursor: params.cursor, perPage: params.perPage };
+    const checks = await provider.commits.listChecks(repoOf(params), { ref: params.ref, ...page });
+    return result(checks, { platform: params.platform });
+  }
+
+  const sha = await commitAt(provider, params);
+  const readPage = (cursor: string | undefined) =>
+    provider.commits.listChecks(repoOf(params), { ref: sha, cursor, perPage: params.perPage });
+  const waited = await waitForChecks(readPage, {
+    cursor: params.cursor,
+    waitSeconds: params.waitSeconds,
+    subject: "commit",
+    signal: options.signal,
+    progress: options.progress,
+  });
+  return result({ ...waited.page, sha }, { platform: params.platform, note: waited.note });
+}
+
+/** Pins a branch or tag to the commit it names now, so a later push can't swap the target mid wait. */
+async function commitAt(
+  provider: Provider,
+  params: ListCommitChecksParams & RepositoryTarget,
+): Promise<string> {
+  const { items } = await provider.commits.list(repoOf(params), { ref: params.ref, perPage: 1 });
+  const commit = items[0];
+  if (commit === undefined) {
+    throw new ForgesError(`No commit found for ref ${quoted(params.ref)}`, {
+      status: 404,
+      platform: params.platform,
+    });
+  }
+  return commit.sha;
 }
 
 export async function readCommitPatch(
