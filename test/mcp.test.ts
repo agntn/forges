@@ -1116,6 +1116,7 @@ describe("forges MCP server", () => {
       ],
       hasNextPage: false,
     };
+    mocks.commits.list.mockResolvedValue({ items: [{ sha: "a585fda" }] });
     mocks.commits.listChecks.mockResolvedValue(checks);
     const client = await connectTestClient();
 
@@ -1130,11 +1131,44 @@ describe("forges MCP server", () => {
       },
     });
 
+    expect(mocks.commits.list).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { ref: "feat/commit-checks", perPage: 1 },
+    );
     expect(mocks.commits.listChecks).toHaveBeenCalledWith(
       { owner: "agntn", repo: "forges" },
-      { ref: "feat/commit-checks", cursor: undefined, perPage: 10 },
+      { ref: "a585fda", cursor: undefined, perPage: 10 },
     );
-    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: checks });
+    expect(JSON.parse(text(response.content))).toEqual({
+      platform: "github",
+      result: { ...checks, sha: "a585fda" },
+    });
+  });
+
+  it("reads a full SHA without resolving it first", async () => {
+    const sha = "c433f6ba3d9e12cf07863137daeb458e35045719";
+    mocks.commits.listChecks.mockResolvedValue({ items: [], hasNextPage: false });
+
+    const { details } = await listCommitChecks({ repo: "agntn/forges", ref: sha });
+
+    expect(mocks.commits.list).not.toHaveBeenCalled();
+    expect(details.result).toEqual({ items: [], hasNextPage: false, sha });
+  });
+
+  it("pages a branch at the same commit with or without a wait", async () => {
+    mocks.commits.list.mockResolvedValue({ items: [{ sha: "2393ebe" }] });
+    mocks.commits.listChecks.mockResolvedValue({ items: [], nextCursor: "page-2" });
+
+    await listCommitChecks({ repo: "agntn/browsers", ref: "main", cursor: "page-2" });
+    await listCommitChecks({
+      repo: "agntn/browsers",
+      ref: "main",
+      cursor: "page-2",
+      waitSeconds: 30,
+    });
+
+    const refs = mocks.commits.listChecks.mock.calls.map(([, request]) => request.ref);
+    expect(new Set(refs)).toEqual(new Set(["2393ebe"]));
   });
 
   it("waits on the commit a branch names when the call starts", async () => {

@@ -38,6 +38,7 @@ import {
   type ItemBodySlice,
 } from "./body-window.ts";
 import { lazy } from "../extensions/shared/lazy.ts";
+import { isCommitSha } from "./repository-contents.ts";
 import type { ForgesPlatform } from "./tool-schemas.ts";
 import type { Provider } from "./provider.ts";
 import type {
@@ -1254,18 +1255,17 @@ export async function getCommit(args: GetCommitParams): Promise<ForgesToolResult
 export async function listCommitChecks(
   args: ListCommitChecksParams,
   options: CallOptions = {},
-): Promise<ForgesToolResult<PageResult<PullRequestCheck> | (WaitedCheckPage & { sha: string })>> {
+): Promise<ForgesToolResult<(PageResult<PullRequestCheck> | WaitedCheckPage) & { sha: string }>> {
   const params = repositoryTarget(args);
   const provider = await readProvider(params.platform);
-  if (params.waitSeconds === undefined) {
-    const page: ListCommitChecksOptions = { cursor: params.cursor, perPage: params.perPage };
-    const checks = await provider.commits.listChecks(repoOf(params), { ref: params.ref, ...page });
-    return result(checks, { platform: params.platform });
-  }
-
-  const sha = await commitAt(provider, params);
+  const sha = isCommitSha(params.ref) ? params.ref : await commitAt(provider, params);
   const readPage = (cursor: string | undefined) =>
     provider.commits.listChecks(repoOf(params), { ref: sha, cursor, perPage: params.perPage });
+  if (params.waitSeconds === undefined) {
+    const checks = await readPage(params.cursor);
+    return result({ ...checks, sha }, { platform: params.platform });
+  }
+
   const waited = await waitForChecks(readPage, {
     cursor: params.cursor,
     waitSeconds: params.waitSeconds,
@@ -1276,7 +1276,7 @@ export async function listCommitChecks(
   return result({ ...waited.page, sha }, { platform: params.platform, note: waited.note });
 }
 
-/** Pins a branch or tag to the commit it names now, so a later push can't swap the target mid wait. */
+/** Pins a branch or tag to one commit, so its pages and waits share a cursor scope and a push can't swap it. */
 async function commitAt(
   provider: Provider,
   params: ListCommitChecksParams & RepositoryTarget,
