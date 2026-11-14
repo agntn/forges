@@ -38,6 +38,7 @@ import {
   type ItemBodySlice,
 } from "./body-window.ts";
 import { lazy } from "../extensions/shared/lazy.ts";
+import { isCommitSha } from "./repository-contents.ts";
 import type { ForgesPlatform } from "./tool-schemas.ts";
 import type { Provider } from "./provider.ts";
 import type {
@@ -636,7 +637,8 @@ export type ReadCommitPatchParams = RepositoryParams & CommitPatchOptions & { sh
 
 export type ListCommitsParams = RepositoryParams & ListCommitOptions;
 
-export type ListCommitChecksParams = RepositoryParams & ListCommitChecksOptions & { ref: string };
+export type ListCommitChecksParams = RepositoryParams &
+  ListCommitChecksOptions & { ref: string; waitSeconds?: number };
 
 export type CompareCommitsParams = RepositoryParams &
   CompareCommitsOptions & { base: string; head: string; files?: boolean };
@@ -1252,12 +1254,42 @@ export async function getCommit(args: GetCommitParams): Promise<ForgesToolResult
 
 export async function listCommitChecks(
   args: ListCommitChecksParams,
-): Promise<ForgesToolResult<PageResult<PullRequestCheck>>> {
+  options: CallOptions = {},
+): Promise<ForgesToolResult<(PageResult<PullRequestCheck> | WaitedCheckPage) & { sha: string }>> {
   const params = repositoryTarget(args);
-  const options: ListCommitChecksOptions = { cursor: params.cursor, perPage: params.perPage };
   const provider = await readProvider(params.platform);
-  const checks = await provider.commits.listChecks(repoOf(params), { ref: params.ref, ...options });
-  return result(checks, { platform: params.platform });
+  const sha = isCommitSha(params.ref) ? params.ref : await commitAt(provider, params);
+  const readPage = (cursor: string | undefined) =>
+    provider.commits.listChecks(repoOf(params), { ref: sha, cursor, perPage: params.perPage });
+  if (params.waitSeconds === undefined) {
+    const checks = await readPage(params.cursor);
+    return result({ ...checks, sha }, { platform: params.platform });
+  }
+
+  const waited = await waitForChecks(readPage, {
+    cursor: params.cursor,
+    waitSeconds: params.waitSeconds,
+    subject: "commit",
+    signal: options.signal,
+    progress: options.progress,
+  });
+  return result({ ...waited.page, sha }, { platform: params.platform, note: waited.note });
+}
+
+/** Pins a branch or tag to one commit, so its pages and waits share a cursor scope and a push can't swap it. */
+async function commitAt(
+  provider: Provider,
+  params: ListCommitChecksParams & RepositoryTarget,
+): Promise<string> {
+  const { items } = await provider.commits.list(repoOf(params), { ref: params.ref, perPage: 1 });
+  const commit = items[0];
+  if (commit === undefined) {
+    throw new ForgesError(`No commit found for ref ${quoted(params.ref)}`, {
+      status: 404,
+      platform: params.platform,
+    });
+  }
+  return commit.sha;
 }
 
 export async function readCommitPatch(
