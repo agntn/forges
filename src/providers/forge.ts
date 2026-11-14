@@ -11,6 +11,7 @@ import { sha256 } from "@agntn/hashes/sha2";
 import type {
   Actor,
   Comment as ForgeComment,
+  CommentRef,
   Cursor,
   ForgeListing,
   ForgeProvider as Forge,
@@ -102,6 +103,7 @@ import type {
   Thread,
   ThreadComment,
   ThreadEvent,
+  UpdateCommentInput,
   UpdateReleaseInput,
   User,
 } from "../types.ts";
@@ -707,6 +709,63 @@ export abstract class ForgeBackedProvider<
     { commentId }: { commentId: string },
   ): Promise<Comment> {
     return this.#findComment({ ...pull, kind: "pull_request" }, commentId);
+  }
+
+  protected override updateIssueComment(
+    issue: IssueRef,
+    input: UpdateCommentInput & { commentId: string },
+  ): Promise<Comment> {
+    return this.#updateComment({ ...issue, kind: "issue" }, input);
+  }
+
+  protected override updatePullRequestComment(
+    pull: IssueRef,
+    input: UpdateCommentInput & { commentId: string },
+  ): Promise<Comment> {
+    return this.#updateComment({ ...pull, kind: "pull_request" }, input);
+  }
+
+  protected override deleteIssueComment(
+    issue: IssueRef,
+    { commentId }: { commentId: string },
+  ): Promise<void> {
+    return this.forgeCall((forge) =>
+      forge.threads.deleteComment(this.#commentRef(forge, { ...issue, kind: "issue", commentId })),
+    );
+  }
+
+  protected override deletePullRequestComment(
+    pull: IssueRef,
+    { commentId }: { commentId: string },
+  ): Promise<void> {
+    return this.forgeCall((forge) =>
+      forge.threads.deleteComment(
+        this.#commentRef(forge, { ...pull, kind: "pull_request", commentId }),
+      ),
+    );
+  }
+
+  #updateComment(
+    thread: KindedThread,
+    { commentId, body }: Readonly<UpdateCommentInput & { commentId: string }>,
+  ): Promise<Comment> {
+    return this.forgeCall(async (forge) => {
+      const comment = await forge.threads.updateComment(
+        this.#commentRef(forge, { ...thread, commentId }),
+        body,
+      );
+      return this.mapComment(this.forgePayload(comment) as never);
+    });
+  }
+
+  #commentRef(forge: Forge, target: KindedThread & { commentId: string }): CommentRef {
+    const { commentId, ...thread } = target;
+    return {
+      forge: forge.forge,
+      instance: forge.instance,
+      thread: this.threadRef(forge, thread),
+      id: commentId,
+    };
   }
 
   /** Searched in the thread's own comments: some forges read one by id alone, from any thread. */

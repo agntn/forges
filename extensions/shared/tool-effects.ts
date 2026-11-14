@@ -5,6 +5,7 @@ export type ToolEffect =
   | "remoteCreate"
   | "remoteUpdate"
   | "remoteState"
+  | "remoteDelete"
   | "credentialReload";
 
 /** Every agent tool declares its effect here, including local operations. */
@@ -38,6 +39,8 @@ export const toolEffects = {
   forges_issues_reactions: "hostedRead",
   forges_issues_events: "hostedRead",
   forges_issues_comments_create: "remoteCreate",
+  forges_issues_comments_update: "remoteUpdate",
+  forges_issues_comments_delete: "remoteDelete",
   forges_issues_fields: "hostedRead",
   forges_issues_create: "remoteCreate",
   forges_issues_update: "remoteUpdate",
@@ -57,6 +60,8 @@ export const toolEffects = {
   forges_pull_requests_reactions: "hostedRead",
   forges_pull_requests_events: "hostedRead",
   forges_pull_requests_comments_create: "remoteCreate",
+  forges_pull_requests_comments_update: "remoteUpdate",
+  forges_pull_requests_comments_delete: "remoteDelete",
   forges_pull_requests_create: "remoteCreate",
   forges_pull_requests_update: "remoteUpdate",
   forges_pull_requests_merge: "remoteUpdate",
@@ -66,6 +71,8 @@ export const toolEffects = {
   forges_threads_list: "hostedRead",
   forges_threads_get: "hostedRead",
   forges_threads_reply: "remoteCreate",
+  forges_threads_comments_update: "remoteUpdate",
+  forges_threads_comments_delete: "remoteDelete",
   forges_threads_resolve: "remoteState",
   forges_threads_unresolve: "remoteState",
   forges_local_inspect: "localRead",

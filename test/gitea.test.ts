@@ -4326,6 +4326,95 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("comment edits", () => {
+    const pull = { owner: "testowner", repo: "test-repo", number: 5 };
+    const commentPath = "/repos/testowner/test-repo/issues/comments/11";
+
+    function reviewScan() {
+      mockedRawFetch
+        .mockResolvedValueOnce({
+          data: [{ id: 1, comments_count: 1 }],
+          headers: makeHeaders(),
+          status: 200,
+        })
+        .mockResolvedValueOnce({
+          data: [giteaReviewComment({ id: 11 })],
+          headers: makeHeaders(),
+          status: 200,
+        });
+    }
+
+    it("rewrites an issue comment through forges once the issue owns it", async () => {
+      mockClient.mockResolvedValueOnce(giteaComment());
+      forge.threads.updateComment.mockResolvedValueOnce({
+        raw: giteaComment({ body: "Fixed in 1.22.1" }),
+      });
+
+      const comment = await provider.issues.updateComment(
+        { owner: "testowner", repo: "test-repo", number: 1 },
+        { commentId: "21", body: "Fixed in 1.22.1" },
+      );
+
+      expect(forge.threads.updateComment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "21",
+          thread: expect.objectContaining({ kind: "issue", number: "1" }),
+        }),
+        "Fixed in 1.22.1",
+      );
+      expect(comment.body).toBe("Fixed in 1.22.1");
+    });
+
+    it("keeps a review comment away from the conversation edit", async () => {
+      mockClient.mockResolvedValueOnce(undefined);
+
+      await expect(
+        provider.pullRequests.updateComment(pull, { commentId: "11", body: "Edited" }),
+      ).rejects.toMatchObject({ status: 404, message: "Comment not found: 11" });
+      expect(forge.threads.updateComment).not.toHaveBeenCalled();
+    });
+
+    it("rewrites a review comment on the issues comment route", async () => {
+      reviewScan();
+      mockClient.mockResolvedValueOnce(giteaComment({ id: 11, body: "Renamed it" }));
+
+      const comment = await provider.threads.updateComment(pull, {
+        threadId: "11",
+        commentId: "11",
+        body: "Renamed it",
+      });
+
+      expect(mockClient).toHaveBeenLastCalledWith(commentPath, {
+        method: "PATCH",
+        body: { body: "Renamed it" },
+      });
+      expect(comment).toMatchObject({ id: "11", body: "Renamed it" });
+    });
+
+    it("deletes a review comment once reading it back finds it gone", async () => {
+      reviewScan();
+      mockClient.mockResolvedValueOnce(undefined).mockRejectedValueOnce(makeFetchError(404));
+
+      await provider.threads.deleteComment(pull, { threadId: "11", commentId: "11" });
+
+      expect(mockClient).toHaveBeenNthCalledWith(1, commentPath, { method: "DELETE" });
+      expect(mockClient).toHaveBeenNthCalledWith(2, commentPath);
+    });
+
+    it("reports a review comment that Gitea before 1.25 kept", async () => {
+      reviewScan();
+      mockClient.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined);
+
+      await expect(
+        provider.threads.deleteComment(pull, { threadId: "11", commentId: "11" }),
+      ).rejects.toMatchObject({
+        status: 501,
+        message:
+          "Gitea kept review comment 11 after deleting it. Gitea 1.25 or later deletes review comments",
+      });
+    });
+  });
+
   describe("threads", () => {
     it("lists each review comment as its own thread", async () => {
       mockedRawFetch

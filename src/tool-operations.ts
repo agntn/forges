@@ -783,6 +783,16 @@ export interface GetCommentParams extends RepositoryParams {
 
 export type CreateCommentParams = GetRepositoryItemParams & AccountParams & CreateCommentInput;
 
+export type UpdateCommentParams = CreateCommentParams & { commentId: string };
+
+export type DeleteCommentParams = GetCommentParams & AccountParams;
+
+/** A delete gets nothing back from the forge, so the answer names what is gone. */
+export interface CommentDeletion {
+  deleted: true;
+  commentId: string;
+}
+
 export interface GetUserParams extends PlatformParams {
   username: string;
 }
@@ -1482,6 +1492,32 @@ export async function createIssueComment(
   });
 }
 
+export async function updateIssueComment(
+  args: UpdateCommentParams,
+): Promise<ForgesToolResult<Comment>> {
+  const params = repositoryTarget(args);
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform, params.account);
+    const comment = await provider.issues.updateComment(issueOf(params), {
+      commentId: params.commentId,
+      body: params.body,
+    });
+    return result(comment, { platform: params.platform });
+  });
+}
+
+export async function deleteIssueComment(
+  args: DeleteCommentParams,
+): Promise<ForgesToolResult<CommentDeletion>> {
+  const params = repositoryTarget(args);
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform, params.account);
+    const { commentId } = params;
+    await provider.issues.deleteComment(issueOf(params), { commentId });
+    return result({ deleted: true, commentId }, { platform: params.platform });
+  });
+}
+
 function reactionListOptions(params: ListReactionsParams): ListReactionOptions {
   return { commentId: params.commentId, cursor: params.cursor, perPage: params.perPage };
 }
@@ -1852,6 +1888,32 @@ export async function createPullRequestComment(
   });
 }
 
+export async function updatePullRequestComment(
+  args: UpdateCommentParams,
+): Promise<ForgesToolResult<Comment>> {
+  const params = repositoryTarget(args);
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform, params.account);
+    const comment = await provider.pullRequests.updateComment(issueOf(params), {
+      commentId: params.commentId,
+      body: params.body,
+    });
+    return result(comment, { platform: params.platform });
+  });
+}
+
+export async function deletePullRequestComment(
+  args: DeleteCommentParams,
+): Promise<ForgesToolResult<CommentDeletion>> {
+  const params = repositoryTarget(args);
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform, params.account);
+    const { commentId } = params;
+    await provider.pullRequests.deleteComment(issueOf(params), { commentId });
+    return result({ deleted: true, commentId }, { platform: params.platform });
+  });
+}
+
 export async function listPullRequestReactions(
   args: ListPullRequestReactionsParams,
   options: CallOptions = {},
@@ -2031,6 +2093,10 @@ export type ThreadStateParams = GetThreadParams & AccountParams;
 
 export type ReplyThreadParams = ThreadStateParams & ReplyThreadInput;
 
+export type UpdateThreadCommentParams = ReplyThreadParams & { commentId: string };
+
+export type DeleteThreadCommentParams = ThreadStateParams & { commentId: string };
+
 function summarizeThreadPage(page: PageResult<Thread>): PageResult<Thread> {
   return {
     ...page,
@@ -2082,6 +2148,33 @@ export async function replyToThread(
       body: params.body,
     });
     return result(comment, { platform: params.platform });
+  });
+}
+
+export async function updateThreadComment(
+  args: UpdateThreadCommentParams,
+): Promise<ForgesToolResult<ThreadComment>> {
+  const params = repositoryTarget(args);
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform, params.account);
+    const comment = await provider.threads.updateComment(issueOf(params), {
+      threadId: params.threadId,
+      commentId: params.commentId,
+      body: params.body,
+    });
+    return result(comment, { platform: params.platform });
+  });
+}
+
+export async function deleteThreadComment(
+  args: DeleteThreadCommentParams,
+): Promise<ForgesToolResult<CommentDeletion>> {
+  const params = repositoryTarget(args);
+  return withCredentialOperation(params.platform, async () => {
+    const provider = await authenticatedProvider(params.platform, params.account);
+    const { threadId, commentId } = params;
+    await provider.threads.deleteComment(issueOf(params), { threadId, commentId });
+    return result({ deleted: true, commentId }, { platform: params.platform });
   });
 }
 

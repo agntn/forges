@@ -2454,6 +2454,139 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("comment edits", () => {
+    const issue = { owner: "octocat", repo: "hello-world", number: 42 };
+    const pull = { owner: "octocat", repo: "hello-world", number: 99 };
+    const thread = (kind: string, number: string) => ({
+      forge: "github",
+      instance: "github.com",
+      repo: repoRef(forge, { owner: "octocat", name: "hello-world" }),
+      kind,
+      number,
+    });
+    const reviewComment = {
+      id: 9001,
+      body: "Please fix this, thanks",
+      user: { login: "reviewer" },
+      html_url: "https://github.com/octocat/hello-world/pull/99#discussion_r9001",
+      created_at: "2024-02-03T10:00:00Z",
+    };
+
+    it("rewrites an issue comment through forges once the issue owns it", async () => {
+      mocks.client.mockResolvedValueOnce(ghComment);
+      forge.threads.updateComment.mockResolvedValueOnce({ raw: { ...ghComment, body: "Fixed" } });
+
+      const comment = await gh.issues.updateComment(issue, { commentId: "3001", body: "Fixed" });
+
+      expect(mocks.client).toHaveBeenCalledWith("/repos/octocat/hello-world/issues/comments/3001");
+      expect(forge.threads.updateComment).toHaveBeenCalledWith(
+        { forge: "github", instance: "github.com", thread: thread("issue", "42"), id: "3001" },
+        "Fixed",
+      );
+      expect(comment).toMatchObject({ id: "3001", body: "Fixed" });
+    });
+
+    it("leaves a comment of another issue alone", async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...ghComment,
+        issue_url: "https://api.github.com/repos/octocat/hello-world/issues/7",
+      });
+
+      await expect(
+        gh.issues.updateComment(issue, { commentId: "3001", body: "Fixed" }),
+      ).rejects.toThrow(NotFoundError);
+      expect(forge.threads.updateComment).not.toHaveBeenCalled();
+    });
+
+    it("refuses a blank body before any request", async () => {
+      await expect(
+        gh.pullRequests.updateComment(pull, { commentId: "3001", body: " \n" }),
+      ).rejects.toMatchObject({ status: 400, message: "Comment body must not be empty" });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("refuses a bare comment id before any request", async () => {
+      await expect(
+        Reflect.apply(gh.issues.deleteComment, gh.issues, [issue, "3001"]),
+      ).rejects.toThrow(
+        new TypeError("issues.deleteComment takes { commentId } as its second argument"),
+      );
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("deletes a pull request conversation comment as a pull request comment", async () => {
+      mocks.client.mockResolvedValueOnce({
+        ...ghComment,
+        issue_url: "https://api.github.com/repos/octocat/hello-world/issues/99",
+      });
+      forge.threads.deleteComment.mockResolvedValueOnce(undefined);
+
+      await gh.pullRequests.deleteComment(pull, { commentId: "3001" });
+
+      expect(forge.threads.deleteComment).toHaveBeenCalledWith({
+        forge: "github",
+        instance: "github.com",
+        thread: thread("pull_request", "99"),
+        id: "3001",
+      });
+    });
+
+    it("deletes nothing when the comment belongs to another pull request", async () => {
+      mocks.client.mockResolvedValueOnce(ghComment);
+
+      await expect(gh.pullRequests.deleteComment(pull, { commentId: "3001" })).rejects.toThrow(
+        NotFoundError,
+      );
+      expect(forge.threads.deleteComment).not.toHaveBeenCalled();
+    });
+
+    it("rewrites a review thread comment on the review comments route", async () => {
+      mocks.client
+        .mockResolvedValueOnce({ data: { node: ghThreadNode } })
+        .mockResolvedValueOnce({ ...reviewComment, body: "Edited" });
+
+      const comment = await gh.threads.updateComment(pull, {
+        threadId: "PRRT_kwDOA",
+        commentId: "9001",
+        body: "Edited",
+      });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(
+        "/repos/octocat/hello-world/pulls/comments/9001",
+        { method: "PATCH", body: { body: "Edited" } },
+      );
+      expect(comment).toEqual({
+        id: "9001",
+        body: "Edited",
+        author: { login: "reviewer" },
+        url: "https://github.com/octocat/hello-world/pull/99#discussion_r9001",
+        createdAt: "2024-02-03T10:00:00Z",
+      });
+    });
+
+    it("deletes a review thread comment on the review comments route", async () => {
+      mocks.client
+        .mockResolvedValueOnce({ data: { node: ghThreadNode } })
+        .mockResolvedValueOnce("");
+
+      await gh.threads.deleteComment(pull, { threadId: "PRRT_kwDOA", commentId: "9001" });
+
+      expect(mocks.client).toHaveBeenLastCalledWith(
+        "/repos/octocat/hello-world/pulls/comments/9001",
+        { method: "DELETE" },
+      );
+    });
+
+    it("deletes nothing when the comment sits outside the thread", async () => {
+      mocks.client.mockResolvedValueOnce({ data: { node: ghThreadNode } });
+
+      await expect(
+        gh.threads.deleteComment(pull, { threadId: "PRRT_kwDOA", commentId: "9002" }),
+      ).rejects.toMatchObject({ status: 404, message: "Comment not found: 9002" });
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("events", () => {
     const thread = { forge: "github", instance: "github.com" } as const;
     const forgesRepo = { ...thread, owner: "agntn", name: "forges" };

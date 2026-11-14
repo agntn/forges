@@ -25,6 +25,7 @@ import { issueReferenceSource, type ReferenceSource } from "./forge-model.ts";
 import { rawFetch } from "../http.ts";
 import { buildPageResult, parseLinkHeader, slicePage } from "../pagination.ts";
 import {
+  FetchError,
   ForgesError,
   normalizeError,
   normalizeMergeError,
@@ -101,6 +102,7 @@ import type {
   Thread,
   ThreadComment,
   ThreadEvent,
+  UpdateCommentInput,
   UpdateIssueInput,
   UpdatePullRequestInput,
   MergePullRequestInput,
@@ -399,6 +401,11 @@ interface GiteaReaction {
   user: { login: string } | null;
   content: string;
   created_at: string;
+}
+
+/** Gitea keys every comment, review comments too, by repository and id alone. */
+function issueCommentPath({ owner, repo }: RepoRef, commentId: string): string {
+  return `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/comments/${encodePathSegment(commentId, "Comment id")}`;
 }
 
 function mapReaction(raw: GiteaReaction): Reaction {
@@ -2014,16 +2021,20 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
    * share the index space with pulls, so either one matching the requested
    * number passes; anything else answers 404 like it does on GitLab. A
    * payload carrying neither URL skips the check, because rejecting it would
-   * fail every read against a server that omits the association.
+   * fail every read against a server that omits the association. A review
+   * comment comes back as 204 with no body and answers 404 too.
    */
   protected override async getIssueComment(
     { owner, repo, number }: IssueRef,
     { commentId }: { commentId: string },
   ): Promise<Comment> {
     try {
-      const data = await this.client<GiteaComment>(
-        `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/issues/comments/${encodePathSegment(commentId, "Comment id")}`,
+      const data = await this.client<GiteaComment | undefined>(
+        issueCommentPath({ owner, repo }, commentId),
       );
+      if (data === undefined || data === null) {
+        throw new NotFoundError(`Comment not found: ${commentId}`, { platform: PLATFORM });
+      }
       const association = data.issue_url || data.pull_request_url;
       if (
         association &&
@@ -2236,6 +2247,54 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
+  }
+
+  /** A review comment is an issue comment to Gitea, so the issues route edits it. */
+  protected override async updateThreadComment(
+    { owner, repo }: IssueRef,
+    { commentId, body }: UpdateCommentInput & { threadId: string; commentId: string },
+  ): Promise<ThreadComment> {
+    try {
+      const comment = await this.client<GiteaComment>(
+        issueCommentPath({ owner, repo }, commentId),
+        {
+          method: "PATCH",
+          body: { body },
+        },
+      );
+      return {
+        id: String(comment.id),
+        body: comment.body ?? "",
+        author: { login: comment.user?.login ?? "" },
+        url: comment.html_url ?? "",
+        createdAt: comment.created_at,
+      };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  /** Gitea before 1.25 answers 204 to a review comment delete and keeps it, so only a 404 counts as gone. */
+  protected override async deleteThreadComment(
+    { owner, repo }: IssueRef,
+    { commentId }: { threadId: string; commentId: string },
+  ): Promise<void> {
+    const path = issueCommentPath({ owner, repo }, commentId);
+    try {
+      await this.client(path, { method: "DELETE" });
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+    try {
+      await this.client(path);
+    } catch (error) {
+      if (error instanceof FetchError && error.status === 404) return;
+      throw normalizeError(error, PLATFORM);
+    }
+    throw new ForgesError(
+      `Gitea kept review comment ${commentId} after deleting it. Gitea 1.25 or later deletes review comments`,
+      { status: 501, platform: PLATFORM },
+    );
   }
 
   protected override async resolveThread(

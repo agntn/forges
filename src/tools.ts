@@ -22,6 +22,7 @@ const hostEffects = {
   remoteCreate: { effect: "write", idempotent: false, openWorld: true },
   remoteUpdate: { effect: "destructive", idempotent: true, openWorld: true },
   remoteState: { effect: "write", idempotent: true, openWorld: true },
+  remoteDelete: { effect: "destructive", idempotent: true, openWorld: true },
   credentialReload: { effect: "write", idempotent: false, openWorld: true },
 } as const satisfies Record<
   ToolEffect,
@@ -441,6 +442,32 @@ function defineTools(): ToolDefinition[] {
       execute: (args) => call((operations) => operations.createIssueComment(args)),
     }),
     defineTool({
+      name: "forges_issues_comments_update",
+      title: forgeToolTitle("forges_issues_comments_update", "Edit Issue Comment"),
+      description:
+        "Replace the body of one comment in an issue's discussion, by the id forges_issues_comments returned. A comment from another issue is not found, so nothing else gets rewritten. It writes as the account the local credentials belong to and the old text is gone afterwards, so confirm the new text with the user first. Returns the comment as stored.",
+      snippet: "Edit an issue comment on GitHub, GitLab, or Gitea.",
+      guidelines: [
+        "Use forges_issues_comments_update to fix a comment instead of posting a correction under it, with the whole new body.",
+      ],
+      ...effect("forges_issues_comments_update"),
+      input: schemas.updateCommentParameters,
+      execute: (args) => call((operations) => operations.updateIssueComment(args)),
+    }),
+    defineTool({
+      name: "forges_issues_comments_delete",
+      title: forgeToolTitle("forges_issues_comments_delete", "Delete Issue Comment"),
+      description:
+        "Delete one comment from an issue's discussion for good, by the id forges_issues_comments returned. A comment from another issue is not found. It writes as the account the local credentials belong to and no forge can bring the comment back. Returns deleted: true with the comment id.",
+      snippet: "Delete an issue comment on GitHub, GitLab, or Gitea.",
+      guidelines: [
+        "Use forges_issues_comments_delete only when the user explicitly asks to remove a comment. To fix one, edit it with forges_issues_comments_update.",
+      ],
+      ...effect("forges_issues_comments_delete"),
+      input: schemas.deleteCommentParameters,
+      execute: (args) => call((operations) => operations.deleteIssueComment(args)),
+    }),
+    defineTool({
       name: "forges_issues_fields",
       title: forgeToolTitle("forges_issues_fields", "List Issue Types and Fields"),
       description:
@@ -704,6 +731,32 @@ function defineTools(): ToolDefinition[] {
       execute: (args) => call((operations) => operations.createPullRequestComment(args)),
     }),
     defineTool({
+      name: "forges_pull_requests_comments_update",
+      title: forgeToolTitle("forges_pull_requests_comments_update", "Edit Pull Request Comment"),
+      description:
+        "Replace the body of one conversation comment on a pull request, by the id forges_pull_requests_comments returned. Review thread comments are edited with forges_threads_comments_update, and a comment from elsewhere is not found. It writes as the account the local credentials belong to and the old text is gone afterwards, so confirm the new text with the user first. Returns the comment as stored.",
+      snippet: "Edit a pull request comment on GitHub, GitLab, or Gitea.",
+      guidelines: [
+        "Use forges_pull_requests_comments_update to fix a conversation comment instead of posting a correction under it, with the whole new body.",
+      ],
+      ...effect("forges_pull_requests_comments_update"),
+      input: schemas.updateCommentParameters,
+      execute: (args) => call((operations) => operations.updatePullRequestComment(args)),
+    }),
+    defineTool({
+      name: "forges_pull_requests_comments_delete",
+      title: forgeToolTitle("forges_pull_requests_comments_delete", "Delete Pull Request Comment"),
+      description:
+        "Delete one conversation comment from a pull request for good, by the id forges_pull_requests_comments returned. Review thread comments go with forges_threads_comments_delete, and a comment from elsewhere is not found. It writes as the account the local credentials belong to and no forge can bring the comment back. Returns deleted: true with the comment id.",
+      snippet: "Delete a pull request comment on GitHub, GitLab, or Gitea.",
+      guidelines: [
+        "Use forges_pull_requests_comments_delete only when the user explicitly asks to remove a comment. To fix one, edit it with forges_pull_requests_comments_update.",
+      ],
+      ...effect("forges_pull_requests_comments_delete"),
+      input: schemas.deleteCommentParameters,
+      execute: (args) => call((operations) => operations.deletePullRequestComment(args)),
+    }),
+    defineTool({
       name: "forges_pull_requests_create",
       title: forgeToolTitle("forges_pull_requests_create", "Create Pull Request"),
       description:
@@ -815,6 +868,32 @@ function defineTools(): ToolDefinition[] {
       ...effect("forges_threads_reply"),
       input: schemas.replyThreadParameters,
       execute: (args) => call((operations) => operations.replyToThread(args)),
+    }),
+    defineTool({
+      name: "forges_threads_comments_update",
+      title: forgeToolTitle("forges_threads_comments_update", "Edit Review Thread Comment"),
+      description:
+        "Replace the body of one comment inside a review thread, by the threadId and the comment id forges_threads_get lists. A comment outside that thread is not found. It writes under the local credentials and the old text is gone afterwards, so confirm the new text with the user first. Returns the comment as stored.",
+      snippet: "Edit a review thread comment on GitHub, GitLab, or Gitea.",
+      guidelines: [
+        "Use forges_threads_comments_update to fix a thread reply instead of replying again, with the whole new body.",
+      ],
+      ...effect("forges_threads_comments_update"),
+      input: schemas.updateThreadCommentParameters,
+      execute: (args) => call((operations) => operations.updateThreadComment(args)),
+    }),
+    defineTool({
+      name: "forges_threads_comments_delete",
+      title: forgeToolTitle("forges_threads_comments_delete", "Delete Review Thread Comment"),
+      description:
+        "Delete one comment from a review thread for good, by the threadId and the comment id forges_threads_get lists. A comment outside that thread is not found. It writes under the local credentials and no forge can bring the comment back. Gitea before 1.25 keeps a review comment it is asked to delete, and that comes back as an error, not a success. Returns deleted: true with the comment id.",
+      snippet: "Delete a review thread comment on GitHub, GitLab, or Gitea.",
+      guidelines: [
+        "Use forges_threads_comments_delete only when the user explicitly asks to remove a thread comment. To fix one, edit it with forges_threads_comments_update.",
+      ],
+      ...effect("forges_threads_comments_delete"),
+      input: schemas.deleteThreadCommentParameters,
+      execute: (args) => call((operations) => operations.deleteThreadComment(args)),
     }),
     defineTool({
       name: "forges_threads_resolve",

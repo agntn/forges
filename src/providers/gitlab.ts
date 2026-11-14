@@ -93,6 +93,7 @@ import type {
   Tag,
   Thread,
   ThreadComment,
+  UpdateCommentInput,
   UpdateIssueInput,
   UpdatePullRequestInput,
   MergePullRequestInput,
@@ -484,6 +485,17 @@ function gitlabGraphqlUrl(apiBaseURL: string): string {
  * Encode owner/repo as GitLab project path for API requests.
  * GitLab requires URL-encoding of the full path (e.g., "owner/repo" → "owner%2Frepo").
  */
+/** GitLab sends no web URL for a note, so the comment goes out without one. */
+function discussionThreadComment(note: GitLabDiscussionNote): ThreadComment {
+  return {
+    id: String(note.id),
+    body: note.body,
+    author: { login: note.author.username },
+    url: "",
+    createdAt: note.created_at,
+  };
+}
+
 function encodeProjectPath(owner: string, repo: string): string {
   return `${encodeNamespacePath(owner)}%2F${encodePathSegment(repo, "Repository name")}`;
 }
@@ -879,13 +891,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
       line: position?.new_line ?? position?.old_line ?? null,
       startLine:
         position?.line_range?.start?.new_line ?? position?.line_range?.start?.old_line ?? null,
-      comments: notes.map((note) => ({
-        id: String(note.id),
-        body: note.body,
-        author: { login: note.author.username },
-        url: "",
-        createdAt: note.created_at,
-      })),
+      comments: notes.map(discussionThreadComment),
     };
   }
 
@@ -2553,13 +2559,40 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
         body: { body: input.body },
       });
       await this.dropCachedDiscussion(url);
-      return {
-        id: String(note.id),
-        body: note.body,
-        author: { login: note.author.username },
-        url: "",
-        createdAt: note.created_at,
-      };
+      return discussionThreadComment(note);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  /** The discussion route scopes the note, so a note from another thread answers 404 here too. */
+  protected override async updateThreadComment(
+    { owner, repo, number }: IssueRef,
+    { threadId, commentId, body }: UpdateCommentInput & { threadId: string; commentId: string },
+  ): Promise<ThreadComment> {
+    try {
+      const url = await this.discussionUrl({ owner, repo, number, threadId });
+      const note = await this.client<GitLabDiscussionNote>(
+        `${url}/notes/${encodePathSegment(commentId, "Comment id")}`,
+        { method: "PUT", body: { body } },
+      );
+      await this.dropCachedDiscussion(url);
+      return discussionThreadComment(note);
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  protected override async deleteThreadComment(
+    { owner, repo, number }: IssueRef,
+    { threadId, commentId }: { threadId: string; commentId: string },
+  ): Promise<void> {
+    try {
+      const url = await this.discussionUrl({ owner, repo, number, threadId });
+      await this.client(`${url}/notes/${encodePathSegment(commentId, "Comment id")}`, {
+        method: "DELETE",
+      });
+      await this.dropCachedDiscussion(url);
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
     }

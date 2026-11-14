@@ -94,6 +94,7 @@ import type {
   Thread,
   ThreadComment,
   ThreadEvent,
+  UpdateCommentInput,
   UpdateIssueInput,
   UpdatePullRequestInput,
   MergePullRequestInput,
@@ -649,6 +650,21 @@ function threadMatchesPullRequest(
  * still carries the value. It stays a string all the way into the REST reply
  * URL, because `Number()` would lose precision on exactly those ids.
  */
+function reviewThreadComment(data: GitHubReviewComment): ThreadComment {
+  return {
+    id: String(data.id),
+    body: data.body,
+    author: { login: data.user?.login ?? "" },
+    url: data.html_url,
+    createdAt: data.created_at,
+  };
+}
+
+/** GitHub keys a review comment by repository and id, with no pull request in the route. */
+function reviewCommentPath({ owner, repo }: RepoRef, commentId: string): string {
+  return `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/comments/${encodePathSegment(commentId, "Comment id")}`;
+}
+
 function reviewCommentId(comment: GitHubGraphQLReviewComment): string {
   const id = comment.fullDatabaseId ?? comment.databaseId;
   return id === null || id === undefined ? "" : String(id);
@@ -2898,13 +2914,34 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
           body: { body: input.body },
         },
       );
-      return {
-        id: String(data.id),
-        body: data.body,
-        author: { login: data.user?.login ?? "" },
-        url: data.html_url,
-        createdAt: data.created_at,
-      };
+      return reviewThreadComment(data);
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /** Review comments sit on their own route, apart from the issue comments the conversation edits. */
+  protected override async updateThreadComment(
+    pull: IssueRef,
+    { commentId, body }: UpdateCommentInput & { threadId: string; commentId: string },
+  ): Promise<ThreadComment> {
+    try {
+      const data = await this.client<GitHubReviewComment>(reviewCommentPath(pull, commentId), {
+        method: "PATCH",
+        body: { body },
+      });
+      return reviewThreadComment(data);
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  protected override async deleteThreadComment(
+    pull: IssueRef,
+    { commentId }: { threadId: string; commentId: string },
+  ): Promise<void> {
+    try {
+      await this.client(reviewCommentPath(pull, commentId), { method: "DELETE" });
     } catch (error) {
       throw normalizeError(error, "github");
     }

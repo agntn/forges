@@ -10,12 +10,18 @@ const writes = [
   "forges_issues_sub_issues_add",
   "forges_issues_sub_issues_remove",
   "forges_issues_comments_create",
+  "forges_issues_comments_update",
+  "forges_issues_comments_delete",
   "forges_pull_requests_comments_create",
+  "forges_pull_requests_comments_update",
+  "forges_pull_requests_comments_delete",
   "forges_pull_requests_create",
   "forges_pull_requests_update",
   "forges_pull_requests_merge",
   "forges_auth_reload",
   "forges_threads_reply",
+  "forges_threads_comments_update",
+  "forges_threads_comments_delete",
   "forges_threads_resolve",
   "forges_threads_unresolve",
 ];
@@ -36,6 +42,8 @@ describe("tool effects", () => {
     expect(getToolEffect("forges_pull_requests_events")).toBe("hostedRead");
     expect(getToolEffect("forges_issues_sub_issues_add")).toBe("remoteState");
     expect(getToolEffect("forges_auth_reload")).toBe("credentialReload");
+    expect(getToolEffect("forges_issues_comments_update")).toBe("remoteUpdate");
+    expect(getToolEffect("forges_threads_comments_delete")).toBe("remoteDelete");
   });
 
   it.each(["forges_future_tool", "toString", "__proto__"])(
