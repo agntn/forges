@@ -180,7 +180,11 @@ async function createConfiguredProvider(
     platform,
     baseURL === undefined ? { token } : { baseURL, token },
   );
-  return explainFailures(provider, { platform, source: credential?.source });
+  return explainFailures(provider, {
+    platform,
+    credential:
+      credential === null ? undefined : { source: credential.source, origin: credential.origin },
+  });
 }
 
 /** Cloudflare reads nothing without a token, so artifacts keeps one provider for every call. */
@@ -217,12 +221,12 @@ const credentialSetup = {
   },
 } satisfies Record<ForgesPlatform, Record<"variable" | "login", string>>;
 
-/** Where the chain finds a forge token: its variables, in order, and the CLI behind the login. */
-const tokenOrigins = {
-  github: { variables: "GH_TOKEN or GITHUB_TOKEN", cli: "gh" },
-  gitlab: { variables: "GITLAB_TOKEN, GL_TOKEN or GITLAB_PAT", cli: "glab" },
-  gitea: { variables: "GITEA_TOKEN", cli: "tea" },
-} satisfies Record<Exclude<ForgesPlatform, "artifacts">, Record<"variables" | "cli", string>>;
+/** The CLI behind each forge login. */
+const loginCli = {
+  github: "gh",
+  gitlab: "glab",
+  gitea: "tea",
+} satisfies Record<Exclude<ForgesPlatform, "artifacts">, string>;
 
 function credentialSetupHint(platform: ForgesPlatform): string {
   const { variable, login } = credentialSetup[platform];
@@ -232,17 +236,18 @@ function credentialSetupHint(platform: ForgesPlatform): string {
 /** The way past a rejected token, which stays pinned until forges_auth_reload drops it. */
 function rejectedTokenHint(
   platform: Exclude<ForgesPlatform, "artifacts">,
-  source: AuthResult["source"],
+  credential: TokenOrigin,
 ): string {
-  const { variables, cli } = tokenOrigins[platform];
+  const { source, origin } = credential;
+  const cli = loginCli[platform];
   const { variable, login } = credentialSetup[platform];
   const expired = "was rejected, so it has likely expired or been revoked.";
   const reload = "then call forges_auth_reload and retry.";
   switch (source) {
     case "env":
-      return `The ${platform} token from ${variables} ${expired} That variable wins over the \`${cli}\` login: replace or unset it, ${reload}`;
+      return `The ${platform} token from ${origin} ${expired} That variable wins over the \`${cli}\` login: replace or unset it, ${reload}`;
     case "config":
-      return `The ${platform} token saved in the \`${cli}\` config file ${expired} Set ${variable}, which wins over that file, or redo the login with \`${login}\`, ${reload}`;
+      return `The ${platform} token saved in \`${origin}\` ${expired} Set ${variable}, which wins over that file, or redo the login with \`${login}\`, ${reload}`;
     default:
       return `The ${platform} token of the local \`${cli}\` login ${expired} Log in again with \`${login}\`, ${reload}`;
   }
@@ -323,7 +328,7 @@ async function verifiedAccountProvider(
 
   const hint =
     credential.source === "env"
-      ? `${tokenOrigins.github.variables} is set and takes precedence; unset it to use the gh login.`
+      ? `${credential.origin} is set and takes precedence; unset it to use the gh login.`
       : "Check `gh auth status`.";
   throw new AuthenticationError(
     `Refusing to act as "${account}": the ${platform} token found for it belongs to "${actual}". ${hint}`,
@@ -371,18 +376,23 @@ export function toolFailure(error: unknown): Error {
   return failure;
 }
 
+/** Which step found a token, and where: `env` and `GL_TOKEN`, say. */
+type TokenOrigin = Readonly<Pick<AuthResult, "source" | "origin">>;
+
 /** The platform a request went to, and where its token came from when it carried one. */
 interface RequestOrigin {
   platform: ForgesPlatform;
-  source: AuthResult["source"] | undefined;
+  credential: TokenOrigin | undefined;
 }
 
 /** What a refusal the server sent needs next, by whether the request carried a token. */
 function refusalHint(status: number, origin: RequestOrigin): string | undefined {
-  const { platform, source } = origin;
+  const { platform, credential } = origin;
   /** artifacts asks the Cloudflare chain on every request and never reads anonymously. */
   if (platform === "artifacts") return status === 401 ? REJECTED_CLOUDFLARE_TOKEN : undefined;
-  if (source !== undefined) return status === 401 ? rejectedTokenHint(platform, source) : undefined;
+  if (credential !== undefined) {
+    return status === 401 ? rejectedTokenHint(platform, credential) : undefined;
+  }
   if (!ANONYMOUS_REFUSALS.has(status)) return undefined;
 
   const reason =

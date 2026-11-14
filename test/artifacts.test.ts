@@ -19,7 +19,9 @@ import { cursorFor } from "./support/cursor.ts";
 /* A credential failure renamed the way a subclass would be, so only instanceof recognises it. */
 function missingAccount(): CredentialsError {
   return Object.defineProperty(
-    new CredentialsError("cloudflare", "Set AGNTN_CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID"),
+    new CredentialsError("cloudflare", "Set AGNTN_CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID", {
+      code: "account",
+    }),
     "name",
     { value: "MissingAccountError" },
   );

@@ -50,7 +50,11 @@ afterEach(() => {
 describe("resolveToken", () => {
   it("takes an explicit token, even an empty one", () => {
     vi.stubEnv("GH_TOKEN", "env-token");
-    expect(resolveToken("github", { token: "" })).toEqual({ token: "", source: "explicit" });
+    expect(resolveToken("github", { token: "" })).toEqual({
+      token: "",
+      source: "explicit",
+      origin: "token",
+    });
   });
 
   it("reads each platform's variables in order", () => {
@@ -58,9 +62,9 @@ describe("resolveToken", () => {
     vi.stubEnv("GH_TOKEN", "first");
     vi.stubEnv("GL_TOKEN", "gitlab");
     vi.stubEnv("GITEA_TOKEN", "gitea");
-    expect(resolveToken("github")).toEqual({ token: "first", source: "env" });
-    expect(resolveToken("gitlab")).toEqual({ token: "gitlab", source: "env" });
-    expect(resolveToken("gitea")).toEqual({ token: "gitea", source: "env" });
+    expect(resolveToken("github")).toEqual({ token: "first", source: "env", origin: "GH_TOKEN" });
+    expect(resolveToken("gitlab")).toEqual({ token: "gitlab", source: "env", origin: "GL_TOKEN" });
+    expect(resolveToken("gitea")).toEqual({ token: "gitea", source: "env", origin: "GITEA_TOKEN" });
   });
 
   it("asks gh for the host from baseURL", () => {
@@ -68,6 +72,7 @@ describe("resolveToken", () => {
     expect(resolveToken("github", { baseURL: "https://ghe.example.com/api/v3" })).toEqual({
       token: "gho_ghe.example.com",
       source: "cli",
+      origin: "gh",
     });
   });
 
@@ -92,14 +97,22 @@ describe("resolveToken", () => {
         "",
       ].join("\n"),
     );
-    expect(resolveToken("github")).toEqual({ token: "gho_hubot", source: "config" });
+    expect(resolveToken("github")).toEqual({
+      token: "gho_hubot",
+      source: "config",
+      origin: "gh hosts.yml",
+    });
     expect(resolveToken("github", { account: "octocat" })?.token).toBe("gho_octocat");
   });
 
   it("keeps token variables away from glab, which would print one for any host", () => {
     vi.stubEnv("GITLAB_ACCESS_TOKEN", "glpat-from-env");
     cli("glab", 'echo "${GITLAB_ACCESS_TOKEN:-glpat-stored}"');
-    expect(resolveToken("gitlab")).toEqual({ token: "glpat-stored", source: "cli" });
+    expect(resolveToken("gitlab")).toEqual({
+      token: "glpat-stored",
+      source: "cli",
+      origin: "glab",
+    });
   });
 
   it("reads the tea login whose URL matches the host", () => {
@@ -116,6 +129,7 @@ describe("resolveToken", () => {
     expect(resolveToken("gitea", { baseURL: "https://codeberg.org" })).toEqual({
       token: "codeberg-token",
       source: "config",
+      origin: "tea config.yml",
     });
   });
 
