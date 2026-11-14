@@ -482,10 +482,6 @@ function gitlabGraphqlUrl(apiBaseURL: string): string {
   return new URL("graphql", apiBaseURL.replace(/\/v4\/*$/u, "/")).toString();
 }
 
-/**
- * Encode owner/repo as GitLab project path for API requests.
- * GitLab requires URL-encoding of the full path (e.g., "owner/repo" → "owner%2Frepo").
- */
 /** GitLab sends no web URL for a note, so the comment goes out without one. */
 function discussionThreadComment(note: GitLabDiscussionNote): ThreadComment {
   return {
@@ -497,6 +493,10 @@ function discussionThreadComment(note: GitLabDiscussionNote): ThreadComment {
   };
 }
 
+/**
+ * Encode owner/repo as GitLab project path for API requests.
+ * GitLab requires URL-encoding of the full path (e.g., "owner/repo" → "owner%2Frepo").
+ */
 function encodeProjectPath(owner: string, repo: string): string {
   return `${encodeNamespacePath(owner)}%2F${encodePathSegment(repo, "Repository name")}`;
 }

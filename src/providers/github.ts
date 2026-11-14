@@ -650,6 +650,11 @@ function threadMatchesPullRequest(
  * still carries the value. It stays a string all the way into the REST reply
  * URL, because `Number()` would lose precision on exactly those ids.
  */
+function reviewCommentId(comment: GitHubGraphQLReviewComment): string {
+  const id = comment.fullDatabaseId ?? comment.databaseId;
+  return id === null || id === undefined ? "" : String(id);
+}
+
 function reviewThreadComment(data: GitHubReviewComment): ThreadComment {
   return {
     id: String(data.id),
@@ -663,11 +668,6 @@ function reviewThreadComment(data: GitHubReviewComment): ThreadComment {
 /** GitHub keys a review comment by repository and id, with no pull request in the route. */
 function reviewCommentPath({ owner, repo }: RepoRef, commentId: string): string {
   return `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/pulls/comments/${encodePathSegment(commentId, "Comment id")}`;
-}
-
-function reviewCommentId(comment: GitHubGraphQLReviewComment): string {
-  const id = comment.fullDatabaseId ?? comment.databaseId;
-  return id === null || id === undefined ? "" : String(id);
 }
 
 function presentGraphQLNodes<T>(nodes: Array<T | null> | null | undefined): T[] {
