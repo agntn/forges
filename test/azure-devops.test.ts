@@ -423,6 +423,15 @@ describe("AzureDevOpsProvider review threads", () => {
     ]);
   });
 
+  it("reads a file thread with no status as resolved, since nobody has to act on it", async () => {
+    const { status: _status, ...silent } = fileThread;
+    serve(at(`${PULL}/threads`, () => ({ value: [silent] })));
+
+    const page = await provider().threads.list(pull, { state: "unresolved" });
+
+    expect(page.items).toEqual([]);
+  });
+
   it("replies to the comment that opened the thread", async () => {
     const fetch = serve(
       at(`${PULL}/threads`, () => ({ value: [fileThread] })),

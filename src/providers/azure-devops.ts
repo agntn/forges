@@ -170,7 +170,7 @@ function reviewThread(raw: AzureThread, web: string): Thread | undefined {
   const end = context?.rightFileEnd?.line ?? context?.leftFileEnd?.line ?? start;
   return {
     id: String(raw.id),
-    isResolved: raw.status !== undefined && !OPEN_THREAD.has(raw.status),
+    isResolved: !OPEN_THREAD.has(raw.status ?? ""),
     isOutdated: false,
     path: path.replace(/^\/+/u, ""),
     line: end,
