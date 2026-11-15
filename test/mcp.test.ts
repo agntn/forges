@@ -348,7 +348,7 @@ describe("forges MCP server", () => {
       required: ["owner"],
       properties: {
         platform: {
-          enum: ["github", "gitlab", "gitea", "bitbucket", "artifacts"],
+          enum: ["github", "gitlab", "gitea", "bitbucket", "gitee", "artifacts"],
           default: "github",
         },
       },
@@ -2635,9 +2635,26 @@ describe("forges MCP server", () => {
 
     expect(response.isError).toBe(true);
     expect(text(response.content)).toBe(
-      "Invalid arguments at /platform: must be one of github, gitlab, gitea, bitbucket, artifacts",
+      "Invalid arguments at /platform: must be one of github, gitlab, gitea, bitbucket, gitee, artifacts",
     );
     expect(mocks.createProvider).not.toHaveBeenCalled();
+  });
+
+  it("takes a Gitee issue key for an issue but keeps pull requests numeric", async () => {
+    const client = await connectTestClient();
+
+    const issue = await client.callTool({
+      name: "forges_issues_get",
+      arguments: { platform: "gitee", owner: "openharmony", repo: "docs", number: "ICK440" },
+    });
+    const pull = await client.callTool({
+      name: "forges_pull_requests_get",
+      arguments: { platform: "gitee", owner: "openharmony", repo: "docs", number: "ICK440" },
+    });
+
+    expect(text(issue.content)).not.toMatch(/Invalid arguments/u);
+    expect(pull.isError).toBe(true);
+    expect(text(pull.content)).toMatch(/^Invalid arguments at \/number/u);
   });
 
   it("lists the values an enum argument accepts", async () => {

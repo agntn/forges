@@ -164,9 +164,13 @@ export abstract class ForgeBackedProvider<
 
   protected constructor(
     platform: string,
-    { apiBaseURL, token }: Readonly<{ apiBaseURL: string; token: string }>,
+    {
+      apiBaseURL,
+      token,
+      issueKeys,
+    }: Readonly<{ apiBaseURL: string; token: string; issueKeys?: boolean }>,
   ) {
-    super(platform);
+    super(platform, { issueKeys });
     this.#platform = platform;
     this.#apiBaseURL = apiBaseURL;
     this.#token = token;

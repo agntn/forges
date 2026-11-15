@@ -219,12 +219,15 @@ export interface PullRequestCheck {
  */
 export type IssueState = "open" | "closed";
 
+/** What a forge shows after `#`: a count everywhere but Gitee, whose issues go by text like `I8ZQ2A`. */
+export type IssueNumber = number | string;
+
 /**
  * Issue information
  */
 export interface Issue {
   id: string;
-  number: number;
+  number: IssueNumber;
   title: string;
   body: string;
   state: IssueState;
@@ -289,6 +292,7 @@ export interface GlobalIssueSearchResult extends SearchPageResult<GlobalIssueSea
 
 /** Pull-request fields available directly from every provider's search response. */
 export interface PullRequestSearchItem extends Issue {
+  number: number;
   merged: boolean;
   draft: boolean;
 }
@@ -792,7 +796,7 @@ export interface RepoRef {
 
 /** One issue or pull request by its repository and number. */
 export interface IssueRef extends RepoRef {
-  number: number;
+  number: IssueNumber;
 }
 
 /** A child of a parent issue, which may live in another repository of the same owner. */
@@ -852,7 +856,7 @@ export interface EventReference {
   repository: string;
   kind: "issue" | "pull_request" | "discussion" | "commit";
   /** Null for a commit, and where the forge leaves the number out. */
-  number: number | null;
+  number: IssueNumber | null;
   /** Null for an issue or pull request. */
   sha: string | null;
   /** Null where the forge names only the number, as GitLab does. */

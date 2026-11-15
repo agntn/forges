@@ -68,7 +68,7 @@ export {
 
 type ProviderConstructor = new (config: ProviderConfig) => Provider;
 
-/** Every platform createProvider builds: the four forges and Cloudflare Artifacts. */
+/** Every platform createProvider builds: the five forges and Cloudflare Artifacts. */
 export type ProviderPlatform = Platform | "artifacts";
 
 /**
@@ -98,6 +98,9 @@ const providers: Record<ProviderPlatform, () => Promise<ProviderConstructor>> = 
       import("./providers/bitbucket.ts").then((m) => m.BitbucketProvider),
     ),
   ),
+  gitee: /* @__PURE__ */ lazy(
+    /* @__PURE__ */ queued(() => import("./providers/gitee.ts").then((m) => m.GiteeProvider)),
+  ),
   artifacts: /* @__PURE__ */ lazy(
     /* @__PURE__ */ queued(() =>
       import("./providers/artifacts.ts").then((m) => m.ArtifactsProvider),
@@ -124,7 +127,7 @@ export async function createProvider(
 ): Promise<Provider> {
   if (!Object.hasOwn(providers, platform)) {
     throw new ForgesError(
-      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea, bitbucket, artifacts`,
+      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea, bitbucket, gitee, artifacts`,
       { platform },
     );
   }
@@ -173,12 +176,14 @@ function envHint(platform: string): string {
       return "GITEA_TOKEN";
     case "bitbucket":
       return "BITBUCKET_TOKEN, or BITBUCKET_API_TOKEN with BITBUCKET_EMAIL";
+    case "gitee":
+      return "GITEE_TOKEN";
     default:
       return `${platform.toUpperCase()}_TOKEN`;
   }
 }
 
-/** The login a CLI keeps for the platform; Bitbucket has none. */
+/** The login a CLI keeps for the platform; Bitbucket and Gitee have none. */
 function cliHint(platform: string): string | undefined {
   switch (platform) {
     case "github":
@@ -188,6 +193,7 @@ function cliHint(platform: string): string | undefined {
     case "gitea":
       return "`tea login add`";
     case "bitbucket":
+    case "gitee":
       return undefined;
     default:
       return "the platform CLI";

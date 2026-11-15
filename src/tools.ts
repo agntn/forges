@@ -388,7 +388,7 @@ function defineTools(): ToolDefinition[] {
         "Use forges_issues_comments to read an issue's discussion instead of scraping the web UI.",
       ],
       ...effect("forges_issues_comments"),
-      input: schemas.listCommentsParameters,
+      input: schemas.listIssueCommentsParameters,
       execute: (args) => call((operations) => operations.listIssueComments(args)),
     }),
     defineTool({
@@ -401,7 +401,7 @@ function defineTools(): ToolDefinition[] {
         "Use forges_issues_comments_get with an id from forges_issues_comments when the truncated body is not enough.",
       ],
       ...effect("forges_issues_comments_get"),
-      input: schemas.commentParameters,
+      input: schemas.issueCommentParameters,
       execute: (args) => call((operations) => operations.getIssueComment(args)),
     }),
     defineTool({
@@ -427,7 +427,7 @@ function defineTools(): ToolDefinition[] {
         'Use forges_issues_events with kinds: ["referenced"] instead of gh api .../timeline to find the issues and pull requests, in any repository, that mention an issue before picking it up.',
       ],
       ...effect("forges_issues_events"),
-      input: schemas.listEventsParameters,
+      input: schemas.listIssueEventsParameters,
       execute: (args) => call((operations) => operations.listIssueEvents(args)),
     }),
     defineTool({
@@ -440,7 +440,7 @@ function defineTools(): ToolDefinition[] {
         "Use forges_issues_comments_create only when the user explicitly asks to comment on an issue; a second call posts a second comment.",
       ],
       ...effect("forges_issues_comments_create"),
-      input: schemas.createCommentParameters,
+      input: schemas.createIssueCommentParameters,
       execute: (args) => call((operations) => operations.createIssueComment(args)),
     }),
     defineTool({
@@ -453,7 +453,7 @@ function defineTools(): ToolDefinition[] {
         "Use forges_issues_comments_update to fix a comment instead of posting a correction under it, with the whole new body.",
       ],
       ...effect("forges_issues_comments_update"),
-      input: schemas.updateCommentParameters,
+      input: schemas.updateIssueCommentParameters,
       execute: (args) => call((operations) => operations.updateIssueComment(args)),
     }),
     defineTool({
@@ -466,7 +466,7 @@ function defineTools(): ToolDefinition[] {
         "Use forges_issues_comments_delete only when the user explicitly asks to remove a comment. To fix one, edit it with forges_issues_comments_update.",
       ],
       ...effect("forges_issues_comments_delete"),
-      input: schemas.deleteCommentParameters,
+      input: schemas.deleteIssueCommentParameters,
       execute: (args) => call((operations) => operations.deleteIssueComment(args)),
     }),
     defineTool({

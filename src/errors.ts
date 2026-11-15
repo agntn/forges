@@ -147,7 +147,8 @@ function classifyError(error: unknown, platform?: string): ForgesError {
         if (
           error.response?.headers?.get("x-ratelimit-remaining") === "0" ||
           error.response?.headers?.has("Retry-After") ||
-          /rate limit/i.test(message)
+          /rate limit/i.test(message) ||
+          (typeof error.data === "string" && /rate limit/i.test(error.data))
         ) {
           const retryAfter = retryAfterSeconds(error.response?.headers);
           return new RateLimitError(`Rate limit exceeded: ${message}`, {

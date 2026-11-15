@@ -123,6 +123,7 @@ const baseUrlEnvByPlatform: Record<ForgesPlatform, string> = {
   gitlab: "FORGES_GITLAB_BASE_URL",
   gitea: "FORGES_GITEA_BASE_URL",
   bitbucket: "FORGES_BITBUCKET_BASE_URL",
+  gitee: "FORGES_GITEE_BASE_URL",
   artifacts: "FORGES_ARTIFACTS_BASE_URL",
 };
 
@@ -163,6 +164,7 @@ const DEFAULT_API_HOSTS = [
   "gitlab.com",
   "gitea.com",
   "api.bitbucket.org",
+  "gitee.com",
   "api.cloudflare.com",
 ] as const;
 
@@ -242,12 +244,13 @@ function trackProvider(
   return provider;
 }
 
-/** What a missing credential is told to set up; Bitbucket has no login. */
+/** What a missing credential is told to set up; Bitbucket and Gitee have no login. */
 const credentialSetup: Record<ForgesPlatform, Readonly<{ variable: string; login?: string }>> = {
   github: { variable: "GITHUB_TOKEN", login: "gh auth login" },
   gitlab: { variable: "GITLAB_TOKEN", login: "glab auth login" },
   gitea: { variable: "GITEA_TOKEN", login: "tea login add" },
   bitbucket: { variable: "BITBUCKET_TOKEN, or BITBUCKET_API_TOKEN with BITBUCKET_EMAIL" },
+  gitee: { variable: "GITEE_TOKEN" },
   artifacts: {
     variable: "CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID",
     login: "cf auth login",
@@ -259,7 +262,7 @@ const loginCli = {
   github: "gh",
   gitlab: "glab",
   gitea: "tea",
-} satisfies Record<Exclude<ForgesPlatform, "artifacts" | "bitbucket">, string>;
+} satisfies Record<Exclude<ForgesPlatform, "artifacts" | "bitbucket" | "gitee">, string>;
 
 function credentialSetupHint(platform: ForgesPlatform): string {
   const { variable, login } = credentialSetup[platform];
@@ -274,7 +277,7 @@ function rejectedTokenHint(
   const { source, origin } = credential;
   const expired = "was rejected, so it has likely expired or been revoked.";
   const reload = "then call forges_auth_reload and retry.";
-  if (platform === "bitbucket") {
+  if (platform === "bitbucket" || platform === "gitee") {
     const where = source === "env" ? `from ${origin} ` : "";
     return `The ${platform} token ${where}${expired} Replace it, ${reload}`;
   }
@@ -727,7 +730,7 @@ export type SearchRepositoryIssuesParams = SearchRepositoryItemsParams;
 export type SearchRepositoryPullRequestsParams = SearchRepositoryItemsParams;
 
 export interface GetRepositoryItemParams extends RepositoryParams {
-  number: number;
+  number: IssueRef["number"];
 }
 
 export type CreateIssueParams = RepositoryParams & AccountParams & CreateIssueInput;
@@ -749,7 +752,7 @@ export type MergePullRequestParams = GetRepositoryItemParams &
   MergePullRequestInput;
 
 export interface ListCommentsParams extends RepositoryParams {
-  number: number;
+  number: IssueRef["number"];
   cursor?: string;
   perPage?: number;
 }
@@ -814,7 +817,7 @@ export interface AddSubIssueParams extends SubIssueParams {
 }
 
 export interface GetCommentParams extends RepositoryParams {
-  number: number;
+  number: IssueRef["number"];
   commentId: string;
 }
 
