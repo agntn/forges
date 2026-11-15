@@ -307,6 +307,16 @@ describe("AzureDevOpsProvider commits", () => {
       files: [{ path: "es-metadata.yml", status: "added" }],
       filesComplete: true,
     });
+
+    const second = await provider().commits.compare(wiki, {
+      base: BASE,
+      head: SHA,
+      perPage: 1,
+      cursor: (await provider().commits.compare(wiki, { base: BASE, head: SHA, perPage: 1 }))
+        .nextCursor,
+    });
+
+    expect(second).toMatchObject({ files: null, filesComplete: null });
   });
 });
 

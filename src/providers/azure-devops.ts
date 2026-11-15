@@ -348,7 +348,7 @@ export class AzureDevOpsProvider extends ForgeBackedProvider {
         behindBy: comparison.behindBy ?? null,
         mergeBaseSha: comparison.mergeBaseSha ?? null,
         files: page === 1 ? comparison.files.map(changedFileFromModel) : null,
-        filesComplete: raw.allChangesIncluded === true ? true : null,
+        filesComplete: page === 1 && raw.allChangesIncluded === true ? true : null,
       };
     } catch (error) {
       throw normalizeError(error, PLATFORM);
