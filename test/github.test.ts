@@ -1474,6 +1474,84 @@ describe("GitHubProvider", () => {
       );
     });
 
+    it("reads one workflow's runs from its own route", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: { total_count: 268, workflow_runs: [{ ...ghCiRun, name: "release" }] },
+        headers: makeHeaders(
+          '<https://api.github.com/repositories/1/actions/workflows/release.yml/runs?per_page=1&page=3>; rel="next"',
+        ),
+      });
+
+      const result = await gh.ciRuns.list(
+        { owner: "octocat", repo: "hello-world" },
+        { workflow: "release.yml", branch: "main", perPage: 1 },
+      );
+
+      expect(forge.ci.runs).not.toHaveBeenCalled();
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/repos/octocat/hello-world/actions/workflows/release.yml/runs",
+        query: { page: "1", per_page: "1", branch: "main" },
+      });
+      expect(result).toEqual({
+        items: [expect.objectContaining({ id: "9876", name: "release", event: "push" })],
+        totalCount: 268,
+        nextCursor: expect.any(String),
+      });
+    });
+
+    it("keeps the workflow on the next page", async () => {
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: { total_count: 2, workflow_runs: [ghCiRun] },
+        headers: makeHeaders(
+          '<https://api.github.com/repositories/1/actions/workflows/242024730/runs?per_page=1&page=2>; rel="next"',
+        ),
+      });
+      const first = await gh.ciRuns.list(
+        { owner: "octocat", repo: "hello-world" },
+        { workflow: "242024730", perPage: 1 },
+      );
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: { total_count: 2, workflow_runs: [{ ...ghCiRun, id: 9877 }] },
+        headers: makeHeaders(),
+      });
+
+      const second = await gh.ciRuns.list(
+        { owner: "octocat", repo: "hello-world" },
+        { workflow: "242024730", perPage: 1, cursor: first.nextCursor },
+      );
+
+      expect(mocks.rawFetch).toHaveBeenLastCalledWith(mocks.client, {
+        url: "/repos/octocat/hello-world/actions/workflows/242024730/runs",
+        query: { page: "2", per_page: "1" },
+      });
+      expect(second.items.map((run) => run.id)).toEqual(["9877"]);
+      expect(second.nextCursor).toBeUndefined();
+      await expect(
+        gh.ciRuns.list(
+          { owner: "octocat", repo: "hello-world" },
+          { workflow: "release.yml", perPage: 1, cursor: first.nextCursor },
+        ),
+      ).rejects.toThrow(/cursor/);
+    });
+
+    it("answers a workflow the repository lacks with NotFoundError", async () => {
+      mocks.rawFetch.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(
+        gh.ciRuns.list({ owner: "octocat", repo: "hello-world" }, { workflow: "Test" }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+
+    it("refuses a workflow that is no single path segment", async () => {
+      await expect(
+        gh.ciRuns.list(
+          { owner: "octocat", repo: "hello-world" },
+          { workflow: ".github/workflows/test.yml" },
+        ),
+      ).rejects.toMatchObject({ status: 400, message: expect.stringContaining("Workflow") });
+      expect(mocks.rawFetch).not.toHaveBeenCalled();
+    });
+
     it("returns normalized paged workflow runs and filters by branch", async () => {
       forge.ci.runs.mockReturnValueOnce(
         listing({

@@ -444,10 +444,11 @@ export abstract class ForgeBackedProvider<
     );
   }
 
+  /** Each provider reads a `workflow` filter itself, since `forges` filters by branch and state only. */
   protected override listCiRuns(
     repo: RepoRef,
     options?: Positioned<ListCiRunsOptions>,
-  ): Promise<ContinuedPage<CiRun>> {
+  ): Promise<ContinuedPage<CiRun> | NumberedPage<CiRun>> {
     return this.forgeCall((forge) =>
       this.forgePage(
         forge.ci.runs(this.repoRef(forge, repo), {

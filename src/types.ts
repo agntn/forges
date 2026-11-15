@@ -639,6 +639,8 @@ export interface ListCiRunsOptions {
   cursor?: string;
   perPage?: number;
   branch?: string;
+  /** The workflow file (`test.yml`) or, on GitHub, its id; the pipeline name on GitLab. */
+  workflow?: string;
 }
 
 /** List options for repository commits. */

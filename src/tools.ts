@@ -153,7 +153,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_ci_runs_list",
       title: forgeToolTitle("forges_ci_runs_list", "List CI Runs"),
       description:
-        "List paged repository CI runs, normalized from GitHub Actions, GitLab pipelines, and Gitea Actions. Each run includes its workflow or pipeline name (the workflow file on Gitea and Forgejo), trigger event, branch, revision SHA, lifecycle status, terminal conclusion, and web URL. Filter by branch when checking whether a specific line of development is green.",
+        "List paged repository CI runs, normalized from GitHub Actions, GitLab pipelines, and Gitea Actions. Each run includes its workflow or pipeline name (the workflow file on Gitea and Forgejo), trigger event, branch, revision SHA, lifecycle status, terminal conclusion, and web URL. Filter by branch when checking whether a specific line of development is green, and by workflow to find the release runs among the test ones.",
       snippet: "Read CI runs from GitHub Actions, GitLab pipelines, or Gitea Actions.",
       guidelines: [
         "Use forges_ci_runs_list to verify repository CI health instead of invoking a platform CLI.",

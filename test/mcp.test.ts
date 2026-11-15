@@ -583,6 +583,7 @@ describe("forges MCP server", () => {
         owner: "agntn",
         repo: "forges",
         branch: "main",
+        workflow: "release.yml",
         cursor: "page-2",
         perPage: 10,
       },
@@ -592,6 +593,7 @@ describe("forges MCP server", () => {
       { owner: "agntn", repo: "forges" },
       {
         branch: "main",
+        workflow: "release.yml",
         cursor: "page-2",
         perPage: 10,
       },

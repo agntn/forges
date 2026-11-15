@@ -77,6 +77,7 @@ import type {
   Owner,
   ListOptions,
   ListPullRequestChecksOptions,
+  ListCiRunsOptions,
   ListCommitChecksOptions,
   ListPullRequestReviewsOptions,
   ListEventOptions,
@@ -263,6 +264,11 @@ interface GitHubCiRun {
   status: string;
   conclusion: string | null;
   html_url: string;
+}
+
+interface GitHubCiRunsResponse {
+  total_count?: number;
+  workflow_runs?: GitHubCiRun[];
 }
 
 interface GitHubCheckRun {
@@ -1312,6 +1318,35 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       status: 502,
       platform: "github",
     });
+  }
+
+  /** `forges` has no workflow filter; that one lives on the workflow's own route. */
+  protected override async listCiRuns(
+    repo: RepoRef,
+    options?: Positioned<ListCiRunsOptions>,
+  ): Promise<ContinuedPage<CiRun> | NumberedPage<CiRun>> {
+    if (!options?.workflow) return super.listCiRuns(repo, options);
+    try {
+      const { owner, repo: name } = repo;
+      const page = options.page ?? 1;
+      const query: Record<string, string> = {
+        page: String(page),
+        per_page: String(options.perPage ?? 30),
+      };
+      if (options.branch) query.branch = options.branch;
+      const { data, headers } = await rawFetch<GitHubCiRunsResponse>(this.client, {
+        url: `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(name, "Repository name")}/actions/workflows/${encodePathSegment(options.workflow, "Workflow")}/runs`,
+        query,
+      });
+      return {
+        ...buildPageResult({ items: data?.workflow_runs ?? [], headers }, (raw) =>
+          this.mapCiRun(raw),
+        ),
+        totalCount: data?.total_count,
+      };
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
   }
 
   protected override async readCiJobLog(

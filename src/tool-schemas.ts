@@ -359,7 +359,21 @@ export function forgesToolSchemas() {
     cursor,
     perPage,
   });
-  const listCiRunsParameters = closed({ platform, owner, repo, branch, cursor, perPage });
+  const listCiRunsParameters = closed({
+    platform,
+    owner,
+    repo,
+    branch,
+    workflow: Type.Optional(
+      Type.String({
+        description:
+          "Only runs of this workflow: its file name such as test.yml, or its numeric id on GitHub; the pipeline name on GitLab. Gitea needs 1.27, Forgejo 15",
+        minLength: 1,
+      }),
+    ),
+    cursor,
+    perPage,
+  });
   const listCiJobsParameters = closed({
     platform,
     owner,

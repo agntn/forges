@@ -1497,6 +1497,117 @@ describe("Gitea Provider", () => {
   });
 
   describe("ciRuns.list", () => {
+    it("reads one workflow's runs from its own route on Gitea 1.27", async () => {
+      mockClient.mockResolvedValueOnce({ version: "1.27.0" });
+      mockedRawFetch.mockResolvedValueOnce({
+        data: {
+          total_count: 41,
+          workflow_runs: [giteaCiRun({ path: "release.yml@refs/heads/main" })],
+        },
+        headers: makeHeaders({
+          Link: '<https://gitea.com/api/v1/repos/testowner/test-repo/actions/workflows/release.yml/runs?page=2&limit=1>; rel="next"',
+        }),
+        status: 200,
+      });
+
+      const result = await provider.ciRuns.list(
+        { owner: "testowner", repo: "test-repo" },
+        { workflow: "release.yml", branch: "main", perPage: 1 },
+      );
+
+      expect(forge.ci.runs).not.toHaveBeenCalled();
+      expect(mockedRawFetch).toHaveBeenCalledWith(mockClient, {
+        url: "/repos/testowner/test-repo/actions/workflows/release.yml/runs",
+        query: { page: "1", limit: "1", branch: "main" },
+      });
+      expect(result).toEqual({
+        items: [expect.objectContaining({ id: "400", name: "release.yml" })],
+        totalCount: 41,
+        nextCursor: expect.any(String),
+      });
+    });
+
+    it("filters the run list by workflow_id and ref on Forgejo 15", async () => {
+      mockClient.mockResolvedValueOnce({ version: "15.0.1+gitea-1.22.0" });
+      mockedRawFetch.mockResolvedValueOnce({
+        data: {
+          total_count: 3,
+          workflow_runs: [giteaCiRun({ path: undefined, workflow_id: "testing.yml" })],
+        },
+        headers: makeHeaders(),
+        status: 200,
+      });
+
+      const result = await provider.ciRuns.list(
+        { owner: "forgejo", repo: "forgejo" },
+        { workflow: "testing.yml", branch: "forgejo", perPage: 1 },
+      );
+
+      expect(mockedRawFetch).toHaveBeenCalledWith(mockClient, {
+        url: "/repos/forgejo/forgejo/actions/runs",
+        query: { page: "1", limit: "1", workflow_id: "testing.yml", ref: "refs/heads/forgejo" },
+      });
+      expect(result.items.map((run) => run.name)).toEqual(["testing.yml"]);
+      expect(result.totalCount).toBe(3);
+      expect(result.nextCursor).toEqual(expect.any(String));
+    });
+
+    it.each([
+      ["Gitea 1.26", "1.26.4"],
+      ["Forgejo 14", "14.0.2+gitea-1.22.0"],
+    ])("answers 501 on %s, which has no workflow filter", async (_name, version) => {
+      mockClient.mockResolvedValueOnce({ version });
+
+      await expect(
+        provider.ciRuns.list({ owner: "testowner", repo: "test-repo" }, { workflow: "test.yml" }),
+      ).rejects.toMatchObject({ status: 501, message: expect.stringContaining(version) });
+      expect(mockedRawFetch).not.toHaveBeenCalled();
+    });
+
+    it("reads the server version once for runs and commits filtered by path", async () => {
+      mockClient.mockResolvedValueOnce({ version: "1.27.0" });
+      mockedRawFetch.mockResolvedValue({
+        data: { total_count: 0, workflow_runs: [] },
+        headers: makeHeaders(),
+        status: 200,
+      });
+
+      await provider.ciRuns.list({ owner: "testowner", repo: "test-repo" }, { workflow: "a.yml" });
+      await provider.ciRuns.list({ owner: "testowner", repo: "test-repo" }, { workflow: "b.yml" });
+      await expect(
+        provider.commits.list({ owner: "testowner", repo: "test-repo" }, { path: "src" }),
+      ).rejects.toMatchObject({ status: 501 });
+
+      expect(mockClient.mock.calls.filter(([url]) => url === "/version")).toHaveLength(1);
+    });
+
+    it("asks for the version again after a failed read", async () => {
+      mockClient
+        .mockRejectedValueOnce(makeFetchError(500))
+        .mockResolvedValueOnce({ version: "1.27.0" });
+      mockedRawFetch.mockResolvedValue({
+        data: { total_count: 0, workflow_runs: [] },
+        headers: makeHeaders(),
+        status: 200,
+      });
+
+      await expect(
+        provider.ciRuns.list({ owner: "testowner", repo: "test-repo" }, { workflow: "a.yml" }),
+      ).rejects.toMatchObject({ status: 501, message: expect.stringContaining("no version") });
+      await provider.ciRuns.list({ owner: "testowner", repo: "test-repo" }, { workflow: "a.yml" });
+
+      expect(mockedRawFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("answers a workflow the repository lacks with NotFoundError", async () => {
+      mockClient.mockResolvedValueOnce({ version: "1.27.0" });
+      mockedRawFetch.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(
+        provider.ciRuns.list({ owner: "testowner", repo: "test-repo" }, { workflow: "nope.yml" }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+
     it("returns normalized paged workflow runs and filters by branch", async () => {
       forge.ci.runs.mockReturnValueOnce(
         listing({
