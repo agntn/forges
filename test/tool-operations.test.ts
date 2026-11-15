@@ -1012,6 +1012,16 @@ describe("repository target", () => {
     );
   });
 
+  it("reads an Azure DevOps repository written as organization/project/name", async () => {
+    const read = await getRepository({ platform: "azure-devops", repo: "acme/web/site" });
+
+    expect(read.details.result.fullName).toBe("acme/web/site");
+    await expect(getRepository({ repo: "acme/web/site" })).rejects.toThrow(/exactly one slash/);
+    await expect(
+      getRepository({ platform: "azure-devops", repo: "acme/web/site/extra" }),
+    ).rejects.toThrow(/organization\/project\/name/);
+  });
+
   it("refuses a repo that is neither a name nor one owner/name pair", async () => {
     await expect(getRepository({ repo: "agntn/keys/main" })).rejects.toThrow(/exactly one slash/);
     await expect(getRepository({ repo: "agntn/" })).rejects.toThrow(/exactly one slash/);

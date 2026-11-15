@@ -4,7 +4,14 @@ import { THREAD_EVENT_KINDS } from "./thread-event.ts";
 import type { ThreadEventKind } from "./types.ts";
 
 /** The platforms every tool surface accepts, re-exported from `src/tool-operations.ts`. */
-export type ForgesPlatform = "github" | "gitlab" | "gitea" | "bitbucket" | "gitee" | "artifacts";
+export type ForgesPlatform =
+  | "github"
+  | "gitlab"
+  | "gitea"
+  | "bitbucket"
+  | "gitee"
+  | "azure-devops"
+  | "artifacts";
 
 /**
  * Build the parameter schemas for the forges tool surface.
@@ -19,7 +26,7 @@ export function forgesToolSchemas() {
   const platform = Type.Optional(
     Type.Unsafe<Exclude<ForgesPlatform, "artifacts">>({
       type: "string",
-      enum: ["github", "gitlab", "gitea", "bitbucket", "gitee"],
+      enum: ["github", "gitlab", "gitea", "bitbucket", "gitee", "azure-devops"],
       description: "Git hosting platform; defaults to github",
       default: "github",
     }),
@@ -28,7 +35,7 @@ export function forgesToolSchemas() {
   const gitPlatform = Type.Optional(
     Type.Unsafe<ForgesPlatform>({
       type: "string",
-      enum: ["github", "gitlab", "gitea", "bitbucket", "gitee", "artifacts"],
+      enum: ["github", "gitlab", "gitea", "bitbucket", "gitee", "azure-devops", "artifacts"],
       description:
         "Git hosting platform, or artifacts for Cloudflare Artifacts with a namespace as owner; defaults to github",
       default: "github",

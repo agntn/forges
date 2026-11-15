@@ -16,6 +16,7 @@ const provider = computed(() => {
       gitea: "GiteaProvider",
       bitbucket: "BitbucketProvider",
       gitee: "GiteeProvider",
+      "azure-devops": "AzureDevOpsProvider",
       artifacts: "ArtifactsProvider",
     }[key],
     path: `@agntn/forges/${key}`,
