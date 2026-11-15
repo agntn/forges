@@ -176,7 +176,7 @@ function forgeHosts(): Set<string> | undefined {
     const value = process.env[name];
     if (value === undefined || value === "") continue;
     if (!URL.canParse(value)) return undefined;
-    hosts.add(new URL(value).hostname.toLowerCase());
+    hosts.add(new URL(value).hostname.toLowerCase().replace(/\.$/, ""));
   }
   return hosts;
 }
