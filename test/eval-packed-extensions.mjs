@@ -206,7 +206,7 @@ async function assertPackedMcpServer(root) {
 
     const rejected = await client.callTool({
       name: "forges_repos_get",
-      arguments: { platform: "bitbucket", owner: "agntn", repo: "forges" },
+      arguments: { platform: "sourcehut", owner: "agntn", repo: "forges" },
     });
     assert.equal(rejected.isError, true);
     assert.match(
