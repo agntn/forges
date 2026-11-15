@@ -52,7 +52,7 @@ export default defineNuxtConfig({
   /** Docus pages define their own OG images; the alt text is the one thing they leave unset. */
   ogImage: {
     defaults: {
-      alt: "@agntn/forges: one TypeScript API over GitHub, GitLab, Gitea, Bitbucket, Gitee and GitBucket",
+      alt: "@agntn/forges: one TypeScript API over GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps and GitBucket",
     },
   },
   icon: {
@@ -91,6 +91,7 @@ export default defineNuxtConfig({
         "simple-icons:forgejo",
         "simple-icons:gitea",
         "simple-icons:gitee",
+        "simple-icons:azuredevops",
         "simple-icons:github",
         "simple-icons:gitlab",
         "simple-icons:npm",

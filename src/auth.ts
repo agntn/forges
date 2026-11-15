@@ -8,8 +8,10 @@
  *   4. The CLI's config file, for a machine with the config but not the CLI
  *
  * Bitbucket and Gitee have no CLI login to read, so their chains stop at the environment.
+ * Azure DevOps reads `AZURE_DEVOPS_EXT_PAT`, then the PAT `az devops login` saved.
  */
 
+import { resolve as resolveAzureDevOps } from "@agntn/credentials/azure-devops";
 import { resolve as resolveBitbucket } from "@agntn/credentials/bitbucket";
 import { resolve as resolveGitea } from "@agntn/credentials/gitea";
 import { resolve as resolveGitee } from "@agntn/credentials/gitee";
@@ -19,7 +21,7 @@ import { CredentialsError } from "@agntn/credentials";
 import type { CloudflareCredential, CloudflareOptions } from "@agntn/credentials/cloudflare";
 import { AuthenticationError } from "./errors.ts";
 
-export type Platform = "github" | "gitlab" | "gitea" | "bitbucket" | "gitee";
+export type Platform = "github" | "gitlab" | "gitea" | "bitbucket" | "gitee" | "azure-devops";
 
 export interface AuthResult {
   token: string;
@@ -28,6 +30,8 @@ export interface AuthResult {
   origin: string;
   /** Basic auth login of the token, such as `BITBUCKET_EMAIL`. */
   username?: string;
+  /** Azure DevOps: the organization URL the token is for, such as `https://dev.azure.com/acme`. */
+  organization?: string;
 }
 
 const resolvers = {
@@ -36,6 +40,7 @@ const resolvers = {
   gitea: resolveGitea,
   bitbucket: resolveBitbucket,
   gitee: resolveGitee,
+  "azure-devops": resolveAzureDevOps,
 } satisfies Record<Platform, unknown>;
 
 /**

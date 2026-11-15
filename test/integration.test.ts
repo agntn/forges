@@ -11,6 +11,7 @@ import { GitLabProvider } from "../src/providers/gitlab.ts";
 import { GiteaProvider } from "../src/providers/gitea.ts";
 import { BitbucketProvider } from "../src/providers/bitbucket.ts";
 import { GiteeProvider } from "../src/providers/gitee.ts";
+import { AzureDevOpsProvider } from "../src/providers/azure-devops.ts";
 import { AuthenticationError, ForgesError } from "../src/errors.ts";
 
 describe("createProvider factory", () => {
@@ -24,6 +25,12 @@ describe("createProvider factory", () => {
     ["gitee", GiteeProvider],
   ] as const)("builds the %s provider", async (platform, ProviderClass) => {
     expect(await createProvider(platform, baseConfig)).toBeInstanceOf(ProviderClass);
+  });
+
+  it("builds the azure-devops provider for one organization", async () => {
+    const config = { baseURL: "https://dev.azure.com/acme", token: "test-token" };
+
+    expect(await createProvider("azure-devops", config)).toBeInstanceOf(AzureDevOpsProvider);
   });
 
   it("throws ForgesError on unsupported platform", async () => {
@@ -52,6 +59,10 @@ describe("createProvider factory", () => {
       "Set BITBUCKET_TOKEN, or BITBUCKET_API_TOKEN with BITBUCKET_EMAIL, or pass { token: '...' }.",
     ],
     ["gitee", "Set GITEE_TOKEN, or pass { token: '...' }."],
+    [
+      "azure-devops",
+      "Set AZURE_DEVOPS_EXT_PAT, pass { token: '...' }, or log in with `az devops login`.",
+    ],
   ] as const)("tells a %s user only about logins that exist", async (platform, hint) => {
     const auth = await import("../src/auth.ts");
     const spy = vi.spyOn(auth, "resolveToken").mockReturnValue(null);
@@ -62,6 +73,30 @@ describe("createProvider factory", () => {
       );
     } finally {
       spy.mockRestore();
+    }
+  });
+
+  it("hands Azure DevOps the organization the credential names", async () => {
+    const auth = await import("../src/auth.ts");
+    const spy = vi.spyOn(auth, "resolveToken").mockReturnValue({
+      token: "pat",
+      source: "env",
+      origin: "AZURE_DEVOPS_EXT_PAT",
+      username: "",
+      organization: "https://dev.azure.com/acme",
+    });
+    const fetch = vi.fn(async () => Response.json({ message: "no" }, { status: 404 }));
+    vi.stubGlobal("fetch", fetch);
+
+    try {
+      const azure = await createProvider("azure-devops");
+      await expect(azure.repos.get({ owner: "web", repo: "site" })).rejects.toThrow();
+      expect(String(fetch.mock.calls[0]?.[0])).toMatch(
+        /^https:\/\/dev\.azure\.com\/acme\/web\/_apis\/git\/repositories\/site\?/u,
+      );
+    } finally {
+      spy.mockRestore();
+      vi.unstubAllGlobals();
     }
   });
 
@@ -149,7 +184,15 @@ describe("entry points", () => {
 });
 
 describe("entry point types", () => {
-  const entries = ["index", "github", "gitlab", "gitea", "bitbucket", "artifacts"] as const;
+  const entries = [
+    "index",
+    "github",
+    "gitlab",
+    "gitea",
+    "bitbucket",
+    "azure-devops",
+    "artifacts",
+  ] as const;
   const exported = new Map<string, string[]>();
 
   /** Ask the compiler, not a regex: it follows star exports the way a consumer's tsc does. */

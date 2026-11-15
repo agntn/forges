@@ -1,7 +1,7 @@
 ---
 seo:
   title: "@agntn/forges"
-  description: One TypeScript API over GitHub, GitLab, Gitea, Bitbucket, Gitee and GitBucket. Repos, issues, pull requests, threads, commits and CI in one shape.
+  description: One TypeScript API over GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps and GitBucket. Repos, issues, pull requests, commits and CI in one shape.
 ---
 
 ::landing-home

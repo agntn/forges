@@ -1,7 +1,14 @@
 /** One row per platform for the landing grid, the sidebar, the explorer and `::platform-facts`. Auth columns mirror `@agntn/credentials`. */
 export interface PlatformInfo {
   /** The value passed to `createProvider()` and reported as `platform`. */
-  readonly key: "github" | "gitlab" | "gitea" | "bitbucket" | "gitee" | "artifacts";
+  readonly key:
+    | "github"
+    | "gitlab"
+    | "gitea"
+    | "bitbucket"
+    | "gitee"
+    | "azure-devops"
+    | "artifacts";
   /** Page slug. GitBucket rides on the GitHub provider, Forgejo on Gitea. */
   readonly slug: string;
   readonly label: string;
@@ -116,6 +123,24 @@ export const PLATFORMS: readonly PlatformInfo[] = [
     to: "/platforms/gitee",
   },
   {
+    key: "azure-devops",
+    slug: "azure-devops",
+    label: "Azure DevOps",
+    icon: "i-simple-icons-azuredevops",
+    blurb:
+      "REST 7.1 on dev.azure.com. A repository sits in a project in an organization, and work items stand in for issues.",
+    host: "dev.azure.com",
+    envVars: ["AZURE_DEVOPS_EXT_PAT"],
+    cli: "az devops login (PAT file)",
+    configFile: "~/.azure/azuredevops/personalAccessTokens",
+    authHeader: "Authorization: Basic",
+    anonymousReads: "public projects only, and there aren't many",
+    threads: "threads on a file, resolved as fixed",
+    codeSearch: "unsupported, explicit error",
+    templates: "none",
+    to: "/platforms/azure-devops",
+  },
+  {
     key: "github",
     slug: "gitbucket",
     label: "GitBucket",
@@ -156,9 +181,9 @@ export const PLATFORMS: readonly PlatformInfo[] = [
 /** One row per provider class; GitBucket rides on the GitHub row. */
 export const PROVIDER_PLATFORMS = PLATFORMS.filter((platform) => platform.slug === platform.key);
 
-/** What the docs worker reads for you. Artifacts wants your account, Bitbucket and Gitee your token. */
+/** What the docs worker reads; the rest want a token or an account it doesn't hold. */
 export const EXPLORER_PLATFORMS = PROVIDER_PLATFORMS.filter(
-  (platform) => !["artifacts", "bitbucket", "gitee"].includes(platform.key),
+  (platform) => !["artifacts", "bitbucket", "gitee", "azure-devops"].includes(platform.key),
 );
 
 const BY_SLUG = new Map(PLATFORMS.map((platform) => [platform.slug, platform]));

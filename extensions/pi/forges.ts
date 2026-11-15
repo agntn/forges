@@ -23,6 +23,7 @@ const platformLabels: Record<ForgesTools.ForgesPlatform, string> = {
   gitea: "Gitea",
   bitbucket: "Bitbucket",
   gitee: "Gitee",
+  "azure-devops": "Azure DevOps",
   artifacts: "Cloudflare Artifacts",
 };
 // oxlint-disable-next-line eslint/no-control-regex -- Removing terminal control bytes is intentional.

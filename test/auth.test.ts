@@ -21,6 +21,10 @@ const TOKEN_VARIABLES = [
   "BITBUCKET_EMAIL",
   "GITEE_TOKEN",
   "GITEE_ACCESS_TOKEN",
+  "AZURE_DEVOPS_EXT_PAT",
+  "AZURE_DEVOPS_EXT__DEFAULTS_ORGANIZATION",
+  "AZURE_DEVOPS_EXT__CONFIG_DIR",
+  "AZURE_DEVOPS_EXT_CONFIG_DIR",
 ];
 
 let home: string;
@@ -45,6 +49,7 @@ beforeEach(() => {
   for (const name of TOKEN_VARIABLES) vi.stubEnv(name, undefined);
   vi.stubEnv("PATH", join(home, "bin"));
   vi.stubEnv("XDG_CONFIG_HOME", join(home, "config"));
+  vi.stubEnv("AZURE_CONFIG_DIR", join(home, "azure"));
 });
 
 afterEach(() => {
@@ -148,6 +153,22 @@ describe("resolveToken", () => {
 
     vi.stubEnv("GITEE_TOKEN", "primary");
     expect(resolveToken("gitee")).toMatchObject({ token: "primary", origin: "GITEE_TOKEN" });
+  });
+
+  it("reads an Azure DevOps PAT with the organization it belongs to", () => {
+    vi.stubEnv("AZURE_DEVOPS_EXT_PAT", "pat");
+    vi.stubEnv("AZURE_DEVOPS_EXT__DEFAULTS_ORGANIZATION", "https://dev.azure.com/acme");
+
+    expect(resolveToken("azure-devops")).toEqual({
+      token: "pat",
+      source: "env",
+      origin: "AZURE_DEVOPS_EXT_PAT",
+      username: "",
+      organization: "https://dev.azure.com/acme",
+    });
+    expect(
+      resolveToken("azure-devops", { baseURL: "https://other.visualstudio.com" })?.organization,
+    ).toBe("https://other.visualstudio.com");
   });
 
   it("reads a Bitbucket access token, or an API token with the email it logs in with", () => {

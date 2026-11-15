@@ -32,8 +32,8 @@ catalogs:
       specifier: 5.15.0
       version: 5.15.0
     forges:
-      specifier: 0.3.0
-      version: 0.3.0
+      specifier: 0.3.2
+      version: 0.3.2
     h3:
       specifier: 1.15.11
       version: 1.15.11
@@ -132,7 +132,7 @@ importers:
         version: 2.4.0
       forges:
         specifier: catalog:deps
-        version: 0.3.0
+        version: 0.3.2
       unstorage:
         specifier: catalog:deps
         version: 1.17.6(db0@0.4.2)(ioredis@5.11.1(supports-color@10.2.2))
@@ -5481,8 +5481,8 @@ packages:
     resolution: {integrity: sha512-gIXjKqtFuWEgzFRJA9WCQeSJLZDjgJUOMCMzxtvFq/37KojM1BFGufqsCy0r4qSQmYLsZYMeyRqzIWOMup03sw==}
     engines: {node: '>=14'}
 
-  forges@0.3.0:
-    resolution: {integrity: sha512-qMb+HKxakUXqHBNSENvdkwBaUu/2mtfsCgQkiRCbuD6jMrrM8+wnvKct/nIz0vcHTBorZH/PGFesN95LIyGwHw==}
+  forges@0.3.2:
+    resolution: {integrity: sha512-x6epJowWXC8yOQThyxmvgPL4duk8iB9/smsmEU0gKuq7M6CGgzcljoA1KDyIlhrYwTZP8HtMNMQXIPm931OiyA==}
     engines: {node: '>=22.18'}
 
   formdata-polyfill@4.0.10:
@@ -14264,7 +14264,7 @@ snapshots:
       cross-spawn: 7.0.6
       signal-exit: 4.1.0
 
-  forges@0.3.0: {}
+  forges@0.3.2: {}
 
   formdata-polyfill@4.0.10:
     dependencies:

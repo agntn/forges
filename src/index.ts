@@ -68,7 +68,7 @@ export {
 
 type ProviderConstructor = new (config: ProviderConfig) => Provider;
 
-/** Every platform createProvider builds: the five forges and Cloudflare Artifacts. */
+/** Every platform createProvider builds: the six forges and Cloudflare Artifacts. */
 export type ProviderPlatform = Platform | "artifacts";
 
 /**
@@ -101,6 +101,11 @@ const providers: Record<ProviderPlatform, () => Promise<ProviderConstructor>> = 
   gitee: /* @__PURE__ */ lazy(
     /* @__PURE__ */ queued(() => import("./providers/gitee.ts").then((m) => m.GiteeProvider)),
   ),
+  "azure-devops": /* @__PURE__ */ lazy(
+    /* @__PURE__ */ queued(() =>
+      import("./providers/azure-devops.ts").then((m) => m.AzureDevOpsProvider),
+    ),
+  ),
   artifacts: /* @__PURE__ */ lazy(
     /* @__PURE__ */ queued(() =>
       import("./providers/artifacts.ts").then((m) => m.ArtifactsProvider),
@@ -127,7 +132,7 @@ export async function createProvider(
 ): Promise<Provider> {
   if (!Object.hasOwn(providers, platform)) {
     throw new ForgesError(
-      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea, bitbucket, gitee, artifacts`,
+      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea, bitbucket, gitee, azure-devops, artifacts`,
       { platform },
     );
   }
@@ -163,6 +168,9 @@ export async function createProvider(
     ...config,
     token: resolved.token,
     ...(resolved.username === undefined ? {} : { username: resolved.username }),
+    ...(config?.baseURL === undefined && resolved.organization !== undefined
+      ? { baseURL: resolved.organization }
+      : {}),
   });
 }
 
@@ -178,6 +186,8 @@ function envHint(platform: string): string {
       return "BITBUCKET_TOKEN, or BITBUCKET_API_TOKEN with BITBUCKET_EMAIL";
     case "gitee":
       return "GITEE_TOKEN";
+    case "azure-devops":
+      return "AZURE_DEVOPS_EXT_PAT";
     default:
       return `${platform.toUpperCase()}_TOKEN`;
   }
@@ -192,6 +202,8 @@ function cliHint(platform: string): string | undefined {
       return "`glab auth login`";
     case "gitea":
       return "`tea login add`";
+    case "azure-devops":
+      return "`az devops login`";
     case "bitbucket":
     case "gitee":
       return undefined;

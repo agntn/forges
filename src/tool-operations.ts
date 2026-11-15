@@ -124,6 +124,7 @@ const baseUrlEnvByPlatform: Record<ForgesPlatform, string> = {
   gitea: "FORGES_GITEA_BASE_URL",
   bitbucket: "FORGES_BITBUCKET_BASE_URL",
   gitee: "FORGES_GITEE_BASE_URL",
+  "azure-devops": "FORGES_AZURE_DEVOPS_BASE_URL",
   artifacts: "FORGES_ARTIFACTS_BASE_URL",
 };
 
@@ -165,6 +166,7 @@ const DEFAULT_API_HOSTS = [
   "gitea.com",
   "api.bitbucket.org",
   "gitee.com",
+  "dev.azure.com",
   "api.cloudflare.com",
 ] as const;
 
@@ -251,6 +253,7 @@ const credentialSetup: Record<ForgesPlatform, Readonly<{ variable: string; login
   gitea: { variable: "GITEA_TOKEN", login: "tea login add" },
   bitbucket: { variable: "BITBUCKET_TOKEN, or BITBUCKET_API_TOKEN with BITBUCKET_EMAIL" },
   gitee: { variable: "GITEE_TOKEN" },
+  "azure-devops": { variable: "AZURE_DEVOPS_EXT_PAT", login: "az devops login" },
   artifacts: {
     variable: "CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID",
     login: "cf auth login",
@@ -262,6 +265,7 @@ const loginCli = {
   github: "gh",
   gitlab: "glab",
   gitea: "tea",
+  "azure-devops": "az devops",
 } satisfies Record<Exclude<ForgesPlatform, "artifacts" | "bitbucket" | "gitee">, string>;
 
 function credentialSetupHint(platform: ForgesPlatform): string {
@@ -563,6 +567,8 @@ function targetError(message: string, platform: ForgesPlatform): ForgesError {
  * it. A repeated owner is redundant and the slug wins. An `owner` that names
  * someone else is contradictory, and is rejected instead of one of the two being
  * picked silently. Logins compare without case, as all three forges treat them.
+ * Azure DevOps nests a repository in a project, so its slug may carry one more
+ * segment: `organization/project/name`.
  */
 function splitRepository(
   target: Readonly<{ repo: string; owner?: string }>,
@@ -572,10 +578,13 @@ function splitRepository(
   if (!repo.includes("/")) return { owner, repo };
 
   const segments = repo.split("/");
-  const [slugOwner, slugRepo] = segments;
-  if (segments.length !== 2 || !slugOwner || !slugRepo) {
+  const slugRepo = segments.pop();
+  const slugOwner = segments.join("/");
+  if (segments.length > ownerSegments(platform) || segments.some((part) => !part) || !slugRepo) {
     throw targetError(
-      `Invalid repository "${repo}": pass a bare name, or "owner/name" with exactly one slash.`,
+      platform === "azure-devops"
+        ? `Invalid repository "${repo}": pass a bare name, or "organization/project/name".`
+        : `Invalid repository "${repo}": pass a bare name, or "owner/name" with exactly one slash.`,
       platform,
     );
   }
@@ -588,6 +597,11 @@ function splitRepository(
   }
 
   return { owner: slugOwner, repo: slugRepo };
+}
+
+/** Azure DevOps owners can be `organization/project`, every other owner is one segment. */
+function ownerSegments(platform: ForgesPlatform): number {
+  return platform === "azure-devops" ? 2 : 1;
 }
 
 /** Resolve the platform of an operation that names no repository. */
