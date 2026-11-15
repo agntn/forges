@@ -251,7 +251,7 @@ describe("forges MCP server", () => {
       {
         path: "../README.md",
         claims: [
-          /Four forges, ten resources, (\d+) agent tools\./,
+          /Every forge, ten resources, (\d+) agent tools\./,
           /\*\*(\d+) tools, five surfaces\.\*\*/,
           /MCP, Pi, OMP and the AI SDK all hit the same (\d+) tools\./,
           /One import, all (\d+) tools,/,
@@ -347,7 +347,10 @@ describe("forges MCP server", () => {
       type: "object",
       required: ["owner"],
       properties: {
-        platform: { enum: ["github", "gitlab", "gitea", "artifacts"], default: "github" },
+        platform: {
+          enum: ["github", "gitlab", "gitea", "bitbucket", "artifacts"],
+          default: "github",
+        },
       },
     });
     expect(
@@ -2587,12 +2590,12 @@ describe("forges MCP server", () => {
 
     const response = await client.callTool({
       name: "forges_repos_list",
-      arguments: { platform: "bitbucket", owner: "agntn" },
+      arguments: { platform: "sourcehut", owner: "agntn" },
     });
 
     expect(response.isError).toBe(true);
     expect(text(response.content)).toBe(
-      "Invalid arguments at /platform: must be one of github, gitlab, gitea, artifacts",
+      "Invalid arguments at /platform: must be one of github, gitlab, gitea, bitbucket, artifacts",
     );
     expect(mocks.createProvider).not.toHaveBeenCalled();
   });

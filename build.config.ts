@@ -14,6 +14,7 @@ export default defineBuildConfig({
         "./src/github.ts",
         "./src/gitlab.ts",
         "./src/gitea.ts",
+        "./src/bitbucket.ts",
         "./src/artifacts.ts",
         "./src/provider.ts",
         "./src/types.ts",

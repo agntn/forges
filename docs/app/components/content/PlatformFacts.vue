@@ -14,6 +14,7 @@ const provider = computed(() => {
       github: "GitHubProvider",
       gitlab: "GitLabProvider",
       gitea: "GiteaProvider",
+      bitbucket: "BitbucketProvider",
       artifacts: "ArtifactsProvider",
     }[key],
     path: `@agntn/forges/${key}`,

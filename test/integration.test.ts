@@ -9,6 +9,7 @@ import { ArtifactsProvider } from "../src/providers/artifacts.ts";
 import { GitHubProvider } from "../src/providers/github.ts";
 import { GitLabProvider } from "../src/providers/gitlab.ts";
 import { GiteaProvider } from "../src/providers/gitea.ts";
+import { BitbucketProvider } from "../src/providers/bitbucket.ts";
 import { AuthenticationError, ForgesError } from "../src/errors.ts";
 
 describe("createProvider factory", () => {
@@ -18,16 +19,17 @@ describe("createProvider factory", () => {
     ["github", GitHubProvider],
     ["gitlab", GitLabProvider],
     ["gitea", GiteaProvider],
+    ["bitbucket", BitbucketProvider],
   ] as const)("builds the %s provider", async (platform, ProviderClass) => {
     expect(await createProvider(platform, baseConfig)).toBeInstanceOf(ProviderClass);
   });
 
   it("throws ForgesError on unsupported platform", async () => {
-    // "bitbucket" is invalid by design; cast via never to exercise the runtime guard.
-    const failure = createProvider("bitbucket" as never, baseConfig);
+    /* "sourcehut" is not built in yet; cast via never to exercise the runtime guard. */
+    const failure = createProvider("sourcehut" as never, baseConfig);
 
     await expect(failure).rejects.toBeInstanceOf(ForgesError);
-    await expect(failure).rejects.toMatchObject({ platform: "bitbucket" });
+    await expect(failure).rejects.toMatchObject({ platform: "sourcehut" });
   });
 
   it("throws AuthenticationError when no token is found", async () => {
@@ -125,7 +127,7 @@ describe("entry points", () => {
 });
 
 describe("entry point types", () => {
-  const entries = ["index", "github", "gitlab", "gitea", "artifacts"] as const;
+  const entries = ["index", "github", "gitlab", "gitea", "bitbucket", "artifacts"] as const;
   const exported = new Map<string, string[]>();
 
   /** Ask the compiler, not a regex: it follows star exports the way a consumer's tsc does. */

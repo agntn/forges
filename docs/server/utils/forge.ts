@@ -1,7 +1,8 @@
-import { createProvider, type Platform, type Provider } from "@agntn/forges";
+import { createProvider, type Platform as ForgePlatform, type Provider } from "@agntn/forges";
 import { createError } from "nuxt/server";
 
-export type { Platform };
+/** The forges the explorer reads; anonymous Bitbucket hits a 429 too soon. */
+export type Platform = Exclude<ForgePlatform, "bitbucket">;
 
 export const PLATFORMS: readonly Platform[] = ["github", "gitlab", "gitea"];
 
