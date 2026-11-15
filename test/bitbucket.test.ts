@@ -493,6 +493,18 @@ describe("conversation comments", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
+  it("stops reading pages once it finds the comment", async () => {
+    const fetch = serve(
+      at(`${PULL}/comments`, () =>
+        Response.json({ values: comments.slice(0, 3), next: `${PULL}/comments?page=2` }),
+      ),
+    );
+
+    await provider().pullRequests.getComment(pull, { commentId: "637654724" });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("posts a new comment with its body as raw Markdown", async () => {
     const fetch = serve((url, init) =>
       init.method === "POST" && url.pathname === new URL(`${PULL}/comments`).pathname

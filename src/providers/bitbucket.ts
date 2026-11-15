@@ -240,23 +240,21 @@ export class BitbucketProvider extends ForgeBackedProvider {
     return `${this.#repoPath(repo)}/pullrequests/${encodePathSegment(number, "Number")}/comments`;
   }
 
-  /** Every comment of a pull request, deleted ones included so a reply finds its thread. */
-  async #allComments(pull: IssueRef): Promise<BitbucketComment[]> {
-    const comments: BitbucketComment[] = [];
+  /** Every comment, page by page, deleted ones too so a reply finds its thread. */
+  async *#comments(pull: IssueRef): AsyncGenerator<BitbucketComment> {
     let url: string | undefined = this.#commentsPath(pull);
     let query: Record<string, unknown> | undefined = { pagelen: MAX_PAGE_LENGTH };
     while (url !== undefined) {
       const page: BitbucketPage<BitbucketComment> = await this.client(url, { query });
-      comments.push(...page.values);
+      yield* page.values;
       url = page.next;
       query = undefined;
     }
-    return comments;
   }
 
   /** No issues to mistake for a pull request, so a missing one is the comments' 404. */
   async #threads(pull: IssueRef): Promise<Thread[]> {
-    return bitbucketThreads(await this.#allComments(pull));
+    return bitbucketThreads(await Array.fromAsync(this.#comments(pull)));
   }
 
   async #thread(pull: IssueRef, threadId: string): Promise<Thread> {
@@ -307,13 +305,12 @@ export class BitbucketProvider extends ForgeBackedProvider {
     { commentId }: { commentId: string },
   ): Promise<Comment> {
     try {
-      const comment = (await this.#allComments(pull)).find(
-        (candidate) => String(candidate.id) === commentId,
-      );
-      if (comment === undefined || comment.deleted === true || comment.inline !== undefined) {
-        throw new NotFoundError(`Comment not found: ${commentId}`, { platform: PLATFORM });
+      for await (const comment of this.#comments(pull)) {
+        if (String(comment.id) !== commentId) continue;
+        if (comment.deleted === true || comment.inline !== undefined) break;
+        return conversationComment(comment);
       }
-      return conversationComment(comment);
+      throw new NotFoundError(`Comment not found: ${commentId}`, { platform: PLATFORM });
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
