@@ -210,6 +210,8 @@ export interface PullRequestCheck {
   status: CiRunStatus;
   conclusion: CiRunConclusion;
   url: string;
+  /** The start of what a GitHub check run says about itself, build link included. */
+  summary?: string;
 }
 
 /**
