@@ -206,7 +206,7 @@ function defineTools(): ToolDefinition[] {
       name: "forges_commits_list",
       title: forgeToolTitle("forges_commits_list", "List Commits"),
       description:
-        "List paged commit summaries for one repository, optionally filtered by ref, path, and ISO-8601 since/until dates. Summaries omit changed-file rows and cut each message to its subject line, with messageTruncated on the cut ones, and leave out a committer identical to the author; use forges_commits_get for one commit's files or full message. Gitea rejects path because that API ignores pagination limits for the filter; Forgejo paginates it. Cloudflare Artifacts filters by ref alone and rejects path, since and until.",
+        "List paged commit summaries for one repository, optionally filtered by ref, path, and ISO-8601 since/until dates. Summaries omit changed-file rows and cut each message to its subject line, with messageTruncated on the cut ones, and leave out a committer identical to the author; use forges_commits_get for one commit's files or full message. Gitea rejects path because that API ignores pagination limits for the filter; Forgejo paginates it. Cloudflare Artifacts filters by ref alone and rejects path, since and until; Bitbucket rejects since and until.",
       snippet:
         "Read repository commit history from GitHub, GitLab, Gitea, Bitbucket, or Cloudflare Artifacts.",
       guidelines: [

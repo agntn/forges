@@ -15,6 +15,7 @@ import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
 import { ForgesError, NotFoundError, normalizeError } from "../errors.ts";
 import {
   assertContinuationRef,
+  assertFileSize,
   buildRepositoryFileFromBytes,
   encodeRepositoryPath,
   isCommitSha,
@@ -25,6 +26,7 @@ import type {
   CiJob,
   CiRun,
   Comment,
+  CommitSummary,
   CreateCommentInput,
   CreateIssueInput,
   Issue,
@@ -32,6 +34,7 @@ import type {
   ListCiJobsOptions,
   ListCiRunsOptions,
   ListCommentOptions,
+  ListCommitOptions,
   ListOptions,
   ListReleasesOptions,
   ListThreadOptions,
@@ -431,6 +434,7 @@ export class BitbucketProvider extends ForgeBackedProvider {
       const source = `${route}/src/${sha}/${path === "" ? "" : encodeRepositoryPath(path)}`;
       const meta = await this.client<BitbucketSourceMeta>(source, { query: { format: "meta" } });
       if (meta.type === "commit_file") {
+        assertFileSize(path, meta.size ?? 0);
         const bytes = await this.client<ArrayBuffer, "arrayBuffer">(source, {
           responseType: "arrayBuffer",
         });
@@ -510,6 +514,25 @@ export class BitbucketProvider extends ForgeBackedProvider {
 
   protected override updateRelease(): Promise<Release> {
     return missing("releases");
+  }
+
+  /** The commit log has no date filter, so `since` and `until` would come back ignored. */
+  protected override listCommits(
+    repo: RepoRef,
+    options?: Positioned<ListCommitOptions>,
+  ): Promise<ContinuedPage<CommitSummary>> {
+    if (options?.since !== undefined || options?.until !== undefined) {
+      return Promise.reject(
+        new ForgesError(
+          "Bitbucket Cloud filters commits by ref and path only. Drop since and until",
+          {
+            status: 501,
+            platform: PLATFORM,
+          },
+        ),
+      );
+    }
+    return super.listCommits(repo, options);
   }
 
   /** Pipelines don't map to runs in `forges` yet; their statuses show up as checks. */

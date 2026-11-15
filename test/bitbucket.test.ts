@@ -632,6 +632,21 @@ describe("repository contents", () => {
     });
   });
 
+  it("refuses a file over the read limit before downloading it", async () => {
+    const fetch = serve(
+      at(`${REPO}/src/${SHA}/big.bin`, (url) =>
+        url.searchParams.get("format") === "meta"
+          ? Response.json({ ...meta("big.bin", "commit_file"), size: 2_000_000 })
+          : new Response("x"),
+      ),
+    );
+
+    await expect(
+      provider().repos.readContents(ace, { path: "big.bin", ref: SHA }),
+    ).rejects.toMatchObject({ status: 413 });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses to continue a read on a moving branch", async () => {
     serve(at(`${REPO}/commit/master`, () => Response.json({ hash: SHA })));
 
@@ -667,6 +682,29 @@ describe("what Bitbucket Cloud doesn't have", () => {
     await expect(provider().ciRuns.list(ace)).rejects.toThrow(
       "read a commit's or pull request's checks",
     );
+  });
+});
+
+describe("commits", () => {
+  it.each([{ since: "2026-01-01T00:00:00Z" }, { until: "2026-01-01T00:00:00Z" }])(
+    "answers a date filter with a 501, since Bitbucket would ignore it: %j",
+    async (filter) => {
+      const fetch = serve();
+
+      await expect(provider().commits.list(ace, filter)).rejects.toMatchObject({
+        status: 501,
+        platform: "bitbucket",
+      });
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still lists by ref and path", async () => {
+    const fetch = serve(at(`${REPO}/commits/main`, () => Response.json({ values: [] })));
+
+    await provider().commits.list(ace, { ref: "main", path: "README.md" });
+
+    expect(sent(fetch).url.searchParams.get("path")).toBe("README.md");
   });
 });
 
