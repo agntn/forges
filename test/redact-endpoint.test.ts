@@ -16,6 +16,11 @@ describe("redactEndpoint", () => {
     ["at https://ghe.internal.example)/x", "at <endpoint>"],
     ["at https://build.example.net/#access_token=abc123", "at <endpoint>"],
     ["at https://build.example.net/#logs", "at https://build.example.net/#logs"],
+    [
+      '{"help":"https://docs.example/help","endpoint":"https://ghe.internal.example/api/v3"}',
+      '{"help":"https://docs.example/help","endpoint":"<endpoint>"}',
+    ],
+    ["at https://docs.example/r?to=https://ghe.internal.example/x", "at <endpoint>"],
   ])("reads %j as %j", (message, expected) => {
     expect(redactEndpoint(message, forge)).toBe(expected);
   });

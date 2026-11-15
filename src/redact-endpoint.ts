@@ -8,7 +8,8 @@
  * for the agent and stays.
  */
 const REQUEST_LINE = /\[[A-Z]+\] "[^"]*":\s*/g;
-const ABSOLUTE_URL = /\b[a-z][\w+.-]*:\/\/\S+/gi;
+/** Stops at what a URL cannot hold unencoded, so `"a","b"` in JSON reads as two links. */
+const ABSOLUTE_URL = /\b[a-z][\w+.-]*:\/\/[^\s"<>`{}|\\^]+/gi;
 /** Prose around a link, as in `(https://…)` or `https://…,`, which is not part of it. */
 const TRAILING_PUNCTUATION = /[)\]}>"'`,.;:!?]+$/;
 /** A hostname a URL parser can hand back with prose glued on, such as `ghe.corp"`, fails this. */
@@ -25,7 +26,7 @@ function signed(url: URL): boolean {
 
 /** A forge host goes with its subdomains, so `ghe.corp` hides `uploads.ghe.corp.` as well. */
 function withheld(text: string, forgeHosts: ReadonlySet<string>): boolean {
-  if (!URL.canParse(text)) return true;
+  if (!URL.canParse(text) || text.indexOf("://") !== text.lastIndexOf("://")) return true;
   const url = new URL(text);
   const host = url.hostname.toLowerCase().replace(/\.$/, "");
   if (!PLAIN_HOST.test(host) || url.username !== "" || url.password !== "" || signed(url)) {
