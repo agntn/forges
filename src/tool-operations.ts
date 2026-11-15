@@ -157,6 +157,35 @@ async function withCredentialOperation<T>(
   }
 }
 
+/** The API host each provider calls while its `FORGES_*_BASE_URL` is unset. */
+const DEFAULT_API_HOSTS = [
+  "api.github.com",
+  "gitlab.com",
+  "gitea.com",
+  "api.bitbucket.org",
+  "api.cloudflare.com",
+] as const;
+
+/**
+ * Every host a provider may call: the defaults and each `FORGES_*_BASE_URL` set right now.
+ * A base URL that does not parse leaves its host unknown, so every URL goes instead.
+ */
+function forgeHosts(): Set<string> | undefined {
+  const hosts = new Set<string>(DEFAULT_API_HOSTS);
+  for (const name of Object.values(baseUrlEnvByPlatform)) {
+    const value = process.env[name];
+    if (value === undefined || value === "") continue;
+    if (!URL.canParse(value)) return undefined;
+    hosts.add(new URL(value).hostname.toLowerCase());
+  }
+  return hosts;
+}
+
+/** A message with its request line and forge URLs gone, and vendor links kept. */
+function withoutEndpoint(message: string): string {
+  return redactEndpoint(message, forgeHosts());
+}
+
 /** An account key extends its platform key, so a platform reset drops it too. */
 function providerKey(platform: ForgesPlatform, account?: string): string {
   const baseURL = process.env[baseUrlEnvByPlatform[platform]];
@@ -379,7 +408,7 @@ export function toolFailure(error: unknown): Error {
   const failure = error instanceof Error ? error : new Error(String(error));
   const status = failure instanceof ForgesError ? failure.status : undefined;
   failure.message =
-    redactEndpoint(failure.message) ||
+    withoutEndpoint(failure.message) ||
     (status === undefined ? "no reason reported" : `HTTP ${status}`);
   return failure;
 }
@@ -436,7 +465,7 @@ function explainFailures(provider: Provider, origin: RequestOrigin): Provider {
     explainedFailures.add(error);
 
     error.message =
-      redactEndpoint(error.message) ||
+      withoutEndpoint(error.message) ||
       (error.status === undefined ? "no reason reported" : `HTTP ${error.status}`);
     if (error instanceof RateLimitError && error.retryAfter !== undefined) {
       error.message = appendSentence(error.message, `Retry after ${error.retryAfter}s.`);
@@ -1972,7 +2001,7 @@ export async function createPullRequest(
       assignees: params.assignees,
     });
     const { assignmentError, ...created } = pullRequest;
-    const reason = assignmentError === undefined ? undefined : redactEndpoint(assignmentError);
+    const reason = assignmentError === undefined ? undefined : withoutEndpoint(assignmentError);
     return result(reason === undefined ? created : { ...created, assignmentError: reason }, {
       platform: params.platform,
       note: assignmentNote(params.assignees, pullRequest.assignees, reason),

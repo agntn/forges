@@ -2538,6 +2538,7 @@ describe("forges MCP server", () => {
   });
 
   it("strips an endpoint from a failure no provider explained", async () => {
+    vi.stubEnv("FORGES_GITHUB_BASE_URL", "https://git.internal.example/api/v3");
     mocks.repos.get.mockRejectedValue(
       new TypeError("fetch failed: https://git.internal.example/x"),
     );
@@ -2549,6 +2550,45 @@ describe("forges MCP server", () => {
     });
 
     expect(response.isError).toBe(true);
+    expect(text(response.content)).toBe("forges_repos_get failed: fetch failed: <endpoint>");
+  });
+
+  it("keeps a vendor link while hiding the configured forge", async () => {
+    vi.stubEnv("FORGES_GITHUB_BASE_URL", "https://ci:s3cret@ghe.internal.example/api/v3");
+    mocks.ciRuns.readJobLog.mockRejectedValue(
+      new NotFoundError(
+        'Job 7 is not a GitHub Actions job: [GET] "https://ci:s3cret@ghe.internal.example/api/v3/repos/agntn/forges/actions/jobs/7": details: https://dash.cloudflare.com/acct/builds/a3c9 mirror: https://uploads.ghe.internal.example/7 token: https://bot:hunter2@ci.example.org/log next: https://api.cloudflare.com/client/v4/accounts/acct/x blob: https://logs.blob.example.net/7.txt?sv=2024&sig=abc123 page: https://dash.cloudflare.com/acct?tab=logs',
+        { platform: "github" },
+      ),
+    );
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_ci_jobs_log",
+      arguments: { platform: "github", owner: "agntn", repo: "forges", jobId: "7" },
+    });
+
+    const answer = text(response.content);
+    expect(response.isError).toBe(true);
+    expect(answer).not.toContain("s3cret");
+    expect(answer).not.toContain("hunter2");
+    expect(answer).not.toContain("abc123");
+    expect(answer).not.toContain("ghe.internal.example");
+    expect(answer).toBe(
+      "forges_ci_jobs_log failed: Job 7 is not a GitHub Actions job: details: https://dash.cloudflare.com/acct/builds/a3c9 mirror: <endpoint> token: <endpoint> next: <endpoint> blob: <endpoint> page: https://dash.cloudflare.com/acct?tab=logs",
+    );
+  });
+
+  it("hides every URL when a base URL cannot be read for its host", async () => {
+    vi.stubEnv("FORGES_GITEA_BASE_URL", "git.internal.example/api/v1");
+    mocks.repos.get.mockRejectedValue(new TypeError("fetch failed: https://dash.cloudflare.com/x"));
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_repos_get",
+      arguments: { platform: "github", owner: "agntn", repo: "forges" },
+    });
+
     expect(text(response.content)).toBe("forges_repos_get failed: fetch failed: <endpoint>");
   });
 
