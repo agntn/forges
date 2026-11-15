@@ -44,6 +44,25 @@ describe("createProvider factory", () => {
   });
 
   it.each([
+    ["github", "Set GITHUB_TOKEN, pass { token: '...' }, or log in with `gh auth login`."],
+    [
+      "bitbucket",
+      "Set BITBUCKET_TOKEN, or BITBUCKET_API_TOKEN with BITBUCKET_EMAIL, or pass { token: '...' }.",
+    ],
+  ] as const)("tells a %s user only about logins that exist", async (platform, hint) => {
+    const auth = await import("../src/auth.ts");
+    const spy = vi.spyOn(auth, "resolveToken").mockReturnValue(null);
+
+    try {
+      await expect(createProvider(platform)).rejects.toThrow(
+        `No auth token found for ${platform}. ${hint}`,
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it.each([
     [
       "listContributionTemplates",
       "Contribution template discovery is not supported by this provider",

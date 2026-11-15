@@ -145,10 +145,12 @@ export async function createProvider(
   });
 
   if (!resolved) {
+    const login = cliHint(platform);
     throw new AuthenticationError(
-      `No auth token found for ${platform}. ` +
-        `Set ${envHint(platform)}, pass { token: '...' }, ` +
-        `or log in with ${cliHint(platform)}.`,
+      `No auth token found for ${platform}. Set ${envHint(platform)}` +
+        (login === undefined
+          ? `, or pass { token: '...' }.`
+          : `, pass { token: '...' }, or log in with ${login}.`),
       { platform },
     );
   }
@@ -176,7 +178,8 @@ function envHint(platform: string): string {
   }
 }
 
-function cliHint(platform: string): string {
+/** The login a CLI keeps for the platform; Bitbucket has none. */
+function cliHint(platform: string): string | undefined {
   switch (platform) {
     case "github":
       return "`gh auth login`";
@@ -185,7 +188,7 @@ function cliHint(platform: string): string {
     case "gitea":
       return "`tea login add`";
     case "bitbucket":
-      return "an access token, since Bitbucket has no CLI login";
+      return undefined;
     default:
       return "the platform CLI";
   }
