@@ -277,6 +277,9 @@ interface GitHubCheckRun {
   status: string;
   conclusion: string | null;
   html_url: string;
+  details_url?: string | null;
+  app?: { slug?: string | null } | null;
+  output?: { title?: string | null; summary?: string | null } | null;
 }
 
 interface GitHubCheckRunsResponse {
@@ -1101,11 +1104,13 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   }
 
   private mapPullRequestCheck(raw: GitHubCheckRun): PullRequestCheck {
+    const summary = checkRunSummary(raw);
     return {
       id: String(raw.id),
       name: raw.name,
       ...normalizeCiRunState(raw.status, raw.conclusion),
       url: raw.html_url,
+      ...(summary === "" ? {} : { summary }),
     };
   }
 
@@ -1354,8 +1359,9 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     { jobId, ...options }: CiJobLogOptions & { jobId: string },
   ): Promise<CiJobLog> {
     try {
-      const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}/actions/jobs/${jobId}`;
-      const job = mapActionsJob(await this.client<ActionsJob>(route));
+      const repository = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
+      const route = `${repository}/actions/jobs/${jobId}`;
+      const job = mapActionsJob(await this.#readActionsJob({ route, repository, jobId }));
       if (!jobStarted(job, true)) return buildCiJobLog({ job, log: null }, options);
       // The route redirects to blob storage; fetch drops the token on that cross-origin hop.
       const stream = await this.client<unknown, "stream">(`${route}/logs`, {
@@ -1365,6 +1371,27 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       return buildCiJobLog({ job, log: { ...log, timestamped: true } }, options);
     } catch (error) {
       throw normalizeError(error, "github");
+    }
+  }
+
+  /** A 404 on another app's check run names that app and its details page. */
+  async #readActionsJob({
+    route,
+    repository,
+    jobId,
+  }: Readonly<{ route: string; repository: string; jobId: string }>): Promise<ActionsJob> {
+    try {
+      return await this.client<ActionsJob>(route);
+    } catch (error) {
+      if (!(error instanceof FetchError) || error.status !== 404) throw error;
+      const run = await Promise.resolve()
+        .then(() => this.client<GitHubCheckRun>(`${repository}/check-runs/${jobId}`))
+        .catch(() => null);
+      if (!run?.name || run.app?.slug === "github-actions") throw error;
+      throw new NotFoundError(externalCheckLogMessage(run, jobId), {
+        platform: "github",
+        originalError: error,
+      });
     }
   }
 
@@ -3140,4 +3167,27 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     }
     return response.data;
   }
+}
+
+/** Enough of a check run's summary for a build link, not its whole report. */
+const CHECK_SUMMARY_MAX_LINES = 12;
+const CHECK_SUMMARY_MAX_CHARS = 2000;
+
+/** A title that says more than the name, then the start of the summary. */
+function checkRunSummary(raw: GitHubCheckRun): string {
+  const title = raw.output?.title?.trim() ?? "";
+  const summary = raw.output?.summary?.trim() ?? "";
+  return [title === raw.name ? "" : title, summary]
+    .filter((part) => part !== "")
+    .join("\n")
+    .split("\n")
+    .slice(0, CHECK_SUMMARY_MAX_LINES)
+    .join("\n")
+    .slice(0, CHECK_SUMMARY_MAX_CHARS);
+}
+
+function externalCheckLogMessage(run: GitHubCheckRun, jobId: string): string {
+  const app = run.app?.slug ? ` from ${run.app.slug}` : "";
+  const details = run.details_url || run.html_url;
+  return `Job ${jobId} is not a GitHub Actions job: it is the check run "${run.name}"${app}, which keeps no log on GitHub. Its summary comes with the check rows; details: ${details}`;
 }

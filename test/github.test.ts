@@ -1458,6 +1458,61 @@ describe("GitHubProvider", () => {
         gh.ciRuns.readJobLog({ owner: "octocat", repo: "hello-world" }, { jobId: "105912189006" }),
       ).rejects.toBeInstanceOf(NotFoundError);
     });
+
+    it("points a check run from another app at its details page instead of a bare 404", async () => {
+      mocks.client.mockRejectedValueOnce(makeFetchError(404)).mockResolvedValueOnce({
+        id: 132787963128,
+        name: "Workers Builds: agntn-forges",
+        status: "completed",
+        conclusion: "failure",
+        html_url: "https://github.com/octocat/hello-world/runs/132787963128",
+        details_url:
+          "https://dash.cloudflare.com/acct/workers/services/view/agntn-forges/production/builds/a3c9bd47",
+        app: { slug: "cloudflare-workers-and-pages" },
+      });
+
+      const read = gh.ciRuns.readJobLog(
+        { owner: "octocat", repo: "hello-world" },
+        { jobId: "132787963128" },
+      );
+
+      await expect(read).rejects.toBeInstanceOf(NotFoundError);
+      await expect(read).rejects.toThrow(
+        'Job 132787963128 is not a GitHub Actions job: it is the check run "Workers Builds: agntn-forges" from cloudflare-workers-and-pages, which keeps no log on GitHub. Its summary comes with the check rows; details: https://dash.cloudflare.com/acct/workers/services/view/agntn-forges/production/builds/a3c9bd47',
+      );
+      expect(mocks.client).toHaveBeenNthCalledWith(
+        2,
+        "/repos/octocat/hello-world/check-runs/132787963128",
+      );
+    });
+
+    it("keeps the plain 404 when the id is no check run either", async () => {
+      const missing = makeFetchError(404);
+      mocks.client.mockRejectedValueOnce(missing).mockRejectedValueOnce(makeFetchError(404));
+
+      const read = gh.ciRuns.readJobLog(
+        { owner: "octocat", repo: "hello-world" },
+        { jobId: "105912189006" },
+      );
+
+      await expect(read).rejects.toBeInstanceOf(NotFoundError);
+      await expect(read).rejects.not.toThrow(/not a GitHub Actions job/);
+    });
+
+    it("keeps the plain 404 for an Actions check run whose job is gone", async () => {
+      mocks.client.mockRejectedValueOnce(makeFetchError(404)).mockResolvedValueOnce({
+        id: 105912189006,
+        name: "test",
+        status: "completed",
+        conclusion: "failure",
+        html_url: "https://github.com/octocat/hello-world/runs/105912189006",
+        app: { slug: "github-actions" },
+      });
+
+      await expect(
+        gh.ciRuns.readJobLog({ owner: "octocat", repo: "hello-world" }, { jobId: "105912189006" }),
+      ).rejects.not.toThrow(/not a GitHub Actions job/);
+    });
   });
 
   describe("ciRuns.list", () => {
@@ -3907,6 +3962,49 @@ describe("GitHubProvider", () => {
         items: [...statuses, checkRun(6001)],
         totalCount: 3,
       });
+    });
+
+    it("carries the summary an external check run wrote, cut to a preview", async () => {
+      const summary = [
+        "",
+        "Build ID: [a3c9bd47](https://dash.cloudflare.com/acct/builds/a3c9bd47)",
+        "Script: [agntn-forges](https://dash.cloudflare.com/acct/agntn-forges)",
+        ...Array.from({ length: 20 }, (_, line) => `line ${line}`),
+      ].join("\n");
+      mocks.rawFetch
+        .mockResolvedValueOnce({ data: { total_count: 0, statuses: [] }, headers: makeHeaders() })
+        .mockResolvedValueOnce({
+          data: {
+            total_count: 3,
+            check_runs: [
+              {
+                ...ghCheckRun(7001),
+                name: "Workers Builds: agntn-forges",
+                conclusion: "failure",
+                output: { title: "Workers Builds: agntn-forges", summary, text: "full log" },
+              },
+              { ...ghCheckRun(7002), output: { title: "2 tests failed", summary: null } },
+              { ...ghCheckRun(7003), output: { title: null, summary: "  " } },
+            ],
+          },
+          headers: makeHeaders(),
+        });
+
+      const result = await gh.commits.listChecks(
+        { owner: "octocat", repo: "hello-world" },
+        { ref: "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38" },
+      );
+
+      expect(result.items.map((check) => check.summary)).toEqual([
+        [
+          "Build ID: [a3c9bd47](https://dash.cloudflare.com/acct/builds/a3c9bd47)",
+          "Script: [agntn-forges](https://dash.cloudflare.com/acct/agntn-forges)",
+          ...Array.from({ length: 10 }, (_, line) => `line ${line}`),
+        ].join("\n"),
+        "2 tests failed",
+        undefined,
+      ]);
+      expect(result.items[2]).not.toHaveProperty("summary");
     });
 
     it("reads a full SHA without resolving it", async () => {
