@@ -960,6 +960,8 @@ export interface ReplyThreadInput {
 export interface ProviderConfig {
   baseURL?: string;
   token?: string;
+  /** Email a Bitbucket API token logs in with. Only `bitbucket` reads it. */
+  username?: string;
   /** Cloudflare account that owns the Artifacts namespaces. Only `artifacts` reads it. */
   accountId?: string;
   cache?: {

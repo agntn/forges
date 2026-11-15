@@ -5,7 +5,7 @@
 [![license](https://npmx.dev/api/registry/badge/license/@agntn/forges)](https://npmx.dev/package/@agntn/forges)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/agntn/forges)
 
-⚒️ Four forges, ten resources, 67 agent tools. Ask for a pull request, not another client.
+⚒️ Every forge, ten resources, 67 agent tools. Ask for a pull request, not another client.
 
 ## Why?
 
@@ -15,7 +15,7 @@ Docs and an explorer for the same calls: [forges.agntn.dev](https://forges.agntn
 
 ## ✨ Features
 
-- 🧩 **Four forges, one `Provider`.** GitHub, GitLab, Gitea and GitBucket. Same `repos.get`, same `Issue`, same `PullRequest`.
+- 🧩 **One `Provider` for every forge.** GitHub, GitLab, Gitea, Bitbucket and GitBucket. Same `repos.get`, same `PullRequest`, same `Thread`.
 - 🔑 **It finds the token.** Explicit value, then env, then `gh` or `glab`, then the CLI config file. First hit wins.
 - 📦 **Loads one platform.** `createProvider("github")` is async. It imports GitHub and leaves GitLab on disk.
 - 🆔 **IDs are strings.** Even when the API sent a number. A count the forge withholds is missing, not `0`.
@@ -145,6 +145,7 @@ Replace the sample `mergeCommit` with the forge's actual merge or squash SHA for
 | [GitHub](https://forges.agntn.dev/platforms/github)                  | `github`             | `Authorization: token`  | GraphQL, real flags           | global, owner, repository          |
 | [GitLab](https://forges.agntn.dev/platforms/gitlab)                  | `gitlab`             | `Private-Token`         | REST discussions              | token required, Premium for global |
 | [Gitea, Forgejo, Codeberg](https://forges.agntn.dev/platforms/gitea) | `gitea` + `baseURL`  | `Authorization: token`  | one thread per review comment | none                               |
+| [Bitbucket Cloud](https://forges.agntn.dev/platforms/bitbucket)      | `bitbucket`          | `Bearer` or `Basic`     | inline comments, resolvable   | none                               |
 | [GitBucket](https://forges.agntn.dev/platforms/gitbucket)            | `github` + `baseURL` | `Authorization: token`  | none                          | none                               |
 | [Cloudflare Artifacts](https://forges.agntn.dev/platforms/artifacts) | `artifacts`          | `Authorization: Bearer` | none                          | none                               |
 

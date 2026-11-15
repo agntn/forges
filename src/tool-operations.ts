@@ -122,6 +122,7 @@ const baseUrlEnvByPlatform: Record<ForgesPlatform, string> = {
   github: "FORGES_GITHUB_BASE_URL",
   gitlab: "FORGES_GITLAB_BASE_URL",
   gitea: "FORGES_GITEA_BASE_URL",
+  bitbucket: "FORGES_BITBUCKET_BASE_URL",
   artifacts: "FORGES_ARTIFACTS_BASE_URL",
 };
 
@@ -177,10 +178,11 @@ async function createConfiguredProvider(
 ): Promise<Provider> {
   const token = credential?.token ?? "";
   const baseURL = process.env[baseUrlEnvByPlatform[platform]];
-  const provider = await createProvider(
-    platform,
-    baseURL === undefined ? { token } : { baseURL, token },
-  );
+  const provider = await createProvider(platform, {
+    token,
+    ...(baseURL === undefined ? {} : { baseURL }),
+    ...(credential?.username === undefined ? {} : { username: credential.username }),
+  });
   return explainFailures(provider, {
     platform,
     credential:
@@ -211,27 +213,28 @@ function trackProvider(
   return provider;
 }
 
-/** The variable and the login a missing credential is told to set up. */
-const credentialSetup = {
+/** What a missing credential is told to set up; Bitbucket has no login. */
+const credentialSetup: Record<ForgesPlatform, Readonly<{ variable: string; login?: string }>> = {
   github: { variable: "GITHUB_TOKEN", login: "gh auth login" },
   gitlab: { variable: "GITLAB_TOKEN", login: "glab auth login" },
   gitea: { variable: "GITEA_TOKEN", login: "tea login add" },
+  bitbucket: { variable: "BITBUCKET_TOKEN, or BITBUCKET_API_TOKEN with BITBUCKET_EMAIL" },
   artifacts: {
     variable: "CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID",
     login: "cf auth login",
   },
-} satisfies Record<ForgesPlatform, Record<"variable" | "login", string>>;
+};
 
 /** The CLI behind each forge login. */
 const loginCli = {
   github: "gh",
   gitlab: "glab",
   gitea: "tea",
-} satisfies Record<Exclude<ForgesPlatform, "artifacts">, string>;
+} satisfies Record<Exclude<ForgesPlatform, "artifacts" | "bitbucket">, string>;
 
 function credentialSetupHint(platform: ForgesPlatform): string {
   const { variable, login } = credentialSetup[platform];
-  return `Set ${variable} or log in with \`${login}\`.`;
+  return login === undefined ? `Set ${variable}.` : `Set ${variable} or log in with \`${login}\`.`;
 }
 
 /** The way past a rejected token, which stays pinned until forges_auth_reload drops it. */
@@ -240,10 +243,14 @@ function rejectedTokenHint(
   credential: TokenOrigin,
 ): string {
   const { source, origin } = credential;
-  const cli = loginCli[platform];
-  const { variable, login } = credentialSetup[platform];
   const expired = "was rejected, so it has likely expired or been revoked.";
   const reload = "then call forges_auth_reload and retry.";
+  if (platform === "bitbucket") {
+    const where = source === "env" ? `from ${origin} ` : "";
+    return `The ${platform} token ${where}${expired} Replace it, ${reload}`;
+  }
+  const cli = loginCli[platform];
+  const { variable, login } = credentialSetup[platform];
   switch (source) {
     case "env":
       return `The ${platform} token from ${origin} ${expired} That variable wins over the \`${cli}\` login: replace or unset it, ${reload}`;

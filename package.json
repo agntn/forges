@@ -1,9 +1,10 @@
 {
   "name": "@agntn/forges",
   "version": "0.6.0",
-  "description": "Unified Git Provider - single TypeScript API for GitHub, GitLab, Gitea, GitBucket, and Cloudflare Artifacts",
+  "description": "Unified Git Provider - single TypeScript API for GitHub, GitLab, Gitea, Bitbucket, GitBucket, and Cloudflare Artifacts",
   "keywords": [
     "api",
+    "bitbucket",
     "cloudflare-artifacts",
     "git",
     "gitbucket",
@@ -65,6 +66,10 @@
     "./gitea": {
       "types": "./dist/gitea.d.mts",
       "import": "./dist/gitea.mjs"
+    },
+    "./bitbucket": {
+      "types": "./dist/bitbucket.d.mts",
+      "import": "./dist/bitbucket.mjs"
     },
     "./artifacts": {
       "types": "./dist/artifacts.d.mts",

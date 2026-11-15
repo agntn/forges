@@ -59,7 +59,8 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_repos_list", "List Repositories"),
       description:
         "List the repositories owned by one user or organization on GitHub, GitLab, Gitea, or Forgejo, or in a Cloudflare Artifacts namespace, normalized to one shape. A row leaves out an owner that repeats the one asked for, and the merge settings, which come with forges_repos_get. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.",
-      snippet: "List repositories through GitHub, GitLab, Gitea, or Cloudflare Artifacts.",
+      snippet:
+        "List repositories through GitHub, GitLab, Gitea, Bitbucket, or Cloudflare Artifacts.",
       guidelines: [
         "Use forges_repos_list for repository discovery instead of constructing provider API requests.",
       ],
@@ -73,7 +74,7 @@ function defineTools(): ToolDefinition[] {
       description:
         "Get one repository by owner and name, normalized across platforms: description, visibility, default branch, fork parent, viewer permission, merge settings, web and clone URL, and owner. A null viewerPermission means the platform omitted access metadata. A null merge means the platform kept its settings back, as GitHub does without push access and GitLab without a token, or has no pull requests to merge, as Cloudflare Artifacts. It never means no method works.",
       snippet:
-        "Get normalized repository metadata from GitHub, GitLab, Gitea, or Cloudflare Artifacts.",
+        "Get normalized repository metadata from GitHub, GitLab, Gitea, Bitbucket, or Cloudflare Artifacts.",
       guidelines: [
         "Use forges_repos_get when exact normalized repository metadata is required.",
         "Read merge from forges_repos_get before a pull request instead of gh api repos/<owner>/<repo>: with squash and squashTitle COMMIT_OR_PR_TITLE, a lone commit's subject becomes the merged title.",
@@ -100,7 +101,7 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_repos_tags", "List Repository Tags"),
       description:
         "List the Git tags of one repository, each with the commit it points at. An annotated tag is peeled to its commit, not its tag object, and sha is null when the forge names no commit. GitLab is asked for version order, newest first. GitHub and Gitea promise no order, so compare names instead of trusting the first row. A tag needs no release, so this also finds the ones forges_releases_list never shows. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.",
-      snippet: "List repository tags from GitHub, GitLab, or Gitea.",
+      snippet: "List repository tags from GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_repos_tags instead of gh api tags or git ls-remote --tags. Pick the newest tag by comparing names, not by row position.",
       ],
@@ -205,9 +206,9 @@ function defineTools(): ToolDefinition[] {
       name: "forges_commits_list",
       title: forgeToolTitle("forges_commits_list", "List Commits"),
       description:
-        "List paged commit summaries for one repository, optionally filtered by ref, path, and ISO-8601 since/until dates. Summaries omit changed-file rows and cut each message to its subject line, with messageTruncated on the cut ones, and leave out a committer identical to the author; use forges_commits_get for one commit's files or full message. Gitea rejects path because that API ignores pagination limits for the filter; Forgejo paginates it. Cloudflare Artifacts filters by ref alone and rejects path, since and until.",
+        "List paged commit summaries for one repository, optionally filtered by ref, path, and ISO-8601 since/until dates. Summaries omit changed-file rows and cut each message to its subject line, with messageTruncated on the cut ones, and leave out a committer identical to the author; use forges_commits_get for one commit's files or full message. Gitea rejects path because that API ignores pagination limits for the filter; Forgejo paginates it. Cloudflare Artifacts filters by ref alone and rejects path, since and until; Bitbucket rejects since and until.",
       snippet:
-        "Read repository commit history from GitHub, GitLab, Gitea, or Cloudflare Artifacts.",
+        "Read repository commit history from GitHub, GitLab, Gitea, Bitbucket, or Cloudflare Artifacts.",
       guidelines: [
         "Use forges_commits_list for repository history; use forges_commits_get only when one commit's changed files or full message are needed.",
         "forges_commits_list rejects path on Gitea because that API ignores pagination limits for the filter; Forgejo paginates it.",
@@ -237,7 +238,7 @@ function defineTools(): ToolDefinition[] {
       description:
         "Get one commit by SHA with normalized author, committer, parent revisions, message, URL, and changed-file rows. Patches are omitted; per-file counts are null when the provider does not report them, and filesComplete is null when provider or safety limits make completeness unknowable. Cloudflare Artifacts reports no changed files, so files is empty there and filesComplete null.",
       snippet:
-        "Read one commit from GitHub, GitLab, Gitea, or Cloudflare Artifacts, with its changed files where the host lists them.",
+        "Read one commit from GitHub, GitLab, Gitea, Bitbucket, or Cloudflare Artifacts, with its changed files where the host lists them.",
       guidelines: [
         "Use forges_commits_get when a known commit SHA needs exact metadata or changed paths.",
       ],
@@ -253,7 +254,8 @@ function defineTools(): ToolDefinition[] {
         "A branch or tag is read as the commit it points at when the call starts, named in sha, so its pages and waits stay on that commit. " +
         "Pass waitSeconds instead of polling this tool: the call returns once every check of the commit concludes, or when the budget ends, with the wait field forges_pull_requests_checks returns. " +
         "An empty list never settles this wait, since a commit can't tell a repository without CI from checks that haven't started yet: the budget ends with settled false.",
-      snippet: "Read the checks for one commit, branch, or tag on GitHub, GitLab, or Gitea.",
+      snippet:
+        "Read the checks for one commit, branch, or tag on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_commits_checks for a commit no pull request points at: a branch pushed before its pull request, or a head the pull request has moved past.",
         "After a merge, give forges_commits_checks the merge commit and a waitSeconds budget to wait for deploy, release or publish checks that run only on the default branch.",
@@ -550,7 +552,7 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_pull_requests_list", "List Pull Requests"),
       description:
         "List normalized pull requests, which GitLab calls merge requests, for one repository, optionally filtered by state. Bodies are omitted here; read a single body with forges_pull_requests_get.",
-      snippet: "List repository pull requests across GitHub, GitLab, or Gitea.",
+      snippet: "List repository pull requests across GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_pull_requests_list to inspect pull-request queues across supported platforms.",
       ],
@@ -592,7 +594,7 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_pull_requests_get", "Get Pull Request"),
       description:
         "Get one pull request, called a merge request on GitLab, by number: body, branches, head revision, draft and merged state, mergeability, provider merge status, and the landed merge commit SHA. Pass closingIssues to also list the issues it closes on merge. The body comes one bounded slice at a time, like forges_issues_get: while nextOffset is not null, call again with offset set to nextOffset and the returned bodyHash, or raise maxChars; a 409 means the body was edited in between, so start again from offset 0.",
-      snippet: "Get one pull request from GitHub, GitLab, or Gitea.",
+      snippet: "Get one pull request from GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: ["Use forges_pull_requests_get when the exact pull-request number is known."],
       ...effect("forges_pull_requests_get"),
       input: schemas.pullRequestParameters,
@@ -618,7 +620,7 @@ function defineTools(): ToolDefinition[] {
         "List the checks or pipelines associated with one pull request head revision, normalized to name, lifecycle status, terminal conclusion, and URL. On GitHub the rows are the commit statuses followed by the check runs, so a CLA bot or a Jenkins job that branch protection requires is listed too. A host without check runs, GitBucket for one, returns those statuses and treats the missing route as an empty list. On GitLab they are the merge request pipelines on the head plus the head pipeline GitLab evaluates for it, which is how a merged results or merge train pipeline is found. Pass waitSeconds instead of polling this tool: the call then returns once every check of the pull request concludes, or when the budget ends, carrying a wait field with settled, waitedMs, polls, and the names still pending. " +
         `An empty list counts only after ${EMPTY_CHECK_GRACE_SECONDS} seconds without a change to the pull request, so a call right after a push waits for the first check; wait.noChecks says quiet or waited. ` +
         "For a moment after a push the pull request can still report the previous head, whose finished checks would settle the wait at once: pass the pushed commit as headSha. While the pull request points elsewhere, the call lists no checks, puts the commit it still reports in staleHead, and with waitSeconds keeps waiting.",
-      snippet: "Read the checks for a pull request on GitHub, GitLab, or Gitea.",
+      snippet: "Read the checks for a pull request on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_pull_requests_checks to verify pull-request CI before merging or reviewing.",
         "Give forges_pull_requests_checks a waitSeconds budget rather than calling it again to see whether a running check finished.",
@@ -663,7 +665,7 @@ function defineTools(): ToolDefinition[] {
         "marker keeps the comments whose body contains it and since the ones created or edited from then on; either reads every page itself, so it takes no cursor and returns no nextCursor. " +
         "A review bot that reports through a sticky comment edits it when its round starts and again when it ends, so pass waitSeconds instead of polling: with since, the call returns once a matching comment is created or edited after that time, and without it once one changes after the call starts. " +
         "The result then holds only the changed comments, plus a wait field with settled, waitedMs and polls; a timeout is settled false with an empty list, not an error.",
-      snippet: "Read the conversation under a pull request on GitHub, GitLab, or Gitea.",
+      snippet: "Read the conversation under a pull request on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_pull_requests_comments for the pull-request conversation; review threads come from forges_threads_list.",
         "To wait for a review bot's round, call forges_pull_requests_comments with the bot's sticky marker, the push time as since and waitSeconds, then call again without since to wait for the next edit, rather than polling in the shell.",
@@ -678,7 +680,8 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_pull_requests_comments_get", "Get Pull Request Comment"),
       description:
         "Get one conversation comment under a pull request, with its full body. The id is the one forges_pull_requests_comments returned; review-thread comments come back whole from forges_threads_get instead.",
-      snippet: "Read one pull-request conversation comment in full on GitHub, GitLab, or Gitea.",
+      snippet:
+        "Read one pull-request conversation comment in full on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_pull_requests_comments_get with an id from forges_pull_requests_comments; review threads still come back whole from forges_threads_get.",
       ],
@@ -709,7 +712,7 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_pull_requests_events", "List Pull Request Events"),
       description:
         'List one pull request\'s timeline, oldest first: commits, reviews, review requests, comments, labels, state changes such as merged or closed, and references. Each row has kind, action, a summary line, actor and createdAt; comment and review bodies are left out, read them with forges_pull_requests_comments or forges_pull_requests_reviews. A referenced event names the issue, pull request or commit that mentioned this one in reference, with title and state on GitHub and Gitea. Pass kinds to keep only some, such as ["commit", "review"]. An issue number answers not found. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.',
-      snippet: "Read a pull request's timeline on GitHub, GitLab, or Gitea.",
+      snippet: "Read a pull request's timeline on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_pull_requests_events instead of gh api .../timeline to see who did what on a pull request and when.",
       ],
@@ -722,7 +725,7 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_pull_requests_comments_create", "Comment on Pull Request"),
       description:
         "Post a new conversation comment on one pull request. It lands in the discussion, not in a review thread; answer a thread with forges_threads_reply. It writes as the account the local credentials belong to, and a second call posts a second comment, so confirm the text with the user first. Returns the comment as stored, with the id forges_pull_requests_comments_get reads.",
-      snippet: "Comment on a pull request on GitHub, GitLab, or Gitea.",
+      snippet: "Comment on a pull request on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_pull_requests_comments_create only when the user explicitly asks to comment on a pull request; answer a review thread with forges_threads_reply instead.",
       ],
@@ -735,7 +738,7 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_pull_requests_comments_update", "Edit Pull Request Comment"),
       description:
         "Replace the body of one conversation comment on a pull request, by the id forges_pull_requests_comments returned. Review thread comments are edited with forges_threads_comments_update, and a comment from elsewhere is not found. It writes as the account the local credentials belong to and the old text is gone afterwards, so confirm the new text with the user first. Returns the comment as stored.",
-      snippet: "Edit a pull request comment on GitHub, GitLab, or Gitea.",
+      snippet: "Edit a pull request comment on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_pull_requests_comments_update to fix a conversation comment instead of posting a correction under it, with the whole new body.",
       ],
@@ -748,7 +751,7 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_pull_requests_comments_delete", "Delete Pull Request Comment"),
       description:
         "Delete one conversation comment from a pull request for good, by the id forges_pull_requests_comments returned. Review thread comments go with forges_threads_comments_delete, and a comment from elsewhere is not found. It writes as the account the local credentials belong to and no forge can bring the comment back. Returns deleted: true with the comment id.",
-      snippet: "Delete a pull request comment on GitHub, GitLab, or Gitea.",
+      snippet: "Delete a pull request comment on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_pull_requests_comments_delete only when the user explicitly asks to remove a comment. To fix one, edit it with forges_pull_requests_comments_update.",
       ],
@@ -761,7 +764,7 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_pull_requests_create", "Create Pull Request"),
       description:
         "Open a pull request, a GitLab merge request, from one branch onto another. This writes to the hosted platform as the account the local credentials belong to, so confirm the branches and the target with the user first.",
-      snippet: "Create a pull request on GitHub, GitLab, or Gitea.",
+      snippet: "Create a pull request on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_pull_requests_create only when the user explicitly asks to create a pull request.",
       ],
@@ -811,7 +814,7 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_users_authenticated", "Get Authenticated User"),
       description:
         "Get the profile of the account the locally detected credentials belong to. Call this before writing anything, because every write lands under that account and the server never takes a token as an argument. With account, it checks that GitHub login instead, as a write naming it would. The credential stays pinned until forges_auth_reload explicitly replaces it.",
-      snippet: "Identify the authenticated GitHub, GitLab, or Gitea account.",
+      snippet: "Identify the authenticated GitHub, GitLab, Gitea, or Bitbucket account.",
       guidelines: [
         "Use forges_users_authenticated to identify the account selected by trusted local authentication.",
       ],
@@ -837,7 +840,7 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_threads_list", "List Review Threads"),
       description:
         "List the review threads on one pull request, optionally filtered by resolved state. Comment bodies are truncated here; read one thread whole with forges_threads_get. Gitea carries no parent id on review comments, so each comment comes back as its own single-comment thread there.",
-      snippet: "List review threads on a pull request across GitHub, GitLab, or Gitea.",
+      snippet: "List review threads on a pull request across GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_threads_list to inspect review threads instead of dumping full PR comments.",
       ],
@@ -850,7 +853,7 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_threads_get", "Get Review Thread"),
       description:
         "Get one review thread by the exact id that forges_threads_list returned, with every comment body in full. Thread ids are platform-specific opaque strings, so never construct one.",
-      snippet: "Get one review thread from GitHub, GitLab, or Gitea.",
+      snippet: "Get one review thread from GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: ["Use forges_threads_get when the exact review thread id is known."],
       ...effect("forges_threads_get"),
       input: schemas.threadParameters,
@@ -861,7 +864,7 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_threads_reply", "Reply to Review Thread"),
       description:
         "Post a reply inside an existing review thread, keeping the answer attached to the code it discusses instead of adding a standalone pull-request comment. This writes to the hosted platform under the local credentials.",
-      snippet: "Reply inside a review thread on GitHub, GitLab, or Gitea.",
+      snippet: "Reply inside a review thread on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_threads_reply to answer inside the thread, not as a standalone pull-request comment.",
       ],
@@ -900,7 +903,7 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_threads_resolve", "Resolve Review Thread"),
       description:
         "Mark one review thread resolved. This writes to the hosted platform under the local credentials, so resolve a thread only after the point it raised has actually been addressed. The answer is the thread's new state with a commentCount in place of the comments, which forges_threads_get reads in full.",
-      snippet: "Resolve a review thread on GitHub, GitLab, or Gitea.",
+      snippet: "Resolve a review thread on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_threads_resolve only when the user explicitly asks to resolve a thread.",
       ],
@@ -913,7 +916,7 @@ function defineTools(): ToolDefinition[] {
       title: forgeToolTitle("forges_threads_unresolve", "Unresolve Review Thread"),
       description:
         "Reopen one resolved review thread. This writes to the hosted platform under the local credentials. The answer is the thread's new state with a commentCount in place of the comments, which forges_threads_get reads in full.",
-      snippet: "Unresolve a review thread on GitHub, GitLab, or Gitea.",
+      snippet: "Unresolve a review thread on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_threads_unresolve only when the user explicitly asks to reopen a thread.",
       ],

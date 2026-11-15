@@ -6,8 +6,11 @@
  *   2. Environment variables (GH_TOKEN, GITLAB_TOKEN, etc.)
  *   3. CLI tools (gh, glab, tea)
  *   4. The CLI's config file, for a machine with the config but not the CLI
+ *
+ * Bitbucket has no CLI login to read, so its chain stops at the environment.
  */
 
+import { resolve as resolveBitbucket } from "@agntn/credentials/bitbucket";
 import { resolve as resolveGitea } from "@agntn/credentials/gitea";
 import { resolve as resolveGitHub } from "@agntn/credentials/github";
 import { resolve as resolveGitLab } from "@agntn/credentials/gitlab";
@@ -15,19 +18,22 @@ import { CredentialsError } from "@agntn/credentials";
 import type { CloudflareCredential, CloudflareOptions } from "@agntn/credentials/cloudflare";
 import { AuthenticationError } from "./errors.ts";
 
-export type Platform = "github" | "gitlab" | "gitea";
+export type Platform = "github" | "gitlab" | "gitea" | "bitbucket";
 
 export interface AuthResult {
   token: string;
   source: "explicit" | "env" | "cli" | "config";
   /** Where the token came from, such as `GL_TOKEN` or `gh hosts.yml`. */
   origin: string;
+  /** Basic auth login of the token, such as `BITBUCKET_EMAIL`. */
+  username?: string;
 }
 
 const resolvers = {
   github: resolveGitHub,
   gitlab: resolveGitLab,
   gitea: resolveGitea,
+  bitbucket: resolveBitbucket,
 } satisfies Record<Platform, unknown>;
 
 /**
@@ -36,7 +42,7 @@ const resolvers = {
  */
 export function resolveToken(
   platform: Platform,
-  options?: { token?: string; baseURL?: string; account?: string },
+  options?: { token?: string; baseURL?: string; account?: string; username?: string },
 ): AuthResult | null {
   return resolvers[platform](options);
 }

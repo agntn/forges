@@ -16,6 +16,9 @@ const TOKEN_VARIABLES = [
   "GITLAB_ACCESS_TOKEN",
   "OAUTH_TOKEN",
   "GITEA_TOKEN",
+  "BITBUCKET_TOKEN",
+  "BITBUCKET_API_TOKEN",
+  "BITBUCKET_EMAIL",
 ];
 
 let home: string;
@@ -130,6 +133,32 @@ describe("resolveToken", () => {
       token: "codeberg-token",
       source: "config",
       origin: "tea config.yml",
+    });
+  });
+
+  it("reads a Bitbucket access token, or an API token with the email it logs in with", () => {
+    vi.stubEnv("BITBUCKET_API_TOKEN", "ATATT-api");
+    expect(resolveToken("bitbucket")).toBeNull();
+
+    vi.stubEnv("BITBUCKET_EMAIL", "ada@example.com");
+    expect(resolveToken("bitbucket")).toEqual({
+      token: "ATATT-api",
+      source: "env",
+      origin: "BITBUCKET_API_TOKEN",
+      username: "ada@example.com",
+    });
+
+    vi.stubEnv("BITBUCKET_TOKEN", "ATCTT-access");
+    expect(resolveToken("bitbucket")).toEqual({
+      token: "ATCTT-access",
+      source: "env",
+      origin: "BITBUCKET_TOKEN",
+    });
+    expect(resolveToken("bitbucket", { token: "explicit", username: "bob@example.com" })).toEqual({
+      token: "explicit",
+      source: "explicit",
+      origin: "token",
+      username: "bob@example.com",
     });
   });
 

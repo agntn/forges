@@ -46,6 +46,8 @@ const mocks = vi.hoisted(() => {
   const issueAuthors = { current: [] as string[] };
   /** One rejection handed to every caller, the way GitLab shares an in-flight project lookup. */
   const sharedRefusal = { current: new Error("unset") };
+  /** The login a Bitbucket API token goes with, as BITBUCKET_EMAIL sets it. */
+  const credentialUsername = { current: undefined as string | undefined };
 
   const resolveToken = vi.fn((_platform: string, options?: { account?: string }) => {
     const account = options?.account;
@@ -55,9 +57,15 @@ const mocks = vi.hoisted(() => {
         : null;
     }
     const token = credentialToken.current;
+    const username = credentialUsername.current;
     return token === null
       ? null
-      : { token, source: credentialSource.current, origin: credentialOrigin.current };
+      : {
+          token,
+          source: credentialSource.current,
+          origin: credentialOrigin.current,
+          ...(username === undefined ? {} : { username }),
+        };
   });
 
   const createProvider = vi.fn(
@@ -220,6 +228,7 @@ const mocks = vi.hoisted(() => {
     envCredential,
     issueAuthors,
     sharedRefusal,
+    credentialUsername,
     resolveToken,
     createProvider,
   };
@@ -256,6 +265,7 @@ beforeEach(() => {
   mocks.issueCreateGate.current = undefined;
   mocks.ghLogins.current = new Set(["aeitwoen", "oritwoen"]);
   mocks.envCredential.current = false;
+  mocks.credentialUsername.current = undefined;
   mocks.issueAuthors.current = [];
   mocks.sharedRefusal.current = new NotFoundError("Resource not found: 404", {
     platform: "gitlab",
@@ -641,6 +651,14 @@ describe("configured provider", () => {
     await expect(getRepository({ platform: "gitea", repo: "gitea/tea" })).rejects.toThrow(
       "Authentication failed: 401: 401 Unauthorized. The gitea token saved in `tea config.yml` was rejected, so it has likely expired or been revoked. Set GITEA_TOKEN, which wins over that file, or redo the login with `tea login add`, then call forges_auth_reload and retry.",
     );
+
+    /* Bitbucket has no CLI login, so the hint names no login to redo. */
+    mocks.credentialSource.current = "env";
+    mocks.credentialOrigin.current = "BITBUCKET_TOKEN";
+
+    await expect(getRepository({ platform: "bitbucket", repo: "atlassian/aui" })).rejects.toThrow(
+      "Authentication failed: 401: 401 Unauthorized. The bitbucket token from BITBUCKET_TOKEN was rejected, so it has likely expired or been revoked. Replace it, then call forges_auth_reload and retry.",
+    );
   });
 
   it("reads again after a fresh login once forges_auth_reload drops the rejected token", async () => {
@@ -719,6 +737,21 @@ describe("configured provider", () => {
     expect(mocks.anonymousWrites.current).toBe(0);
   });
 
+  it("tells a write without a Bitbucket token which variables to set, with no login to suggest", async () => {
+    mocks.credentialToken.current = null;
+
+    await expect(
+      createPullRequestComment({
+        platform: "bitbucket",
+        repo: "atlassian/aui",
+        number: 1,
+        body: "hi",
+      }),
+    ).rejects.toThrow(
+      "No auth token found for bitbucket. Set BITBUCKET_TOKEN, or BITBUCKET_API_TOKEN with BITBUCKET_EMAIL.",
+    );
+  });
+
   it("resolves separately for each platform and endpoint", async () => {
     await getRepository({ platform: "github", owner: "agntn", repo: "forges" });
     await getRepository({ platform: "gitea", owner: "agntn", repo: "forges" });
@@ -739,6 +772,17 @@ describe("configured provider", () => {
       ["gitea", { token: "test-token" }],
       ["gitea", { baseURL: "https://gitea.example.com/api/v1", token: "test-token" }],
       ["gitea", { baseURL: "", token: "test-token" }],
+    ]);
+  });
+
+  it("hands a Bitbucket API token over with the email it logs in with", async () => {
+    mocks.credentialOrigin.current = "BITBUCKET_API_TOKEN";
+    mocks.credentialUsername.current = "ada@example.com";
+
+    await getRepository({ platform: "bitbucket", owner: "atlassian", repo: "aui" });
+
+    expect(mocks.createProvider.mock.calls).toEqual([
+      ["bitbucket", { token: "test-token", username: "ada@example.com" }],
     ]);
   });
 

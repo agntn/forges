@@ -1,7 +1,7 @@
 /** One row per platform for the landing grid, the sidebar, the explorer and `::platform-facts`. Auth columns mirror `@agntn/credentials`. */
 export interface PlatformInfo {
   /** The value passed to `createProvider()` and reported as `platform`. */
-  readonly key: "github" | "gitlab" | "gitea" | "artifacts";
+  readonly key: "github" | "gitlab" | "gitea" | "bitbucket" | "artifacts";
   /** Page slug. GitBucket rides on the GitHub provider, Forgejo on Gitea. */
   readonly slug: string;
   readonly label: string;
@@ -80,6 +80,24 @@ export const PLATFORMS: readonly PlatformInfo[] = [
     to: "/platforms/gitea",
   },
   {
+    key: "bitbucket",
+    slug: "bitbucket",
+    label: "Bitbucket",
+    icon: "i-simple-icons-bitbucket",
+    blurb:
+      "Bitbucket Cloud API 2.0: pull requests and their threads read like anywhere else. Issues and releases aren't there to read.",
+    host: "api.bitbucket.org/2.0",
+    envVars: ["BITBUCKET_TOKEN", "BITBUCKET_API_TOKEN", "BITBUCKET_EMAIL"],
+    cli: "none, there's no Bitbucket CLI login",
+    configFile: null,
+    authHeader: "Bearer or Basic",
+    anonymousReads: "public repositories, until a 429 a handful of requests in",
+    threads: "inline comments with their replies, resolvable",
+    codeSearch: "unsupported, explicit error",
+    templates: "none",
+    to: "/platforms/bitbucket",
+  },
+  {
     key: "github",
     slug: "gitbucket",
     label: "GitBucket",
@@ -120,9 +138,9 @@ export const PLATFORMS: readonly PlatformInfo[] = [
 /** One row per provider class; GitBucket rides on the GitHub row. */
 export const PROVIDER_PLATFORMS = PLATFORMS.filter((platform) => platform.slug === platform.key);
 
-/** What the docs worker reads for you. Artifacts needs your Cloudflare account, so it's out. */
+/** What the docs worker reads for you. Artifacts wants your account, Bitbucket your token. */
 export const EXPLORER_PLATFORMS = PROVIDER_PLATFORMS.filter(
-  (platform) => platform.key !== "artifacts",
+  (platform) => platform.key !== "artifacts" && platform.key !== "bitbucket",
 );
 
 const BY_SLUG = new Map(PLATFORMS.map((platform) => [platform.slug, platform]));

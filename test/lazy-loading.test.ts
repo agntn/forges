@@ -54,7 +54,7 @@ describe("createProvider", () => {
     const resolveToken = vi.spyOn(auth, "resolveToken");
 
     try {
-      await expect(createProvider("bitbucket" as never)).rejects.toBeInstanceOf(ForgesError);
+      await expect(createProvider("sourcehut" as never)).rejects.toBeInstanceOf(ForgesError);
       expect(resolveToken).not.toHaveBeenCalled();
       expect(loaded.modules).toEqual(["gitea"]);
     } finally {

@@ -68,7 +68,7 @@ export {
 
 type ProviderConstructor = new (config: ProviderConfig) => Provider;
 
-/** Every platform createProvider builds: the three forges and Cloudflare Artifacts. */
+/** Every platform createProvider builds: the four forges and Cloudflare Artifacts. */
 export type ProviderPlatform = Platform | "artifacts";
 
 /**
@@ -92,6 +92,11 @@ const providers: Record<ProviderPlatform, () => Promise<ProviderConstructor>> = 
   ),
   gitea: /* @__PURE__ */ lazy(
     /* @__PURE__ */ queued(() => import("./providers/gitea.ts").then((m) => m.GiteaProvider)),
+  ),
+  bitbucket: /* @__PURE__ */ lazy(
+    /* @__PURE__ */ queued(() =>
+      import("./providers/bitbucket.ts").then((m) => m.BitbucketProvider),
+    ),
   ),
   artifacts: /* @__PURE__ */ lazy(
     /* @__PURE__ */ queued(() =>
@@ -119,7 +124,7 @@ export async function createProvider(
 ): Promise<Provider> {
   if (!Object.hasOwn(providers, platform)) {
     throw new ForgesError(
-      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea, artifacts`,
+      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea, bitbucket, artifacts`,
       { platform },
     );
   }
@@ -136,19 +141,26 @@ export async function createProvider(
   const resolved = resolveToken(platform, {
     token: config?.token,
     baseURL: config?.baseURL,
+    username: config?.username,
   });
 
   if (!resolved) {
+    const login = cliHint(platform);
     throw new AuthenticationError(
-      `No auth token found for ${platform}. ` +
-        `Set ${envHint(platform)}, pass { token: '...' }, ` +
-        `or log in with ${cliHint(platform)}.`,
+      `No auth token found for ${platform}. Set ${envHint(platform)}` +
+        (login === undefined
+          ? `, or pass { token: '...' }.`
+          : `, pass { token: '...' }, or log in with ${login}.`),
       { platform },
     );
   }
 
   const ProviderClass = await providers[platform]();
-  return new ProviderClass({ ...config, token: resolved.token });
+  return new ProviderClass({
+    ...config,
+    token: resolved.token,
+    ...(resolved.username === undefined ? {} : { username: resolved.username }),
+  });
 }
 
 function envHint(platform: string): string {
@@ -159,12 +171,15 @@ function envHint(platform: string): string {
       return "GITLAB_TOKEN";
     case "gitea":
       return "GITEA_TOKEN";
+    case "bitbucket":
+      return "BITBUCKET_TOKEN, or BITBUCKET_API_TOKEN with BITBUCKET_EMAIL";
     default:
       return `${platform.toUpperCase()}_TOKEN`;
   }
 }
 
-function cliHint(platform: string): string {
+/** The login a CLI keeps for the platform; Bitbucket has none. */
+function cliHint(platform: string): string | undefined {
   switch (platform) {
     case "github":
       return "`gh auth login`";
@@ -172,6 +187,8 @@ function cliHint(platform: string): string {
       return "`glab auth login`";
     case "gitea":
       return "`tea login add`";
+    case "bitbucket":
+      return undefined;
     default:
       return "the platform CLI";
   }
