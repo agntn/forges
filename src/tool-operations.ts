@@ -645,6 +645,7 @@ export type CompareCommitsParams = RepositoryParams &
 
 export interface ListCiRunsParams extends RepositoryParams {
   branch?: string;
+  workflow?: string;
   cursor?: string;
   perPage?: number;
 }
@@ -1134,6 +1135,7 @@ export async function listCiRuns(
   const params = repositoryTarget(args);
   const options: ListCiRunsOptions = {
     branch: params.branch,
+    workflow: params.workflow,
     cursor: params.cursor,
     perPage: params.perPage,
   };

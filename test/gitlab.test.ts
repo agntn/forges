@@ -1286,6 +1286,45 @@ describe("GitLabProvider", () => {
   });
 
   describe("ciRuns.list", () => {
+    it("filters pipelines by name", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [{ ...glPipeline, name: "release" }],
+        headers: glHeaders({ nextPage: "2", total: "7" }),
+      });
+
+      const result = await gl.ciRuns.list(
+        { owner: "gitlab-org", repo: "gitlab-foss" },
+        { workflow: "release", branch: "main", perPage: 1 },
+      );
+
+      expect(forge.ci.runs).not.toHaveBeenCalled();
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/pipelines",
+        query: { name: "release", ref: "main", page: 1, per_page: 1 },
+      });
+      expect(result).toEqual({
+        items: [expect.objectContaining({ id: "9001", name: "release" })],
+        totalCount: 7,
+        nextCursor: expect.any(String),
+      });
+    });
+
+    it("refuses a page the name filter did not narrow", async () => {
+      mockProjectResolve(278964);
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          { ...glPipeline, name: "release" },
+          { ...glPipeline, id: 9002, name: null },
+        ],
+        headers: glHeaders(),
+      });
+
+      await expect(
+        gl.ciRuns.list({ owner: "gitlab-org", repo: "gitlab-foss" }, { workflow: "release" }),
+      ).rejects.toMatchObject({ status: 501, message: expect.stringContaining("name filter") });
+    });
+
     it("returns normalized paged pipelines and filters by ref", async () => {
       forge.ci.runs.mockReturnValueOnce(
         listing({

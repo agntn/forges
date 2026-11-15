@@ -10,6 +10,7 @@ import { Buffer } from "node:buffer";
 import type { ForgeProvider as Forge } from "forges";
 import { forgejo } from "forges/forgejo";
 import { gitea } from "forges/gitea";
+import { versionAtLeast } from "forges/kit";
 
 import {
   commitTag,
@@ -87,6 +88,7 @@ import type {
   ListCommentOptions,
   ListCommitOptions,
   ListPullRequestChecksOptions,
+  ListCiRunsOptions,
   ListCommitChecksOptions,
   ListPullRequestReviewsOptions,
   ListEventOptions,
@@ -165,6 +167,11 @@ interface GiteaCiRun {
   conclusion?: string | null;
   html_url?: string | null;
   url?: string | null;
+}
+
+interface GiteaCiRunsResponse {
+  total_count?: number;
+  workflow_runs?: GiteaCiRun[];
 }
 
 interface GiteaCiJobsResponse {
@@ -674,11 +681,21 @@ const GITEA_PULL_REQUEST_TEMPLATE_CANDIDATES = [
   ".github/pull_request_template.yml",
 ] as const;
 
+/** Forgejo reports `<forgejo>+gitea-<base>`, with the Gitea version it forked from after the plus. */
+function isForgejoVersion(version: string | undefined): boolean {
+  const normalized = version?.toLowerCase() ?? "";
+  return normalized.includes("forgejo") || normalized.includes("+gitea-");
+}
+
 /** Gitea ignores `limit` when `path` is set. Forgejo paginates that filter. */
 function versionPagesCommitPathFilter(version: string | undefined): boolean {
-  if (!version) return false;
-  const normalized = version.toLowerCase();
-  return normalized.includes("forgejo") || normalized.includes("+gitea-");
+  return isForgejoVersion(version);
+}
+
+/** Gitea 1.27 lists one workflow's runs on its own route; Forgejo 15 filters the run list by it. */
+function workflowRunsRoute(version: string | undefined): "path" | "query" | null {
+  if (isForgejoVersion(version)) return versionAtLeast(version, "15.0") ? "query" : null;
+  return versionAtLeast(version, "1.27") ? "path" : null;
 }
 
 /**
@@ -687,6 +704,7 @@ function versionPagesCommitPathFilter(version: string | undefined): boolean {
 export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   private readonly apiBaseURL: string;
   private pagedCommitPathFilter: boolean | undefined;
+  #version: Promise<string | undefined> | undefined;
   #responseItemLimit: number | null | undefined;
 
   /**
@@ -1227,16 +1245,76 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     return this.#responseItemLimit;
   }
 
+  /** The server version, read once; a failed read answers undefined and is tried again next time. */
+  #serverVersion(): Promise<string | undefined> {
+    this.#version ??= this.client<{ version?: string }>("/version").then(
+      (info) => info?.version,
+      () => {
+        this.#version = undefined;
+        return undefined;
+      },
+    );
+    return this.#version;
+  }
+
   private async commitPathFilterIsPaged(): Promise<boolean> {
     if (this.pagedCommitPathFilter !== undefined) {
       return this.pagedCommitPathFilter;
     }
+    const version = await this.#serverVersion();
+    if (version === undefined) return false;
+    this.pagedCommitPathFilter = versionPagesCommitPathFilter(version);
+    return this.pagedCommitPathFilter;
+  }
+
+  /** `forges` has no workflow filter, and Gitea and Forgejo each spell it their own way. */
+  protected override async listCiRuns(
+    repo: RepoRef,
+    options?: Positioned<ListCiRunsOptions>,
+  ): Promise<ContinuedPage<CiRun> | NumberedPage<CiRun>> {
+    if (!options?.workflow) return super.listCiRuns(repo, options);
     try {
-      const info = await this.client<{ version?: string }>("/version");
-      this.pagedCommitPathFilter = versionPagesCommitPathFilter(info?.version);
-      return this.pagedCommitPathFilter;
-    } catch {
-      return false;
+      const version = await this.#serverVersion();
+      const route = workflowRunsRoute(version);
+      if (route === null) {
+        throw new ForgesError(
+          `Filtering CI runs by workflow needs Gitea 1.27 or Forgejo 15; this server reports ${version ?? "no version"}`,
+          { status: 501, platform: PLATFORM },
+        );
+      }
+      const page = options.page ?? 1;
+      const perPage = options.perPage ?? 30;
+      const base = `/repos/${encodePathSegment(repo.owner, "Owner")}/${encodePathSegment(repo.repo, "Repository name")}/actions`;
+      const workflow = encodePathSegment(options.workflow, "Workflow");
+      const query: Record<string, string> = { page: String(page), limit: String(perPage) };
+      if (route === "query") query.workflow_id = options.workflow;
+      if (options.branch) {
+        if (route === "query") query.ref = `refs/heads/${options.branch}`;
+        else query.branch = options.branch;
+      }
+      const { data, headers } = await rawFetch<GiteaCiRunsResponse>(this.client, {
+        url: route === "path" ? `${base}/workflows/${workflow}/runs` : `${base}/runs`,
+        query,
+      });
+      const result = buildPageResult({ items: data?.workflow_runs ?? [], headers }, (raw) =>
+        this.mapCiRun(raw),
+      );
+      const totalCount = data?.total_count;
+      const hasNextPage =
+        result.hasNextPage ||
+        (!headers.has("Link") &&
+          (await this.#countedNextPage(
+            { page, perPage },
+            { served: result.items.length, total: totalCount ?? Number.NaN },
+          )));
+      return {
+        ...result,
+        totalCount,
+        hasNextPage,
+        nextPage: hasNextPage ? (result.nextPage ?? page + 1) : undefined,
+      };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
     }
   }
 

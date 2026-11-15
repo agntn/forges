@@ -1089,7 +1089,7 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   protected listCiRuns(
     _repo: RepoRef,
     _options?: Positioned<ListCiRunsOptions>,
-  ): Promise<ContinuedPage<CiRun>> {
+  ): Promise<ContinuedPage<CiRun> | NumberedPage<CiRun>> {
     return this.#unsupported("CI-run listing is not supported by this provider");
   }
   protected listCiJobs(

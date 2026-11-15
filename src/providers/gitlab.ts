@@ -75,6 +75,7 @@ import type {
   ListOptions,
   ListCommentOptions,
   ListPullRequestChecksOptions,
+  ListCiRunsOptions,
   ListCommitChecksOptions,
   ListPullRequestReviewsOptions,
   ListPullRequestFilesOptions,
@@ -1759,6 +1760,39 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
         items,
         hasNextPage,
         nextPage: hasNextPage ? page + 1 : undefined,
+      };
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
+  /** `forges` has no name filter for pipelines, so a `workflow` query asks GitLab directly. */
+  protected override async listCiRuns(
+    repo: RepoRef,
+    options?: Positioned<ListCiRunsOptions>,
+  ): Promise<ContinuedPage<CiRun> | NumberedPage<CiRun>> {
+    if (!options?.workflow) return super.listCiRuns(repo, options);
+    try {
+      const projectId = await this.resolveProjectId(repo.owner, repo.repo);
+      const { data, headers } = await rawFetch<GitLabPipeline[]>(this.client, {
+        url: `/projects/${projectId}/pipelines`,
+        query: {
+          name: options.workflow,
+          ...(options.branch ? { ref: options.branch } : {}),
+          page: options.page ?? 1,
+          per_page: options.perPage ?? 30,
+        },
+      });
+      const pipelines = data ?? [];
+      if (pipelines.some((raw) => raw.name !== options.workflow)) {
+        throw new ForgesError(
+          "This GitLab ignored the pipeline name filter and listed other pipelines",
+          { status: 501, platform: "gitlab" },
+        );
+      }
+      return {
+        ...this.parsePagination(pipelines, headers),
+        items: pipelines.map((raw) => this.mapCiRun(raw)),
       };
     } catch (error: unknown) {
       throw normalizeError(error, "gitlab");
