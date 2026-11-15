@@ -10,6 +10,7 @@ import { GitHubProvider } from "../src/providers/github.ts";
 import { GitLabProvider } from "../src/providers/gitlab.ts";
 import { GiteaProvider } from "../src/providers/gitea.ts";
 import { BitbucketProvider } from "../src/providers/bitbucket.ts";
+import { GiteeProvider } from "../src/providers/gitee.ts";
 import { AuthenticationError, ForgesError } from "../src/errors.ts";
 
 describe("createProvider factory", () => {
@@ -20,6 +21,7 @@ describe("createProvider factory", () => {
     ["gitlab", GitLabProvider],
     ["gitea", GiteaProvider],
     ["bitbucket", BitbucketProvider],
+    ["gitee", GiteeProvider],
   ] as const)("builds the %s provider", async (platform, ProviderClass) => {
     expect(await createProvider(platform, baseConfig)).toBeInstanceOf(ProviderClass);
   });
@@ -49,6 +51,7 @@ describe("createProvider factory", () => {
       "bitbucket",
       "Set BITBUCKET_TOKEN, or BITBUCKET_API_TOKEN with BITBUCKET_EMAIL, or pass { token: '...' }.",
     ],
+    ["gitee", "Set GITEE_TOKEN, or pass { token: '...' }."],
   ] as const)("tells a %s user only about logins that exist", async (platform, hint) => {
     const auth = await import("../src/auth.ts");
     const spy = vi.spyOn(auth, "resolveToken").mockReturnValue(null);

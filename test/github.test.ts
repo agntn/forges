@@ -2332,6 +2332,7 @@ describe("GitHubProvider", () => {
       -1,
       1.5,
       Number.MAX_SAFE_INTEGER + 1,
+      "ICK440",
     ])("rejects invalid issue number %s before transport", async (number) => {
       await expect(
         gh.issues.get({ owner: "octocat", repo: "hello-world", number }),

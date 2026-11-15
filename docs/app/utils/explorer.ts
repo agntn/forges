@@ -1,7 +1,7 @@
 /** The docs API answers as the explorer reads them; the shapes live in the route files and server/utils/slim.ts. */
 
 export interface WireIssue {
-  number: number;
+  number: number | string;
   title: string;
   state: string;
   labels: string[];
@@ -13,6 +13,7 @@ export interface WireIssue {
 }
 
 export interface WirePullRequest extends WireIssue {
+  number: number;
   draft: boolean;
   merged: boolean;
   sourceBranch: string;

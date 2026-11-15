@@ -19,6 +19,8 @@ const TOKEN_VARIABLES = [
   "BITBUCKET_TOKEN",
   "BITBUCKET_API_TOKEN",
   "BITBUCKET_EMAIL",
+  "GITEE_TOKEN",
+  "GITEE_ACCESS_TOKEN",
 ];
 
 let home: string;
@@ -134,6 +136,18 @@ describe("resolveToken", () => {
       source: "config",
       origin: "tea config.yml",
     });
+  });
+
+  it("reads a Gitee token from GITEE_TOKEN before GITEE_ACCESS_TOKEN", () => {
+    vi.stubEnv("GITEE_ACCESS_TOKEN", "access");
+    expect(resolveToken("gitee")).toEqual({
+      token: "access",
+      source: "env",
+      origin: "GITEE_ACCESS_TOKEN",
+    });
+
+    vi.stubEnv("GITEE_TOKEN", "primary");
+    expect(resolveToken("gitee")).toMatchObject({ token: "primary", origin: "GITEE_TOKEN" });
   });
 
   it("reads a Bitbucket access token, or an API token with the email it logs in with", () => {

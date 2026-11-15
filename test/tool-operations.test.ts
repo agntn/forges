@@ -752,6 +752,19 @@ describe("configured provider", () => {
     );
   });
 
+  it("tells a Gitee user which variable to set, with no login to suggest", async () => {
+    mocks.credentialToken.current = null;
+
+    await expect(
+      createIssueComment({
+        platform: "gitee",
+        repo: "openharmony/docs",
+        number: "ICK440",
+        body: "hi",
+      }),
+    ).rejects.toThrow("No auth token found for gitee. Set GITEE_TOKEN.");
+  });
+
   it("resolves separately for each platform and endpoint", async () => {
     await getRepository({ platform: "github", owner: "agntn", repo: "forges" });
     await getRepository({ platform: "gitea", owner: "agntn", repo: "forges" });

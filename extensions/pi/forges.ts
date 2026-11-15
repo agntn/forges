@@ -22,6 +22,7 @@ const platformLabels: Record<ForgesTools.ForgesPlatform, string> = {
   gitlab: "GitLab",
   gitea: "Gitea",
   bitbucket: "Bitbucket",
+  gitee: "Gitee",
   artifacts: "Cloudflare Artifacts",
 };
 // oxlint-disable-next-line eslint/no-control-regex -- Removing terminal control bytes is intentional.

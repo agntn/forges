@@ -1184,6 +1184,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     const { type: _type, fields: _fields, ...issue } = this.mapIssue(raw);
     return {
       ...issue,
+      number: raw.number,
       merged: raw.pull_request?.merged_at != null,
       draft: raw.draft ?? false,
     };

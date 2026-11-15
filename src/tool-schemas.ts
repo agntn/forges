@@ -4,7 +4,7 @@ import { THREAD_EVENT_KINDS } from "./thread-event.ts";
 import type { ThreadEventKind } from "./types.ts";
 
 /** The platforms every tool surface accepts, re-exported from `src/tool-operations.ts`. */
-export type ForgesPlatform = "github" | "gitlab" | "gitea" | "bitbucket" | "artifacts";
+export type ForgesPlatform = "github" | "gitlab" | "gitea" | "bitbucket" | "gitee" | "artifacts";
 
 /**
  * Build the parameter schemas for the forges tool surface.
@@ -19,7 +19,7 @@ export function forgesToolSchemas() {
   const platform = Type.Optional(
     Type.Unsafe<Exclude<ForgesPlatform, "artifacts">>({
       type: "string",
-      enum: ["github", "gitlab", "gitea", "bitbucket"],
+      enum: ["github", "gitlab", "gitea", "bitbucket", "gitee"],
       description: "Git hosting platform; defaults to github",
       default: "github",
     }),
@@ -28,7 +28,7 @@ export function forgesToolSchemas() {
   const gitPlatform = Type.Optional(
     Type.Unsafe<ForgesPlatform>({
       type: "string",
-      enum: ["github", "gitlab", "gitea", "bitbucket", "artifacts"],
+      enum: ["github", "gitlab", "gitea", "bitbucket", "gitee", "artifacts"],
       description:
         "Git hosting platform, or artifacts for Cloudflare Artifacts with a namespace as owner; defaults to github",
       default: "github",
@@ -109,6 +109,14 @@ export function forgesToolSchemas() {
     }),
   );
   const number = Type.Integer({ description: "Issue or pull-request number", minimum: 1 });
+  /** Gitee issues go by a key such as I8ZQ2A, so an issue takes text too. */
+  const issueNumber = Type.Union(
+    [
+      Type.Integer({ minimum: 1 }),
+      Type.String({ pattern: "^(?=[^A-Za-z]*[A-Za-z])[A-Za-z0-9]+$" }),
+    ],
+    { description: "Issue number, or on Gitee its key such as I8ZQ2A" },
+  );
   const threadState = Type.Optional(
     Type.Unsafe<"unresolved" | "resolved" | "all">({
       type: "string",
@@ -488,7 +496,7 @@ export function forgesToolSchemas() {
     platform,
     owner,
     repo,
-    number,
+    number: issueNumber,
     offset: bodyOffset,
     maxChars: maxChars("body"),
     bodyHash,
@@ -509,6 +517,14 @@ export function forgesToolSchemas() {
     ),
   });
   const listCommentsParameters = closed({ platform, owner, repo, number, cursor, perPage });
+  const listIssueCommentsParameters = closed({
+    platform,
+    owner,
+    repo,
+    number: issueNumber,
+    cursor,
+    perPage,
+  });
   const listPullRequestFilesParameters = listCommentsParameters;
   const listPullRequestChecksParameters = closed({
     platform,
@@ -535,6 +551,13 @@ export function forgesToolSchemas() {
     reviewId: Type.String({ description: "Review id returned by the reviews list", minLength: 1 }),
   });
   const commentParameters = closed({ platform, owner, repo, number, commentId });
+  const issueCommentParameters = closed({
+    platform,
+    owner,
+    repo,
+    number: issueNumber,
+    commentId,
+  });
   const reactionCommentId = Type.Optional(
     Type.String({
       description:
@@ -546,7 +569,7 @@ export function forgesToolSchemas() {
     platform,
     owner,
     repo,
-    number,
+    number: issueNumber,
     commentId: reactionCommentId,
     cursor,
     perPage,
@@ -556,6 +579,22 @@ export function forgesToolSchemas() {
     owner,
     repo,
     number,
+    kinds: Type.Optional(
+      Type.Array(Type.Unsafe<ThreadEventKind>({ type: "string", enum: THREAD_EVENT_KINDS }), {
+        description:
+          'Keep only these event kinds, such as ["referenced"] for the issues, pull requests and commits that mention this one',
+        minItems: 1,
+        maxItems: THREAD_EVENT_KINDS.length,
+      }),
+    ),
+    cursor,
+    perPage,
+  });
+  const listIssueEventsParameters = closed({
+    platform,
+    owner,
+    repo,
+    number: issueNumber,
     kinds: Type.Optional(
       Type.Array(Type.Unsafe<ThreadEventKind>({ type: "string", enum: THREAD_EVENT_KINDS }), {
         description:
@@ -661,6 +700,14 @@ export function forgesToolSchemas() {
     body: Type.String({ description: "Comment body in the platform's Markdown", minLength: 1 }),
     account,
   });
+  const createIssueCommentParameters = closed({
+    platform,
+    owner,
+    repo,
+    number: issueNumber,
+    body: Type.String({ description: "Comment body in the platform's Markdown", minLength: 1 }),
+    account,
+  });
   const newCommentBody = Type.String({
     description: "The whole new body in the platform's Markdown, which replaces the old one",
     minLength: 1,
@@ -674,7 +721,24 @@ export function forgesToolSchemas() {
     body: newCommentBody,
     account,
   });
+  const updateIssueCommentParameters = closed({
+    platform,
+    owner,
+    repo,
+    number: issueNumber,
+    commentId,
+    body: newCommentBody,
+    account,
+  });
   const deleteCommentParameters = closed({ platform, owner, repo, number, commentId, account });
+  const deleteIssueCommentParameters = closed({
+    platform,
+    owner,
+    repo,
+    number: issueNumber,
+    commentId,
+    account,
+  });
   const issueType = Type.Optional(
     Type.String({
       description:
@@ -752,7 +816,7 @@ export function forgesToolSchemas() {
     platform,
     owner,
     repo,
-    number,
+    number: issueNumber,
     title: Type.Optional(Type.String({ description: "New issue title", minLength: 1 })),
     body: Type.Optional(Type.String({ description: "New issue body; replaces the old one" })),
     state: Type.Optional(
@@ -968,6 +1032,12 @@ export function forgesToolSchemas() {
     listRepositoryItemsParameters,
     searchRepositoryItemsParameters,
     issueParameters,
+    listIssueCommentsParameters,
+    issueCommentParameters,
+    listIssueEventsParameters,
+    createIssueCommentParameters,
+    updateIssueCommentParameters,
+    deleteIssueCommentParameters,
     pullRequestParameters,
     listCommentsParameters,
     listPullRequestFilesParameters,

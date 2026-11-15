@@ -110,8 +110,9 @@ const { samples, paused, current, step } = useLandingForge();
             its raw responses onto the shared types. GitBucket speaks the GitHub API, so it's the
             GitHub provider with a <code class="forges-code">baseURL</code>. Forgejo and Codeberg
             are Gitea the same way. Bitbucket says workspace where everyone else says owner, and has
-            no issues to read at all. Cloudflare Artifacts gets a class of its own: plain Git
-            storage with a Bearer token and no forge on top. And your own forge is one class away.
+            no issues to read at all. Gitee numbers its issues with letters, like ICK440, and forges
+            leaves them that way. Cloudflare Artifacts gets a class of its own: plain Git storage
+            with a Bearer token and no forge on top. And your own forge is one class away.
           </p>
           <p class="landing-entry">
             <span class="console-tag">Import</span>

@@ -884,6 +884,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
   private mapPullRequestSearchItem(raw: GiteaIssue): PullRequestSearchItem {
     return {
       ...this.mapIssue(raw),
+      number: raw.number,
       merged: raw.pull_request?.merged ?? false,
       draft: raw.pull_request?.draft ?? false,
     };

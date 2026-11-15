@@ -1824,7 +1824,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   /** The head sha and the pipeline GitLab evaluates for it, from one read so they agree. */
   async #readMergeRequestHead(
     projectId: number,
-    number: number,
+    number: IssueRef["number"],
   ): Promise<{ headSha: string; headPipelineId: number | undefined }> {
     const response = await this.client<GitLabGraphQLResponse<GitLabMergeRequestHeadData>>(
       gitlabGraphqlUrl(this.apiBaseURL),

@@ -5,7 +5,7 @@ export default defineAppConfig({
   seo: {
     title: "@agntn/forges",
     description:
-      "One TypeScript API over GitHub, GitLab, Gitea, Bitbucket and GitBucket: repos, issues, pull requests, review threads, commits and CI in one shape.",
+      "One TypeScript API over GitHub, GitLab, Gitea, Bitbucket, Gitee and GitBucket: repos, issues, pull requests, review threads, commits and CI in one shape.",
     schema: {
       type: "SoftwareApplication",
       applicationCategory: "DeveloperApplication",

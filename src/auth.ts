@@ -7,18 +7,19 @@
  *   3. CLI tools (gh, glab, tea)
  *   4. The CLI's config file, for a machine with the config but not the CLI
  *
- * Bitbucket has no CLI login to read, so its chain stops at the environment.
+ * Bitbucket and Gitee have no CLI login to read, so their chains stop at the environment.
  */
 
 import { resolve as resolveBitbucket } from "@agntn/credentials/bitbucket";
 import { resolve as resolveGitea } from "@agntn/credentials/gitea";
+import { resolve as resolveGitee } from "@agntn/credentials/gitee";
 import { resolve as resolveGitHub } from "@agntn/credentials/github";
 import { resolve as resolveGitLab } from "@agntn/credentials/gitlab";
 import { CredentialsError } from "@agntn/credentials";
 import type { CloudflareCredential, CloudflareOptions } from "@agntn/credentials/cloudflare";
 import { AuthenticationError } from "./errors.ts";
 
-export type Platform = "github" | "gitlab" | "gitea" | "bitbucket";
+export type Platform = "github" | "gitlab" | "gitea" | "bitbucket" | "gitee";
 
 export interface AuthResult {
   token: string;
@@ -34,6 +35,7 @@ const resolvers = {
   gitlab: resolveGitLab,
   gitea: resolveGitea,
   bitbucket: resolveBitbucket,
+  gitee: resolveGitee,
 } satisfies Record<Platform, unknown>;
 
 /**

@@ -22,7 +22,7 @@ export function cut(value: string, max: number): string {
 
 /** Wire shapes for the explorer and the landing. No bodies, an issue body is somebody else's text. */
 export interface WireIssue {
-  number: number;
+  number: number | string;
   title: string;
   state: IssueState;
   labels: string[];
@@ -34,6 +34,7 @@ export interface WireIssue {
 }
 
 export interface WirePullRequest extends WireIssue {
+  number: number;
   draft: boolean;
   merged: boolean;
   sourceBranch: string;
@@ -86,6 +87,7 @@ export function slimIssue(issue: Issue): WireIssue {
 export function slimPullRequest(pr: PullRequest): WirePullRequest {
   return {
     ...slimIssue(pr),
+    number: pr.number,
     draft: pr.draft,
     merged: pr.merged,
     sourceBranch: pr.sourceBranch,

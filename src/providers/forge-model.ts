@@ -45,6 +45,7 @@ import type {
   CommitSummary,
   EventReference,
   Issue,
+  IssueNumber,
   Owner,
   PullRequest,
   PullRequestCheck,
@@ -168,11 +169,16 @@ export function repositoryFromModel(repo: Repo): Repository {
   };
 }
 
+/** A count stays a number, and a key like Gitee's `I8ZQ2A` stays the text it is. */
+export function issueNumber(number: string | number): IssueNumber {
+  return typeof number === "number" || /^\d+$/.test(number) ? Number(number) : number;
+}
+
 /** Merged and closed both read as closed, and so does a state the model can't name. */
 export function issueFromModel(thread: ForgeThread): Issue {
   return {
     id: thread.ref.externalId ?? "",
-    number: Number(thread.ref.number),
+    number: issueNumber(thread.ref.number),
     title: thread.title,
     body: thread.body ?? "",
     state: thread.state === "open" ? "open" : "closed",
@@ -190,6 +196,7 @@ export function pullRequestFromModel(thread: ForgeThread): PullRequest {
   const branches = thread.branches;
   return {
     ...issueFromModel(thread),
+    number: Number(thread.ref.number),
     merged: thread.state === "merged",
     draft: thread.isDraft,
     sourceBranch: branches?.head.ref ?? "",
@@ -377,7 +384,7 @@ function referenceFromModel(
   return {
     repository,
     kind: from.kind,
-    number: from.number === undefined ? null : Number(from.number),
+    number: from.number === undefined ? null : issueNumber(from.number),
     sha: null,
     title: source?.title ?? null,
     state: source?.state ?? null,

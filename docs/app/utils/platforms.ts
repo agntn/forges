@@ -1,7 +1,7 @@
 /** One row per platform for the landing grid, the sidebar, the explorer and `::platform-facts`. Auth columns mirror `@agntn/credentials`. */
 export interface PlatformInfo {
   /** The value passed to `createProvider()` and reported as `platform`. */
-  readonly key: "github" | "gitlab" | "gitea" | "bitbucket" | "artifacts";
+  readonly key: "github" | "gitlab" | "gitea" | "bitbucket" | "gitee" | "artifacts";
   /** Page slug. GitBucket rides on the GitHub provider, Forgejo on Gitea. */
   readonly slug: string;
   readonly label: string;
@@ -98,6 +98,24 @@ export const PLATFORMS: readonly PlatformInfo[] = [
     to: "/platforms/bitbucket",
   },
   {
+    key: "gitee",
+    slug: "gitee",
+    label: "Gitee",
+    icon: "i-simple-icons-gitee",
+    blurb:
+      "Gitee API v5 on gitee.com. Issues keep their text keys, like ICK440, and pull requests keep their numbers.",
+    host: "gitee.com/api/v5",
+    envVars: ["GITEE_TOKEN", "GITEE_ACCESS_TOKEN"],
+    cli: "none, there's no Gitee CLI login",
+    configFile: null,
+    authHeader: "Authorization: token",
+    anonymousReads: "public repositories, until a plain-text 403 a few dozen requests in",
+    threads: "unsupported, explicit error",
+    codeSearch: "unsupported, explicit error",
+    templates: "none",
+    to: "/platforms/gitee",
+  },
+  {
     key: "github",
     slug: "gitbucket",
     label: "GitBucket",
@@ -138,9 +156,9 @@ export const PLATFORMS: readonly PlatformInfo[] = [
 /** One row per provider class; GitBucket rides on the GitHub row. */
 export const PROVIDER_PLATFORMS = PLATFORMS.filter((platform) => platform.slug === platform.key);
 
-/** What the docs worker reads for you. Artifacts wants your account, Bitbucket your token. */
+/** What the docs worker reads for you. Artifacts wants your account, Bitbucket and Gitee your token. */
 export const EXPLORER_PLATFORMS = PROVIDER_PLATFORMS.filter(
-  (platform) => platform.key !== "artifacts" && platform.key !== "bitbucket",
+  (platform) => !["artifacts", "bitbucket", "gitee"].includes(platform.key),
 );
 
 const BY_SLUG = new Map(PLATFORMS.map((platform) => [platform.slug, platform]));

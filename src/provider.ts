@@ -181,10 +181,17 @@ interface Listing<O> {
 }
 
 /** The fields one argument must carry, each a string or an integer. */
-type ArgumentShape = Readonly<Record<string, "string" | "number">>;
+type ArgumentType = "string" | "number";
+type ArgumentShape = Readonly<Record<string, ArgumentType | readonly ArgumentType[]>>;
 
 const REPO_REF: ArgumentShape = { owner: "string", repo: "string" };
-const ISSUE_REF: ArgumentShape = { ...REPO_REF, number: "number" };
+/** An issue key as Gitee prints it: letters and digits, at least one letter. */
+const ISSUE_KEY = /^(?=[^A-Za-z]*[A-Za-z])[A-Za-z0-9]+$/;
+
+/** The issue calls a key reaches; sub issues compare numbers and pull requests have them. */
+const KEYED_CALL = /^issues\.(?!\w*SubIssue)/;
+
+const ISSUE_REF: ArgumentShape = { ...REPO_REF, number: ["number", "string"] };
 
 const ISSUE_FIELDS_UNSUPPORTED = "Issue types and fields are not supported by this provider";
 
@@ -203,7 +210,9 @@ function assertArgument(
       : undefined;
   const fits =
     fields !== undefined &&
-    Object.entries(shape).every(([key, type]) => typeof fields[key] === type);
+    Object.entries(shape).every(([key, type]) =>
+      (typeof type === "string" ? [type] : type).includes(typeof fields[key] as ArgumentType),
+    );
   if (!fits) {
     throw new TypeError(
       `${call} takes { ${Object.keys(shape).join(", ")} } as its ${position} argument`,
@@ -349,9 +358,12 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   public readonly threads: ThreadResource;
   /** Named on every refusal from the base class, which runs before any platform code. */
   readonly #platform: string | undefined;
+  /** Whether issues go by a text key instead of a count, as Gitee's `I8ZQ2A` does. */
+  readonly #issueKeys: boolean;
 
-  protected constructor(platform?: string) {
+  protected constructor(platform?: string, options: Readonly<{ issueKeys?: boolean }> = {}) {
     this.#platform = platform;
+    this.#issueKeys = options.issueKeys === true;
     this.repos = {
       list: (owner, options) =>
         this.#paged({ listing: "repos.list", subject: [owner], options }, (positioned) =>
@@ -944,7 +956,13 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
   /** A number of the right type can still be `NaN` or `1.5`, which no forge route takes. */
   #assertIssue(issue: IssueRef, call: string): void {
     assertIssueRef(issue, call);
-    this.#assertPositive(issue.number, "Number");
+    if (typeof issue.number === "string" && this.#issueKeys && KEYED_CALL.test(call)) {
+      if (!ISSUE_KEY.test(issue.number)) {
+        throw this.#refusal("Number must be a positive integer or an issue key such as I8ZQ2A");
+      }
+      return;
+    }
+    this.#assertPositive(issue.number as number, "Number");
   }
 
   #assertPositive(value: number, field: string): void {
