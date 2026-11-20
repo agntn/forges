@@ -4,7 +4,12 @@ import { stripVTControlCharacters } from "node:util";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { registerPiTools, type PiConfirm, type PiRenderers } from "@agntn/tools/pi";
+import {
+  registerPiTools,
+  type PiConfirm,
+  type PiPrepareArguments,
+  type PiRenderers,
+} from "@agntn/tools/pi";
 
 import type * as ForgesTools from "../../dist/tool-operations.d.mts";
 import type * as ForgesToolList from "../../dist/tools.d.mts";
@@ -238,6 +243,50 @@ const confirm: Record<string, PiConfirm> = {
   forges_threads_comments_delete: commentConfirm("Delete review thread comment?"),
 };
 
+/** The string array a model typed out as JSON, if that's what it is. */
+function stringArray(text: string): string[] | undefined {
+  if (!text.trimStart().startsWith("[")) return undefined;
+  try {
+    const value: unknown = JSON.parse(text);
+    return Array.isArray(value) && value.every((item) => typeof item === "string")
+      ? value
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Pi wraps that text in a one-item array, and GitHub shrugs off the login `["ori"]`. */
+function parseArrays(names: readonly string[]): PiPrepareArguments {
+  return (args) => {
+    if (typeof args !== "object" || args === null) return args;
+    const repaired: Record<string, unknown> = { ...args };
+    let changed = false;
+    for (const name of names) {
+      const value: unknown = repaired[name];
+      const parsed = typeof value === "string" ? stringArray(value) : undefined;
+      if (parsed === undefined) continue;
+      repaired[name] = parsed;
+      changed = true;
+    }
+    return changed ? repaired : args;
+  };
+}
+
+/** One repair per tool that takes a top-level array. */
+function arrayRepairs(
+  tools: ReturnType<typeof ForgesToolList.forgesTools>,
+): Record<string, PiPrepareArguments> {
+  return Object.fromEntries(
+    tools.flatMap((tool) => {
+      const names = Object.entries(tool.input.properties)
+        .filter(([, schema]) => (schema as { type?: unknown }).type === "array")
+        .map(([name]) => name);
+      return names.length === 0 ? [] : [[tool.name, parseArrays(names)]];
+    }),
+  );
+}
+
 function statusRenderers(name: string, title: string): PiRenderers {
   return {
     renderCall(args: unknown, theme: StatusTheme, context: RenderOptions) {
@@ -267,5 +316,6 @@ export default async function forgesExtension(pi: ExtensionAPI): Promise<void> {
       tools.map((tool) => [tool.name, statusRenderers(tool.name, tool.title)]),
     ),
     confirm,
+    prepareArguments: arrayRepairs(tools),
   });
 }

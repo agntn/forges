@@ -5218,7 +5218,7 @@ describe("GitHubProvider", () => {
       expect(mocks.client).toHaveBeenCalledTimes(3);
       expect(pr.assignees).toEqual([]);
       expect(pr.assignmentError).toBe(
-        "GitHub answered 201 without assigning them, which it does when the account lacks push access",
+        "GitHub answered 201 without assigning them, which it does when the account lacks push access or a login is not one it can assign",
       );
     });
 
@@ -5232,7 +5232,7 @@ describe("GitHubProvider", () => {
 
       expect(mocks.client).toHaveBeenCalledTimes(3);
       expect(pr.assignmentError).toBe(
-        "GitHub answered 201 without assigning them, which it does when the account lacks push access",
+        "GitHub answered 201 without assigning them, which it does when the account lacks push access or a login is not one it can assign",
       );
     });
   });

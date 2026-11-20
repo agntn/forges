@@ -399,7 +399,7 @@ describe("configured provider", () => {
 
     expect(updated.details.result).toMatchObject({ number: 5, updatedBy: "oritwoen" });
     expect(JSON.parse(updated.content[0].text).note).toBe(
-      "Update succeeded, but the assignees did not change as asked (not assigned: reviewer; still assigned: Maintainer). The result shows who is assigned now.",
+      "The assignees did not change as asked (not assigned: reviewer; still assigned: Maintainer), though the rest of the update went through. The result shows who is assigned now.",
     );
   });
 
@@ -463,7 +463,7 @@ describe("configured provider", () => {
     expect(updated.details.result).toMatchObject({ number: 174, state: "closed" });
     expect(updated.details.result).not.toMatchObject({ updatedBy: "anonymous" });
     expect(JSON.parse(updated.content[0].text).note).toBe(
-      "Update succeeded, but the assignees did not change as asked (not assigned: reviewer). The result shows who is assigned now.",
+      "The assignees did not change as asked (not assigned: reviewer), though the rest of the update went through. The result shows who is assigned now.",
     );
   });
 
