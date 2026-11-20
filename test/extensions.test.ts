@@ -1,4 +1,7 @@
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { toolEffects } from "../extensions/shared/tool-effects.ts";
 import type {
@@ -176,11 +179,19 @@ const toolNames = [
   "forges_local_merge_verify",
 ];
 
+type Handler = (event: never, context: never) => unknown;
+let piHandlers = new Map<string, Handler>();
+let ompHandlers = new Map<string, Handler>();
+
 async function registerPiTools(): Promise<Map<string, PiToolDefinition>> {
   const tools = new Map<string, PiToolDefinition>();
+  piHandlers = new Map();
   const api = {
     registerTool(tool: PiToolDefinition) {
       tools.set(tool.name, tool);
+    },
+    on(name: string, handler: Handler) {
+      piHandlers.set(name, handler);
     },
   };
   await forgesPiExtension(api as unknown as PiExtensionAPI);
@@ -193,7 +204,11 @@ async function registerOmpTools(): Promise<{
 }> {
   let label: string | undefined;
   const tools = new Map<string, OmpToolDefinition>();
+  ompHandlers = new Map();
   const api = {
+    on(name: string, handler: Handler) {
+      ompHandlers.set(name, handler);
+    },
     /* The adapter hands OMP the wire schema through `Type.Unsafe`; the host keeps it as it came. */
     typebox: { Type: { Unsafe: (schema: unknown) => schema } },
     pi: {
@@ -2111,5 +2126,49 @@ describe("Forges OMP extension", () => {
       },
     );
     expect(result.details).toMatchObject({ platform: "gitlab", result: { number: 42 } });
+  });
+});
+
+describe("Repository context in the system prompt", () => {
+  function checkout(origin?: string): string {
+    const directory = mkdtempSync(join(tmpdir(), "forges-prompt-"));
+    execFileSync("git", ["init", "-q", directory]);
+    if (origin) execFileSync("git", ["-C", directory, "remote", "add", "origin", origin]);
+    return directory;
+  }
+  const section =
+    '<forges_repository>\nThe working directory is a Git checkout. Its forge remotes, which forges tools reach with these arguments:\n- origin: agntn/forges on GitHub (platform "github", owner "agntn", repo "forges")\n</forges_repository>';
+
+  it("puts the checkout's forge into a Pi prompt section and takes it out again", async () => {
+    await registerPiTools();
+    const handler = piHandlers.get("before_agent_start");
+    if (!handler) throw new Error("No Pi before_agent_start handler");
+    const sections: Record<string, string> = { cwd: "/somewhere" };
+    const run = (cwd: string) =>
+      Reflect.apply(handler, undefined, [
+        { systemPrompt: "base", systemPromptOptions: { sections } },
+        { cwd },
+      ]);
+
+    expect(await run(checkout("git@github.com:agntn/forges.git"))).toBeUndefined();
+    expect(`<forges_repository>\n${sections.forges_repository}\n</forges_repository>`).toBe(
+      section,
+    );
+
+    expect(await run(checkout())).toBeUndefined();
+    expect(sections).toEqual({ cwd: "/somewhere" });
+  });
+
+  it("appends the section to the OMP prompt and leaves a plain directory alone", async () => {
+    await registerOmpTools();
+    const handler = ompHandlers.get("before_agent_start");
+    if (!handler) throw new Error("No OMP before_agent_start handler");
+    const run = (cwd: string) =>
+      Reflect.apply(handler, undefined, [{ systemPrompt: ["base"] }, { cwd }]);
+
+    expect(await run(checkout("https://github.com/agntn/forges.git"))).toEqual({
+      systemPrompt: ["base", section],
+    });
+    expect(await run(checkout())).toBeUndefined();
   });
 });
