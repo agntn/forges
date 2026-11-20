@@ -15,13 +15,26 @@ const TRAILING_PUNCTUATION = /[)\]}>"'`,.;:!?]+$/;
 /** A hostname a URL parser can hand back with prose glued on, such as `ghe.corp"`, fails this. */
 const PLAIN_HOST = /^(?:[a-z\d.-]+|\[[\da-f:.]+\])$/;
 const PLACEHOLDER = "<endpoint>";
-/** Where a presigned link keeps its signature: Azure's `sig`, S3's `X-Amz-Signature`. */
-const SECRET_PARAM = /token|sig|key|secret|auth|credential|password|code/i;
+/** Short secret names that hide inside ordinary ones (`assignee`, `author`), so only a whole word counts. */
+const SECRET_WORDS = new Set(["sig", "key", "apikey", "auth", "authorization", "code"]);
+/** No ordinary name holds these, so `accesstoken` with nothing to split on still counts. */
+const SECRET_PART = /token|secret|password|signature|credential|jwt/;
+/** A JSON Web Token, which a link can carry as a path segment as well. */
+const JWT = /\beyJ[\w-]+\.[\w-]+\./;
 
-/** True for a query or a fragment that names a secret, as `#access_token=…` does. */
+/** `apiKey` splits into `api`, `key` and counts, while `assignee` stays one ordinary word. */
+function namesSecret(name: string): boolean {
+  const words = name
+    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z\d]+/);
+  return SECRET_PART.test(name.toLowerCase()) || words.some((word) => SECRET_WORDS.has(word));
+}
+
+/** True for a query or a fragment that names a secret, as `#access_token=…` does, or a JWT anywhere. */
 function signed(url: URL): boolean {
   const names = [...url.searchParams.keys(), ...new URLSearchParams(url.hash.slice(1)).keys()];
-  return names.some((name) => SECRET_PARAM.test(name));
+  return names.some(namesSecret) || JWT.test(url.href);
 }
 
 /** A forge host goes with its subdomains, so `ghe.corp` hides `uploads.ghe.corp.` as well. */

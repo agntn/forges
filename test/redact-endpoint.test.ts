@@ -17,6 +17,17 @@ describe("redactEndpoint", () => {
     ["at https://build.example.net/#access_token=abc123", "at <endpoint>"],
     ["at https://build.example.net/#logs", "at https://build.example.net/#logs"],
     [
+      "at https://github.com/o/r/issues?assignee=a&author=b",
+      "at https://github.com/o/r/issues?assignee=a&author=b",
+    ],
+    ["at https://logs.example.net/7?X-Amz-Signature=abc123", "at <endpoint>"],
+    ["at https://logs.example.net/7?apiKey=abc123", "at <endpoint>"],
+    ["at https://logs.example.net/7?jwt=abc123", "at <endpoint>"],
+    ["at https://logs.example.net/7?accessToken=abc123", "at <endpoint>"],
+    ["at https://logs.example.net/7?clientsecret=abc123", "at <endpoint>"],
+    ["at https://logs.example.net/7?apitoken=abc123", "at <endpoint>"],
+    ["at https://logs.example.net/v/eyJhbGciOi.eyJzdWIiOi.c2ln/log", "at <endpoint>"],
+    [
       '{"help":"https://docs.example/help","endpoint":"https://ghe.internal.example/api/v3"}',
       '{"help":"https://docs.example/help","endpoint":"<endpoint>"}',
     ],
