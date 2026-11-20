@@ -384,6 +384,53 @@ async function assertCheckoutBin() {
   }
 }
 
+/** Lists tools over `bin mcp`; the SDK client defaults to legacy, hence the explicit mode. */
+async function listToolsOver(bin, mode, environment = {}) {
+  const { FORGES_DIST: _inherited, ...inherited } = process.env;
+  const client = new Client(
+    { name: "protocol-era", version: "1.0.0" },
+    { versionNegotiation: { mode } },
+  );
+  await client.connect(
+    new StdioClientTransport({
+      command: process.execPath,
+      args: [bin, "mcp"],
+      env: { ...inherited, ...environment },
+      stderr: "ignore",
+    }),
+  );
+  try {
+    const version = client.getNegotiatedProtocolVersion();
+    const subscription = mode === "legacy" ? null : await client.listen({ toolsListChanged: true });
+    const { tools } = await client.listTools();
+    await subscription?.close();
+    return { version, names: tools.map((tool) => tool.name) };
+  } finally {
+    await client.close();
+  }
+}
+
+/** A 2026 client gets an answer and a 2025 one still gets in, from every build. */
+async function assertProtocolEras() {
+  const builds = [
+    { from: "the checkout's source", bin: join(root, "dist/cli.mjs"), environment: {} },
+    {
+      from: "the checkout's bundle",
+      bin: join(root, "dist/cli.mjs"),
+      environment: { FORGES_DIST: "1" },
+    },
+    { from: "the packed bin", bin: join(packageRoot, "dist/cli.mjs"), environment: {} },
+  ];
+  for (const build of builds) {
+    const modern = await listToolsOver(build.bin, { pin: "2026-07-28" }, build.environment);
+    assert.equal(modern.version, "2026-07-28", `${build.from} answers a client pinned to 2026`);
+    assert.deepEqual(modern.names, expectedToolNames, `${build.from} lists tools to 2026`);
+    const legacy = await listToolsOver(build.bin, "legacy", build.environment);
+    assert.match(legacy.version, /^2025-/u, `${build.from} still opens a 2025 client`);
+    assert.deepEqual(legacy.names, expectedToolNames, `${build.from} lists tools to 2025`);
+  }
+}
+
 async function assertPackedCommitSearch(piTools, ompTools, root = packageRoot) {
   const identity = { name: "Contributor", email: "test@example.com", date: "2026-09-20T00:00:00Z" };
   const raw = {
@@ -776,6 +823,7 @@ try {
   await assertDistributionFallback(ompTool);
   await cliStaysLight;
   await assertCheckoutBin();
+  await assertProtocolEras();
   await assertPackedCommitSearch(piTools, ompTools);
   await assertPackedPrSearch(piTools, ompTools);
   await assertPackedIssueSearch(piTools, ompTools);

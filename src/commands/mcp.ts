@@ -1,8 +1,8 @@
-/** `forges mcp` over stdio; the SDK loads only here, so `--help` never parses it. */
+/** `forges mcp` over stdio for 2025 and 2026 clients; `--help` never loads the SDK. */
 export async function serveMcp(): Promise<void> {
-  const [{ StdioServerTransport }, { createMcpServer }] = await Promise.all([
+  const [{ serveStdio }, { createMcpServer }] = await Promise.all([
     import("@modelcontextprotocol/server/stdio"),
     import("../mcp.ts"),
   ]);
-  await createMcpServer().connect(new StdioServerTransport());
+  serveStdio(() => createMcpServer());
 }
