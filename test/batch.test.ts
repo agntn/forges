@@ -244,7 +244,10 @@ describe("batch keys", () => {
       const key = name.startsWith("forges_threads_") ? "threadId" : "number";
       expect(JSON.stringify(command.input.properties[key])).not.toContain('"array"');
       expect(JSON.stringify(tools.get(name)?.input.properties[key])).toContain('"array"');
-      expect(command.description).toBe(tools.get(name)?.description);
+      expect(command.description).not.toMatch(/up to 10/u);
+      expect(tools.get(name)?.description).toMatch(/up to 10/u);
+      expect(JSON.stringify(command.guidelines)).not.toMatch(/one list|a list of ids/u);
+      expect(command.snippet).toBe(tools.get(name)?.snippet);
     }
   });
 });

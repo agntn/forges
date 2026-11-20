@@ -51,23 +51,52 @@ export function forgesTools(): readonly ToolDefinition[] {
   return tools;
 }
 
-/** Batch tools and the single key input their CLI command takes. */
-const commandInputs = {
-  forges_issues_get: "issue",
-  forges_pull_requests_get: "pullRequest",
-  forges_threads_get: "thread",
-  forges_threads_resolve: "threadState",
-  forges_threads_unresolve: "threadState",
-} as const satisfies Partial<Record<ForgesToolName, string>>;
+/** What a batch tool says about lists, apart so its CLI command can leave it out. */
+const batchLines = {
+  forges_issues_get: {
+    input: "issue",
+    description:
+      " Pass a list of up to 10 numbers to read several issues in one call: the answer is a list in the same order, each item with its number and either result or error, and the bodies split the 200 000-character ceiling between them, so continue a long one with a call for that number alone.",
+    guideline: "Pass forges_issues_get every number you need as one list, not one call each.",
+  },
+  forges_pull_requests_get: {
+    input: "pullRequest",
+    description:
+      " A list of up to 10 numbers reads them all in one call, answered in order with each number's result or error, the bodies sharing one 200 000-character ceiling.",
+    guideline:
+      "Pass forges_pull_requests_get every number you need as one list, not one call each.",
+  },
+  forges_threads_get: {
+    input: "thread",
+    description:
+      " A list of up to 10 ids reads them all in one call, answered in order with each threadId's result or error.",
+    guideline: "Pass forges_threads_get every thread id you need as one list.",
+  },
+  forges_threads_resolve: {
+    input: "threadState",
+    description:
+      " A list of up to 10 ids resolves them in one call, answered in order with each threadId's result or error: one thread that fails leaves the others resolved, so retry only the failed ids.",
+    guideline: "Resolve several threads in one forges_threads_resolve call with a list of ids.",
+  },
+  forges_threads_unresolve: {
+    input: "threadState",
+    description:
+      " A list of up to 10 ids reopens them in one call, answered in order with each threadId's result or error, so retry only the failed ids.",
+    guideline: "Reopen several threads in one forges_threads_unresolve call with a list of ids.",
+  },
+} as const satisfies Partial<
+  Record<ForgesToolName, { input: string; description: string; guideline: string }>
+>;
 
-/** The same tools for the CLI, where `--number 391` stays a plain word. */
+/** The same tools for the CLI: one key per command, no word about lists. */
 export function forgesCommands(): ToolDefinition[] {
   const inputs = forgesToolSchemas().commandParameters;
   return forgesTools().flatMap((tool) => {
-    const input = Object.hasOwn(commandInputs, tool.name)
-      ? inputs[commandInputs[tool.name as keyof typeof commandInputs]]
-      : undefined;
-    return input === undefined ? [] : [defineTool({ ...tool, input })];
+    if (!Object.hasOwn(batchLines, tool.name)) return [];
+    const { input, description, guideline } = batchLines[tool.name as keyof typeof batchLines];
+    const guidelines = tool.guidelines?.filter((line) => line !== guideline);
+    const single = tool.description.replace(description, "");
+    return [defineTool({ ...tool, input: inputs[input], description: single, guidelines })];
   });
 }
 
@@ -390,11 +419,11 @@ function defineTools(): ToolDefinition[] {
     defineTool({
       name: "forges_issues_get",
       title: forgeToolTitle("forges_issues_get", "Get Issue"),
-      description:
-        "Get one issue by number with its body, one bounded slice at a time, and on GitHub its type and field values. offset and nextOffset are UTF-16 positions in the body, length is its full size, and truncated is true while more is left: while nextOffset is not null, call again with the same number, offset set to nextOffset and the returned bodyHash, or raise maxChars to read a long body in fewer calls. A continuation fails with 409 when the body was edited in between, so start again from offset 0. The number is the one the web UI shows, which on GitLab is the project-scoped iid rather than the global id. Pass a list of up to 10 numbers to read several issues in one call: the answer is a list in the same order, each item with its number and either result or error, and the bodies split the 200 000-character ceiling between them, so continue a long one with a call for that number alone.",
+      description: `Get one issue by number with its body, one bounded slice at a time, and on GitHub its type and field values. offset and nextOffset are UTF-16 positions in the body, length is its full size, and truncated is true while more is left: while nextOffset is not null, call again with the same number, offset set to nextOffset and the returned bodyHash, or raise maxChars to read a long body in fewer calls. A continuation fails with 409 when the body was edited in between, so start again from offset 0. The number is the one the web UI shows, which on GitLab is the project-scoped iid rather than the global id.${batchLines.forges_issues_get.description}`,
       snippet: "Get one repository issue, or up to 10 at once, from GitHub, GitLab, or Gitea.",
       guidelines: [
-        "Use forges_issues_get when the exact issue number is known; pass every number you need as one list instead of one call each.",
+        "Use forges_issues_get when the exact issue number is known.",
+        batchLines.forges_issues_get.guideline,
       ],
       ...effect("forges_issues_get"),
       input: schemas.issueParameters,
@@ -614,12 +643,12 @@ function defineTools(): ToolDefinition[] {
     defineTool({
       name: "forges_pull_requests_get",
       title: forgeToolTitle("forges_pull_requests_get", "Get Pull Request"),
-      description:
-        "Get one pull request, called a merge request on GitLab, by number: body, branches, head revision, draft and merged state, mergeability, provider merge status, and the landed merge commit SHA. Pass closingIssues to also list the issues it closes on merge. The body comes one bounded slice at a time, like forges_issues_get: while nextOffset is not null, call again with offset set to nextOffset and the returned bodyHash, or raise maxChars; a 409 means the body was edited in between, so start again from offset 0. A list of up to 10 numbers reads them all in one call, answered in order with each number's result or error, the bodies sharing one 200 000-character ceiling.",
+      description: `Get one pull request, called a merge request on GitLab, by number: body, branches, head revision, draft and merged state, mergeability, provider merge status, and the landed merge commit SHA. Pass closingIssues to also list the issues it closes on merge. The body comes one bounded slice at a time, like forges_issues_get: while nextOffset is not null, call again with offset set to nextOffset and the returned bodyHash, or raise maxChars; a 409 means the body was edited in between, so start again from offset 0.${batchLines.forges_pull_requests_get.description}`,
       snippet:
         "Get one pull request, or up to 10 at once, from GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
-        "Use forges_pull_requests_get when the exact pull-request number is known; pass every number you need as one list instead of one call each.",
+        "Use forges_pull_requests_get when the exact pull-request number is known.",
+        batchLines.forges_pull_requests_get.guideline,
       ],
       ...effect("forges_pull_requests_get"),
       input: schemas.pullRequestParameters,
@@ -876,12 +905,12 @@ function defineTools(): ToolDefinition[] {
     defineTool({
       name: "forges_threads_get",
       title: forgeToolTitle("forges_threads_get", "Get Review Thread"),
-      description:
-        "Get one review thread by the exact id that forges_threads_list returned, with every comment body in full. Thread ids are platform-specific opaque strings, so never construct one. A list of up to 10 ids reads them all in one call, answered in order with each threadId's result or error.",
+      description: `Get one review thread by the exact id that forges_threads_list returned, with every comment body in full. Thread ids are platform-specific opaque strings, so never construct one.${batchLines.forges_threads_get.description}`,
       snippet:
         "Get one review thread, or up to 10 at once, from GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
-        "Use forges_threads_get when the exact review thread id is known; pass every id you need as one list.",
+        "Use forges_threads_get when the exact review thread id is known.",
+        batchLines.forges_threads_get.guideline,
       ],
       ...effect("forges_threads_get"),
       input: schemas.threadParameters,
@@ -929,12 +958,12 @@ function defineTools(): ToolDefinition[] {
     defineTool({
       name: "forges_threads_resolve",
       title: forgeToolTitle("forges_threads_resolve", "Resolve Review Thread"),
-      description:
-        "Mark one review thread resolved, or a list of up to 10. This writes to the hosted platform under the local credentials, so resolve a thread only after the point it raised has actually been addressed. The answer is the thread's new state with a commentCount in place of the comments, which forges_threads_get reads in full. A list is answered in order, each threadId with its result or error: one thread that fails leaves the others resolved, so retry only the failed ids.",
+      description: `Mark one review thread resolved. This writes to the hosted platform under the local credentials, so resolve a thread only after the point it raised has actually been addressed. The answer is the thread's new state with a commentCount in place of the comments, which forges_threads_get reads in full.${batchLines.forges_threads_resolve.description}`,
       snippet:
         "Resolve one review thread, or up to 10 at once, on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
-        "Use forges_threads_resolve only when the user explicitly asks to resolve a thread; resolve several in one call with a list of ids.",
+        "Use forges_threads_resolve only when the user explicitly asks to resolve a thread.",
+        batchLines.forges_threads_resolve.guideline,
       ],
       ...effect("forges_threads_resolve"),
       input: schemas.threadStateParameters,
@@ -943,12 +972,12 @@ function defineTools(): ToolDefinition[] {
     defineTool({
       name: "forges_threads_unresolve",
       title: forgeToolTitle("forges_threads_unresolve", "Unresolve Review Thread"),
-      description:
-        "Reopen one resolved review thread, or a list of up to 10. This writes to the hosted platform under the local credentials. The answer is the thread's new state with a commentCount in place of the comments, which forges_threads_get reads in full. A list is answered in order, each threadId with its result or error, so retry only the failed ids.",
+      description: `Reopen one resolved review thread. This writes to the hosted platform under the local credentials. The answer is the thread's new state with a commentCount in place of the comments, which forges_threads_get reads in full.${batchLines.forges_threads_unresolve.description}`,
       snippet:
         "Unresolve one review thread, or up to 10 at once, on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
-        "Use forges_threads_unresolve only when the user explicitly asks to reopen a thread; reopen several in one call with a list of ids.",
+        "Use forges_threads_unresolve only when the user explicitly asks to reopen a thread.",
+        batchLines.forges_threads_unresolve.guideline,
       ],
       ...effect("forges_threads_unresolve"),
       input: schemas.threadStateParameters,
