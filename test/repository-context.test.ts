@@ -174,6 +174,18 @@ describe("repositoryContext", () => {
     ).not.toContain("evil");
   });
 
+  it("names the repository an insteadOf rewrite points at", async () => {
+    const directory = checkout({ origin: "https://github.com/old/forges.git" });
+    execFileSync("git", [
+      "-C",
+      directory,
+      "config",
+      "url.https://github.com/agntn/.insteadOf",
+      "https://github.com/old/",
+    ]);
+    expect(await repositoryContext(directory)).toContain("agntn/forges");
+  });
+
   it("follows includes in the checkout's own config", async () => {
     const directory = checkout({});
     const included = join(directory, ".git", "remotes.inc");

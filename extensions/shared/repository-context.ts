@@ -163,34 +163,34 @@ const gitEnvironment = (): NodeJS.ProcessEnv => ({
   GIT_TERMINAL_PROMPT: "0",
 });
 
-/** `git config` straight, so a repo without remotes or a directory outside Git answers nothing. */
-function remoteUrls(cwd: string): Promise<[string, string][]> {
+/** One Git call; a failure, a repo without remotes or a plain directory answers nothing. */
+function git(cwd: string, args: string[]): Promise<string | undefined> {
   return new Promise((resolve) => {
     execFile(
       "git",
-      [
-        "--no-pager",
-        "config",
-        "--local",
-        "--includes",
-        "--null",
-        "--get-regexp",
-        String.raw`^remote\..*\.url$`,
-      ],
+      ["--no-pager", ...args],
       { cwd, encoding: "utf8", timeout: 2_000, env: gitEnvironment() },
-      (error, stdout) => {
-        if (error) return resolve([]);
-        const entries = stdout
-          .split("\0")
-          .filter(Boolean)
-          .map((entry): [string, string] => {
-            const [key = "", url = ""] = entry.split("\n");
-            return [key.slice("remote.".length, -".url".length), url];
-          });
-        resolve(entries);
-      },
+      (error, stdout) => resolve(error ? undefined : stdout),
     );
   });
+}
+
+/** The checkout's own remote names, not ones a global config defines. */
+async function remoteNames(cwd: string): Promise<string[]> {
+  const pattern = String.raw`^remote\..*\.url$`;
+  const output = await git(cwd, [
+    "config",
+    "--local",
+    "--includes",
+    "--null",
+    "--get-regexp",
+    pattern,
+  ]);
+  const names = (output ?? "")
+    .split("\0")
+    .filter(Boolean)
+    .map((entry) => entry.slice("remote.".length, entry.indexOf("\n") - ".url".length));
+  return [...new Set(names)];
 }
 
 /** origin and upstream first, since those are the ones a contribution works between. */
@@ -198,14 +198,16 @@ function rank(remote: string): number {
   return remote === "origin" ? 0 : remote === "upstream" ? 1 : 2;
 }
 
-/** The forge remotes of the checkout at `cwd`, at most four. */
+/** The forge remotes of the checkout at `cwd`, at most four, with `insteadOf` applied. */
 export async function forgeRemotes(cwd: string): Promise<ForgeRemote[]> {
-  const seen = new Set<string>();
-  return (await remoteUrls(cwd))
-    .map(([remote, url]) => parseRemote(remote, url))
+  const names = (await remoteNames(cwd))
+    .filter((name) => segment.test(name))
+    .sort((a, b) => rank(a) - rank(b))
+    .slice(0, 8);
+  const urls = await Promise.all(names.map((name) => git(cwd, ["remote", "get-url", name])));
+  return names
+    .map((name, index) => parseRemote(name, urls[index]?.trim() ?? ""))
     .filter((remote): remote is ForgeRemote => remote !== undefined)
-    .filter(({ remote }) => !seen.has(remote) && Boolean(seen.add(remote)))
-    .sort((a, b) => rank(a.remote) - rank(b.remote))
     .slice(0, 4);
 }
 
