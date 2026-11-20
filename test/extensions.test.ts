@@ -1198,6 +1198,56 @@ describe("Forges Pi extension", () => {
     expect(mocks.issues.update).not.toHaveBeenCalled();
   });
 
+  it("parses a JSON array sent as one string before Pi wraps it", async () => {
+    const tools = await registerPiTools();
+    const repaired = [...tools.values()]
+      .filter((tool) => tool.prepareArguments !== undefined)
+      .map((tool) => tool.name);
+    expect(repaired.toSorted()).toEqual([
+      "forges_issues_create",
+      "forges_issues_events",
+      "forges_issues_search_global",
+      "forges_issues_update",
+      "forges_local_inspect",
+      "forges_local_merge_verify",
+      "forges_pull_requests_create",
+      "forges_pull_requests_events",
+      "forges_pull_requests_update",
+    ]);
+
+    const prepare = (name: string, args: unknown): unknown =>
+      Reflect.apply(requirePiTool(tools, name).prepareArguments!, undefined, [args]);
+    expect(
+      prepare("forges_issues_update", {
+        repo: "agntn/forges",
+        number: 388,
+        addAssignees: '["oritwoen"]',
+        removeLabels: ' ["bug", "triage"]',
+        title: '["not an array field"]',
+      }),
+    ).toEqual({
+      repo: "agntn/forges",
+      number: 388,
+      addAssignees: ["oritwoen"],
+      removeLabels: ["bug", "triage"],
+      title: '["not an array field"]',
+    });
+    expect(prepare("forges_pull_requests_events", { kinds: '["assignment"]' })).toEqual({
+      kinds: ["assignment"],
+    });
+
+    for (const args of [
+      { addAssignees: "oritwoen" },
+      { addAssignees: ["oritwoen"] },
+      { addAssignees: '["oritwoen", 1]' },
+      { addAssignees: "[broken" },
+      { addAssignees: '{"login":"oritwoen"}' },
+    ]) {
+      expect(prepare("forges_issues_update", args)).toBe(args);
+    }
+    expect(prepare("forges_issues_update", undefined)).toBeUndefined();
+  });
+
   it("fails closed when a pull-request update has no approval UI or is declined", async () => {
     const tool = requirePiTool(await registerPiTools(), "forges_pull_requests_update");
     const params = { repo: "agntn/forges", number: 5, body: "edited" };

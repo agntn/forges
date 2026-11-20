@@ -2462,7 +2462,7 @@ describe("forges MCP server", () => {
     expect(JSON.parse(text(response.content))).toEqual({
       platform: "github",
       result: issue,
-      note: "Creation succeeded, but requested assignees are missing: triager. Do not retry the create call; the result is the created object.",
+      note: "Requested assignees are missing: triager. The create itself went through, so do not retry it; the result is the created object.",
     });
   });
 
@@ -2497,7 +2497,7 @@ describe("forges MCP server", () => {
     expect(JSON.parse(text(response.content))).toEqual({
       platform: "github",
       result: pullRequest,
-      note: "Creation succeeded, but requested assignees are missing: aeitwoen (422 Unprocessable Entity: Validation Failed). Do not retry the create call; the result is the created object.",
+      note: "Requested assignees are missing: aeitwoen (422 Unprocessable Entity: Validation Failed). The create itself went through, so do not retry it; the result is the created object.",
     });
   });
 

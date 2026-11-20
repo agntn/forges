@@ -2503,7 +2503,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         const missing = logins.filter((login) => !assigned.has(login.toLowerCase()));
         if (missing.length === 0) return { assignees };
         dropped =
-          "GitHub answered 201 without assigning them, which it does when the account lacks push access";
+          "GitHub answered 201 without assigning them, which it does when the account lacks push access or a login is not one it can assign";
       } catch (failure) {
         failed = normalizeError(failure, "github").message;
       }

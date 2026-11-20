@@ -890,7 +890,7 @@ function assignmentNote(
   const missing = requested.filter((login) => !assigned.has(login.toLowerCase()));
   if (missing.length === 0) return undefined;
   const why = reason === undefined ? "" : ` (${reason})`;
-  return `Creation succeeded, but requested assignees are missing: ${missing.join(", ")}${why}. Do not retry the create call; the result is the created object.`;
+  return `Requested assignees are missing: ${missing.join(", ")}${why}. The create itself went through, so do not retry it; the result is the created object.`;
 }
 
 function sameFieldValue(wanted: IssueFieldValue, actual: IssueFieldValue | undefined): boolean {
@@ -958,7 +958,7 @@ function reassignmentNote(
     ...(kept.length > 0 ? [`still assigned: ${kept.join(", ")}`] : []),
   ];
   if (problems.length === 0) return undefined;
-  return `Update succeeded, but the assignees did not change as asked (${problems.join("; ")}). The result shows who is assigned now.`;
+  return `The assignees did not change as asked (${problems.join("; ")}), though the rest of the update went through. The result shows who is assigned now.`;
 }
 
 function summarizeIssuePage<T extends Issue>(
