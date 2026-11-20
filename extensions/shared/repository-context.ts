@@ -31,14 +31,15 @@ export interface ForgeRemote {
   repo: string;
 }
 
-/** The web host behind each provider's default API, plus the variable that moves it. */
-const endpoints: Partial<Record<ContextPlatform, { host: string; variable: string }>> = {
-  github: { host: "github.com", variable: "FORGES_GITHUB_BASE_URL" },
-  gitlab: { host: "gitlab.com", variable: "FORGES_GITLAB_BASE_URL" },
-  gitea: { host: "gitea.com", variable: "FORGES_GITEA_BASE_URL" },
-  bitbucket: { host: "bitbucket.org", variable: "FORGES_BITBUCKET_BASE_URL" },
-  gitee: { host: "gitee.com", variable: "FORGES_GITEE_BASE_URL" },
-};
+/** The web host behind each provider's default API, the variable that moves it, its API path. */
+const endpoints: Partial<Record<ContextPlatform, { host: string; variable: string; api: RegExp }>> =
+  {
+    github: { host: "github.com", variable: "FORGES_GITHUB_BASE_URL", api: /\/api\/v3$/ },
+    gitlab: { host: "gitlab.com", variable: "FORGES_GITLAB_BASE_URL", api: /\/api\/v4$/ },
+    gitea: { host: "gitea.com", variable: "FORGES_GITEA_BASE_URL", api: /\/api\/v1$/ },
+    bitbucket: { host: "bitbucket.org", variable: "FORGES_BITBUCKET_BASE_URL", api: /\/2\.0$/ },
+    gitee: { host: "gitee.com", variable: "FORGES_GITEE_BASE_URL", api: /\/api\/v5$/ },
+  };
 
 const azureHosts = new Set(["dev.azure.com", "ssh.dev.azure.com"]);
 
@@ -49,19 +50,29 @@ function bareHost(host: string): string {
     .replace(/^api\./, "");
 }
 
-/** The host a provider calls right now; an unparsable base URL reaches nothing we can name. */
-function endpointHost({ host, variable }: { host: string; variable: string }): string | undefined {
-  const value = process.env[variable];
-  if (value === undefined || value === "") return host;
-  return URL.canParse(value) ? bareHost(new URL(value).hostname) : undefined;
+/** Where a forge lives: its host and the path it's installed under, like `/gitlab`. */
+interface Endpoint {
+  platform: ContextPlatform;
+  prefix: string;
 }
 
-/** Only the forge the tools would actually call, so Codeberg needs its base URL first. */
-function platformOf(host: string): ContextPlatform | undefined {
+/** The forge the tools would actually call; an unparsable base URL reaches nothing we can name. */
+function endpointOf(host: string): Endpoint | undefined {
   const name = bareHost(host);
-  if (azureHosts.has(name) || name.endsWith(".visualstudio.com")) return "azure-devops";
-  for (const [platform, endpoint] of Object.entries(endpoints)) {
-    if (endpointHost(endpoint!) === name) return platform as ContextPlatform;
+  if (azureHosts.has(name) || name.endsWith(".visualstudio.com")) {
+    return { platform: "azure-devops", prefix: "" };
+  }
+  for (const [platform, { host: fallback, variable, api }] of Object.entries(endpoints)) {
+    const value = process.env[variable!];
+    if (value === undefined || value === "") {
+      if (fallback === name) return { platform: platform as ContextPlatform, prefix: "" };
+      continue;
+    }
+    if (!URL.canParse(value)) continue;
+    const base = new URL(value);
+    if (bareHost(base.hostname) !== name) continue;
+    const prefix = base.pathname.replace(/\/+$/, "").replace(api!, "");
+    return { platform: platform as ContextPlatform, prefix };
   }
   return undefined;
 }
@@ -93,9 +104,14 @@ export function parseRemote(remote: string, url: string): ForgeRemote | undefine
   if (!segment.test(remote)) return undefined;
   const location = hostAndPath(url.trim());
   if (!location) return undefined;
-  const platform = platformOf(location.host);
-  if (!platform) return undefined;
-  const parts = location.path
+  const endpoint = endpointOf(location.host);
+  if (!endpoint) return undefined;
+  const { platform, prefix } = endpoint;
+  const path =
+    prefix && location.path.startsWith(`${prefix}/`)
+      ? location.path.slice(prefix.length)
+      : location.path;
+  const parts = path
     .replace(/\.git\/?$/, "")
     .split("/")
     .filter(Boolean)

@@ -83,6 +83,20 @@ describe("parseRemote", () => {
     expect(parseRemote("origin", "git@github.com:agntn/forges.git")).toBeUndefined();
   });
 
+  it("drops the path a forge is installed under", () => {
+    vi.stubEnv("FORGES_GITLAB_BASE_URL", "https://forge.example.com/gitlab/api/v4");
+    expect(
+      parseRemote("origin", "https://forge.example.com/gitlab/team/service.git"),
+    ).toMatchObject({
+      owner: "team",
+      repo: "service",
+    });
+    expect(parseRemote("origin", "git@forge.example.com:team/sub/service.git")).toMatchObject({
+      owner: "team/sub",
+      repo: "service",
+    });
+  });
+
   it("reads a self-hosted forge its base URL names", () => {
     vi.stubEnv("FORGES_GITLAB_BASE_URL", "https://gitlab.example.com/api/v4");
     expect(parseRemote("origin", "git@gitlab.example.com:ops/infra.git")).toMatchObject({
