@@ -26,6 +26,14 @@ describe("redactEndpoint", () => {
     ["at https://logs.example.net/7?accessToken=abc123", "at <endpoint>"],
     ["at https://logs.example.net/7?clientsecret=abc123", "at <endpoint>"],
     ["at https://logs.example.net/7?apitoken=abc123", "at <endpoint>"],
+    ["at https://logs.example.net/7?accesskey=abc123", "at <endpoint>"],
+    ["at https://logs.example.net/7?authkey=abc123", "at <endpoint>"],
+    ["at https://logs.example.net/7?authcode=abc123", "at <endpoint>"],
+    ["at https://logs.example.net/7?oauth=abc123", "at <endpoint>"],
+    [
+      "at https://logs.example.net/7?monkey=a&postcode=b",
+      "at https://logs.example.net/7?monkey=a&postcode=b",
+    ],
     ["at https://logs.example.net/v/eyJhbGciOi.eyJzdWIiOi.c2ln/log", "at <endpoint>"],
     [
       '{"help":"https://docs.example/help","endpoint":"https://ghe.internal.example/api/v3"}',

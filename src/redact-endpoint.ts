@@ -15,8 +15,9 @@ const TRAILING_PUNCTUATION = /[)\]}>"'`,.;:!?]+$/;
 /** A hostname a URL parser can hand back with prose glued on, such as `ghe.corp"`, fails this. */
 const PLAIN_HOST = /^(?:[a-z\d.-]+|\[[\da-f:.]+\])$/;
 const PLACEHOLDER = "<endpoint>";
-/** Short secret names that hide inside ordinary ones (`assignee`, `author`), so only a whole word counts. */
-const SECRET_WORDS = new Set(["sig", "key", "apikey", "auth", "authorization", "code"]);
+/** Short secret names hide inside ordinary ones (`assignee`, `monkey`), so they count whole or behind a known qualifier, as in `authkey`. */
+const SECRET_WORD =
+  /^(?:(?:access|api|app|auth|client|consumer|license|master|private|session|sig|signing|subscription)?(?:sig|key|code)|o?auth(?:orization)?)$/;
 /** No ordinary name holds these, so `accesstoken` with nothing to split on still counts. */
 const SECRET_PART = /token|secret|password|signature|credential|jwt/;
 /** A JSON Web Token, which a link can carry as a path segment as well. */
@@ -28,7 +29,7 @@ function namesSecret(name: string): boolean {
     .replace(/([a-z\d])([A-Z])/g, "$1 $2")
     .toLowerCase()
     .split(/[^a-z\d]+/);
-  return SECRET_PART.test(name.toLowerCase()) || words.some((word) => SECRET_WORDS.has(word));
+  return SECRET_PART.test(name.toLowerCase()) || words.some((word) => SECRET_WORD.test(word));
 }
 
 /** True for a query or a fragment that names a secret, as `#access_token=…` does, or a JWT anywhere. */
