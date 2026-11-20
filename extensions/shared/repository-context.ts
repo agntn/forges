@@ -126,10 +126,9 @@ export function parseRemote(remote: string, url: string): ForgeRemote | undefine
   const endpoint = endpointOf(location);
   if (!endpoint) return undefined;
   const { platform, prefix } = endpoint;
-  const path =
-    location.web && prefix && location.path.startsWith(`${prefix}/`)
-      ? location.path.slice(prefix.length)
-      : location.path;
+  const inside = !location.web || !prefix || location.path.startsWith(`${prefix}/`);
+  if (!inside) return undefined;
+  const path = location.web ? location.path.slice(prefix.length) : location.path;
   const parts = path
     .replace(/\.git\/?$/, "")
     .split("/")

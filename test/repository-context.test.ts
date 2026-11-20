@@ -113,6 +113,9 @@ describe("parseRemote", () => {
     expect(
       parseRemote("origin", "ssh://git@forge.example.com/gitlab/team/service.git"),
     ).toMatchObject({ owner: "gitlab/team", repo: "service" });
+    expect(
+      parseRemote("origin", "https://forge.example.com/other/team/service.git"),
+    ).toBeUndefined();
   });
 
   it("reads a self-hosted forge its base URL names", () => {
