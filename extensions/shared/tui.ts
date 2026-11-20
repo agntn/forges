@@ -97,14 +97,26 @@ function repositoryTarget(record: Readonly<Record<string, unknown>>): string | u
   return withNumber(record, `${owner}/${repo}`);
 }
 
+/** A batch lists its keys: `#390, #391`. */
+function scalars(
+  record: Readonly<Record<string, unknown>>,
+  key: string,
+  joiner: string,
+): string | undefined {
+  const value = record[key];
+  if (!Array.isArray(value)) return scalar(record, key);
+  const items = value.flatMap((item) => scalar({ item }, "item") ?? []);
+  return items.length > 0 ? items.join(joiner) : undefined;
+}
+
 function withNumber(record: Readonly<Record<string, unknown>>, target: string): string {
-  const number = scalar(record, "number");
+  const number = scalars(record, "number", ", #");
   return number ? `${target}#${number}` : target;
 }
 
 function callSubject(record: Readonly<Record<string, unknown>>): string | undefined {
   for (const key of ["query", "title", "username", "sha", "tag", "key", "threadId", "commentId"]) {
-    const value = scalar(record, key);
+    const value = scalars(record, key, ", ");
     if (value) return sanitizeTerminalText(value);
   }
   const target = repositoryTarget(record);
@@ -203,6 +215,7 @@ function resultMeta(details: unknown): string[] {
   if (!isRecord(details)) return [];
   const payload = resultPayload(details);
   const meta: string[] = [];
+  if (Array.isArray(details.result)) meta.push(batchMeta(details.result));
   const identity = resultIdentity(payload);
   if (identity) meta.push(identity);
 
@@ -227,6 +240,12 @@ function resultMeta(details: unknown): string[] {
   const platform = scalar(details, "platform");
   if (platform && meta.length === 0) meta.push(sanitizeTerminalText(platform, META_WIDTH));
   return meta.slice(0, META_LIMIT);
+}
+
+/** `3 items, 1 failed`, or just `3 items` when nothing broke. */
+function batchMeta(items: readonly unknown[]): string {
+  const failed = items.filter((item) => isRecord(item) && typeof item.error === "string").length;
+  return failed === 0 ? `${items.length} items` : `${items.length} items, ${failed} failed`;
 }
 
 function firstLine(text: string): string {

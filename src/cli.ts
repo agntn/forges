@@ -50,7 +50,7 @@ const argv = process.argv.slice(2);
 if (argv.length === 1 && argv[0] === "mcp") {
   await (await loadMcpCommand()).serveMcp();
 } else {
-  const [{ runCli }, { forgesTools }, { ForgesError }] = await Promise.all([
+  const [{ runCli }, { forgesCommands, forgesTools }, { ForgesError }] = await Promise.all([
     import("@agntn/tools/cli"),
     import("./tools.ts"),
     import("./errors.ts"),
@@ -62,6 +62,7 @@ if (argv.length === 1 && argv[0] === "mcp") {
       description:
         "One API for GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, GitBucket, and Cloudflare Artifacts",
       tools: forgesTools(),
+      commands: forgesCommands(),
       mcp: true,
       expected: (error) => error instanceof ForgesError,
     },

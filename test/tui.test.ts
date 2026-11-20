@@ -66,6 +66,44 @@ describe("Forges tool TUI", () => {
     expect(read).toBe("◌ ◈ Forges Issue agntn/forges#42");
   });
 
+  it("names every item of a batch call and counts the failed ones", () => {
+    const call = renderToolCall(
+      {
+        name: "forges_threads_resolve",
+        label: "◌ Resolve Review Thread",
+        args: { repo: "agntn/forges", number: 398, threadId: ["PRRT_a", "PRRT_b"] },
+        options: { executionStarted: true, isPartial: true },
+      },
+      plain,
+    );
+    const issues = renderToolCall(
+      {
+        name: "forges_issues_get",
+        label: "◈ Get Issue",
+        args: { repo: "agntn/forges", number: [390, 391] },
+        options: { executionStarted: true, isPartial: true },
+      },
+      plain,
+    );
+    const details = {
+      platform: "github",
+      result: [
+        { threadId: "PRRT_a", result: { id: "PRRT_a", isResolved: true } },
+        { threadId: "PRRT_b", error: "Thread not found" },
+      ],
+    };
+    const result = { content: [{ type: "text", text: JSON.stringify(details) }], details };
+
+    expect(call).toBe("◌ ◌ Resolve Review Thread PRRT_a, PRRT_b (write) agntn/forges#398");
+    expect(issues).toBe("◌ ◈ Get Issue agntn/forges#390, #391");
+    expect(
+      renderToolResult(
+        { name: "forges_threads_resolve", result, isError: false, options: {} },
+        plain,
+      ),
+    ).toBe("✓ (write) 2 items, 1 failed");
+  });
+
   it("summarizes a page instead of dumping JSON while collapsed", () => {
     const result = {
       content: [{ type: "text", text: JSON.stringify({ items: [{ id: 1 }, { id: 2 }] }) }],
