@@ -36,6 +36,8 @@ describe("parseRemote", () => {
     ["https://dev.azure.com/acme/Web%20App/_git/site", "azure-devops", "acme/Web App", "site"],
     ["git@ssh.dev.azure.com:v3/acme/Web/site", "azure-devops", "acme/Web", "site"],
     ["https://acme.visualstudio.com/Web/_git/site", "azure-devops", "acme/Web", "site"],
+    ["https://dev.azure.com/acme/v3/_git/v3", "azure-devops", "acme/v3", "v3"],
+    ["git@ssh.dev.azure.com:v3/acme/v3/v3", "azure-devops", "acme/v3", "v3"],
   ])("reads %s", (url, platform, owner, repo) => {
     expect(parseRemote("origin", url)).toEqual({ remote: "origin", platform, owner, repo });
   });
@@ -81,6 +83,19 @@ describe("parseRemote", () => {
     expect(parseRemote("origin", "git@github.com:agntn/forges.git")).toBeUndefined();
     vi.stubEnv("FORGES_GITHUB_BASE_URL", "not a url");
     expect(parseRemote("origin", "git@github.com:agntn/forges.git")).toBeUndefined();
+  });
+
+  it("tells two forges on one host apart by port", () => {
+    vi.stubEnv("FORGES_GITEA_BASE_URL", "https://forge.example.com:3000/api/v1");
+    expect(
+      parseRemote("origin", "https://forge.example.com:4000/team/service.git"),
+    ).toBeUndefined();
+    expect(parseRemote("origin", "https://forge.example.com:3000/team/service.git")).toMatchObject({
+      owner: "team",
+    });
+    expect(parseRemote("origin", "git@forge.example.com:team/service.git")).toMatchObject({
+      owner: "team",
+    });
   });
 
   it("drops the path a forge is installed under", () => {

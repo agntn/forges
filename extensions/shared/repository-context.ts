@@ -56,9 +56,9 @@ interface Endpoint {
   prefix: string;
 }
 
-/** The forge the tools would actually call; an unparsable base URL reaches nothing we can name. */
-function endpointOf(host: string): Endpoint | undefined {
-  const name = bareHost(host);
+/** The forge the tools would actually call; a web remote on another port is another forge. */
+function endpointOf(location: Location): Endpoint | undefined {
+  const name = bareHost(location.host);
   if (azureHosts.has(name) || name.endsWith(".visualstudio.com")) {
     return { platform: "azure-devops", prefix: "" };
   }
@@ -71,21 +71,39 @@ function endpointOf(host: string): Endpoint | undefined {
     if (!URL.canParse(value)) continue;
     const base = new URL(value);
     if (bareHost(base.hostname) !== name) continue;
+    if (
+      location.web &&
+      webPort(location.protocol, location.port) !== webPort(base.protocol, base.port)
+    ) {
+      continue;
+    }
     const prefix = base.pathname.replace(/\/+$/, "").replace(api!, "");
     return { platform: platform as ContextPlatform, prefix };
   }
   return undefined;
 }
 
-/** Host and path of a remote; only a web URL carries the forge's install path. */
-function hostAndPath(url: string): { host: string; path: string; web: boolean } | undefined {
+/** Where a remote points; only a web URL carries the forge's install path and port. */
+interface Location {
+  host: string;
+  path: string;
+  web: boolean;
+  protocol: string;
+  port: string;
+}
+
+function webPort(protocol: string, port: string): string {
+  return port || (protocol === "http:" ? "80" : "443");
+}
+
+function hostAndPath(url: string): Location | undefined {
   if (URL.canParse(url) && /^[a-z][a-z0-9+.-]*:\/\//i.test(url)) {
-    const parsed = new URL(url);
-    const web = parsed.protocol === "https:" || parsed.protocol === "http:";
-    return { host: parsed.hostname, path: parsed.pathname, web };
+    const { hostname, pathname, protocol, port } = new URL(url);
+    const web = protocol === "https:" || protocol === "http:";
+    return { host: hostname, path: pathname, web, protocol, port };
   }
   const scp = /^(?:[^@/]+@)?([^:/]+):(.+)$/.exec(url);
-  return scp ? { host: scp[1]!, path: scp[2]!, web: false } : undefined;
+  return scp ? { host: scp[1]!, path: scp[2]!, web: false, protocol: "ssh:", port: "" } : undefined;
 }
 
 /** Names land in the system prompt, so anything past a forge's own alphabet is refused. */
@@ -105,7 +123,7 @@ export function parseRemote(remote: string, url: string): ForgeRemote | undefine
   if (!segment.test(remote)) return undefined;
   const location = hostAndPath(url.trim());
   if (!location) return undefined;
-  const endpoint = endpointOf(location.host);
+  const endpoint = endpointOf(location);
   if (!endpoint) return undefined;
   const { platform, prefix } = endpoint;
   const path =
@@ -121,7 +139,8 @@ export function parseRemote(remote: string, url: string): ForgeRemote | undefine
   let names = parts as string[];
   let pattern = segment;
   if (platform === "azure-devops") {
-    names = names.filter((part) => part !== "_git" && part !== "v3");
+    if (!location.web && names[0] === "v3") names.shift();
+    if (location.web && names.at(-2) === "_git") names.splice(-2, 1);
     const host = bareHost(location.host);
     if (host.endsWith(".visualstudio.com"))
       names.unshift(host.slice(0, -".visualstudio.com".length));
