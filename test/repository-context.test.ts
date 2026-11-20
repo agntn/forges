@@ -174,6 +174,20 @@ describe("repositoryContext", () => {
     ).not.toContain("evil");
   });
 
+  it("follows includes in the checkout's own config", async () => {
+    const directory = checkout({});
+    const included = join(directory, ".git", "remotes.inc");
+    execFileSync("git", [
+      "config",
+      "--file",
+      included,
+      "remote.origin.url",
+      "git@github.com:agntn/forges.git",
+    ]);
+    execFileSync("git", ["-C", directory, "config", "include.path", included]);
+    expect(await repositoryContext(directory)).toContain("agntn/forges");
+  });
+
   it("reads a linked worktree's remotes", async () => {
     const directory = checkout({ origin: "git@github.com:agntn/forges.git" });
     execFileSync("git", ["-C", directory, "commit", "-q", "--allow-empty", "-m", "x"], {
