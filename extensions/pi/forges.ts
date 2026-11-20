@@ -244,28 +244,32 @@ const confirm: Record<string, PiConfirm> = {
   forges_threads_comments_delete: commentConfirm("Delete review thread comment?"),
 };
 
-/** The string array a model typed out as JSON, if that's what it is. */
-function stringArray(text: string): string[] | undefined {
+/** Which items a repaired array may hold. */
+type ItemCheck = (item: unknown) => boolean;
+
+const isText: ItemCheck = (item) => typeof item === "string";
+const isKey: ItemCheck = (item) => typeof item === "string" || typeof item === "number";
+
+/** The array a model typed out as JSON, if that's what it is. */
+function jsonArray(text: string, accepts: ItemCheck): unknown[] | undefined {
   if (!text.trimStart().startsWith("[")) return undefined;
   try {
     const value: unknown = JSON.parse(text);
-    return Array.isArray(value) && value.every((item) => typeof item === "string")
-      ? value
-      : undefined;
+    return Array.isArray(value) && value.every((item) => accepts(item)) ? value : undefined;
   } catch {
     return undefined;
   }
 }
 
 /** Pi wraps that text in a one-item array, and GitHub shrugs off the login `["ori"]`. */
-function parseArrays(names: readonly string[]): PiPrepareArguments {
+function parseArrays(fields: Readonly<Record<string, ItemCheck>>): PiPrepareArguments {
   return (args) => {
     if (typeof args !== "object" || args === null) return args;
     const repaired: Record<string, unknown> = { ...args };
     let changed = false;
-    for (const name of names) {
+    for (const [name, accepts] of Object.entries(fields)) {
       const value: unknown = repaired[name];
-      const parsed = typeof value === "string" ? stringArray(value) : undefined;
+      const parsed = typeof value === "string" ? jsonArray(value, accepts) : undefined;
       if (parsed === undefined) continue;
       repaired[name] = parsed;
       changed = true;
@@ -274,16 +278,24 @@ function parseArrays(names: readonly string[]): PiPrepareArguments {
   };
 }
 
+/** Strings for a plain array, numbers or ids for a batch key. */
+function arrayItemCheck(schema: unknown): ItemCheck | undefined {
+  const node = schema as { type?: unknown; anyOf?: readonly { type?: unknown }[] };
+  if (node.type === "array") return isText;
+  return node.anyOf?.some((branch) => branch.type === "array") === true ? isKey : undefined;
+}
+
 /** One repair per tool that takes a top-level array. */
 function arrayRepairs(
   tools: ReturnType<typeof ForgesToolList.forgesTools>,
 ): Record<string, PiPrepareArguments> {
   return Object.fromEntries(
     tools.flatMap((tool) => {
-      const names = Object.entries(tool.input.properties)
-        .filter(([, schema]) => (schema as { type?: unknown }).type === "array")
-        .map(([name]) => name);
-      return names.length === 0 ? [] : [[tool.name, parseArrays(names)]];
+      const fields = Object.entries(tool.input.properties).flatMap(([name, schema]) => {
+        const accepts = arrayItemCheck(schema);
+        return accepts === undefined ? [] : [[name, accepts] as const];
+      });
+      return fields.length === 0 ? [] : [[tool.name, parseArrays(Object.fromEntries(fields))]];
     }),
   );
 }

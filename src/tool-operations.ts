@@ -38,6 +38,8 @@ import {
   type ItemBodySlice,
 } from "./body-window.ts";
 import { lazy } from "../extensions/shared/lazy.ts";
+import { MAX_BATCH_ITEMS, type BatchItem } from "./batch.ts";
+import { DEFAULT_WINDOW_CHARS, MAX_WINDOW_CHARS } from "./text-window.ts";
 import { isCommitSha } from "./repository-contents.ts";
 import type { ForgesPlatform } from "./tool-schemas.ts";
 import type { Provider } from "./provider.ts";
@@ -68,6 +70,7 @@ import type {
   Issue,
   IssueFields,
   IssueFieldValue,
+  IssueNumber,
   IssueRef,
   IssueState,
   ListCiRunsOptions,
@@ -781,9 +784,15 @@ export interface ListPullRequestChecksParams extends ListCommentsParams {
   headSha?: string;
 }
 
-export interface GetIssueParams extends GetRepositoryItemParams, ItemBodyOptions {}
+/** One key, or a batch of them. */
+export type OneOrBatch<T> = T | readonly T[];
 
-export interface GetPullRequestParams extends GetRepositoryItemParams, ItemBodyOptions {
+export interface GetIssueParams extends RepositoryParams, ItemBodyOptions {
+  number: OneOrBatch<IssueRef["number"]>;
+}
+
+export interface GetPullRequestParams extends RepositoryParams, ItemBodyOptions {
+  number: OneOrBatch<number>;
   /** Also list the issues the pull request closes on merge. */
   closingIssues?: boolean;
 }
@@ -1496,14 +1505,88 @@ export async function searchIssues(
 
 export async function getIssue(
   args: GetIssueParams,
-): Promise<ForgesToolResult<ItemBodySlice<Issue>>> {
+): Promise<
+  ForgesToolResult<ItemBodySlice<Issue> | BatchItem<"number", IssueNumber, ItemBodySlice<Issue>>[]>
+> {
   const params = repositoryTarget(args);
-  const window = { offset: params.offset, maxChars: params.maxChars, bodyHash: params.bodyHash };
-  const about = itemBody("Issue body", params.platform);
+  const { platform, number } = params;
+  if (Array.isArray(number)) assertBatch({ name: "number", keys: number, platform });
+  const window = bodyBatchWindow(params, number);
+  const about = itemBody("Issue body", platform);
   assertItemBodyOptions(window, about);
-  const provider = await readProvider(params.platform);
-  const issue = await provider.issues.get(issueOf(params));
-  return result(sliceItemBody(issue, { ...window, about }), { platform: params.platform });
+  const provider = await readProvider(platform);
+  const read = async (key: IssueNumber) =>
+    sliceItemBody(await provider.issues.get(issueOf({ ...params, number: key })), {
+      ...window,
+      about,
+    });
+  if (!Array.isArray(number)) return result(await read(number as IssueNumber), { platform });
+  return result(await eachItem({ name: "number", keys: number }, read), { platform });
+}
+
+/** An empty or oversized batch is a 400 before any request. */
+function assertBatch(
+  batch: Readonly<{ name: string; keys: readonly unknown[]; platform: ForgesPlatform }>,
+): void {
+  const { name, keys, platform } = batch;
+  if (keys.length === 0 || keys.length > MAX_BATCH_ITEMS) {
+    throw new ForgesError(`${name} takes one value or a list of 1 to ${MAX_BATCH_ITEMS}`, {
+      status: 400,
+      platform,
+    });
+  }
+}
+
+/** One answer per key in input order; writes go one by one, as GitHub asks. */
+async function eachItem<Name extends string, Key, T>(
+  batch: Readonly<{ name: Name; keys: readonly Key[]; serial?: boolean }>,
+  run: (key: Key) => Promise<T>,
+): Promise<BatchItem<Name, Key, T>[]> {
+  const { name, keys, serial = false } = batch;
+  const settled = serial ? await settleInTurn(keys, run) : await Promise.allSettled(keys.map(run));
+  return settled.map((outcome, index) => {
+    const key = { [name]: keys[index] } as Record<Name, Key>;
+    if (outcome.status === "fulfilled") return { ...key, result: outcome.value };
+    const failure = toolFailure(outcome.reason);
+    if (failure.name === "AbortError") throw failure;
+    return { ...key, error: failure.message };
+  });
+}
+
+/** `Promise.allSettled`, one call at a time. */
+async function settleInTurn<Key, T>(
+  keys: readonly Key[],
+  run: (key: Key) => Promise<T>,
+): Promise<PromiseSettledResult<T>[]> {
+  const settled: PromiseSettledResult<T>[] = [];
+  for (const key of keys) {
+    const [outcome] = await Promise.allSettled([run(key)]);
+    settled.push(outcome!);
+  }
+  return settled;
+}
+
+/** A batch splits the body ceiling instead of multiplying it. */
+function bodyBatchWindow(
+  params: Readonly<ItemBodyOptions & { platform: ForgesPlatform }>,
+  number: unknown,
+): ItemBodyOptions {
+  const { offset, maxChars, bodyHash, platform } = params;
+  if (!Array.isArray(number)) return { offset, maxChars, bodyHash };
+  if ((offset ?? 0) > 0 || bodyHash !== undefined) {
+    throw new ForgesError(
+      "offset and bodyHash continue one body, so pass the single number they came with",
+      { status: 400, platform },
+    );
+  }
+  const share = Math.floor(MAX_WINDOW_CHARS / Math.max(number.length, 1));
+  if (maxChars !== undefined && maxChars > share) {
+    throw new ForgesError(
+      `A batch of ${number.length} bodies holds ${MAX_WINDOW_CHARS} characters in all, so maxChars is at most ${share}`,
+      { status: 400, platform },
+    );
+  }
+  return { offset, maxChars: maxChars ?? Math.min(DEFAULT_WINDOW_CHARS, share), bodyHash };
 }
 
 function commentListOptions(params: ListCommentsParams): ListCommentOptions {
@@ -1824,16 +1907,26 @@ export async function searchPullRequests(
 
 export async function getPullRequest(
   args: GetPullRequestParams,
-): Promise<ForgesToolResult<ItemBodySlice<PullRequest>>> {
+): Promise<
+  ForgesToolResult<
+    ItemBodySlice<PullRequest> | BatchItem<"number", number, ItemBodySlice<PullRequest>>[]
+  >
+> {
   const params = repositoryTarget(args);
-  const window = { offset: params.offset, maxChars: params.maxChars, bodyHash: params.bodyHash };
-  const about = itemBody("Pull request body", params.platform);
+  const { platform, number } = params;
+  if (Array.isArray(number)) assertBatch({ name: "number", keys: number, platform });
+  const window = bodyBatchWindow(params, number);
+  const about = itemBody("Pull request body", platform);
   assertItemBodyOptions(window, about);
-  const provider = await readProvider(params.platform);
-  const pullRequest = await provider.pullRequests.get(issueOf(params), {
-    closingIssues: params.closingIssues,
-  });
-  return result(sliceItemBody(pullRequest, { ...window, about }), { platform: params.platform });
+  const provider = await readProvider(platform);
+  const read = async (key: number) => {
+    const pullRequest = await provider.pullRequests.get(issueOf({ ...params, number: key }), {
+      closingIssues: params.closingIssues,
+    });
+    return sliceItemBody(pullRequest, { ...window, about });
+  };
+  if (!Array.isArray(number)) return result(await read(number as number), { platform });
+  return result(await eachItem({ name: "number", keys: number }, read), { platform });
 }
 
 /** A filtered read walks every page itself, so the biggest page costs the fewest requests. */
@@ -2141,16 +2234,19 @@ export interface ListThreadsParams extends RepositoryParams {
 
 export interface GetThreadParams extends RepositoryParams {
   number: number;
-  threadId: string;
+  threadId: OneOrBatch<string>;
 }
 
 export type ThreadStateParams = GetThreadParams & AccountParams;
 
-export type ReplyThreadParams = ThreadStateParams & ReplyThreadInput;
+/** Replies, edits and deletes name one thread. */
+type OneThreadParams = Omit<ThreadStateParams, "threadId"> & { threadId: string };
+
+export type ReplyThreadParams = OneThreadParams & ReplyThreadInput;
 
 export type UpdateThreadCommentParams = ReplyThreadParams & { commentId: string };
 
-export type DeleteThreadCommentParams = ThreadStateParams & { commentId: string };
+export type DeleteThreadCommentParams = OneThreadParams & { commentId: string };
 
 function summarizeThreadPage(page: PageResult<Thread>): PageResult<Thread> {
   return {
@@ -2185,11 +2281,18 @@ export async function listThreads(
   });
 }
 
-export async function getThread(args: GetThreadParams): Promise<ForgesToolResult<Thread>> {
+export async function getThread(
+  args: GetThreadParams,
+): Promise<ForgesToolResult<Thread | BatchItem<"threadId", string, Thread>[]>> {
   const params = repositoryTarget(args);
-  const provider = await readProvider(params.platform);
-  const thread = await provider.threads.get(issueOf(params), { threadId: params.threadId });
-  return result(thread, { platform: params.platform });
+  const { platform, threadId } = params;
+  if (Array.isArray(threadId)) assertBatch({ name: "threadId", keys: threadId, platform });
+  const provider = await readProvider(platform);
+  const read = (id: string) => provider.threads.get(issueOf(params), { threadId: id });
+  if (!Array.isArray(threadId)) return result(await read(threadId as string), { platform });
+  return result(await eachItem({ name: "threadId", keys: threadId }, read), {
+    platform,
+  });
 }
 
 export async function replyToThread(
@@ -2240,22 +2343,37 @@ function threadStateText({ comments, ...thread }: Thread): ThreadStateRow {
   return { ...thread, commentCount: comments.length };
 }
 
-export async function resolveThread(args: ThreadStateParams): Promise<ForgesToolResult<Thread>> {
+type ThreadStateAnswer = ForgesToolResult<Thread | BatchItem<"threadId", string, Thread>[]>;
+
+/** Resolve or reopen one thread or a batch under one credential. */
+async function setThreadState(
+  args: ThreadStateParams,
+  change: "resolve" | "unresolve",
+): Promise<ThreadStateAnswer> {
   const params = repositoryTarget(args);
-  return withCredentialOperation(params.platform, async () => {
-    const provider = await authenticatedProvider(params.platform, params.account);
-    const thread = await provider.threads.resolve(issueOf(params), { threadId: params.threadId });
-    return result(thread, { platform: params.platform, modelValue: threadStateText(thread) });
+  const { platform, threadId } = params;
+  if (Array.isArray(threadId)) assertBatch({ name: "threadId", keys: threadId, platform });
+  return withCredentialOperation(platform, async () => {
+    const provider = await authenticatedProvider(platform, params.account);
+    const write = (id: string) => provider.threads[change](issueOf(params), { threadId: id });
+    if (!Array.isArray(threadId)) {
+      const thread = await write(threadId as string);
+      return result(thread, { platform, modelValue: threadStateText(thread) });
+    }
+    const items = await eachItem({ name: "threadId", keys: threadId, serial: true }, write);
+    const modelValue = items.map((item) =>
+      "result" in item ? { threadId: item.threadId, result: threadStateText(item.result) } : item,
+    );
+    return result(items, { platform, modelValue });
   });
 }
 
-export async function unresolveThread(args: ThreadStateParams): Promise<ForgesToolResult<Thread>> {
-  const params = repositoryTarget(args);
-  return withCredentialOperation(params.platform, async () => {
-    const provider = await authenticatedProvider(params.platform, params.account);
-    const thread = await provider.threads.unresolve(issueOf(params), { threadId: params.threadId });
-    return result(thread, { platform: params.platform, modelValue: threadStateText(thread) });
-  });
+export async function resolveThread(args: ThreadStateParams): Promise<ThreadStateAnswer> {
+  return setThreadState(args, "resolve");
+}
+
+export async function unresolveThread(args: ThreadStateParams): Promise<ThreadStateAnswer> {
+  return setThreadState(args, "unresolve");
 }
 
 /** Concurrent calls share one import: uncached jiti hands an overlapping one an empty namespace. */

@@ -1,4 +1,5 @@
-import { Type, type TObject, type TProperties } from "@agntn/tools";
+import { Type, type TObject, type TProperties, type TSchema } from "@agntn/tools";
+import { MAX_BATCH_ITEMS } from "./batch.ts";
 import { DEFAULT_WINDOW_CHARS, MAX_WINDOW_CHARS } from "./text-window.ts";
 import { THREAD_EVENT_KINDS } from "./thread-event.ts";
 import type { ThreadEventKind } from "./types.ts";
@@ -117,13 +118,13 @@ export function forgesToolSchemas() {
   );
   const number = Type.Integer({ description: "Issue or pull-request number", minimum: 1 });
   /** Gitee issues go by a key such as I8ZQ2A, so an issue takes text too. */
-  const issueNumber = Type.Union(
-    [
-      Type.Integer({ minimum: 1 }),
-      Type.String({ pattern: "^(?=[^A-Za-z]*[A-Za-z])[A-Za-z0-9]+$" }),
-    ],
-    { description: "Issue number, or on Gitee its key such as I8ZQ2A" },
-  );
+  const issueNumberBranches = [
+    Type.Integer({ minimum: 1 }),
+    Type.String({ pattern: "^(?=[^A-Za-z]*[A-Za-z])[A-Za-z0-9]+$" }),
+  ];
+  const issueNumber = Type.Union(issueNumberBranches, {
+    description: "Issue number, or on Gitee its key such as I8ZQ2A",
+  });
   const threadState = Type.Optional(
     Type.Unsafe<"unresolved" | "resolved" | "all">({
       type: "string",
@@ -132,6 +133,25 @@ export function forgesToolSchemas() {
     }),
   );
   const threadId = Type.String({ description: "Review thread id", minLength: 1 });
+  /** One key, or a list of them. */
+  function oneOrBatch<T extends TSchema>(items: readonly T[], description: string) {
+    return Type.Union(
+      [...items, Type.Array(Type.Union([...items]), { minItems: 1, maxItems: MAX_BATCH_ITEMS })],
+      { description },
+    );
+  }
+  const issueNumbers = oneOrBatch(
+    issueNumberBranches,
+    `Issue number, or on Gitee its key such as I8ZQ2A; a list of up to ${MAX_BATCH_ITEMS} reads them all in one call`,
+  );
+  const pullRequestNumbers = oneOrBatch(
+    [Type.Integer({ minimum: 1 })],
+    `Pull request number; a list of up to ${MAX_BATCH_ITEMS} reads them all in one call`,
+  );
+  const threadIds = oneOrBatch(
+    [Type.String({ minLength: 1 })],
+    `Review thread id; a list of up to ${MAX_BATCH_ITEMS} handles them all in one call`,
+  );
   const commentId = Type.String({ description: "Discussion comment id", minLength: 1 });
   const assignees = Type.Optional(
     Type.Array(Type.String({ minLength: 1 }), {
@@ -499,29 +519,21 @@ export function forgesToolSchemas() {
       pattern: "^[0-9a-f]{16}$",
     }),
   );
-  const issueParameters = closed({
-    platform,
-    owner,
-    repo,
-    number: issueNumber,
-    offset: bodyOffset,
-    maxChars: maxChars("body"),
-    bodyHash,
-  });
+  const bodyWindow = { offset: bodyOffset, maxChars: maxChars("body"), bodyHash };
+  const issueParameters = closed({ platform, owner, repo, number: issueNumbers, ...bodyWindow });
+  const closingIssues = Type.Optional(
+    Type.Boolean({
+      description:
+        "Also list the issues the pull request closes on merge, at the cost of one more request; null where the platform cannot tell",
+    }),
+  );
   const pullRequestParameters = closed({
     platform,
     owner,
     repo,
-    number,
-    offset: bodyOffset,
-    maxChars: maxChars("body"),
-    bodyHash,
-    closingIssues: Type.Optional(
-      Type.Boolean({
-        description:
-          "Also list the issues the pull request closes on merge, at the cost of one more request; null where the platform cannot tell",
-      }),
-    ),
+    number: pullRequestNumbers,
+    ...bodyWindow,
+    closingIssues,
   });
   const listCommentsParameters = closed({ platform, owner, repo, number, cursor, perPage });
   const listIssueCommentsParameters = closed({
@@ -911,8 +923,22 @@ export function forgesToolSchemas() {
     perPage,
     state: threadState,
   });
-  const threadParameters = closed({ platform, owner, repo, number, threadId });
-  const threadStateParameters = closed({ platform, owner, repo, number, threadId, account });
+  const threadParameters = closed({ platform, owner, repo, number, threadId: threadIds });
+  const threadStateParameters = closed({
+    platform,
+    owner,
+    repo,
+    number,
+    threadId: threadIds,
+    account,
+  });
+  /** `runCli` reads a list field as JSON, so commands take one plain key. */
+  const commandParameters = {
+    issue: closed({ platform, owner, repo, number: issueNumber, ...bodyWindow }),
+    pullRequest: closed({ platform, owner, repo, number, ...bodyWindow, closingIssues }),
+    thread: closed({ platform, owner, repo, number, threadId }),
+    threadState: closed({ platform, owner, repo, number, threadId, account }),
+  };
   const replyThreadParameters = closed({
     platform,
     owner,
@@ -1073,6 +1099,7 @@ export function forgesToolSchemas() {
     listThreadsParameters,
     threadParameters,
     threadStateParameters,
+    commandParameters,
     replyThreadParameters,
     updateThreadCommentParameters,
     deleteThreadCommentParameters,

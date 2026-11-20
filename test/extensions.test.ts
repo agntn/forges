@@ -1221,13 +1221,18 @@ describe("Forges Pi extension", () => {
     expect(repaired.toSorted()).toEqual([
       "forges_issues_create",
       "forges_issues_events",
+      "forges_issues_get",
       "forges_issues_search_global",
       "forges_issues_update",
       "forges_local_inspect",
       "forges_local_merge_verify",
       "forges_pull_requests_create",
       "forges_pull_requests_events",
+      "forges_pull_requests_get",
       "forges_pull_requests_update",
+      "forges_threads_get",
+      "forges_threads_resolve",
+      "forges_threads_unresolve",
     ]);
 
     const prepare = (name: string, args: unknown): unknown =>
@@ -1249,6 +1254,16 @@ describe("Forges Pi extension", () => {
     });
     expect(prepare("forges_pull_requests_events", { kinds: '["assignment"]' })).toEqual({
       kinds: ["assignment"],
+    });
+    expect(prepare("forges_issues_get", { number: "[390, 391]" })).toEqual({ number: [390, 391] });
+    expect(prepare("forges_threads_resolve", { threadId: '["PRRT_a","PRRT_b"]' })).toEqual({
+      threadId: ["PRRT_a", "PRRT_b"],
+    });
+    for (const args of [{ number: 391 }, { number: "I8ZQ2A" }, { threadId: "PRRT_a" }]) {
+      expect(prepare("forges_issues_get", args)).toBe(args);
+    }
+    expect(prepare("forges_issues_update", { addAssignees: "[1]" })).toEqual({
+      addAssignees: "[1]",
     });
 
     for (const args of [
