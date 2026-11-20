@@ -31,25 +31,16 @@ export interface ForgeRemote {
   repo: string;
 }
 
-const publicHosts: Record<string, ContextPlatform> = {
-  "github.com": "github",
-  "gitlab.com": "gitlab",
-  "gitea.com": "gitea",
-  "codeberg.org": "gitea",
-  "bitbucket.org": "bitbucket",
-  "gitee.com": "gitee",
-  "dev.azure.com": "azure-devops",
-  "ssh.dev.azure.com": "azure-devops",
+/** The web host behind each provider's default API, plus the variable that moves it. */
+const endpoints: Partial<Record<ContextPlatform, { host: string; variable: string }>> = {
+  github: { host: "github.com", variable: "FORGES_GITHUB_BASE_URL" },
+  gitlab: { host: "gitlab.com", variable: "FORGES_GITLAB_BASE_URL" },
+  gitea: { host: "gitea.com", variable: "FORGES_GITEA_BASE_URL" },
+  bitbucket: { host: "bitbucket.org", variable: "FORGES_BITBUCKET_BASE_URL" },
+  gitee: { host: "gitee.com", variable: "FORGES_GITEE_BASE_URL" },
 };
 
-const baseUrlEnv: Partial<Record<ContextPlatform, string>> = {
-  github: "FORGES_GITHUB_BASE_URL",
-  gitlab: "FORGES_GITLAB_BASE_URL",
-  gitea: "FORGES_GITEA_BASE_URL",
-  bitbucket: "FORGES_BITBUCKET_BASE_URL",
-  gitee: "FORGES_GITEE_BASE_URL",
-  "azure-devops": "FORGES_AZURE_DEVOPS_BASE_URL",
-};
+const azureHosts = new Set(["dev.azure.com", "ssh.dev.azure.com"]);
 
 function bareHost(host: string): string {
   return host
@@ -58,18 +49,19 @@ function bareHost(host: string): string {
     .replace(/^api\./, "");
 }
 
-/** A public forge by name, or a self-hosted one a `FORGES_*_BASE_URL` points at. */
+/** The host a provider calls right now; an unparsable base URL reaches nothing we can name. */
+function endpointHost({ host, variable }: { host: string; variable: string }): string | undefined {
+  const value = process.env[variable];
+  if (value === undefined || value === "") return host;
+  return URL.canParse(value) ? bareHost(new URL(value).hostname) : undefined;
+}
+
+/** Only the forge the tools would actually call, so Codeberg needs its base URL first. */
 function platformOf(host: string): ContextPlatform | undefined {
   const name = bareHost(host);
-  const known = publicHosts[name];
-  if (known !== undefined) return known;
-  if (name.endsWith(".ghe.com")) return "github";
-  if (name.endsWith(".visualstudio.com")) return "azure-devops";
-  for (const [platform, variable] of Object.entries(baseUrlEnv)) {
-    const value = process.env[variable!];
-    if (value && URL.canParse(value) && bareHost(new URL(value).hostname) === name) {
-      return platform as ContextPlatform;
-    }
+  if (azureHosts.has(name) || name.endsWith(".visualstudio.com")) return "azure-devops";
+  for (const [platform, endpoint] of Object.entries(endpoints)) {
+    if (endpointHost(endpoint!) === name) return platform as ContextPlatform;
   }
   return undefined;
 }

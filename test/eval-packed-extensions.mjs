@@ -715,6 +715,8 @@ try {
     "origin",
     "git@github.com:agntn/forges.git",
   ]);
+  const brokenBaseUrl = process.env.FORGES_GITHUB_BASE_URL;
+  delete process.env.FORGES_GITHUB_BASE_URL;
   const piSections = {};
   await piTools.handlers.get("before_agent_start")(
     { systemPrompt: "", systemPromptOptions: { sections: piSections } },
@@ -726,6 +728,7 @@ try {
     { cwd: localMergeArgs.cwd },
   );
   assert.match(ompPrompt.systemPrompt.at(-1), /^<forges_repository>\n[^]*agntn\/forges/);
+  process.env.FORGES_GITHUB_BASE_URL = brokenBaseUrl;
   assertNotLoaded(executors, "the repository section must not load the executors");
   await assertPackedMcpServer(packageRoot);
   for (const tools of [piTools, ompTools]) {
