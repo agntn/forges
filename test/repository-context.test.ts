@@ -95,6 +95,9 @@ describe("parseRemote", () => {
       owner: "team/sub",
       repo: "service",
     });
+    expect(
+      parseRemote("origin", "ssh://git@forge.example.com/gitlab/team/service.git"),
+    ).toMatchObject({ owner: "gitlab/team", repo: "service" });
   });
 
   it("reads a self-hosted forge its base URL names", () => {

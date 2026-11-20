@@ -77,14 +77,15 @@ function endpointOf(host: string): Endpoint | undefined {
   return undefined;
 }
 
-/** Host and path of a remote URL, from `https://`, `ssh://` or scp-style `git@host:path`. */
-function hostAndPath(url: string): { host: string; path: string } | undefined {
+/** Host and path of a remote; only a web URL carries the forge's install path. */
+function hostAndPath(url: string): { host: string; path: string; web: boolean } | undefined {
   if (URL.canParse(url) && /^[a-z][a-z0-9+.-]*:\/\//i.test(url)) {
     const parsed = new URL(url);
-    return { host: parsed.hostname, path: parsed.pathname };
+    const web = parsed.protocol === "https:" || parsed.protocol === "http:";
+    return { host: parsed.hostname, path: parsed.pathname, web };
   }
   const scp = /^(?:[^@/]+@)?([^:/]+):(.+)$/.exec(url);
-  return scp ? { host: scp[1]!, path: scp[2]! } : undefined;
+  return scp ? { host: scp[1]!, path: scp[2]!, web: false } : undefined;
 }
 
 /** Names land in the system prompt, so anything past a forge's own alphabet is refused. */
@@ -108,7 +109,7 @@ export function parseRemote(remote: string, url: string): ForgeRemote | undefine
   if (!endpoint) return undefined;
   const { platform, prefix } = endpoint;
   const path =
-    prefix && location.path.startsWith(`${prefix}/`)
+    location.web && prefix && location.path.startsWith(`${prefix}/`)
       ? location.path.slice(prefix.length)
       : location.path;
   const parts = path
