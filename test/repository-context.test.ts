@@ -158,6 +158,38 @@ describe("repositoryContext", () => {
     expect(await repositoryContext(directory)).toContain("agntn/forges");
   });
 
+  it("ignores remotes from the global config", async () => {
+    const home = mkdtempSync(join(tmpdir(), "forges-home-"));
+    execFileSync("git", [
+      "config",
+      "--file",
+      join(home, ".gitconfig"),
+      "remote.global.url",
+      "git@github.com:evil/elsewhere.git",
+    ]);
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("XDG_CONFIG_HOME", join(home, ".config"));
+    expect(
+      await repositoryContext(checkout({ origin: "git@github.com:agntn/forges.git" })),
+    ).not.toContain("evil");
+  });
+
+  it("reads a linked worktree's remotes", async () => {
+    const directory = checkout({ origin: "git@github.com:agntn/forges.git" });
+    execFileSync("git", ["-C", directory, "commit", "-q", "--allow-empty", "-m", "x"], {
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@t",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@t",
+      },
+    });
+    const linked = join(mkdtempSync(join(tmpdir(), "forges-linked-")), "tree");
+    execFileSync("git", ["-C", directory, "worktree", "add", "-q", linked]);
+    expect(await repositoryContext(linked)).toContain("agntn/forges");
+  });
+
   it("says nothing outside a checkout or without a forge remote", async () => {
     expect(await repositoryContext(mkdtempSync(join(tmpdir(), "forges-plain-")))).toBeUndefined();
     expect(await repositoryContext(checkout({ origin: "/srv/git/x.git" }))).toBeUndefined();

@@ -168,7 +168,7 @@ function remoteUrls(cwd: string): Promise<[string, string][]> {
   return new Promise((resolve) => {
     execFile(
       "git",
-      ["--no-pager", "config", "--null", "--get-regexp", String.raw`^remote\..*\.url$`],
+      ["--no-pager", "config", "--local", "--null", "--get-regexp", String.raw`^remote\..*\.url$`],
       { cwd, encoding: "utf8", timeout: 2_000, env: gitEnvironment() },
       (error, stdout) => {
         if (error) return resolve([]);
