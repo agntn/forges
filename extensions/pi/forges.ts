@@ -2,7 +2,12 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+  BeforeAgentStartEvent,
+  BeforeAgentStartEventResult,
+  ExtensionAPI,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import {
   registerPiTools,
@@ -21,16 +26,12 @@ import {
   type StatusTheme,
 } from "../shared/tui.ts";
 import { lazy } from "../shared/lazy.ts";
+import {
+  platformLabels,
+  REPOSITORY_SECTION,
+  repositoryContext,
+} from "../shared/repository-context.ts";
 
-const platformLabels: Record<ForgesTools.ForgesPlatform, string> = {
-  github: "GitHub",
-  gitlab: "GitLab",
-  gitea: "Gitea",
-  bitbucket: "Bitbucket",
-  gitee: "Gitee",
-  "azure-devops": "Azure DevOps",
-  artifacts: "Cloudflare Artifacts",
-};
 // oxlint-disable-next-line eslint/no-control-regex -- Removing terminal control bytes is intentional.
 const controlCharacter = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/g;
 const formatOrLineSeparator = /[\p{Cf}\p{Zl}\p{Zp}]/gu;
@@ -307,6 +308,23 @@ function statusRenderers(name: string, title: string): PiRenderers {
   };
 }
 
+/** A section, not a new prompt: Pi patches only what changed and the cache stays warm. */
+async function addRepositorySection(
+  event: BeforeAgentStartEvent,
+  ctx: ExtensionContext,
+): Promise<BeforeAgentStartEventResult | undefined> {
+  const section = await repositoryContext(ctx.cwd);
+  const sections = event.systemPromptOptions?.sections;
+  if (sections === undefined) {
+    if (section === undefined) return undefined;
+    const tagged = `<${REPOSITORY_SECTION}>\n${section}\n</${REPOSITORY_SECTION}>`;
+    return { systemPrompt: `${event.systemPrompt}\n\n${tagged}` };
+  }
+  if (section === undefined) delete sections[REPOSITORY_SECTION];
+  else sections[REPOSITORY_SECTION] = section;
+  return undefined;
+}
+
 /** Registers the forges tools, with their status lines and the approval dialogs. */
 export default async function forgesExtension(pi: ExtensionAPI): Promise<void> {
   const { forgesTools } = (await import(fromCheckout("tools"))) as typeof ForgesToolList;
@@ -318,4 +336,5 @@ export default async function forgesExtension(pi: ExtensionAPI): Promise<void> {
     confirm,
     prepareArguments: arrayRepairs(tools),
   });
+  pi.on("before_agent_start", addRepositorySection);
 }

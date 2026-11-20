@@ -139,13 +139,18 @@ async function registerPackedExtension(extensionPath, api) {
   const moduleUrl = `${pathToFileURL(extensionPath).href}?packed=${Date.now()}`;
   const extension = await import(moduleUrl);
   const tools = new Map();
+  const handlers = new Map();
   await extension.default({
     ...api,
     registerTool(tool) {
       tools.set(tool.name, tool);
     },
+    on(name, handler) {
+      handlers.set(name, handler);
+    },
   });
   assert.deepEqual([...tools.keys()], expectedToolNames);
+  tools.handlers = handlers;
   return tools;
 }
 
@@ -702,6 +707,29 @@ try {
   assertRenderedCall(piTool, {});
   assertRenderedCall(ompTool, ompApi);
   assertNotLoaded(executors, "rendering a call must not load the executors");
+  await execFileAsync("git", [
+    "-C",
+    localMergeArgs.cwd,
+    "remote",
+    "add",
+    "origin",
+    "git@github.com:agntn/forges.git",
+  ]);
+  const brokenBaseUrl = process.env.FORGES_GITHUB_BASE_URL;
+  delete process.env.FORGES_GITHUB_BASE_URL;
+  const piSections = {};
+  await piTools.handlers.get("before_agent_start")(
+    { systemPrompt: "", systemPromptOptions: { sections: piSections } },
+    { cwd: localMergeArgs.cwd },
+  );
+  assert.match(piSections.forges_repository, /origin: agntn\/forges on GitHub/);
+  const ompPrompt = await ompTools.handlers.get("before_agent_start")(
+    { systemPrompt: ["base"] },
+    { cwd: localMergeArgs.cwd },
+  );
+  assert.match(ompPrompt.systemPrompt.at(-1), /^<forges_repository>\n[^]*agntn\/forges/);
+  process.env.FORGES_GITHUB_BASE_URL = brokenBaseUrl;
+  assertNotLoaded(executors, "the repository section must not load the executors");
   await assertPackedMcpServer(packageRoot);
   for (const tools of [piTools, ompTools]) {
     const answer = await requireTool(tools, "forges_local_merge_verify").execute(
