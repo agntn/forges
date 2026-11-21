@@ -24,8 +24,8 @@ catalogs:
     ufo: 1.6.4
     unstorage: 1.17.6
   dev:
-    "@earendil-works/pi-coding-agent": 1.0.4
-    "@earendil-works/pi-tui": 1.0.4
+    "@earendil-works/pi-coding-agent": 1.5.2
+    "@earendil-works/pi-tui": 1.5.2
     "@iconify-json/lucide": 1.2.151
     "@iconify-json/simple-icons": 1.2.101
     "@iconify-json/vscode-icons": 1.2.96
