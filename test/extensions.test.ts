@@ -336,14 +336,18 @@ afterEach(() => {
 });
 
 describe("Forges Pi extension", () => {
-  it("registers the complete tool set with self-identifying guidelines and renderers", async () => {
+  it("registers all tools and gives the shared rules once", async () => {
     const tools = await registerPiTools();
 
     expect([...tools.keys()]).toEqual(toolNames);
     expect([...tools.keys()].sort()).toEqual(Object.keys(toolEffects).sort());
+    const rules = [...tools.values()].flatMap((tool) => tool.promptGuidelines ?? []);
+    expect(rules.filter((line) => line.includes("gh api"))).toEqual([
+      "Prefer forges_* tools over gh api, curl, and raw URLs.",
+    ]);
+    expect(rules.filter((line) => line.includes("repo as owner/name"))).toHaveLength(1);
+    expect(rules.join("\n")).not.toMatch(/nextOffset|nextCursor|bodyHash/u);
     for (const tool of tools.values()) {
-      expect(tool.promptGuidelines).not.toHaveLength(0);
-      for (const guideline of tool.promptGuidelines ?? []) expect(guideline).toContain(tool.name);
       expect(tool.renderCall).toBeTypeOf("function");
       expect(tool.renderResult).toBeTypeOf("function");
     }

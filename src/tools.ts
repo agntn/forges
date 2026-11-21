@@ -110,9 +110,6 @@ function defineTools(): ToolDefinition[] {
         "List the repositories owned by one user or organization on GitHub, GitLab, Gitea, or Forgejo, or in a Cloudflare Artifacts namespace, normalized to one shape. A row leaves out an owner that repeats the one asked for, and the merge settings, which come with forges_repos_get. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.",
       snippet:
         "List repositories through GitHub, GitLab, Gitea, Bitbucket, or Cloudflare Artifacts.",
-      guidelines: [
-        "Use forges_repos_list for repository discovery instead of constructing provider API requests.",
-      ],
       ...effect("forges_repos_list"),
       input: schemas.listRepositoriesParameters,
       execute: (args) => call((operations) => operations.listRepositories(args)),
@@ -125,8 +122,9 @@ function defineTools(): ToolDefinition[] {
       snippet:
         "Get normalized repository metadata from GitHub, GitLab, Gitea, Bitbucket, or Cloudflare Artifacts.",
       guidelines: [
-        "Use forges_repos_get when exact normalized repository metadata is required.",
-        "Read merge from forges_repos_get before a pull request instead of gh api repos/<owner>/<repo>: with squash and squashTitle COMMIT_OR_PR_TITLE, a lone commit's subject becomes the merged title.",
+        "Prefer forges_* tools over gh api, curl, and raw URLs.",
+        "For repository tools, use repo as owner/name or pass owner and repo separately. Platform defaults to github. On artifacts, owner is the namespace.",
+        "Read merge from forges_repos_get before opening a pull request: with squash and squashTitle COMMIT_OR_PR_TITLE, a lone commit's subject becomes the merged title.",
       ],
       ...effect("forges_repos_get"),
       input: schemas.repositoryParameters,
@@ -138,9 +136,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "Read one file or directory of a repository at a branch, tag or commit; ref defaults to the default branch. A file returns one bounded text slice with the resolved commit sha, its byte size and nextOffset; continue with that sha as ref and nextOffset. Binary files come back labeled with empty content, files above 1 MiB are refused, and a directory returns its entries.",
       snippet: "Read a file or list a directory of a remote repository without cloning it.",
-      guidelines: [
-        "Use forges_repos_contents instead of gh api contents or raw.githubusercontent.com. Continue a long file with the returned sha as ref and nextOffset.",
-      ],
       ...effect("forges_repos_contents"),
       input: schemas.repositoryContentsParameters,
       execute: (args) => call((operations) => operations.readRepositoryContents(args)),
@@ -151,9 +146,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "List the Git tags of one repository, each with the commit it points at. An annotated tag is peeled to its commit, not its tag object, and sha is null when the forge names no commit. GitLab is asked for version order, newest first. GitHub and Gitea promise no order, so compare names instead of trusting the first row. A tag needs no release, so this also finds the ones forges_releases_list never shows. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.",
       snippet: "List repository tags from GitHub, GitLab, Gitea, or Bitbucket.",
-      guidelines: [
-        "Use forges_repos_tags instead of gh api tags or git ls-remote --tags. Pick the newest tag by comparing names, not by row position.",
-      ],
       ...effect("forges_repos_tags"),
       input: schemas.listTagsParameters,
       execute: (args) => call((operations) => operations.listTags(args)),
@@ -177,9 +169,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "Get the full source body of one effective issue or pull-request template. Use the exact kind and provider key returned by forges_contribution_templates_list.",
       snippet: "Read one issue or pull-request template in full.",
-      guidelines: [
-        "Use forges_contribution_templates_get only with the exact kind and key returned by forges_contribution_templates_list.",
-      ],
       ...effect("forges_contribution_templates_get"),
       input: schemas.contributionTemplateParameters,
       execute: (args) => call((operations) => operations.getContributionTemplate(args)),
@@ -190,11 +179,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "Search code across repositories, optionally scoped to an owner or one repository. Results contain normalized repository names, paths, and web URLs. Results are paged, and incomplete says whether the search is known to be partial. GitLab requires authentication, and its global or group code search requires Premium or Ultimate with advanced or exact code search. Gitea, Forgejo, and GitHub-compatible hosts without the endpoint return an explicit unsupported error.",
       snippet: "Search repository code on GitHub or GitLab.",
-      guidelines: [
-        "Use forges_code_search to discover repositories from code or file fragments instead of invoking a platform CLI.",
-        "forges_code_search on GitLab requires authentication; global and group scope also require Premium or Ultimate with advanced or exact code search.",
-        "forges_code_search returns unsupported on Gitea, Forgejo, and GitHub-compatible hosts without a code-search endpoint.",
-      ],
       ...effect("forges_code_search"),
       input: schemas.codeSearchParameters,
       execute: (args) => call((operations) => operations.searchCode(args)),
@@ -205,9 +189,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "List paged repository CI runs, normalized from GitHub Actions, GitLab pipelines, and Gitea Actions. Each run includes its workflow or pipeline name (the workflow file on Gitea and Forgejo), trigger event, branch, revision SHA, lifecycle status, terminal conclusion, and web URL. Filter by branch when checking whether a specific line of development is green, and by workflow to find the release runs among the test ones.",
       snippet: "Read CI runs from GitHub Actions, GitLab pipelines, or Gitea Actions.",
-      guidelines: [
-        "Use forges_ci_runs_list to verify repository CI health instead of invoking a platform CLI.",
-      ],
       ...effect("forges_ci_runs_list"),
       input: schemas.listCiRunsParameters,
       execute: (args) => call((operations) => operations.listCiRuns(args)),
@@ -218,9 +199,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "List the jobs of one CI run with their lifecycle status, terminal conclusion, start and end times, web URL and, on GitHub and Gitea, their steps. A failed job has conclusion failure; read its log with forges_ci_jobs_log. An empty first page means the run started no jobs. GitLab jobs report no steps. Forgejo jobs bring only id, name, state and, from Forgejo 17, a url: no steps and null times.",
       snippet: "List the jobs and steps of one CI run to find the one that failed.",
-      guidelines: [
-        "Use forges_ci_jobs_list instead of gh run view --json jobs to find which job and step of a run failed.",
-      ],
       ...effect("forges_ci_jobs_list"),
       input: schemas.listCiJobsParameters,
       execute: (args) => call((operations) => operations.listCiJobs(args)),
@@ -229,11 +207,8 @@ function defineTools(): ToolDefinition[] {
       name: "forges_ci_jobs_log",
       title: forgeToolTitle("forges_ci_jobs_log", "Read CI Job Log"),
       description:
-        "Read one CI job log as a bounded text slice without timestamps or ANSI escapes. On GitHub and Gitea each step is a --- step N name: conclusion section and failing steps come first, so the first slice explains the failure; a long failing step opens with its last lines and the offset of its start; GitLab traces and Forgejo 16 logs read in order, so start near length - maxChars for the end. Continue with nextOffset. started is false when no runner took the job (Forgejo 16 answers not found instead), and logComplete is false when only the end of a very long log was kept.",
+        "Read one CI job log as a bounded text slice without timestamps or ANSI escapes. On GitHub and Gitea each step is a --- step N name: conclusion section and failing steps come first, so the first slice explains the failure; a long failing step opens with its last lines and the offset of its start; GitLab traces and Forgejo 16 logs read in order, so start near length - maxChars for the end. Continue with nextOffset. started is false when no runner took the job (Forgejo 16 answers not found instead), and logComplete is false when only the end of a very long log was kept. On GitHub, an Actions check id from forges_pull_requests_checks is the job id. Other apps' checks have no log here.",
       snippet: "Read why a CI job failed from its log, failing step first.",
-      guidelines: [
-        "Use forges_ci_jobs_log instead of gh run view --log-failed. On GitHub a failing Actions check id from forges_pull_requests_checks is the job id; a check from another app has no log there, and its summary already rides on the check row.",
-      ],
       ...effect("forges_ci_jobs_log"),
       input: schemas.ciJobLogParameters,
       execute: (args) => call((operations) => operations.readCiJobLog(args)),
@@ -242,11 +217,8 @@ function defineTools(): ToolDefinition[] {
       name: "forges_commits_search",
       title: forgeToolTitle("forges_commits_search", "Search Commits"),
       description:
-        "Search commits across repositories with optional owner and repository scope. Rows carry repository identity and author and committer dates; a committer identical to the author is left out. GitHub takes its native qualifiers and returns totalCount and resultLimit (1000). GitLab matches message keywords or a SHA on the default branch, returns no totalCount and resultLimit null, and searches a group or the whole instance only with advanced search, so pass owner and repo on other hosts. Messages are cut to their subject line and messageTruncated marks the cut ones; read one whole with forges_commits_get. Results are paged; pass nextCursor back as cursor while it is present. incomplete means the search is known to be partial; narrow the query when it is true. Gitea reports unsupported search.",
+        "Search commits across repositories with optional owner and repository scope. Rows carry repository identity and author and committer dates; a committer identical to the author is left out. GitHub takes native qualifiers such as author-date: and committer-date: and returns totalCount and resultLimit (1000). GitLab matches message keywords or a SHA on the default branch, returns no totalCount and resultLimit null, and searches a group or the whole instance only with advanced search, so pass owner and repo on other hosts. Messages are cut to their subject line and messageTruncated marks the cut ones; read one whole with forges_commits_get. Results are paged; pass nextCursor back as cursor while it is present. incomplete means the search is known to be partial; narrow the query when it is true or totalCount exceeds resultLimit. Gitea reports unsupported search.",
       snippet: "Find commits without knowing their repository first.",
-      guidelines: [
-        "Use forges_commits_search for native GitHub commit queries, including author-date: and committer-date: qualifiers, or GitLab message keywords; narrow the query when incomplete is true or totalCount exceeds resultLimit.",
-      ],
       ...effect("forges_commits_search"),
       input: schemas.commitSearchParameters,
       execute: (args) => call((operations) => operations.searchCommits(args)),
@@ -258,10 +230,6 @@ function defineTools(): ToolDefinition[] {
         "List paged commit summaries for one repository, optionally filtered by ref, path, and ISO-8601 since/until dates. Summaries omit changed-file rows and cut each message to its subject line, with messageTruncated on the cut ones, and leave out a committer identical to the author; use forges_commits_get for one commit's files or full message. Gitea rejects path because that API ignores pagination limits for the filter; Forgejo paginates it. Cloudflare Artifacts filters by ref alone and rejects path, since and until; Bitbucket rejects since and until.",
       snippet:
         "Read repository commit history from GitHub, GitLab, Gitea, Bitbucket, or Cloudflare Artifacts.",
-      guidelines: [
-        "Use forges_commits_list for repository history; use forges_commits_get only when one commit's changed files or full message are needed.",
-        "forges_commits_list rejects path on Gitea because that API ignores pagination limits for the filter; Forgejo paginates it.",
-      ],
       ...effect("forges_commits_list"),
       input: schemas.listCommitsParameters,
       execute: (args) => call((operations) => operations.listCommits(args)),
@@ -273,10 +241,6 @@ function defineTools(): ToolDefinition[] {
         "Compare two refs: the commits head has that base lacks, as git log base..head lists them, oldest first, with aheadBy and totalCount for the whole range. Messages are cut to their subject line, with messageTruncated on the cut ones, and a committer identical to the author is left out. Pass files to get the net change from the merge base to head with per-file counts on the first page; later pages have files null. GitHub also reports status, behindBy and mergeBaseSha, and lists at most 300 files, so filesComplete is null at that cap. GitLab and Gitea return null for status, behindBy, mergeBaseSha and filesComplete; Gitea has no range file list, so files is null there. To ask what head lacks, swap base and head.",
       snippet:
         "Compare two branches, tags, or commits on GitHub, GitLab, or Gitea without a checkout.",
-      guidelines: [
-        "Use forges_commits_compare for the commits and files between two refs, such as a tag and main for release notes, instead of listing history and filtering by hand.",
-        "forges_commits_compare reports behindBy only on GitHub; elsewhere swap base and head to see what head lacks.",
-      ],
       ...effect("forges_commits_compare"),
       input: schemas.compareCommitsParameters,
       execute: (args) => call((operations) => operations.compareCommits(args)),
@@ -318,11 +282,8 @@ function defineTools(): ToolDefinition[] {
       name: "forges_commits_patch",
       title: forgeToolTitle("forges_commits_patch", "Read Commit Patch"),
       description:
-        "Read one bounded slice of a known commit's patch stream. Continue with the returned sha, nextOffset, and the same non-null path. Each slice repeats provider pagination, so use the largest practical maxChars. Binary files, provider-omitted patches, and output truncation are labeled separately.",
+        "Read one bounded slice of a known commit's patch stream. Continue with the returned sha, nextOffset, and the same non-null path. Each slice repeats provider pagination, so use the largest practical maxChars. Binary files, provider-omitted patches, and output truncation are labeled separately. Use the returned sha, not the original branch or tag.",
       snippet: "Read code changes from one known commit without materializing an unbounded diff.",
-      guidelines: [
-        "Use forges_commits_patch for bounded patch slices. Continue with the returned sha, nextOffset, and same non-null path, not the original branch or tag.",
-      ],
       ...effect("forges_commits_patch"),
       input: schemas.commitPatchParameters,
       execute: (args) => call((operations) => operations.readCommitPatch(args)),
@@ -333,9 +294,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "List the releases of one repository, newest first, each with its tag, title, draft and pre-release flags, author, creation and publication time, and URL. Release notes are omitted here; read one with forges_releases_get. Drafts appear only for a token with push access, and GitLab has neither drafts nor pre-releases, so both flags are false there.",
       snippet: "List releases from GitHub, GitLab, or Gitea.",
-      guidelines: [
-        "Use forges_releases_list to see which tags have a release; notes come from forges_releases_get.",
-      ],
       ...effect("forges_releases_list"),
       input: schemas.listReleasesParameters,
       execute: (args) => call((operations) => operations.listReleases(args)),
@@ -346,9 +304,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "Get one release by its tag name with its notes in body, one bounded slice at a time. offset and nextOffset are UTF-16 positions in the notes, length is their full size, and truncated is true while more is left: while nextOffset is not null, call again with the same tag, offset set to nextOffset and the returned notesHash, or raise maxChars to read long notes in fewer calls. A continuation fails with 409 when the notes were edited in between, so start again from offset 0. The tag is the key on every platform, because GitLab releases have no id of their own; the id field is the platform id on GitHub and Gitea and the tag on GitLab. A GitHub draft is found among the 500 newest releases when the token may see drafts.",
       snippet: "Read one release by tag from GitHub, GitLab, or Gitea.",
-      guidelines: [
-        "Use forges_releases_get with the tag name; releases are keyed by tag on every platform.",
-      ],
       ...effect("forges_releases_get"),
       input: schemas.releaseParameters,
       execute: (args) => call((operations) => operations.getRelease(args)),
@@ -385,7 +340,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "List normalized issues for one repository, optionally filtered by state. Issue bodies are omitted here so one page cannot flood the context; read a single body with forges_issues_get. GitHub serves pull requests from the same endpoint and they are dropped after the page is cut, so an empty page that still carries nextCursor means keep paging, not that the repository has no issues.",
       snippet: "List repository issues across GitHub, GitLab, or Gitea.",
-      guidelines: ["Use forges_issues_list to inspect issue queues across supported platforms."],
       ...effect("forges_issues_list"),
       input: schemas.listRepositoryItemsParameters,
       execute: (args) => call((operations) => operations.listIssues(args)),
@@ -396,9 +350,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "Search issues across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. author, state and labels filter on every platform, and an issue must carry every label. Pull requests never appear. Returns repository identity, totalCount and incomplete. Pass nextCursor back as cursor while it is present; narrow the query when incomplete is true.",
       snippet: "Find issues across an owner's repositories, filtered by label, state or author.",
-      guidelines: [
-        "Use forges_issues_search_global for triage across an owner's repositories instead of looping forges_issues_search over each one; narrow the query when incomplete is true.",
-      ],
       ...effect("forges_issues_search_global"),
       input: schemas.globalIssueSearchParameters,
       execute: (args) => call((operations) => operations.searchIssuesGlobal(args)),
@@ -409,9 +360,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "Search issues inside one repository with the selected platform's query syntax, optionally filtered by state. Bodies are omitted; read one result with forges_issues_get. Results are paged, and incomplete says whether the search is known to be partial.",
       snippet: "Search issues inside one GitHub, GitLab, or Gitea repository.",
-      guidelines: [
-        "Use forges_issues_search when duplicate checks need a query instead of the whole issue queue.",
-      ],
       ...effect("forges_issues_search"),
       input: schemas.searchRepositoryItemsParameters,
       execute: (args) => call((operations) => operations.searchIssues(args)),
@@ -435,9 +383,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "List the discussion comments under one issue, oldest first. Comment bodies are truncated here; read one whole with forges_issues_comments_get. Ask for a small perPage on a busy issue and follow nextCursor. GitLab system notes about label and state churn are dropped, so a short page that still carries nextCursor means keep paging, not that the discussion ended.",
       snippet: "Read the discussion under an issue on GitHub, GitLab, or Gitea.",
-      guidelines: [
-        "Use forges_issues_comments to read an issue's discussion instead of scraping the web UI.",
-      ],
       ...effect("forges_issues_comments"),
       input: schemas.listIssueCommentsParameters,
       execute: (args) => call((operations) => operations.listIssueComments(args)),
@@ -448,9 +393,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "Get one discussion comment under an issue, with its full body. The id is the one forges_issues_comments returned for it.",
       snippet: "Read one issue comment in full on GitHub, GitLab, or Gitea.",
-      guidelines: [
-        "Use forges_issues_comments_get with an id from forges_issues_comments when the truncated body is not enough.",
-      ],
       ...effect("forges_issues_comments_get"),
       input: schemas.issueCommentParameters,
       execute: (args) => call((operations) => operations.getIssueComment(args)),
@@ -461,9 +403,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "List the emoji reactions on one issue, oldest first, or on one of its discussion comments when commentId is an id forges_issues_comments returned. Each row names the reaction the way GitHub does (+1, -1, laugh, confused, heart, hooray, rocket, eyes), who reacted and createdAt; an emoji GitHub has no reaction for keeps the forge's own name. A pull request number answers not found; read those with forges_pull_requests_reactions. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.",
       snippet: "Read the reactions on an issue or its comments on GitHub, GitLab, or Gitea.",
-      guidelines: [
-        "Use forges_issues_reactions instead of gh api .../reactions; pass commentId for a comment's reactions.",
-      ],
       ...effect("forges_issues_reactions"),
       input: schemas.listReactionsParameters,
       execute: (args) => call((operations) => operations.listIssueReactions(args)),
@@ -474,9 +413,6 @@ function defineTools(): ToolDefinition[] {
       description:
         'List one issue\'s timeline, oldest first: comments, labels, assignments, state changes, mentions and references. Each row has kind, action, a summary line, actor and createdAt; comment bodies are left out, read them with forges_issues_comments. A referenced event names the issue, pull request or commit that mentioned this one in reference, with its repository as owner/name, often another repository, plus title and state on GitHub and Gitea (GitLab gives only the number). Pass kinds: ["referenced"] to keep just those. A pull request number answers not found; read those with forges_pull_requests_events. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.',
       snippet: "Read an issue's timeline on GitHub, GitLab, or Gitea.",
-      guidelines: [
-        'Use forges_issues_events with kinds: ["referenced"] instead of gh api .../timeline to find the issues and pull requests, in any repository, that mention an issue before picking it up.',
-      ],
       ...effect("forges_issues_events"),
       input: schemas.listIssueEventsParameters,
       execute: (args) => call((operations) => operations.listIssueEvents(args)),
@@ -526,9 +462,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "List the issue types and issue fields one repository accepts, each field with its kind (text, number, date, singleSelect, multiSelect) and the option names a select takes. These are the names forges_issues_create and forges_issues_update set. GitHub only: issue types work in any repository, fields only in an organization that turned them on, so elsewhere fields is an empty list. GitLab and Gitea answer that types and fields are not supported.",
       snippet: "See which issue types and fields a GitHub repository takes.",
-      guidelines: [
-        "Use forges_issues_fields before setting a type or field with forges_issues_create or forges_issues_update, instead of guessing names or calling gh api .../issue-types.",
-      ],
       ...effect("forges_issues_fields"),
       input: schemas.issuesFieldsParameters,
       execute: (args) => call((operations) => operations.getIssueFields(args)),
@@ -565,9 +498,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "List the sub-issues hanging under one parent issue, in the parent's own order. Each row carries repository as owner/name, since a child can live in another repository of the same owner; bodies are omitted, read one with forges_issues_get. GitHub only: GitLab, Gitea, Forgejo and GitBucket answer that sub-issues are not supported. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.",
       snippet: "Read the sub-issues of a GitHub issue.",
-      guidelines: [
-        "Use forges_issues_sub_issues instead of gh api .../sub_issues to see how a parent issue was split.",
-      ],
       ...effect("forges_issues_sub_issues"),
       input: schemas.listSubIssuesParameters,
       execute: (args) => call((operations) => operations.listSubIssues(args)),
@@ -604,9 +534,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "List normalized pull requests, which GitLab calls merge requests, for one repository, optionally filtered by state. Bodies are omitted here; read a single body with forges_pull_requests_get.",
       snippet: "List repository pull requests across GitHub, GitLab, Gitea, or Bitbucket.",
-      guidelines: [
-        "Use forges_pull_requests_list to inspect pull-request queues across supported platforms.",
-      ],
       ...effect("forges_pull_requests_list"),
       input: schemas.listRepositoryItemsParameters,
       execute: (args) => call((operations) => operations.listPullRequests(args)),
@@ -633,9 +560,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "Search pull requests inside one repository with the selected platform's query syntax, optionally filtered by state. Bodies and revision details are omitted; read one result with forges_pull_requests_get. Results are paged, and incomplete says whether the search is known to be partial.",
       snippet: "Search pull requests inside one GitHub, GitLab, or Gitea repository.",
-      guidelines: [
-        "Use forges_pull_requests_search for duplicate checks by query inside one repository.",
-      ],
       ...effect("forges_pull_requests_search"),
       input: schemas.searchRepositoryItemsParameters,
       execute: (args) => call((operations) => operations.searchPullRequests(args)),
@@ -660,9 +584,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "List files changed by one pull request, normalized to path, status, additions, and deletions. Patches are omitted. GitLab counts are null when it withholds a collapsed or oversized diff.",
       snippet: "Read changed-file paths and counts for a pull request.",
-      guidelines: [
-        "Use forges_pull_requests_files when a review or audit needs the pull request's changed paths and line counts.",
-      ],
       ...effect("forges_pull_requests_files"),
       input: schemas.listPullRequestFilesParameters,
       execute: (args) => call((operations) => operations.listPullRequestFiles(args)),
@@ -677,8 +598,6 @@ function defineTools(): ToolDefinition[] {
       snippet: "Read the checks for a pull request on GitHub, GitLab, Gitea, or Bitbucket.",
       guidelines: [
         "Use forges_pull_requests_checks to verify pull-request CI before merging or reviewing.",
-        "Give forges_pull_requests_checks a waitSeconds budget rather than calling it again to see whether a running check finished.",
-        "Right after pushing to a pull request, pass the pushed SHA as headSha to forges_pull_requests_checks.",
       ],
       ...effect("forges_pull_requests_checks"),
       input: schemas.listPullRequestChecksParameters,
@@ -718,12 +637,8 @@ function defineTools(): ToolDefinition[] {
         "List the conversation comments under one pull request, oldest first: the discussion, not the code-review threads that forges_threads_list reads. Comment bodies are truncated here; read one whole with forges_pull_requests_comments_get, and bound the volume with perPage and nextCursor. " +
         "marker keeps the comments whose body contains it and since the ones created or edited from then on; either reads every page itself, so it takes no cursor and returns no nextCursor. " +
         "A review bot that reports through a sticky comment edits it when its round starts and again when it ends, so pass waitSeconds instead of polling: with since, the call returns once a matching comment is created or edited after that time, and without it once one changes after the call starts. " +
-        "The result then holds only the changed comments, plus a wait field with settled, waitedMs and polls; a timeout is settled false with an empty list, not an error.",
+        "The result then holds only the changed comments, plus a wait field with settled, waitedMs and polls; a timeout is settled false with an empty list, not an error. For a bot's review, start with its marker and the push time as since. Drop since on the next call to wait for a fresh edit.",
       snippet: "Read the conversation under a pull request on GitHub, GitLab, Gitea, or Bitbucket.",
-      guidelines: [
-        "Use forges_pull_requests_comments for the pull-request conversation; review threads come from forges_threads_list.",
-        "To wait for a review bot's round, call forges_pull_requests_comments with the bot's sticky marker, the push time as since and waitSeconds, then call again without since to wait for the next edit, rather than polling in the shell.",
-      ],
       ...effect("forges_pull_requests_comments"),
       input: schemas.listPullRequestCommentsParameters,
       execute: (args, { signal, progress }) =>
@@ -736,9 +651,6 @@ function defineTools(): ToolDefinition[] {
         "Get one conversation comment under a pull request, with its full body. The id is the one forges_pull_requests_comments returned; review-thread comments come back whole from forges_threads_get instead.",
       snippet:
         "Read one pull-request conversation comment in full on GitHub, GitLab, Gitea, or Bitbucket.",
-      guidelines: [
-        "Use forges_pull_requests_comments_get with an id from forges_pull_requests_comments; review threads still come back whole from forges_threads_get.",
-      ],
       ...effect("forges_pull_requests_comments_get"),
       input: schemas.commentParameters,
       execute: (args) => call((operations) => operations.getPullRequestComment(args)),
@@ -752,10 +664,6 @@ function defineTools(): ToolDefinition[] {
         "With waitSeconds the call returns once a matching reaction lands, after since or after the call starts, or once one the first read saw goes away, as a bot's eyes do when its round ends with findings. " +
         "The result then holds the reactions that landed and a wait field with settled, waitedMs, polls and removed; a timeout is settled false, not an error.",
       snippet: "Read the reactions on a pull request or its comments on GitHub, GitLab, or Gitea.",
-      guidelines: [
-        "Use forges_pull_requests_reactions instead of gh api .../reactions to see whether a review bot reacted after the latest push.",
-        "Give forges_pull_requests_reactions the bot's login as author, the push time as since and waitSeconds to wait for its +1 or for its eyes to go away.",
-      ],
       ...effect("forges_pull_requests_reactions"),
       input: schemas.listPullRequestReactionsParameters,
       execute: (args, { signal, progress }) =>
@@ -767,9 +675,6 @@ function defineTools(): ToolDefinition[] {
       description:
         'List one pull request\'s timeline, oldest first: commits, reviews, review requests, comments, labels, state changes such as merged or closed, and references. Each row has kind, action, a summary line, actor and createdAt; comment and review bodies are left out, read them with forges_pull_requests_comments or forges_pull_requests_reviews. A referenced event names the issue, pull request or commit that mentioned this one in reference, with title and state on GitHub and Gitea. Pass kinds to keep only some, such as ["commit", "review"]. An issue number answers not found. Results are paged: pass nextCursor back as cursor instead of assuming the first page is everything.',
       snippet: "Read a pull request's timeline on GitHub, GitLab, Gitea, or Bitbucket.",
-      guidelines: [
-        "Use forges_pull_requests_events instead of gh api .../timeline to see who did what on a pull request and when.",
-      ],
       ...effect("forges_pull_requests_events"),
       input: schemas.listEventsParameters,
       execute: (args) => call((operations) => operations.listPullRequestEvents(args)),
@@ -858,7 +763,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "Get one normalized user profile by username: display name, bio, company, location, website, follower counts, account creation date, profile URL, email, avatar URL, admin flag, and platform id.",
       snippet: "Get a user profile from GitHub, GitLab, or Gitea.",
-      guidelines: ["Use forges_users_get to resolve a platform username to normalized metadata."],
       ...effect("forges_users_get"),
       input: schemas.userParameters,
       execute: (args) => call((operations) => operations.getUser(args)),
@@ -869,9 +773,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "Get the profile of the account the locally detected credentials belong to. Call this before writing anything, because every write lands under that account and the server never takes a token as an argument. With account, it checks that GitHub login instead, as a write naming it would. The credential stays pinned until forges_auth_reload explicitly replaces it.",
       snippet: "Identify the authenticated GitHub, GitLab, Gitea, or Bitbucket account.",
-      guidelines: [
-        "Use forges_users_authenticated to identify the account selected by trusted local authentication.",
-      ],
       ...effect("forges_users_authenticated"),
       input: schemas.authenticatedUserParameters,
       execute: (args) => call((operations) => operations.getAuthenticatedUser(args)),
@@ -895,9 +796,6 @@ function defineTools(): ToolDefinition[] {
       description:
         "List the review threads on one pull request, optionally filtered by resolved state. Comment bodies are truncated here; read one thread whole with forges_threads_get. Gitea carries no parent id on review comments, so each comment comes back as its own single-comment thread there.",
       snippet: "List review threads on a pull request across GitHub, GitLab, Gitea, or Bitbucket.",
-      guidelines: [
-        "Use forges_threads_list to inspect review threads instead of dumping full PR comments.",
-      ],
       ...effect("forges_threads_list"),
       input: schemas.listThreadsParameters,
       execute: (args) => call((operations) => operations.listThreads(args)),

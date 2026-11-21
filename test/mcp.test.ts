@@ -361,6 +361,26 @@ describe("forges MCP server", () => {
     }
   });
 
+  it("keeps repeated parameter descriptions within 64 bytes", async () => {
+    const client = await connectTestClient();
+    const { tools } = await client.listTools();
+    const repeated = new Map<string, number>();
+
+    for (const tool of tools) {
+      for (const [name, property] of Object.entries(tool.inputSchema.properties ?? {})) {
+        if (typeof property !== "object" || property === null || !("description" in property)) {
+          continue;
+        }
+        const { description } = property;
+        if (typeof description !== "string" || Buffer.byteLength(description) <= 64) continue;
+        const label = `${name}: ${description}`;
+        repeated.set(label, (repeated.get(label) ?? 0) + 1);
+      }
+    }
+
+    expect([...repeated].filter(([, count]) => count >= 5)).toEqual([]);
+  });
+
   it("offers artifacts only to the tools Cloudflare Artifacts can answer", async () => {
     const client = await connectTestClient();
 
