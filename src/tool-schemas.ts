@@ -28,7 +28,7 @@ export function forgesToolSchemas() {
     Type.Unsafe<Exclude<ForgesPlatform, "artifacts">>({
       type: "string",
       enum: ["github", "gitlab", "gitea", "bitbucket", "gitee", "azure-devops"],
-      description: "Git hosting platform; defaults to github",
+      description: "Forge (default: github)",
       default: "github",
     }),
   );
@@ -37,15 +37,14 @@ export function forgesToolSchemas() {
     Type.Unsafe<ForgesPlatform>({
       type: "string",
       enum: ["github", "gitlab", "gitea", "bitbucket", "gitee", "azure-devops", "artifacts"],
-      description:
-        "Git hosting platform, or artifacts for Cloudflare Artifacts with a namespace as owner; defaults to github",
+      description: "Forge (default: github). Artifacts uses a namespace as owner.",
       default: "github",
     }),
   );
   /** Repository tools take the owner inside `repo` as readily as on its own field. */
   const owner = Type.Optional(
     Type.String({
-      description: 'Repository owner or organization; omit when repo is written "owner/name"',
+      description: "Owner for an unqualified repo",
       minLength: 1,
     }),
   );
@@ -55,7 +54,7 @@ export function forgesToolSchemas() {
     minLength: 1,
   });
   const repo = Type.String({
-    description: 'Repository name, or "owner/name" when owner is omitted',
+    description: "owner/name, or name with owner",
     minLength: 1,
   });
   const contributionTemplateKind = Type.Unsafe<"issue" | "pull_request">({
@@ -101,8 +100,7 @@ export function forgesToolSchemas() {
     );
   const cursor = Type.Optional(
     Type.String({
-      description:
-        "nextCursor from the previous page, passed back unchanged; omit for the first page",
+      description: "Previous nextCursor, unchanged. Omit for page one.",
       minLength: 1,
     }),
   );
@@ -163,8 +161,7 @@ export function forgesToolSchemas() {
   /** Only gh hands out a named login's token, so the other platforms reject it. */
   const account = Type.Optional(
     Type.String({
-      description:
-        "GitHub login to act as; refused unless the local credential belongs to it. Omit for the pinned one.",
+      description: "GitHub login matching the credential. Omit for the pinned one.",
       minLength: 1,
     }),
   );
