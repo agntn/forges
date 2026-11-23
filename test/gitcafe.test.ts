@@ -72,6 +72,28 @@ const license = {
   content: "MIT License\n\nCopyright (c) 2026 versecafe",
 };
 
+/* One `/actions/runs` row in the shape the OpenAPI schema gives it. */
+function actionsRun(state: Readonly<{ status: string; conclusion: string | null }>) {
+  return {
+    id: "run_01m7xg9d",
+    runNumber: 7,
+    attempt: 1,
+    rerunOf: null,
+    workflowPath: ".github/workflows/test.yml",
+    workflowName: "test",
+    event: "push",
+    ref: "refs/heads/main",
+    headOid: SHA,
+    ...state,
+    cancelRequested: false,
+    actor: null,
+    diagnostics: [],
+    createdAt: "2026-11-20T22:12:31.859Z",
+    startedAt: null,
+    completedAt: null,
+  };
+}
+
 /* What `/blob` answers for a directory. */
 const wrongKind = {
   type: "about:blank",
@@ -193,6 +215,29 @@ describe("GitCafeProvider CI runs", () => {
 
     expect(page.items).toEqual([]);
     expect(urls(fetch)).toEqual(["/repos/versecafe/ashlar/actions/runs?branch=main&limit=30"]);
+  });
+
+  it("keeps GitCafe's own conclusion on a finished run", async () => {
+    serve(
+      at(`${REPO}/actions/runs`, () => ({
+        items: [
+          actionsRun({ status: "completed", conclusion: "cancelled" }),
+          actionsRun({ status: "completed", conclusion: "skipped" }),
+          actionsRun({ status: "completed", conclusion: "timed_out" }),
+          actionsRun({ status: "running", conclusion: null }),
+        ],
+        next: null,
+      })),
+    );
+
+    const page = await provider().ciRuns.list(ashlar);
+
+    expect(page.items.map(({ status, conclusion }) => [status, conclusion])).toEqual([
+      ["completed", "cancelled"],
+      ["completed", "skipped"],
+      ["completed", "timed_out"],
+      ["in_progress", null],
+    ]);
   });
 
   it("answers 501 for a workflow filter, which the run list would ignore", async () => {

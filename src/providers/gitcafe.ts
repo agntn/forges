@@ -6,11 +6,13 @@
  * - The commit log filters by ref alone, and a comparison lists files without commits
  */
 
-import type { ForgeProvider as Forge } from "forges";
+import type { CiRun as ForgeCiRun, ForgeProvider as Forge } from "forges";
 import { gitcafe } from "forges/gitcafe";
 
 import { ForgeBackedProvider, type ForgeOptions } from "./forge.ts";
+import { ciRunFromModel } from "./forge-model.ts";
 import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
+import { normalizeCiRunState } from "../ci-run.ts";
 import { FetchError, ForgesError, normalizeError } from "../errors.ts";
 import {
   assertContinuationRef,
@@ -54,6 +56,11 @@ interface GitCafeTreeEntry {
 interface GitCafeTreePage {
   items: GitCafeTreeEntry[];
   next: string | null;
+}
+
+/** The part of an `/actions/runs` row the shared model drops. */
+interface GitCafeRun {
+  conclusion: string | null;
 }
 
 /** `/blob`, with `content` null for a binary file. */
@@ -103,6 +110,15 @@ export class GitCafeProvider extends ForgeBackedProvider {
 
   protected override createForge(options: ForgeOptions): Forge {
     return gitcafe(options) as Forge;
+  }
+
+  /** `forges` keeps the conclusion in `raw` alone, where `cancelled` would read as `failure`. */
+  protected override mapCiRun(run: ForgeCiRun): CiRun {
+    const { conclusion } = run.raw as GitCafeRun;
+    return {
+      ...ciRunFromModel(run),
+      ...normalizeCiRunState(run.stateRaw, conclusion),
+    };
   }
 
   #repoPath({ owner, repo }: RepoRef): string {
