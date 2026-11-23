@@ -151,6 +151,19 @@ function defineTools(): ToolDefinition[] {
       execute: (args) => call((operations) => operations.listTags(args)),
     }),
     defineTool({
+      name: "forges_repos_tree",
+      title: forgeToolTitle("forges_repos_tree", "List Repository Tree"),
+      description:
+        "List every path below one directory of a repository, recursively, at a branch, tag or commit; ref defaults to the default branch. Each row has path, type and size, the byte count of a file where the forge sends one. The answer names the commit sha it read, and nextCursor keeps the whole walk on that commit even if the branch moves. truncated: true means the forge itself cut the tree short, as GitHub does on huge repositories; list a narrower path for the rest. GitHub, GitLab and Gitea only; others answer 501.",
+      snippet: "List every path in a remote repository without cloning it.",
+      guidelines: [
+        "Use forges_repos_tree to find a file by path, then forges_repos_contents to read it.",
+      ],
+      ...effect("forges_repos_tree"),
+      input: schemas.listTreeParameters,
+      execute: (args) => call((operations) => operations.listRepositoryTree(args)),
+    }),
+    defineTool({
       name: "forges_contribution_templates_list",
       title: forgeToolTitle("forges_contribution_templates_list", "List Contribution Templates"),
       description:

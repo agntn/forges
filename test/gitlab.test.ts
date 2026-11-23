@@ -1062,6 +1062,46 @@ describe("GitLabProvider", () => {
     });
   });
 
+  describe("repos.listTree", () => {
+    const sha = "1fa03ff14b687e4d1c607b2501d4025b02b241ec";
+
+    it("asks GitLab for a recursive tree at the resolved commit, a page at a time", async () => {
+      mockProjectResolve();
+      mocks.client.mockResolvedValueOnce({ id: sha });
+      mocks.rawFetch.mockResolvedValueOnce({
+        data: [
+          { name: ".vale", path: "docs/.vale", type: "tree", mode: "040000" },
+          { name: "link", path: "docs/link", type: "blob", mode: "120000" },
+          { name: "index.md", path: "docs/index.md", type: "blob", mode: "100644" },
+        ],
+        headers: glHeaders({ nextPage: "2", total: "1800" }),
+      });
+
+      const page = await gl.repos.listTree(
+        { owner: "gitlab-org", repo: "cli" },
+        { ref: "main", path: "docs", perPage: 3 },
+      );
+
+      expect(mocks.client).toHaveBeenLastCalledWith("/projects/278964/repository/commits/main");
+      expect(mocks.rawFetch).toHaveBeenCalledWith(mocks.client, {
+        url: "/projects/278964/repository/tree",
+        query: { ref: sha, path: "docs", recursive: "true", page: 1, per_page: 3 },
+      });
+      expect(page).toEqual({
+        items: [
+          { path: "docs/.vale", type: "directory", size: null },
+          { path: "docs/link", type: "symlink", size: null },
+          { path: "docs/index.md", type: "file", size: null },
+        ],
+        totalCount: 1800,
+        sha,
+        path: "docs",
+        truncated: false,
+        nextCursor: expect.any(String),
+      });
+    });
+  });
+
   describe("repos.readContents", () => {
     const sha = "f5016eda261bb7142627d05d1d85a20d6dd56ddc";
     const glFile = (content: string | Uint8Array) => ({

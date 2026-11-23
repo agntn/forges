@@ -5,7 +5,7 @@
 [![license](https://npmx.dev/api/registry/badge/license/@agntn/forges)](https://npmx.dev/package/@agntn/forges)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/agntn/forges)
 
-⚒️ Every forge, ten resources, 67 agent tools. Ask for a pull request, not another client.
+⚒️ Every forge, ten resources, 68 agent tools. Ask for a pull request, not another client.
 
 ## Why?
 
@@ -20,7 +20,7 @@ Docs and an explorer for the same calls: [forges.agntn.dev](https://forges.agntn
 - 📦 **Loads one platform.** `createProvider("github")` is async. It imports GitHub and leaves GitLab on disk.
 - 🆔 **IDs are strings.** Even when the API sent a number. A count the forge withholds is missing, not `0`.
 - 🫥 **Empty string is guest.** `{ token: "" }` is anonymous on purpose. Leave `token` out and you get `AuthenticationError`, not a quiet guest session.
-- 🤖 **67 tools, five surfaces.** MCP, Pi, OMP, the CLI and the AI SDK share one definition of each. Twenty write to the host, and the model still doesn't get a free finger on merge.
+- 🤖 **68 tools, five surfaces.** MCP, Pi, OMP, the CLI and the AI SDK share one definition of each. Twenty write to the host, and the model still doesn't get a free finger on merge.
 - 🚫 **Missing is 501.** Code search on Gitea is not an empty page. You get a `ForgesError` with status 501.
 - 🧭 **GitBucket is GitHub plus `baseURL`.** Forgejo and Codeberg are Gitea plus `baseURL`. Same class, different host.
 - 🚚 **Built with [danielroe/forges](https://github.com/danielroe/forges).** It handles forge requests and pagination. This package adds its own normalized API and agent tools.
@@ -170,11 +170,11 @@ omp install @agntn/forges
 }
 ```
 
-MCP, Pi, OMP and the AI SDK all hit the same 67 tools. Twenty write to the host, so ask `forges_users_authenticated` who you are before a model does, details in the [Agents](https://forges.agntn.dev/guide/agents) guide.
+MCP, Pi, OMP and the AI SDK all hit the same 68 tools. Twenty write to the host, so ask `forges_users_authenticated` who you are before a model does, details in the [Agents](https://forges.agntn.dev/guide/agents) guide.
 
 ### AI SDK
 
-One import, all 67 tools, no wrappers to write.
+One import, all 68 tools, no wrappers to write.
 
 ```bash
 pnpm add @agntn/forges ai @ai-sdk/anthropic
@@ -197,7 +197,7 @@ Writes stop at an approval request by default, and `toolApproval` overrides that
 
 ## 🚫 What this does not do
 
-Repository files can be read without cloning. Branch management, release assets, webhooks and organization administration are outside the review loop.
+Repository files can be read and listed without cloning. Branch management, release assets, webhooks and organization administration are outside the review loop.
 
 ## 🧩 Adding a provider
 

@@ -29,6 +29,8 @@ import {
   type NumberedSearchPage,
   type WithPage,
   type ProviderRawTypes,
+  type RepositoryTreeRequest,
+  type RepositoryTreeSlice,
 } from "../provider.ts";
 import type {
   RepositoryContents,
@@ -129,6 +131,8 @@ import {
   assertContinuationRef,
   assertFileSize,
   buildRepositoryFile,
+  gitTreeEntryType,
+  isCommitSha,
 } from "../repository-contents.ts";
 
 const MAX_COMMIT_DIFF_PAGES = 100;
@@ -1129,6 +1133,44 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
     }
   }
 
+  /** GitLab pages a recursive tree itself and sends no sizes. */
+  protected override async listRepositoryTree(
+    { owner, repo }: RepoRef,
+    { ref, path, perPage, sha: pinned, page = 1 }: RepositoryTreeRequest,
+  ): Promise<RepositoryTreeSlice> {
+    try {
+      const projectId = await this.resolveProjectId(owner, repo);
+      const sha =
+        pinned ??
+        (isCommitSha(ref)
+          ? ref
+          : (
+              await this.client<GitLabCommit>(
+                `/projects/${projectId}/repository/commits/${encodeRevisionPathSegment(ref ?? "HEAD", "Ref")}`,
+              )
+            ).id);
+      const { data, headers } = await rawFetch<GitLabTreeEntry[]>(this.client, {
+        url: `/projects/${projectId}/repository/tree`,
+        query: {
+          ref: sha,
+          path: path === "" ? undefined : path,
+          recursive: "true",
+          page,
+          per_page: perPage,
+        },
+      });
+      const items = (data ?? []).map((entry) => ({
+        path: entry.path,
+        type: gitTreeEntryType(entry),
+        size: null,
+      }));
+      const { hasNextPage, totalCount } = this.parsePagination(items, headers);
+      return { items, totalCount, hasNextPage, sha, path, truncated: false };
+    } catch (error: unknown) {
+      throw normalizeError(error, "gitlab");
+    }
+  }
+
   /** The files API answers 404 for a directory too, so null means "try the tree". */
   private async tryRepositoryFile(
     projectId: number,
@@ -1147,15 +1189,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   }
 
   private mapTreeEntry(entry: GitLabTreeEntry): RepositoryEntry {
-    const type =
-      entry.type === "tree"
-        ? "directory"
-        : entry.type === "commit"
-          ? "submodule"
-          : entry.mode === "120000"
-            ? "symlink"
-            : "file";
-    return { name: entry.name, path: entry.path, type, size: null };
+    return { name: entry.name, path: entry.path, type: gitTreeEntryType(entry), size: null };
   }
 
   private contributionTemplateApiType(kind: ContributionTemplateKind): string {

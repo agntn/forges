@@ -824,6 +824,66 @@ describe("Gitea Provider", () => {
     });
   });
 
+  describe("repos.listTree", () => {
+    const sha = "308810cdd17e3edf928d38c5d410acf2c7aa7618";
+    const page = (paths: string[], more: boolean) => ({
+      sha: "01248c28d6d72d90c128a085c8b5123871e800e0",
+      truncated: more,
+      page: 1,
+      total_count: 28,
+      tree: paths.map((path) => ({ path, mode: "100644", type: "blob", size: 2048 })),
+    });
+
+    it("pages the tree on Gitea, one commit for the whole walk", async () => {
+      mockClient
+        .mockResolvedValueOnce({ sha })
+        .mockResolvedValueOnce(page(["main_test.go", "run.go"], true))
+        .mockResolvedValueOnce(page(["run_job.go"], false));
+      const repo = { owner: "forgejo", repo: "forgejo" };
+
+      const first = await provider.repos.listTree(repo, {
+        ref: "v11.0.0",
+        path: "models/actions",
+        perPage: 2,
+      });
+      const second = await provider.repos.listTree(repo, {
+        ref: "v11.0.0",
+        path: "models/actions",
+        perPage: 2,
+        cursor: first.nextCursor,
+      });
+
+      expect(mockClient).toHaveBeenNthCalledWith(1, "/repos/forgejo/forgejo/git/commits/v11.0.0", {
+        query: { stat: "false", files: "false", verification: "false" },
+      });
+      expect(mockClient).toHaveBeenNthCalledWith(
+        3,
+        `/repos/forgejo/forgejo/git/trees/${sha}:models%2Factions`,
+        { query: { recursive: "true", page: 2, per_page: 2 } },
+      );
+      expect(first).toMatchObject({
+        items: [
+          { path: "models/actions/main_test.go", type: "file", size: 2048 },
+          { path: "models/actions/run.go", type: "file", size: 2048 },
+        ],
+        totalCount: 28,
+        sha,
+        truncated: false,
+      });
+      expect(second).toMatchObject({ items: [{ path: "models/actions/run_job.go" }], sha });
+      expect(second.nextCursor).toBeUndefined();
+    });
+
+    it("turns the 400 for a path that isn't a directory into a 404", async () => {
+      const error = makeFetchError(400);
+      mockClient.mockRejectedValueOnce(error);
+
+      await expect(
+        provider.repos.listTree({ owner: "forgejo", repo: "forgejo" }, { ref: sha, path: "nope" }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+
   describe("repos.readContents", () => {
     const sha = "180e6101d078152f14b018fdb908c821c16cb091";
     const giteaFile = (content: string | Uint8Array) => ({

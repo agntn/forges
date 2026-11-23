@@ -9,7 +9,11 @@ import { assertCommitPatchOptions } from "./commit-patch.ts";
 import { assertCiId, assertCiJobLogOptions } from "./ci-job-log.ts";
 import { assertIssueUpdate, assertMergeInput, assertPullRequestUpdate } from "./update-input.ts";
 import { assertIssueMetadata, hasIssueMetadata, quoted } from "./issue-fields.ts";
-import { assertRepositoryContentsOptions, normalizeRepositoryPath } from "./repository-contents.ts";
+import {
+  assertRepositoryContentsOptions,
+  isCommitSha,
+  normalizeRepositoryPath,
+} from "./repository-contents.ts";
 import { eventsOfKinds, isThreadEventKind, THREAD_EVENT_KINDS } from "./thread-event.ts";
 import type {
   AddSubIssueInput,
@@ -57,6 +61,7 @@ import type {
   ListPullRequestReviewsOptions,
   ListReactionOptions,
   ListReleasesOptions,
+  ListRepositoryTreeOptions,
   ListTagsOptions,
   ListThreadOptions,
   MergePullRequestInput,
@@ -81,6 +86,7 @@ import type {
   RepositoryContents,
   RepositoryContentsOptions,
   RepositoryResource,
+  RepositoryTreePage,
   SearchPageResult,
   SubIssue,
   SubIssueInput,
@@ -150,6 +156,53 @@ interface PaginationField {
 
 const PAGE: PaginationField = { label: "page", fallback: 1 };
 const PER_PAGE: PaginationField = { label: "perPage", fallback: 30, maximum: 100 };
+/** Paths are short, so a tree page takes the most a forge serves. */
+const TREE_PER_PAGE: PaginationField = { ...PER_PAGE, fallback: 100 };
+
+/** A tree read as a provider gets it: sha and page come from the cursor, past page one. */
+export interface RepositoryTreeRequest {
+  ref?: string;
+  path: string;
+  perPage: number;
+  sha?: string;
+  page?: number;
+}
+
+/** One page of a tree as a provider returns it; the base class writes the cursor. */
+export type RepositoryTreeSlice = Omit<RepositoryTreePage, "nextCursor"> & {
+  hasNextPage: boolean;
+};
+
+/** Plain JavaScript can pass a number for a path, which would fail deep inside as a TypeError. */
+function assertTreeOptions(options: ListRepositoryTreeOptions): void {
+  const { path, ref } = options;
+  if (
+    !["string", "undefined"].includes(typeof path) ||
+    !["string", "undefined"].includes(typeof ref)
+  ) {
+    throw new TypeError(
+      "repos.listTree takes { path?: string, ref?: string } as its second argument",
+    );
+  }
+}
+
+/** A tree cursor pins the commit, so a pushed branch can't mix two trees in one walk. */
+function treeResume(
+  at: PagePosition | undefined,
+  platform: string | undefined,
+): { sha: string; page: number } | undefined {
+  if (at === undefined) return undefined;
+  const parts = "token" in at ? at.token.split(":") : [];
+  const [sha = "", page = ""] = parts;
+  const number = Number(page);
+  if (parts.length !== 2 || !isCommitSha(sha) || !Number.isSafeInteger(number) || number < 2) {
+    throw new ForgesError("cursor is not one that repos.listTree returned", {
+      status: 400,
+      platform,
+    });
+  }
+  return { sha, page: number };
+}
 
 function paginationPageValue(
   value: number | undefined,
@@ -386,6 +439,32 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
         return this.#paged(
           { listing: "repos.listTags", subject: [ref.owner, ref.repo], options },
           (positioned) => this.listTags(ref, positioned),
+        );
+      },
+      listTree: async (ref, options = {}) => {
+        assertRepoRef(ref, "repos.listTree");
+        assertTreeOptions(options);
+        const { path = "", ...rest } = options;
+        if (rest.ref === "") throw this.#refusal("Tree ref must not be empty");
+        const request = {
+          ...rest,
+          path: normalizeRepositoryPath(path, this.#platform),
+          perPage: paginationPageValue(rest.perPage, {
+            ...TREE_PER_PAGE,
+            platform: this.#platform,
+          }),
+        };
+        return this.#paged<typeof request, RepositoryTreePage>(
+          { listing: "repos.listTree", subject: [ref.owner, ref.repo], options: request },
+          async ({ at, ...positioned }) => {
+            const resume = treeResume(at, this.#platform);
+            const { hasNextPage, ...page } = await this.listRepositoryTree(ref, {
+              ...positioned,
+              ...resume,
+            });
+            const next = { token: `${page.sha}:${(resume?.page ?? 1) + 1}` };
+            return hasNextPage ? { ...page, next } : page;
+          },
         );
       },
     };
@@ -1091,6 +1170,12 @@ export abstract class Provider<Raw extends ProviderRawTypes = ProviderRawTypes> 
     _options?: Positioned<ListTagsOptions>,
   ): Promise<ContinuedPage<Tag>> {
     return this.#unsupported("Tag listing is not supported by this provider");
+  }
+  protected listRepositoryTree(
+    _repo: RepoRef,
+    _request: RepositoryTreeRequest,
+  ): Promise<RepositoryTreeSlice> {
+    return this.#unsupported("Repository tree listing is not supported by this provider");
   }
   protected readContributionTemplate(
     _repo: RepoRef,

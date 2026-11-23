@@ -1,11 +1,12 @@
 import { Buffer } from "node:buffer";
-import { ForgesError } from "./errors.ts";
+import { ForgesError, NotFoundError } from "./errors.ts";
 import { encodeApiResponsePathSegment } from "./providers/base-url.ts";
 import { readTextWindow, textWindowEnd, type TextWindow } from "./text-window.ts";
 import type {
   RepositoryContentsOptions,
   RepositoryEntryType,
   RepositoryFileContents,
+  RepositoryTreeEntry,
 } from "./types.ts";
 
 /** Largest file a read decodes. GitHub's contents API stops returning content above it. */
@@ -79,6 +80,37 @@ export function contentsEntryType(type: string): RepositoryEntryType {
   if (type === "dir") return "directory";
   if (type === "symlink" || type === "submodule") return type;
   return "file";
+}
+
+/** Map a Git tree entry: the type says tree or submodule, only the mode says symlink. */
+export function gitTreeEntryType(
+  entry: Readonly<{ type: string; mode?: string }>,
+): RepositoryEntryType {
+  if (entry.type === "tree") return "directory";
+  if (entry.type === "commit") return "submodule";
+  return entry.mode === "120000" ? "symlink" : "file";
+}
+
+/** A path that is a file, a submodule or nothing gets the forge's own status; it's a 404. */
+export function missingTreeDirectory(
+  error: ForgesError,
+  { path, status }: Readonly<{ path: string; status: number }>,
+): ForgesError {
+  if (error.status !== status || path === "") return error;
+  return new NotFoundError(`No directory at ${path}`, { platform: error.platform });
+}
+
+/** One row of a GitHub or Gitea tree, its path written from the repository root. */
+export function treeEntry(
+  directory: string,
+  entry: Readonly<{ path: string; type: string; mode?: string; size?: number }>,
+): RepositoryTreeEntry {
+  const type = gitTreeEntryType(entry);
+  return {
+    path: directory === "" ? entry.path : `${directory}/${entry.path}`,
+    type,
+    size: type === "file" ? (entry.size ?? null) : null,
+  };
 }
 
 /** A path that is neither a file nor a directory has nothing to read. */

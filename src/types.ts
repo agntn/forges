@@ -542,6 +542,34 @@ export interface RepositoryDirectoryContents {
 /** What one path of a repository holds at a commit. */
 export type RepositoryContents = RepositoryFileContents | RepositoryDirectoryContents;
 
+/** One path of a recursive tree listing. size is null unless the forge reports a file's bytes. */
+export interface RepositoryTreeEntry {
+  /** From the repository root, without a leading slash. */
+  path: string;
+  type: RepositoryEntryType;
+  size: number | null;
+}
+
+/** Options for a recursive tree listing. */
+export interface ListRepositoryTreeOptions {
+  /** Branch, tag or commit. Defaults to the default branch. */
+  ref?: string;
+  /** Directory to list below. Defaults to the repository root. */
+  path?: string;
+  cursor?: string;
+  /** Paths per page, 1 to 100. Defaults to 100. */
+  perPage?: number;
+}
+
+/** One page of every path below a directory, all from one commit. */
+export interface RepositoryTreePage extends PageResult<RepositoryTreeEntry> {
+  /** Commit the first page resolved ref to. Every later page reads the same one. */
+  sha: string;
+  path: string;
+  /** True when the forge cut the tree short; list a narrower path for the rest. */
+  truncated: boolean;
+}
+
 /** One release: a tag with notes. Keyed by tag everywhere, because GitLab releases have no id. */
 export interface Release {
   /** Platform id, or the tag name on GitLab. */
@@ -992,6 +1020,7 @@ export interface RepositoryResource {
     options: RepositoryContentsOptions & { path: string },
   ): Promise<RepositoryContents>;
   listTags(repo: RepoRef, options?: ListTagsOptions): Promise<PageResult<Tag>>;
+  listTree(repo: RepoRef, options?: ListRepositoryTreeOptions): Promise<RepositoryTreePage>;
 }
 
 /** Resource accessor for effective repository contribution templates. */
