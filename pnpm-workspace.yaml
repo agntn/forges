@@ -11,8 +11,8 @@ catalog:
 catalogs:
   deps:
     "@agntn/credentials": 0.1.1
-    "@agntn/hashes": 0.7.2
-    "@agntn/tools": 0.3.0
+    "@agntn/hashes": 0.7.3
+    "@agntn/tools": 0.3.1
     "@modelcontextprotocol/server": 2.4.0
     better-sqlite3: 12.11.1
     docus: 5.15.0
