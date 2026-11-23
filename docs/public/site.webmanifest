@@ -1,7 +1,7 @@
 {
   "name": "@agntn/forges",
   "short_name": "forges",
-  "description": "Unified Git Provider: single TypeScript API for GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, and GitBucket",
+  "description": "Unified Git Provider: single TypeScript API for GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, GitCafe, and GitBucket",
   "start_url": "/",
   "display": "browser",
   "background_color": "#0b0d10",

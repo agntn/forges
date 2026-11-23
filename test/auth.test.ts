@@ -25,6 +25,10 @@ const TOKEN_VARIABLES = [
   "AZURE_DEVOPS_EXT__DEFAULTS_ORGANIZATION",
   "AZURE_DEVOPS_EXT__CONFIG_DIR",
   "AZURE_DEVOPS_EXT_CONFIG_DIR",
+  "CAFE_TOKEN",
+  "CAFE_HOST",
+  "CAFE_AUTH_FILE",
+  "CAFE_CREDENTIAL_FILE",
 ];
 
 let home: string;
@@ -153,6 +157,18 @@ describe("resolveToken", () => {
 
     vi.stubEnv("GITEE_TOKEN", "primary");
     expect(resolveToken("gitee")).toMatchObject({ token: "primary", origin: "GITEE_TOKEN" });
+  });
+
+  it("reads a GitCafe token from CAFE_TOKEN, then from cafe's login helper", () => {
+    cli("cafe", 'cat > /dev/null; printf "password=gct_cli\\n"');
+    expect(resolveToken("gitcafe")).toEqual({ token: "gct_cli", source: "cli", origin: "cafe" });
+
+    vi.stubEnv("CAFE_TOKEN", "gct_env");
+    expect(resolveToken("gitcafe")).toEqual({
+      token: "gct_env",
+      source: "env",
+      origin: "CAFE_TOKEN",
+    });
   });
 
   it("reads an Azure DevOps PAT with the organization it belongs to", () => {

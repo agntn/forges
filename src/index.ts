@@ -68,7 +68,7 @@ export {
 
 type ProviderConstructor = new (config: ProviderConfig) => Provider;
 
-/** Every platform createProvider builds: the six forges and Cloudflare Artifacts. */
+/** Every platform createProvider builds: the forges and Cloudflare Artifacts. */
 export type ProviderPlatform = Platform | "artifacts";
 
 /**
@@ -106,6 +106,9 @@ const providers: Record<ProviderPlatform, () => Promise<ProviderConstructor>> = 
       import("./providers/azure-devops.ts").then((m) => m.AzureDevOpsProvider),
     ),
   ),
+  gitcafe: /* @__PURE__ */ lazy(
+    /* @__PURE__ */ queued(() => import("./providers/gitcafe.ts").then((m) => m.GitCafeProvider)),
+  ),
   artifacts: /* @__PURE__ */ lazy(
     /* @__PURE__ */ queued(() =>
       import("./providers/artifacts.ts").then((m) => m.ArtifactsProvider),
@@ -132,7 +135,7 @@ export async function createProvider(
 ): Promise<Provider> {
   if (!Object.hasOwn(providers, platform)) {
     throw new ForgesError(
-      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea, bitbucket, gitee, azure-devops, artifacts`,
+      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea, bitbucket, gitee, azure-devops, gitcafe, artifacts`,
       { platform },
     );
   }
@@ -188,6 +191,8 @@ function envHint(platform: string): string {
       return "GITEE_TOKEN";
     case "azure-devops":
       return "AZURE_DEVOPS_EXT_PAT";
+    case "gitcafe":
+      return "CAFE_TOKEN";
     default:
       return `${platform.toUpperCase()}_TOKEN`;
   }
@@ -204,6 +209,8 @@ function cliHint(platform: string): string | undefined {
       return "`tea login add`";
     case "azure-devops":
       return "`az devops login`";
+    case "gitcafe":
+      return "`cafe auth login`";
     case "bitbucket":
     case "gitee":
       return undefined;

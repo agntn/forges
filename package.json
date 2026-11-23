@@ -1,7 +1,7 @@
 {
   "name": "@agntn/forges",
   "version": "0.7.0",
-  "description": "Unified Git Provider - single TypeScript API for GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, GitBucket, and Cloudflare Artifacts",
+  "description": "Unified Git Provider - single TypeScript API for GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, GitCafe, GitBucket, and Cloudflare Artifacts",
   "keywords": [
     "api",
     "azure-devops",
@@ -9,6 +9,7 @@
     "cloudflare-artifacts",
     "git",
     "gitbucket",
+    "gitcafe",
     "gitea",
     "gitee",
     "github",
@@ -80,6 +81,10 @@
     "./azure-devops": {
       "types": "./dist/azure-devops.d.mts",
       "import": "./dist/azure-devops.mjs"
+    },
+    "./gitcafe": {
+      "types": "./dist/gitcafe.d.mts",
+      "import": "./dist/gitcafe.mjs"
     },
     "./artifacts": {
       "types": "./dist/artifacts.d.mts",

@@ -52,7 +52,7 @@ export default defineNuxtConfig({
   /** Docus pages define their own OG images; the alt text is the one thing they leave unset. */
   ogImage: {
     defaults: {
-      alt: "@agntn/forges: one TypeScript API over GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps and GitBucket",
+      alt: "@agntn/forges: one TypeScript API over GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, GitCafe and GitBucket",
     },
   },
   icon: {
@@ -61,6 +61,7 @@ export default defineNuxtConfig({
         "lucide:arrow-right",
         "lucide:arrow-up-right",
         "lucide:book-open",
+        "lucide:coffee",
         "lucide:bot",
         "lucide:check",
         "lucide:chevron-left",

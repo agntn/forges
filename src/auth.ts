@@ -14,6 +14,7 @@
 import { resolve as resolveAzureDevOps } from "@agntn/credentials/azure-devops";
 import { resolve as resolveBitbucket } from "@agntn/credentials/bitbucket";
 import { resolve as resolveGitea } from "@agntn/credentials/gitea";
+import { resolve as resolveGitCafe } from "@agntn/credentials/gitcafe";
 import { resolve as resolveGitee } from "@agntn/credentials/gitee";
 import { resolve as resolveGitHub } from "@agntn/credentials/github";
 import { resolve as resolveGitLab } from "@agntn/credentials/gitlab";
@@ -21,7 +22,14 @@ import { CredentialsError } from "@agntn/credentials";
 import type { CloudflareCredential, CloudflareOptions } from "@agntn/credentials/cloudflare";
 import { AuthenticationError } from "./errors.ts";
 
-export type Platform = "github" | "gitlab" | "gitea" | "bitbucket" | "gitee" | "azure-devops";
+export type Platform =
+  | "github"
+  | "gitlab"
+  | "gitea"
+  | "bitbucket"
+  | "gitee"
+  | "azure-devops"
+  | "gitcafe";
 
 export interface AuthResult {
   token: string;
@@ -41,6 +49,7 @@ const resolvers = {
   bitbucket: resolveBitbucket,
   gitee: resolveGitee,
   "azure-devops": resolveAzureDevOps,
+  gitcafe: resolveGitCafe,
 } satisfies Record<Platform, unknown>;
 
 /**
