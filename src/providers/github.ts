@@ -109,6 +109,7 @@ import {
   normalizeMergeError,
   normalizeMergedReadError,
 } from "../errors.ts";
+import { assertProviderConfig } from "../provider-config.ts";
 import { rawFetch } from "../http.ts";
 import { buildPageResult, paginationFromLink } from "../pagination.ts";
 import {
@@ -746,6 +747,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   private gitHubHost: boolean | undefined;
 
   constructor(config: ProviderConfig) {
+    assertProviderConfig(config, "github");
     const restBaseURL = config.baseURL || "https://api.github.com";
     super("github", { apiBaseURL: restBaseURL, token: config.token ?? "" });
 

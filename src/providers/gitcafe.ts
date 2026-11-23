@@ -14,6 +14,7 @@ import { ciRunFromModel } from "./forge-model.ts";
 import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
 import { normalizeCiRunState } from "../ci-run.ts";
 import { FetchError, ForgesError, normalizeError } from "../errors.ts";
+import { assertProviderConfig } from "../provider-config.ts";
 import {
   assertContinuationRef,
   assertFileSize,
@@ -99,6 +100,7 @@ export class GitCafeProvider extends ForgeBackedProvider {
    * @param config Provider configuration. `baseURL` defaults to `https://git.cafe/api`.
    */
   constructor(config: ProviderConfig) {
+    assertProviderConfig(config, PLATFORM);
     super(PLATFORM, {
       apiBaseURL: normalizeApiBaseURL(config.baseURL, {
         fallbackBaseURL: "https://git.cafe/api",

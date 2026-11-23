@@ -13,6 +13,7 @@ import { ForgeBackedProvider, type ForgeOptions } from "./forge.ts";
 import { commitSummaryFromModel, changedFileFromModel } from "./forge-model.ts";
 import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
 import { NotFoundError, normalizeError } from "../errors.ts";
+import { assertProviderConfig } from "../provider-config.ts";
 import {
   assertContinuationRef,
   buildRepositoryFile,
@@ -56,6 +57,7 @@ export class GiteeProvider extends ForgeBackedProvider {
    * @param config Provider configuration. `baseURL` defaults to `https://gitee.com/api/v5`.
    */
   constructor(config: ProviderConfig) {
+    assertProviderConfig(config, PLATFORM);
     super(PLATFORM, {
       apiBaseURL: normalizeApiBaseURL(config.baseURL, {
         fallbackBaseURL: "https://gitee.com/api/v5",

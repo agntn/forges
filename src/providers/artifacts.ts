@@ -15,6 +15,7 @@ import { cloudflareArtifacts } from "forges/cloudflare-artifacts";
 import { createForgeClient, credentialScope, forgeFetch, type HttpClient } from "../http.ts";
 import { version } from "../version.ts";
 import { FetchError, ForgesError, NotFoundError, normalizeError } from "../errors.ts";
+import { assertProviderConfig } from "../provider-config.ts";
 import {
   encodeApiResponsePathSegment,
   encodePathSegment,
@@ -162,6 +163,7 @@ export class ArtifactsProvider extends Provider<ArtifactsRawTypes> {
    * and `CLOUDFLARE_ACCOUNT_ID`, then the cf CLI session.
    */
   constructor(config: ProviderConfig) {
+    assertProviderConfig(config, PLATFORM);
     super(PLATFORM);
     this.apiBaseURL = normalizeApiBaseURL(config.baseURL, {
       fallbackBaseURL: DEFAULT_BASE_URL,
