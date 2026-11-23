@@ -8,6 +8,7 @@ import {
   type ReadCheckPage,
   type ReadLastChange,
 } from "../src/check-wait.ts";
+import { AuthenticationError, FetchError, ForgesError } from "../src/errors.ts";
 import type { PageResult, PullRequestCheck } from "../src/types.ts";
 
 function check(name: string, running: boolean): PullRequestCheck {
@@ -515,5 +516,100 @@ describe("check wait on an expected head", () => {
     expect(once.items.map((item) => item.name)).toEqual(["test"]);
     expect(once.staleHead).toBeUndefined();
     expect(note).toBeUndefined();
+  });
+});
+
+/** A read that died before the connection opened, wrapped the way a provider throws it. */
+function unreachable(code: string): ForgesError {
+  const socket = Object.assign(new Error(code), { code });
+  const fetchFailed = new TypeError("fetch failed", { cause: socket });
+  const request = new FetchError("[GET] <no response>", { cause: fetchFailed });
+  return new ForgesError(request.message, { platform: "github", originalError: request });
+}
+
+/** One scripted page or error per read; the last one repeats. */
+function script(steps: Array<PageResult<PullRequestCheck> | Error>): ReadCheckPage {
+  let call = 0;
+  return vi.fn(async () => {
+    const step = steps[Math.min(call++, steps.length - 1)]!;
+    if (step instanceof Error) throw step;
+    return step;
+  });
+}
+
+describe("check wait through a flaky connection", () => {
+  it("keeps polling past a connect timeout and finds the check that concluded", async () => {
+    const read = script([
+      page([check("build", true)]),
+      unreachable("UND_ERR_CONNECT_TIMEOUT"),
+      page([check("build", false)]),
+    ]);
+
+    const { page: settled, note } = await run(
+      waitForChecks(read, { waitSeconds: 60, readLastChange: changedAt(0) }),
+    );
+
+    expect(settled.wait).toMatchObject({ settled: true, polls: 3 });
+    expect(settled.wait.failedReads).toBeUndefined();
+    expect(note).toBeUndefined();
+  });
+
+  it("still fails at once when the first read can't connect", async () => {
+    const read = script([unreachable("ENOTFOUND")]);
+
+    await expect(
+      waitForChecks(read, { waitSeconds: 60, readLastChange: changedAt(0) }),
+    ).rejects.toThrow(ForgesError);
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it("rethrows a later failure that did reach the forge", async () => {
+    const denied = new AuthenticationError("Authentication failed", { platform: "github" });
+    const read = script([page([check("build", true)]), denied]);
+
+    const waiting = waitForChecks(read, { waitSeconds: 60, readLastChange: changedAt(0) });
+    const rejected = expect(waiting).rejects.toBe(denied);
+    await vi.runAllTimersAsync();
+    await rejected;
+  });
+
+  it("names the dead reads when the budget ends on them", async () => {
+    const read = script([
+      page([check("build", true)]),
+      unreachable("UND_ERR_CONNECT_TIMEOUT"),
+      unreachable("ECONNREFUSED"),
+      unreachable("UND_ERR_CONNECT_TIMEOUT"),
+    ]);
+
+    const { page: timedOut, note } = await run(
+      waitForChecks(read, { waitSeconds: 20, readLastChange: changedAt(0) }),
+    );
+
+    expect(timedOut.wait.settled).toBe(false);
+    expect(timedOut.wait.pending).toEqual(["build"]);
+    expect(timedOut.wait.waitedMs).toBeGreaterThanOrEqual(20_000);
+    expect(timedOut.wait.failedReads).toEqual({
+      count: timedOut.wait.polls - 1,
+      reasons: ["UND_ERR_CONNECT_TIMEOUT", "ECONNREFUSED"],
+    });
+    expect(note).toMatch(
+      /^The last \d+ reads never reached the forge \(UND_ERR_CONNECT_TIMEOUT, ECONNREFUSED\), so the answer may be behind\. Checks were still running/,
+    );
+  });
+
+  it("forgets the dead reads once one gets through again", async () => {
+    const read = script([
+      page([check("build", true)]),
+      unreachable("EAI_AGAIN"),
+      page([check("build", true)]),
+    ]);
+
+    const { page: timedOut, note } = await run(
+      waitForChecks(read, { waitSeconds: 20, readLastChange: changedAt(0) }),
+    );
+
+    expect(timedOut.wait.settled).toBe(false);
+    expect(timedOut.wait.failedReads).toBeUndefined();
+    expect(note).toMatch(/^Checks were still running/);
   });
 });

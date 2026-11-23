@@ -283,13 +283,18 @@ function unsettledWrite(error: FetchError): boolean {
   if (error.status !== undefined) {
     return error.status >= 500 || (error.cause !== undefined && error.status < 400);
   }
-  let cause: unknown = error.cause;
-  for (let depth = 0; depth < 4 && cause instanceof Error; depth++) {
-    const code: unknown = Reflect.get(cause, "code");
-    if (typeof code === "string" && NEVER_SENT.has(code)) return false;
-    cause = cause.cause;
+  return neverSentCode(error) === undefined;
+}
+
+/** The code of a connection that never opened, dug out of whatever wraps it. */
+export function neverSentCode(error: unknown): string | undefined {
+  let current: unknown = error;
+  for (let depth = 0; depth < 6 && current instanceof Error; depth++) {
+    const code: unknown = Reflect.get(current, "code");
+    if (typeof code === "string" && NEVER_SENT.has(code)) return code;
+    current = current instanceof ForgesError ? current.originalError : current.cause;
   }
-  return true;
+  return undefined;
 }
 
 /** A copy with the hint appended, keeping the subclass and fields such as `retryAfter`. */

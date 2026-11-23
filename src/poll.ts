@@ -1,5 +1,7 @@
 import type { ToolCallContext } from "@agntn/tools";
 
+import { neverSentCode } from "./errors.ts";
+
 /**
  * The longest one call may wait, matching the bound `@agntn/memory` puts on its
  * recall wait. The tool schemas repeat the number, because they are built with
@@ -56,6 +58,45 @@ export function untilAborted<T>(
     signal.throwIfAborted();
     return read(cursor);
   };
+}
+
+/** The reads in a row that never reached the forge, and the connection codes they died on. */
+export interface FailedReads {
+  count: number;
+  reasons: string[];
+}
+
+/** One more poll read; only a connection that never opened counts as a miss. */
+export async function readAgain<T>(
+  read: () => Promise<T>,
+): Promise<{ value: T } | { missed: string }> {
+  try {
+    return { value: await read() };
+  } catch (error) {
+    const code = neverSentCode(error);
+    if (code === undefined) throw error;
+    return { missed: code };
+  }
+}
+
+/** Adds one miss to the current run of dead reads. */
+export function missedAgain(failed: FailedReads | undefined, code: string): FailedReads {
+  const reasons = failed?.reasons ?? [];
+  return {
+    count: (failed?.count ?? 0) + 1,
+    reasons: reasons.includes(code) ? reasons : [...reasons, code],
+  };
+}
+
+/** Puts the dead reads in front of the usual note, so a stale answer says so. */
+export function failedReadsNote(
+  failed: FailedReads | undefined,
+  note: string | undefined,
+): string | undefined {
+  if (failed === undefined) return note;
+  const reads = failed.count === 1 ? "read" : `${failed.count} reads`;
+  const line = `The last ${reads} never reached the forge (${failed.reasons.join(", ")}), so the answer may be behind.`;
+  return note === undefined ? line : `${line} ${note}`;
 }
 
 /** Two seconds after the first read, then two more each time, up to ten. */

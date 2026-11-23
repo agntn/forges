@@ -1,10 +1,14 @@
 import {
   delay,
+  failedReadsNote,
   MAX_SCAN_PAGES,
   MAX_WAIT_SECONDS,
+  missedAgain,
   nextPollDelay,
+  readAgain,
   reportWhileWaiting,
   untilAborted,
+  type FailedReads,
   type WaitProgress,
 } from "./poll.ts";
 import type { PageResult, PullRequestCheck } from "./types.ts";
@@ -27,6 +31,8 @@ export interface CheckWait {
   pending: string[];
   /** Why an empty list settled: the pull request was already quiet, or the wait sat it out. */
   noChecks?: "quiet" | "waited";
+  /** Set when the wait ended on reads that never reached the forge. */
+  failedReads?: FailedReads;
 }
 
 /** A page of checks, or an empty one naming the commit the pull request still points at. */
@@ -185,6 +191,9 @@ async function findStaleHead(expected: ExpectedHead | undefined): Promise<StaleH
   return same ? undefined : { current, expected: expected.sha };
 }
 
+/** The checks at the expected head, or where the pull request still points. */
+type HeadRead = { stale: StaleHead } | { stale: undefined; value: Scan };
+
 /** Providers reread the head for every check list, so a push landing mid read must void it. */
 async function readAtHead<T>(
   expectedHead: ExpectedHead | undefined,
@@ -227,7 +236,8 @@ function staleHeadNote(stale: Readonly<StaleHead>, waitSeconds?: number): string
  * stays empty for the grace window, which any change to the pull request starts over.
  * With an expected head, a pull request still pointing at the previous push never settles.
  * A timeout is an ordinary result carrying the names that were still running,
- * because an error would cost the caller the state it asked for.
+ * because an error would cost the caller the state it asked for. So is a connection that
+ * drops after the first read: that's an empty poll, not a lost wait.
  */
 export async function waitForChecks(
   read: ReadCheckPage,
@@ -248,50 +258,84 @@ async function pollChecks(
   const readPage = untilAborted(read, signal);
   const budgetMs = Math.min(waitSeconds, MAX_WAIT_SECONDS) * 1_000;
   const startedAt = performance.now();
+  const elapsed = () => Math.round(performance.now() - startedAt);
   const { readLastChange } = options;
-  let polls = 0;
+  const readHead = () => readAtHead(expectedHead, () => scanChecks(readPage, requestedCursor));
+  let polls = 1;
   let emptyRun: EmptyRun | undefined;
+  let failed: FailedReads | undefined;
 
-  while (true) {
-    polls += 1;
-    const outcome = await readAtHead(expectedHead, () => scanChecks(readPage, requestedCursor));
-    const stale = outcome.stale;
-    if (stale) {
-      emptyRun = undefined;
-      const waitedMs = Math.round(performance.now() - startedAt);
-      if (waitedMs >= budgetMs) {
-        const wait: CheckWait = { settled: false, waitedMs, polls, pending: [] };
-        return { page: { ...staleHeadPage(stale), wait }, note: staleHeadNote(stale, waitSeconds) };
+  /** Reads until one gets through, or nothing once the budget is gone. */
+  const readThrough = async (): Promise<HeadRead | undefined> => {
+    while (true) {
+      const next = await readAgain(readHead);
+      polls += 1;
+      if (!("missed" in next)) {
+        failed = undefined;
+        return next.value;
       }
-      await delay(nextPollDelay(polls, budgetMs - waitedMs), signal);
-      continue;
+      failed = missedAgain(failed, next.missed);
+      const remainingMs = budgetMs - elapsed();
+      if (remainingMs <= 0) return undefined;
+      await delay(nextPollDelay(polls, remainingMs), signal);
     }
-    const scan = outcome.value;
-    const waitedMs = Math.round(performance.now() - startedAt);
-    const empty = scan.examinedEveryPage && scan.checks === 0;
-    let noChecks: CheckWait["noChecks"];
-    if (empty && readLastChange) {
-      const changedAt = await lastChangeOrNothing(readLastChange);
-      emptyRun = continueEmptyRun(emptyRun, { changedAt, waitedMs });
-      if (emptyRun.quiet) noChecks = "quiet";
-      else if (waitedMs - emptyRun.sinceMs >= EMPTY_GRACE_MS) noChecks = "waited";
-    } else {
+  };
+
+  /** The timeout answer, built from the last read that got through. */
+  const unsettled = (last: HeadRead): CheckWaitResult => {
+    const waitedMs = elapsed();
+    if (last.stale) {
+      const wait: CheckWait = { settled: false, waitedMs, polls, pending: [] };
+      if (failed) wait.failedReads = failed;
+      const note = failedReadsNote(failed, staleHeadNote(last.stale, waitSeconds));
+      return { page: { ...staleHeadPage(last.stale), wait }, note };
+    }
+    const { requested, pending, examinedEveryPage } = last.value;
+    const wait: CheckWait = { settled: false, waitedMs, polls, pending };
+    if (failed) wait.failedReads = failed;
+    const note = waitNote(wait, { examinedEveryPage, waitSeconds, subject });
+    return { page: { ...requested, wait }, note: failedReadsNote(failed, note) };
+  };
+
+  let outcome = await readHead();
+  while (true) {
+    if (outcome.stale) {
       emptyRun = undefined;
-    }
-    const settled = empty
-      ? noChecks !== undefined
-      : scan.examinedEveryPage && scan.pending.length === 0;
-    const remainingMs = budgetMs - waitedMs;
+      const remainingMs = budgetMs - elapsed();
+      if (remainingMs <= 0) return unsettled(outcome);
+      await delay(nextPollDelay(polls, remainingMs), signal);
+    } else {
+      const scan = outcome.value;
+      const waitedMs = elapsed();
+      const empty = scan.examinedEveryPage && scan.checks === 0;
+      let noChecks: CheckWait["noChecks"];
+      if (empty && readLastChange) {
+        const changedAt = await lastChangeOrNothing(readLastChange);
+        emptyRun = continueEmptyRun(emptyRun, { changedAt, waitedMs });
+        if (emptyRun.quiet) noChecks = "quiet";
+        else if (waitedMs - emptyRun.sinceMs >= EMPTY_GRACE_MS) noChecks = "waited";
+      } else {
+        emptyRun = undefined;
+      }
+      const settled = empty
+        ? noChecks !== undefined
+        : scan.examinedEveryPage && scan.pending.length === 0;
+      const remainingMs = budgetMs - waitedMs;
 
-    if (settled || !scan.examinedEveryPage || remainingMs <= 0) {
-      const wait: CheckWait = { settled, waitedMs, polls, pending: scan.pending };
-      if (noChecks) wait.noChecks = noChecks;
-      return {
-        page: { ...scan.requested, wait },
-        note: waitNote(wait, { examinedEveryPage: scan.examinedEveryPage, waitSeconds, subject }),
-      };
+      if (settled || !scan.examinedEveryPage || remainingMs <= 0) {
+        const wait: CheckWait = { settled, waitedMs, polls, pending: scan.pending };
+        if (noChecks) wait.noChecks = noChecks;
+        const note = waitNote(wait, {
+          examinedEveryPage: scan.examinedEveryPage,
+          waitSeconds,
+          subject,
+        });
+        return { page: { ...scan.requested, wait }, note };
+      }
+      await delay(nextPollDelay(polls, remainingMs), signal);
     }
-
-    await delay(nextPollDelay(polls, remainingMs), signal);
+    const next = await readThrough();
+    if (next === undefined) return unsettled(outcome);
+    outcome = next;
   }
 }

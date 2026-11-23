@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { readComments, readReactions, type ReadDiscussionPage } from "../src/discussion-wait.ts";
+import { FetchError, ForgesError, NotFoundError } from "../src/errors.ts";
 import { MAX_SCAN_PAGES } from "../src/poll.ts";
 import type { Comment, PageResult, Reaction } from "../src/types.ts";
 
@@ -257,5 +258,72 @@ describe("reaction reads", () => {
 
     expect(page.wait).toMatchObject({ settled: false, removed: [] });
     expect(note).toContain(`No reaction from "${bot}" landed after the call started`);
+  });
+});
+
+/** A read that died before the connection opened, wrapped the way a provider throws it. */
+function unreachable(code: string): ForgesError {
+  const socket = Object.assign(new Error(code), { code });
+  const fetchFailed = new TypeError("fetch failed", { cause: socket });
+  const request = new FetchError("[GET] <no response>", { cause: fetchFailed });
+  return new ForgesError(request.message, { platform: "github", originalError: request });
+}
+
+/** One scripted listing or error per read; the last one repeats. */
+function flaky<T>(steps: Array<T[] | Error>): ReadDiscussionPage<T> {
+  let call = 0;
+  return vi.fn(async (): Promise<PageResult<T>> => {
+    const step = steps[Math.min(call++, steps.length - 1)]!;
+    if (step instanceof Error) throw step;
+    return { items: step };
+  });
+}
+
+describe("discussion waits through a flaky connection", () => {
+  it("keeps waiting past a connect timeout and returns the sticky that moved", async () => {
+    const running = comment("9", `${STICKY}\nRunning`, "2026-10-26T20:50:10Z");
+    const done = comment("9", `${STICKY}\nCompleted`, "2026-10-26T20:52:40Z");
+    const read = flaky([[running], unreachable("UND_ERR_CONNECT_TIMEOUT"), [done]]);
+
+    const { page, note } = await run(readComments(read, { marker: STICKY, waitSeconds: 60 }));
+
+    expect(page.items).toEqual([done]);
+    expect(page.wait).toMatchObject({ settled: true, polls: 3 });
+    expect(page.wait?.failedReads).toBeUndefined();
+    expect(note).toBeUndefined();
+  });
+
+  it("rethrows a later failure that did reach the forge", async () => {
+    const gone = new NotFoundError("Resource not found", { platform: "github" });
+    const read = flaky<Comment>([[], gone]);
+
+    const waiting = readComments(read, { marker: STICKY, waitSeconds: 60 });
+    const rejected = expect(waiting).rejects.toBe(gone);
+    await vi.runAllTimersAsync();
+    await rejected;
+  });
+
+  it("still fails at once when the first read can't connect", async () => {
+    const read = flaky<Comment>([unreachable("ECONNREFUSED")]);
+
+    await expect(readComments(read, { marker: STICKY, waitSeconds: 60 })).rejects.toThrow(
+      ForgesError,
+    );
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it("names the dead reads when a reaction wait ends on them", async () => {
+    const read = flaky<Reaction>([[], unreachable("UND_ERR_CONNECT_TIMEOUT")]);
+
+    const { page, note } = await run(readReactions(read, { author: "bot", waitSeconds: 20 }));
+
+    expect(page.wait).toMatchObject({ settled: false, removed: [] });
+    expect(page.wait?.failedReads).toEqual({
+      count: page.wait!.polls - 1,
+      reasons: ["UND_ERR_CONNECT_TIMEOUT"],
+    });
+    expect(note).toMatch(
+      /^The last \d+ reads never reached the forge \(UND_ERR_CONNECT_TIMEOUT\), so the answer may be behind\. No reaction from "bot"/,
+    );
   });
 });
