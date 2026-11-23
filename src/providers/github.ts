@@ -27,6 +27,8 @@ import {
   type NumberedSearchPage,
   type WithPage,
   type ProviderRawTypes,
+  type RepositoryTreeRequest,
+  type RepositoryTreeSlice,
 } from "../provider.ts";
 import type {
   ProviderConfig,
@@ -35,6 +37,7 @@ import type {
   RepositoryMergeSettings,
   RepositoryContents,
   RepositoryContentsOptions,
+  RepositoryTreeEntry,
   CodeSearchItem,
   CodeSearchOptions,
   CiJob,
@@ -111,7 +114,7 @@ import {
 } from "../errors.ts";
 import { assertProviderConfig } from "../provider-config.ts";
 import { rawFetch } from "../http.ts";
-import { buildPageResult, paginationFromLink } from "../pagination.ts";
+import { buildPageResult, paginationFromLink, slicePage } from "../pagination.ts";
 import {
   encodeApiResponsePathSegment,
   encodeLabelPathSegment,
@@ -154,6 +157,8 @@ import {
   encodeRepositoryPath,
   fileTooLarge,
   isCommitSha,
+  missingTreeDirectory,
+  treeEntry,
   unreadableEntry,
 } from "../repository-contents.ts";
 
@@ -202,6 +207,12 @@ interface GitHubContent {
   size?: number;
   content?: string;
   encoding?: string;
+}
+
+/** `GET …/git/trees/:sha?recursive=1`, the whole tree in one answer. */
+interface GitHubTree {
+  tree: { path: string; type: string; mode?: string; size?: number }[];
+  truncated: boolean;
 }
 
 interface GitHubRepo {
@@ -745,6 +756,8 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
   private readonly restBaseURL: string;
   private readonly authenticated: boolean;
   private gitHubHost: boolean | undefined;
+  /** The last tree read, kept for its next page: a tree at one commit never changes. */
+  #lastTree: { key: string; entries: RepositoryTreeEntry[]; truncated: boolean } | undefined;
 
   constructor(config: ProviderConfig) {
     assertProviderConfig(config, "github");
@@ -1297,6 +1310,35 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
         });
       }
       return buildRepositoryFile({ path, sha, base64: contents.content }, options);
+    } catch (error) {
+      throw normalizeError(error, "github");
+    }
+  }
+
+  /** One recursive read, cut into pages; a tree GitHub truncated says so on every page. */
+  protected override async listRepositoryTree(
+    { owner, repo }: RepoRef,
+    { ref, path, perPage, sha: pinned, page = 1 }: RepositoryTreeRequest,
+  ): Promise<RepositoryTreeSlice> {
+    try {
+      const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
+      const sha =
+        pinned ?? (isCommitSha(ref) ? ref : await this.resolveCommitSha(route, ref ?? "HEAD"));
+      const target = path === "" ? sha : `${sha}:${path}`;
+      const key = `${route}/${target}`;
+      if (this.#lastTree?.key !== key) {
+        const tree = await this.client<GitHubTree>(
+          `${route}/git/trees/${encodeURIComponent(target)}`,
+          { query: { recursive: "1" } },
+        ).catch((error: unknown) => {
+          throw missingTreeDirectory(normalizeError(error, "github"), { path, status: 422 });
+        });
+        const entries = tree.tree.map((entry) => treeEntry(path, entry));
+        this.#lastTree = { key, entries, truncated: tree.truncated };
+      }
+      const { entries, truncated } = this.#lastTree;
+      const { items, hasNextPage, totalCount } = slicePage(entries, { page, perPage });
+      return { items, totalCount, hasNextPage, sha, path, truncated };
     } catch (error) {
       throw normalizeError(error, "github");
     }

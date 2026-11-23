@@ -211,6 +211,24 @@ export function forgesToolSchemas() {
     ),
     maxChars: maxChars("file"),
   });
+  const listTreeParameters = closed({
+    platform,
+    owner,
+    repo,
+    path: Type.Optional(
+      Type.String({ description: 'Directory to list below; "" or "/" is the root' }),
+    ),
+    ref: Type.Optional(
+      Type.String({
+        description: "Branch, tag or commit SHA; defaults to the default branch",
+        minLength: 1,
+      }),
+    ),
+    cursor,
+    perPage: Type.Optional(
+      Type.Integer({ description: "Paths per page, defaults to 100", minimum: 1, maximum: 100 }),
+    ),
+  });
   const listContributionTemplatesParameters = closed({
     platform,
     owner,
@@ -1050,6 +1068,7 @@ export function forgesToolSchemas() {
     listRepositoriesParameters,
     repositoryParameters,
     repositoryContentsParameters,
+    listTreeParameters,
     listContributionTemplatesParameters,
     contributionTemplateParameters,
     codeSearchParameters,

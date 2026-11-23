@@ -85,6 +85,7 @@ import type {
   ListPullRequestReviewsOptions,
   ListReactionOptions,
   ListReleasesOptions,
+  ListRepositoryTreeOptions,
   ListTagsOptions,
   ListThreadOptions,
   MergePullRequestInput,
@@ -104,6 +105,7 @@ import type {
   ReplyThreadInput,
   Repository,
   RepositoryContents,
+  RepositoryTreePage,
   RepositoryContentsOptions,
   SearchPageResult,
   SubIssue,
@@ -692,6 +694,8 @@ export interface GetCommitParams extends RepositoryParams {
 
 export type ReadRepositoryContentsParams = RepositoryParams &
   RepositoryContentsOptions & { path: string };
+
+export type ListRepositoryTreeParams = RepositoryParams & ListRepositoryTreeOptions;
 
 export type ReadCommitPatchParams = RepositoryParams & CommitPatchOptions & { sha: string };
 
@@ -1313,6 +1317,20 @@ export async function readRepositoryContents(
     maxChars: params.maxChars,
   });
   return result(contents, { platform: params.platform });
+}
+
+export async function listRepositoryTree(
+  args: ListRepositoryTreeParams,
+): Promise<ForgesToolResult<RepositoryTreePage>> {
+  const params = repositoryTarget(args);
+  const provider = await readProvider(params.platform);
+  const tree = await provider.repos.listTree(repoOf(params), {
+    path: params.path,
+    ref: params.ref,
+    cursor: params.cursor,
+    perPage: params.perPage,
+  });
+  return result(tree, { platform: params.platform });
 }
 
 export async function listTags(args: ListTagsParams): Promise<ForgesToolResult<PageResult<Tag>>> {

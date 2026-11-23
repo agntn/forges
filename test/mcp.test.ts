@@ -23,7 +23,13 @@ import {
 } from "../src/tool-operations.ts";
 
 const mocks = vi.hoisted(() => {
-  const repos = { list: vi.fn(), get: vi.fn(), readContents: vi.fn(), listTags: vi.fn() };
+  const repos = {
+    list: vi.fn(),
+    get: vi.fn(),
+    readContents: vi.fn(),
+    listTags: vi.fn(),
+    listTree: vi.fn(),
+  };
   const contributionTemplates = { list: vi.fn(), get: vi.fn() };
   const code = { search: vi.fn() };
   const ciRuns = { list: vi.fn(), listJobs: vi.fn(), readJobLog: vi.fn() };
@@ -104,6 +110,7 @@ const toolNames = [
   "forges_repos_get",
   "forges_repos_contents",
   "forges_repos_tags",
+  "forges_repos_tree",
   "forges_contribution_templates_list",
   "forges_contribution_templates_get",
   "forges_code_search",
@@ -1089,6 +1096,28 @@ describe("forges MCP server", () => {
       { path: "README.md", ref: "v0.3.3", offset: undefined, maxChars: 1000 },
     );
     expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: contents });
+  });
+
+  it("lists a repository tree through the shared operation", async () => {
+    const tree = {
+      items: [{ path: "src/providers/gitea.ts", type: "file", size: 91_204 }],
+      sha: "350d2e90f1f8f9483c2cfc3069b630ff07214e1d",
+      path: "src/providers",
+      truncated: false,
+    };
+    mocks.repos.listTree.mockResolvedValue(tree);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_repos_tree",
+      arguments: { repo: "agntn/forges", ref: "v0.7.0", path: "src/providers", perPage: 1 },
+    });
+
+    expect(mocks.repos.listTree).toHaveBeenCalledWith(
+      { owner: "agntn", repo: "forges" },
+      { path: "src/providers", ref: "v0.7.0", cursor: undefined, perPage: 1 },
+    );
+    expect(JSON.parse(text(response.content))).toEqual({ platform: "github", result: tree });
   });
 
   it("reads bounded commit patches through the shared operation", async () => {

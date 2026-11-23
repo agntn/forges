@@ -49,6 +49,8 @@ import {
   type Positioned,
   type WithPage,
   type ProviderRawTypes,
+  type RepositoryTreeRequest,
+  type RepositoryTreeSlice,
 } from "../provider.ts";
 import { mapBooleanRepositoryPermission } from "../repository-access.ts";
 import { knownMergeMethod, mergeSettings } from "../repository-merge.ts";
@@ -130,6 +132,8 @@ import {
   contentsEntryType,
   encodeRepositoryPath,
   isCommitSha,
+  missingTreeDirectory,
+  treeEntry,
   unreadableEntry,
 } from "../repository-contents.ts";
 
@@ -142,6 +146,13 @@ interface GiteaContent {
   size?: number;
   content?: string;
   encoding?: string;
+}
+
+/** One page of `GET …/git/trees/:sha`; `truncated` only says another page follows. */
+interface GiteaTree {
+  tree: { path: string; type: string; mode?: string; size?: number }[] | null;
+  truncated: boolean;
+  total_count: number;
 }
 
 interface GiteaIssueTemplate {
@@ -1016,6 +1027,42 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
     } catch (error) {
       throw normalizeError(error, PLATFORM);
     }
+  }
+
+  /** Gitea pages the tree itself, so a page costs one request after the first. */
+  protected override async listRepositoryTree(
+    { owner, repo }: RepoRef,
+    { ref, path, perPage, sha: pinned, page = 1 }: RepositoryTreeRequest,
+  ): Promise<RepositoryTreeSlice> {
+    try {
+      const route = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
+      const sha = pinned ?? (await this.#resolveTreeCommit(route, ref));
+      const target = path === "" ? sha : `${sha}:${encodeURIComponent(path)}`;
+      const tree = await this.client<GiteaTree>(`${route}/git/trees/${target}`, {
+        query: { recursive: "true", page, per_page: perPage },
+      }).catch((error: unknown) => {
+        throw missingTreeDirectory(normalizeError(error, PLATFORM), { path, status: 400 });
+      });
+      return {
+        items: (tree.tree ?? []).map((entry) => treeEntry(path, entry)),
+        totalCount: tree.total_count,
+        hasNextPage: tree.truncated,
+        sha,
+        path,
+        truncated: false,
+      };
+    } catch (error) {
+      throw normalizeError(error, PLATFORM);
+    }
+  }
+
+  async #resolveTreeCommit(route: string, ref: string | undefined): Promise<string> {
+    if (isCommitSha(ref)) return ref;
+    const commit = await this.client<GiteaCommit>(
+      `${route}/git/commits/${encodeRevisionPathSegment(ref ?? "HEAD", "Ref")}`,
+      { query: { stat: "false", files: "false", verification: "false" } },
+    );
+    return commit.sha;
   }
 
   private contributionTemplateContentsRoute({ owner, repo }: RepoRef, path: string): string {

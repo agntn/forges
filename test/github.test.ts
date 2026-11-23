@@ -1104,6 +1104,143 @@ describe("GitHubProvider", () => {
     });
   });
 
+  describe("repos.listTree", () => {
+    const sha = "350d2e90f1f8f9483c2cfc3069b630ff07214e1d";
+    const extensions = {
+      sha: "e8e1b1c5c2a8a6fd3b8b4c8a3e1f0d9c7b6a5f4e",
+      truncated: false,
+      tree: [
+        {
+          mode: "040000",
+          path: "omp",
+          sha: "b5006182af72d0ccea5999c7597b3d2a366ba416",
+          type: "tree",
+        },
+        {
+          mode: "100644",
+          path: "omp/forges.ts",
+          sha: "288961140470c54e968f54047b137792bce6eec0",
+          size: 2541,
+          type: "blob",
+        },
+        {
+          mode: "120000",
+          path: "pi",
+          sha: "2b1d230f1accf0c5d05f98b435a3886e39f56b83",
+          size: 3,
+          type: "blob",
+        },
+        {
+          mode: "160000",
+          path: "shared",
+          sha: "855827c583bc30645ba427885caa40c5b81764d2",
+          type: "commit",
+        },
+      ],
+    };
+
+    it("resolves the tag once and lists every path below the prefix from the root", async () => {
+      mocks.client.mockResolvedValueOnce(`${sha}\n`).mockResolvedValueOnce(extensions);
+
+      const page = await gh.repos.listTree(
+        { owner: "agntn", repo: "forges" },
+        { ref: "v0.7.0", path: "/extensions/" },
+      );
+
+      expect(mocks.client).toHaveBeenNthCalledWith(1, "/repos/agntn/forges/commits/v0.7.0", {
+        headers: { Accept: "application/vnd.github.sha" },
+        responseType: "text",
+      });
+      expect(mocks.client).toHaveBeenNthCalledWith(
+        2,
+        `/repos/agntn/forges/git/trees/${sha}%3Aextensions`,
+        { query: { recursive: "1" } },
+      );
+      expect(page).toEqual({
+        items: [
+          { path: "extensions/omp", type: "directory", size: null },
+          { path: "extensions/omp/forges.ts", type: "file", size: 2541 },
+          { path: "extensions/pi", type: "symlink", size: null },
+          { path: "extensions/shared", type: "submodule", size: null },
+        ],
+        totalCount: 4,
+        sha,
+        path: "extensions",
+        truncated: false,
+      });
+    });
+
+    it("continues on the pinned commit from one read of the tree", async () => {
+      mocks.client.mockResolvedValueOnce(`${sha}\n`).mockResolvedValueOnce(extensions);
+      const repo = { owner: "agntn", repo: "forges" };
+
+      const first = await gh.repos.listTree(repo, { path: "extensions", perPage: 3 });
+      const second = await gh.repos.listTree(repo, {
+        path: "extensions",
+        perPage: 3,
+        cursor: first.nextCursor,
+      });
+
+      expect(mocks.client).toHaveBeenCalledTimes(2);
+      expect(first.items.map(({ path }) => path)).toHaveLength(3);
+      expect(second).toMatchObject({
+        items: [{ path: "extensions/shared", type: "submodule", size: null }],
+        sha,
+      });
+      expect(second.nextCursor).toBeUndefined();
+    });
+
+    it("says on every page that GitHub truncated the tree", async () => {
+      mocks.client.mockResolvedValueOnce({ ...extensions, truncated: true });
+
+      const page = await gh.repos.listTree({ owner: "torvalds", repo: "linux" }, { ref: sha });
+
+      expect(mocks.client).toHaveBeenCalledTimes(1);
+      expect(mocks.client).toHaveBeenCalledWith(`/repos/torvalds/linux/git/trees/${sha}`, {
+        query: { recursive: "1" },
+      });
+      expect(page).toMatchObject({ path: "", truncated: true });
+    });
+
+    it("refuses a cursor from another listing or one written by hand", async () => {
+      const repo = { owner: "agntn", repo: "forges" };
+      mocks.client.mockResolvedValueOnce(`${sha}\n`).mockResolvedValueOnce(extensions);
+      const { nextCursor = "" } = await gh.repos.listTree(repo, { perPage: 1 });
+      const body = JSON.parse(Buffer.from(nextCursor, "base64url").toString("utf8"));
+      const extra = Buffer.from(JSON.stringify({ ...body, t: `${sha}:2:9` })).toString("base64url");
+      mocks.client.mockClear();
+
+      for (const cursor of ["x", extra]) {
+        await expect(gh.repos.listTree(repo, { perPage: 1, cursor })).rejects.toMatchObject({
+          status: 400,
+        });
+      }
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("refuses a path that isn't a string before any request", async () => {
+      await expect(
+        gh.repos.listTree({ owner: "agntn", repo: "forges" }, { path: 5 as unknown as string }),
+      ).rejects.toThrow("repos.listTree takes { path?: string, ref?: string }");
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("refuses .. in the path before any request", async () => {
+      await expect(
+        gh.repos.listTree({ owner: "agntn", repo: "forges" }, { path: "src/../.." }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("maps a missing path to NotFoundError", async () => {
+      mocks.client.mockRejectedValueOnce(makeFetchError(404));
+
+      await expect(
+        gh.repos.listTree({ owner: "agntn", repo: "forges" }, { ref: sha, path: "nope" }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+
   describe("repos.readContents", () => {
     const sha = "cb9d4e5dc0f07fd9504b74e6ef58c37e9a32af38";
     const base64 = (value: string | Uint8Array) => Buffer.from(value).toString("base64");
