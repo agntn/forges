@@ -961,7 +961,7 @@ export interface ReplyThreadInput {
 }
 
 /**
- * Provider configuration
+ * Provider configuration. A key not listed here is refused.
  */
 export interface ProviderConfig {
   baseURL?: string;

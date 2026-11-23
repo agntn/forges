@@ -8,6 +8,7 @@ import type { ProviderConfig } from "./types.ts";
 import { resolveCloudflareCredential, resolveToken } from "./auth.ts";
 import type { Platform } from "./auth.ts";
 import { AuthenticationError, ForgesError } from "./errors.ts";
+import { assertProviderConfig } from "./provider-config.ts";
 import { lazy, oneAtATime } from "../extensions/shared/lazy.ts";
 
 // --- Type exports ---
@@ -139,6 +140,7 @@ export async function createProvider(
       { platform },
     );
   }
+  assertProviderConfig(config, platform);
 
   if (platform === "artifacts") {
     const { accountId } = await resolveCloudflareCredential({

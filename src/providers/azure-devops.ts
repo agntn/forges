@@ -14,6 +14,7 @@ import { ForgeBackedProvider, type ForgeOptions } from "./forge.ts";
 import { changedFileFromModel } from "./forge-model.ts";
 import { encodePathSegment } from "./base-url.ts";
 import { ForgesError, NotFoundError, normalizeError } from "../errors.ts";
+import { assertProviderConfig } from "../provider-config.ts";
 import {
   assertContinuationRef,
   assertFileSize,
@@ -210,6 +211,7 @@ export class AzureDevOpsProvider extends ForgeBackedProvider {
    * @param config Provider configuration. `baseURL` names the organization.
    */
   constructor(config: ProviderConfig) {
+    assertProviderConfig(config, PLATFORM);
     super(PLATFORM, { apiBaseURL: SERVICE, token: config.token ?? "" });
     this.#organization = organizationOf(config.baseURL);
     if (config.baseURL && this.#organization === undefined) {

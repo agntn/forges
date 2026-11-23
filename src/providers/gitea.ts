@@ -33,6 +33,7 @@ import {
   normalizeMergedReadError,
   NotFoundError,
 } from "../errors.ts";
+import { assertProviderConfig } from "../provider-config.ts";
 import {
   encodeApiResponsePathSegment,
   encodePathSegment,
@@ -714,6 +715,7 @@ export class GiteaProvider extends ForgeBackedProvider<GiteaRawTypes> {
    */
 
   constructor(config: ProviderConfig) {
+    assertProviderConfig(config, PLATFORM);
     const baseURL = normalizeApiBaseURL(config.baseURL, {
       fallbackBaseURL: "https://gitea.com/api/v1",
       apiPath: "/api/v1",

@@ -109,6 +109,7 @@ import {
   normalizeMergeError,
   NotFoundError,
 } from "../errors.ts";
+import { assertProviderConfig } from "../provider-config.ts";
 import {
   encodeApiResponsePathSegment,
   encodePathSegment,
@@ -609,6 +610,7 @@ export class GitLabProvider extends ForgeBackedProvider<GitLabRawTypes> {
   private readonly projectIdCacheTtl: number;
 
   constructor(config: ProviderConfig) {
+    assertProviderConfig(config, "gitlab");
     const apiBaseURL = normalizeApiBaseURL(config.baseURL, {
       fallbackBaseURL: "https://gitlab.com/api/v4",
       apiPath: "/api/v4",

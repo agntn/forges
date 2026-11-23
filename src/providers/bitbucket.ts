@@ -13,6 +13,7 @@ import { bitbucket } from "forges/bitbucket";
 import { ForgeBackedProvider, type ForgeOptions } from "./forge.ts";
 import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
 import { ForgesError, NotFoundError, normalizeError } from "../errors.ts";
+import { assertProviderConfig } from "../provider-config.ts";
 import {
   assertContinuationRef,
   assertFileSize,
@@ -209,6 +210,7 @@ export class BitbucketProvider extends ForgeBackedProvider {
    * and `username` turns `token` into an API token sent with basic auth.
    */
   constructor(config: import("../types.ts").ProviderConfig) {
+    assertProviderConfig(config, PLATFORM);
     super(PLATFORM, {
       apiBaseURL: normalizeApiBaseURL(config.baseURL, {
         fallbackBaseURL: "https://api.bitbucket.org/2.0",
