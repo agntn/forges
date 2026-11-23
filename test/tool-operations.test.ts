@@ -765,6 +765,16 @@ describe("configured provider", () => {
     ).rejects.toThrow("No auth token found for gitee. Set GITEE_TOKEN.");
   });
 
+  it("points a GitCafe user at CAFE_TOKEN or the cafe login", async () => {
+    mocks.credentialToken.current = null;
+
+    await expect(
+      createIssueComment({ platform: "gitcafe", repo: "versecafe/ashlar", number: 18, body: "hi" }),
+    ).rejects.toThrow(
+      "No auth token found for gitcafe. Set CAFE_TOKEN or log in with `cafe auth login`.",
+    );
+  });
+
   it("resolves separately for each platform and endpoint", async () => {
     await getRepository({ platform: "github", owner: "agntn", repo: "forges" });
     await getRepository({ platform: "gitea", owner: "agntn", repo: "forges" });

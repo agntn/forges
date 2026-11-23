@@ -12,6 +12,7 @@ import { GiteaProvider } from "../src/providers/gitea.ts";
 import { BitbucketProvider } from "../src/providers/bitbucket.ts";
 import { GiteeProvider } from "../src/providers/gitee.ts";
 import { AzureDevOpsProvider } from "../src/providers/azure-devops.ts";
+import { GitCafeProvider } from "../src/providers/gitcafe.ts";
 import { AuthenticationError, ForgesError } from "../src/errors.ts";
 
 describe("createProvider factory", () => {
@@ -23,6 +24,7 @@ describe("createProvider factory", () => {
     ["gitea", GiteaProvider],
     ["bitbucket", BitbucketProvider],
     ["gitee", GiteeProvider],
+    ["gitcafe", GitCafeProvider],
   ] as const)("builds the %s provider", async (platform, ProviderClass) => {
     expect(await createProvider(platform, baseConfig)).toBeInstanceOf(ProviderClass);
   });
@@ -63,6 +65,7 @@ describe("createProvider factory", () => {
       "azure-devops",
       "Set AZURE_DEVOPS_EXT_PAT, pass { token: '...' }, or log in with `az devops login`.",
     ],
+    ["gitcafe", "Set CAFE_TOKEN, pass { token: '...' }, or log in with `cafe auth login`."],
   ] as const)("tells a %s user only about logins that exist", async (platform, hint) => {
     const auth = await import("../src/auth.ts");
     const spy = vi.spyOn(auth, "resolveToken").mockReturnValue(null);
@@ -177,6 +180,7 @@ describe("entry points", () => {
     ["github", () => import("../src/github.ts"), { GitHubProvider, Provider }],
     ["gitlab", () => import("../src/gitlab.ts"), { GitLabProvider, Provider }],
     ["gitea", () => import("../src/gitea.ts"), { GiteaProvider, Provider }],
+    ["gitcafe", () => import("../src/gitcafe.ts"), { GitCafeProvider, Provider }],
     ["artifacts", () => import("../src/artifacts.ts"), { ArtifactsProvider, Provider }],
   ])("the %s sub-path exports its classes and nothing else", async (_, load, classes) => {
     expect({ ...(await load()) }).toEqual(classes);
@@ -191,6 +195,7 @@ describe("entry point types", () => {
     "gitea",
     "bitbucket",
     "azure-devops",
+    "gitcafe",
     "artifacts",
   ] as const;
   const exported = new Map<string, string[]>();

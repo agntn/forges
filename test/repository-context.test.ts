@@ -33,6 +33,7 @@ describe("parseRemote", () => {
     ["git@gitlab.com:group/sub/project.git", "gitlab", "group/sub", "project"],
     ["git@bitbucket.org:team/repo.git", "bitbucket", "team", "repo"],
     ["https://gitee.com/openharmony/docs.git", "gitee", "openharmony", "docs"],
+    ["https://git.cafe/versecafe/ashlar.git", "gitcafe", "versecafe", "ashlar"],
     ["https://dev.azure.com/acme/Web%20App/_git/site", "azure-devops", "acme/Web App", "site"],
     ["git@ssh.dev.azure.com:v3/acme/Web/site", "azure-devops", "acme/Web", "site"],
     ["https://acme.visualstudio.com/Web/_git/site", "azure-devops", "acme/Web", "site"],

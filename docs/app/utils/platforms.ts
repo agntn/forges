@@ -8,6 +8,7 @@ export interface PlatformInfo {
     | "bitbucket"
     | "gitee"
     | "azure-devops"
+    | "gitcafe"
     | "artifacts";
   /** Page slug. GitBucket rides on the GitHub provider, Forgejo on Gitea. */
   readonly slug: string;
@@ -141,6 +142,24 @@ export const PLATFORMS: readonly PlatformInfo[] = [
     to: "/platforms/azure-devops",
   },
   {
+    key: "gitcafe",
+    slug: "gitcafe",
+    label: "GitCafe",
+    icon: "i-lucide-coffee",
+    blurb:
+      "REST on git.cafe/api. GitCafe stacks pull requests, and forges reads each one on its own, branches and all.",
+    host: "git.cafe/api",
+    envVars: ["CAFE_TOKEN"],
+    cli: "cafe auth login",
+    configFile: "~/.config/gitcafe/credentials.json",
+    authHeader: "Authorization: Bearer",
+    anonymousReads: "public repositories, everything but your own profile",
+    threads: "inline comments, resolvable",
+    codeSearch: "unsupported, explicit error",
+    templates: "none",
+    to: "/platforms/gitcafe",
+  },
+  {
     key: "github",
     slug: "gitbucket",
     label: "GitBucket",
@@ -183,7 +202,8 @@ export const PROVIDER_PLATFORMS = PLATFORMS.filter((platform) => platform.slug =
 
 /** What the docs worker reads; the rest want a token or an account it doesn't hold. */
 export const EXPLORER_PLATFORMS = PROVIDER_PLATFORMS.filter(
-  (platform) => !["artifacts", "bitbucket", "gitee", "azure-devops"].includes(platform.key),
+  (platform) =>
+    !["artifacts", "bitbucket", "gitee", "azure-devops", "gitcafe"].includes(platform.key),
 );
 
 const BY_SLUG = new Map(PLATFORMS.map((platform) => [platform.slug, platform]));

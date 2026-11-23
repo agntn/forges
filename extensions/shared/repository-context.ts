@@ -8,6 +8,7 @@ export type ContextPlatform =
   | "bitbucket"
   | "gitee"
   | "azure-devops"
+  | "gitcafe"
   | "artifacts";
 
 export const platformLabels: Record<ContextPlatform, string> = {
@@ -17,6 +18,7 @@ export const platformLabels: Record<ContextPlatform, string> = {
   bitbucket: "Bitbucket",
   gitee: "Gitee",
   "azure-devops": "Azure DevOps",
+  gitcafe: "GitCafe",
   artifacts: "Cloudflare Artifacts",
 };
 
@@ -39,6 +41,7 @@ const endpoints: Partial<Record<ContextPlatform, { host: string; variable: strin
     gitea: { host: "gitea.com", variable: "FORGES_GITEA_BASE_URL", api: /\/api\/v1$/ },
     bitbucket: { host: "bitbucket.org", variable: "FORGES_BITBUCKET_BASE_URL", api: /\/2\.0$/ },
     gitee: { host: "gitee.com", variable: "FORGES_GITEE_BASE_URL", api: /\/api\/v5$/ },
+    gitcafe: { host: "git.cafe", variable: "FORGES_GITCAFE_BASE_URL", api: /\/api$/ },
   };
 
 const azureHosts = new Set(["dev.azure.com", "ssh.dev.azure.com"]);

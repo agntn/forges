@@ -12,6 +12,7 @@ export type ForgesPlatform =
   | "bitbucket"
   | "gitee"
   | "azure-devops"
+  | "gitcafe"
   | "artifacts";
 
 /**
@@ -27,7 +28,7 @@ export function forgesToolSchemas() {
   const platform = Type.Optional(
     Type.Unsafe<Exclude<ForgesPlatform, "artifacts">>({
       type: "string",
-      enum: ["github", "gitlab", "gitea", "bitbucket", "gitee", "azure-devops"],
+      enum: ["github", "gitlab", "gitea", "bitbucket", "gitee", "azure-devops", "gitcafe"],
       description: "Forge (default: github)",
       default: "github",
     }),
@@ -36,7 +37,16 @@ export function forgesToolSchemas() {
   const gitPlatform = Type.Optional(
     Type.Unsafe<ForgesPlatform>({
       type: "string",
-      enum: ["github", "gitlab", "gitea", "bitbucket", "gitee", "azure-devops", "artifacts"],
+      enum: [
+        "github",
+        "gitlab",
+        "gitea",
+        "bitbucket",
+        "gitee",
+        "azure-devops",
+        "gitcafe",
+        "artifacts",
+      ],
       description: "Forge (default: github). Artifacts uses a namespace as owner.",
       default: "github",
     }),

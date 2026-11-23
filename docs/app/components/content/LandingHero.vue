@@ -29,10 +29,10 @@ const { copied, copy } = useCopied();
 
       <h1 class="hero-title">One API. <span>Every forge.</span></h1>
       <p class="hero-lead">
-        GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps and GitBucket behind one TypeScript
-        provider. Repositories, issues, pull requests, review threads, commits and CI come back in
-        the same shape, and the token is found for you. Library, MCP server or Pi extension, your
-        pick.
+        GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, GitCafe and GitBucket behind one
+        TypeScript provider. Repositories, issues, pull requests, review threads, commits and CI
+        come back in the same shape, and the token is found for you. Library, MCP server or Pi
+        extension, your pick.
       </p>
 
       <dl class="hero-metrics">
