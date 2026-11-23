@@ -1,11 +1,15 @@
 import { quoted } from "./issue-fields.ts";
 import {
   delay,
+  failedReadsNote,
   MAX_SCAN_PAGES,
   MAX_WAIT_SECONDS,
+  missedAgain,
   nextPollDelay,
+  readAgain,
   reportWhileWaiting,
   untilAborted,
+  type FailedReads,
   type WaitProgress,
 } from "./poll.ts";
 import type { Comment, PageResult, Reaction } from "./types.ts";
@@ -19,6 +23,8 @@ export interface DiscussionWait {
   settled: boolean;
   waitedMs: number;
   polls: number;
+  /** Set when the wait ended on reads that never reached the forge. */
+  failedReads?: FailedReads;
 }
 
 export interface ReactionWait extends DiscussionWait {
@@ -121,16 +127,25 @@ async function pollUntilChange<T, C>(
   const startedAt = performance.now();
   let polls = 1;
   let scan = first;
+  let failed: FailedReads | undefined;
   while (true) {
     const change = scan.examinedEveryPage ? poll.change(scan) : undefined;
     const waitedMs = Math.round(performance.now() - startedAt);
     const settled = change !== undefined;
     if (settled || !scan.examinedEveryPage || waitedMs >= budgetMs) {
-      return { scan, change, wait: { settled, waitedMs, polls } };
+      const wait: DiscussionWait = { settled, waitedMs, polls };
+      if (failed) wait.failedReads = failed;
+      return { scan, change, wait };
     }
     await delay(nextPollDelay(polls, budgetMs - waitedMs), poll.signal);
-    scan = await poll.read();
+    const next = await readAgain(poll.read);
     polls += 1;
+    if ("missed" in next) {
+      failed = missedAgain(failed, next.missed);
+      continue;
+    }
+    scan = next.value;
+    failed = undefined;
   }
 }
 
@@ -179,7 +194,10 @@ export async function readComments(
   });
   return {
     page: { items: polled.change ?? [], wait: polled.wait },
-    note: commentWaitNote(polled, { marker, since, waitSeconds }),
+    note: failedReadsNote(
+      polled.wait.failedReads,
+      commentWaitNote(polled, { marker, since, waitSeconds }),
+    ),
   };
 }
 
@@ -245,7 +263,10 @@ export async function readReactions(
   const wait: ReactionWait = { ...polled.wait, removed: polled.change?.removed ?? [] };
   return {
     page: { items: polled.change?.landed ?? [], wait },
-    note: reactionWaitNote(polled, { author, since, waitSeconds }),
+    note: failedReadsNote(
+      wait.failedReads,
+      reactionWaitNote(polled, { author, since, waitSeconds }),
+    ),
   };
 }
 
