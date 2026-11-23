@@ -597,6 +597,44 @@ describe("check wait through a flaky connection", () => {
     );
   });
 
+  it("reads past IPv6 unreachable next to IPv4 refused", async () => {
+    const socket = (code: string, address: string) =>
+      Object.assign(new Error(code), { code, syscall: "connect", address });
+    const both = Object.assign(
+      new AggregateError([
+        socket("ENETUNREACH", "2001:db8::1"),
+        socket("ECONNREFUSED", "127.0.0.1"),
+      ]),
+      { code: "ENETUNREACH" },
+    );
+    const request = new FetchError("[GET] <no response>", {
+      cause: new TypeError("fetch failed", { cause: both }),
+    });
+    const dropped = new ForgesError(request.message, { originalError: request });
+    const read = script([page([check("build", true)]), dropped, page([check("build", false)])]);
+
+    const { page: settled } = await run(
+      waitForChecks(read, { waitSeconds: 60, readLastChange: changedAt(0) }),
+    );
+
+    expect(settled.wait).toMatchObject({ settled: true, polls: 3 });
+  });
+
+  it("rethrows an aggregate whose addresses did not all fail to connect", async () => {
+    const reset = Object.assign(new Error("ECONNRESET"), { code: "ECONNRESET", syscall: "read" });
+    const refused = Object.assign(new Error("ECONNREFUSED"), {
+      code: "ECONNREFUSED",
+      syscall: "connect",
+    });
+    const mixed = Object.assign(new AggregateError([refused, reset]), { code: "ECONNRESET" });
+    const read = script([page([check("build", true)]), mixed]);
+
+    const waiting = waitForChecks(read, { waitSeconds: 60, readLastChange: changedAt(0) });
+    const rejected = expect(waiting).rejects.toBe(mixed);
+    await vi.runAllTimersAsync();
+    await rejected;
+  });
+
   it("forgets the dead reads once one gets through again", async () => {
     const read = script([
       page([check("build", true)]),

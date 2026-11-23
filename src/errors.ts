@@ -291,10 +291,23 @@ export function neverSentCode(error: unknown): string | undefined {
   let current: unknown = error;
   for (let depth = 0; depth < 6 && current instanceof Error; depth++) {
     const code: unknown = Reflect.get(current, "code");
-    if (typeof code === "string" && NEVER_SENT.has(code)) return code;
+    if (typeof code === "string" && (NEVER_SENT.has(code) || noAddressConnected(current))) {
+      return code;
+    }
     current = current instanceof ForgesError ? current.originalError : current.cause;
   }
   return undefined;
+}
+
+/** Every address Node tried died at connect; the aggregate keeps only the first code. */
+function noAddressConnected(error: Error): boolean {
+  if (!(error instanceof AggregateError) || error.errors.length === 0) return false;
+  return error.errors.every((member: unknown) => {
+    if (!(member instanceof Error)) return false;
+    const code: unknown = Reflect.get(member, "code");
+    const syscall: unknown = Reflect.get(member, "syscall");
+    return (typeof code === "string" && NEVER_SENT.has(code)) || syscall === "connect";
+  });
 }
 
 /** A copy with the hint appended, keeping the subclass and fields such as `retryAfter`. */
