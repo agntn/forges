@@ -159,8 +159,9 @@ describe("resolveToken", () => {
     expect(resolveToken("gitee")).toMatchObject({ token: "primary", origin: "GITEE_TOKEN" });
   });
 
+  /** PATH has no `cat`, so a builtin drains stdin. Otherwise the fake quits early and EPIPE wins. */
   it("reads a GitCafe token from CAFE_TOKEN, then from cafe's login helper", () => {
-    cli("cafe", 'cat > /dev/null; printf "password=gct_cli\\n"');
+    cli("cafe", 'while read -r _; do :; done; printf "password=gct_cli\\n"');
     expect(resolveToken("gitcafe")).toEqual({ token: "gct_cli", source: "cli", origin: "cafe" });
 
     vi.stubEnv("CAFE_TOKEN", "gct_env");
