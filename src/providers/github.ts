@@ -294,6 +294,12 @@ interface GitHubCheckRun {
   output?: { title?: string | null; summary?: string | null } | null;
 }
 
+/** The annotation fields `reason` reads. */
+interface GitHubCheckRunAnnotation {
+  annotation_level: string;
+  message: string;
+}
+
 interface GitHubCheckRunsResponse {
   total_count: number;
   check_runs: GitHubCheckRun[];
@@ -1407,7 +1413,10 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       const repository = `/repos/${encodePathSegment(owner, "Owner")}/${encodePathSegment(repo, "Repository name")}`;
       const route = `${repository}/actions/jobs/${jobId}`;
       const job = mapActionsJob(await this.#readActionsJob({ route, repository, jobId }));
-      if (!jobStarted(job, true)) return buildCiJobLog({ job, log: null }, options);
+      if (!jobStarted(job, true)) {
+        const reason = await this.#neverStartedReason({ repository, job });
+        return buildCiJobLog({ job, log: null, reason }, options);
+      }
       // The route redirects to blob storage; fetch drops the token on that cross-origin hop.
       const stream = await this.client<unknown, "stream">(`${route}/logs`, {
         responseType: "stream",
@@ -1417,6 +1426,23 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
     } catch (error) {
       throw normalizeError(error, "github");
     }
+  }
+
+  /** Why GitHub gave up on a job, in its annotations' words. */
+  async #neverStartedReason({
+    repository,
+    job,
+  }: Readonly<{ repository: string; job: CiJob }>): Promise<string[] | undefined> {
+    if (job.status !== "completed" || job.conclusion === "skipped") return undefined;
+    const annotations = await Promise.resolve()
+      .then(() =>
+        this.client<GitHubCheckRunAnnotation[]>(`${repository}/check-runs/${job.id}/annotations`),
+      )
+      .catch(() => null);
+    return annotations
+      ?.filter((annotation) => annotation.annotation_level !== "notice")
+      .map((annotation) => annotation.message.trim())
+      .filter((message) => message !== "");
   }
 
   /** A 404 on another app's check run names that app and its details page. */
