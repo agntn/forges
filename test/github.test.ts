@@ -1581,6 +1581,75 @@ describe("GitHubProvider", () => {
       expect(log).toMatchObject({ started: false, status: "queued", content: "", length: 0 });
     });
 
+    describe("a finished job that never started", () => {
+      const neverStarted = {
+        ...rawJob,
+        id: 123317554194,
+        started_at: "2026-10-29T07:22:13Z",
+        completed_at: "2026-10-29T07:22:14Z",
+        steps: [],
+      };
+      const billing =
+        "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings";
+
+      it("says why from the check run's annotations, without the notices", async () => {
+        mocks.client.mockResolvedValueOnce(neverStarted).mockResolvedValueOnce([
+          { path: ".github", annotation_level: "warning", title: null, message: null },
+          { path: ".github", annotation_level: "failure", title: "", message: billing },
+          {
+            path: ".github",
+            annotation_level: "notice",
+            title: "",
+            message:
+              '"The ubuntu-latest label will migrate to Ubuntu 26 beginning October 19, 2026."',
+          },
+        ]);
+
+        const log = await gh.ciRuns.readJobLog(
+          { owner: "octocat", repo: "hello-world" },
+          { jobId: "123317554194" },
+        );
+
+        expect(mocks.client).toHaveBeenCalledTimes(2);
+        expect(mocks.client).toHaveBeenNthCalledWith(
+          2,
+          "/repos/octocat/hello-world/check-runs/123317554194/annotations",
+        );
+        expect(log).toMatchObject({ started: false, conclusion: "failure", content: "" });
+        expect(log.reason).toEqual([billing]);
+      });
+
+      it("leaves reason out when the annotations say nothing or can't be read", async () => {
+        mocks.client
+          .mockResolvedValueOnce(neverStarted)
+          .mockResolvedValueOnce([{ annotation_level: "notice", message: "label migration" }])
+          .mockResolvedValueOnce(neverStarted)
+          .mockRejectedValueOnce(makeFetchError(403));
+
+        const repo = { owner: "octocat", repo: "hello-world" };
+        const quiet = await gh.ciRuns.readJobLog(repo, { jobId: "123317554194" });
+        const unreadable = await gh.ciRuns.readJobLog(repo, { jobId: "123317554194" });
+
+        expect(quiet).toMatchObject({ started: false, conclusion: "failure" });
+        expect(quiet).not.toHaveProperty("reason");
+        expect(unreadable).toMatchObject({ started: false, conclusion: "failure" });
+        expect(unreadable).not.toHaveProperty("reason");
+      });
+
+      it("asks nothing more for a skipped job", async () => {
+        mocks.client.mockResolvedValueOnce({ ...neverStarted, conclusion: "skipped" });
+
+        const log = await gh.ciRuns.readJobLog(
+          { owner: "octocat", repo: "hello-world" },
+          { jobId: "123317554194" },
+        );
+
+        expect(mocks.client).toHaveBeenCalledTimes(1);
+        expect(log).toMatchObject({ started: false, conclusion: "skipped" });
+        expect(log).not.toHaveProperty("reason");
+      });
+    });
+
     it("rejects a job id that is not a number before any request", async () => {
       await expect(
         gh.ciRuns.readJobLog({ owner: "octocat", repo: "hello-world" }, { jobId: "1/../../hooks" }),

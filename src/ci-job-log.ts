@@ -358,10 +358,11 @@ export function buildCiJobLog(
   source: Readonly<{
     job: CiJob;
     log: { text: string; complete: boolean; timestamped: boolean } | null;
+    reason?: readonly string[];
   }>,
   options: CiJobLogOptions = {},
 ): CiJobLog {
-  const { job, log } = source;
+  const { job, log, reason } = source;
   const window = assertCiJobLogOptions(options);
 
   let stream = "";
@@ -394,6 +395,7 @@ export function buildCiJobLog(
     status: job.status,
     conclusion: job.conclusion,
     started: log !== null,
+    ...(reason !== undefined && reason.length > 0 && { reason: [...reason] }),
     logComplete: log?.complete ?? true,
     content: stream.slice(window.offset, end),
     offset: window.offset,
