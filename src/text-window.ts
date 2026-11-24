@@ -4,6 +4,8 @@ import { ForgesError } from "./errors.ts";
 export const DEFAULT_WINDOW_CHARS = 20_000;
 /** The most one slice holds, so a single tool answer can't swallow the context. */
 export const MAX_WINDOW_CHARS = 200_000;
+/** A hundred previews this long add up to one slice. */
+export const MAX_BODY_PREVIEW_CHARS = 2_000;
 
 /** Where a slice starts and how much it may hold, in UTF-16 code units. */
 export interface TextWindowOptions {

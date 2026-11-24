@@ -1,6 +1,6 @@
 import { Type, type TObject, type TProperties, type TSchema } from "@agntn/tools";
 import { MAX_BATCH_ITEMS } from "./batch.ts";
-import { DEFAULT_WINDOW_CHARS, MAX_WINDOW_CHARS } from "./text-window.ts";
+import { DEFAULT_WINDOW_CHARS, MAX_BODY_PREVIEW_CHARS, MAX_WINDOW_CHARS } from "./text-window.ts";
 import { THREAD_EVENT_KINDS } from "./thread-event.ts";
 import type { ThreadEventKind } from "./types.ts";
 
@@ -116,6 +116,15 @@ export function forgesToolSchemas() {
   );
   const perPage = Type.Optional(
     Type.Integer({ description: "Results per page", minimum: 1, maximum: 100 }),
+  );
+  /** Opt in, so one search page can't flood the context. */
+  const bodyChars = Type.Optional(
+    Type.Integer({
+      description:
+        "Return the start of each hit's body, up to this many UTF-16 code units, with bodyTruncated on the cut ones; 0 or omitted leaves bodies out",
+      minimum: 0,
+      maximum: MAX_BODY_PREVIEW_CHARS,
+    }),
   );
   const state = Type.Optional(
     Type.Unsafe<"open" | "closed" | "all">({
@@ -288,6 +297,7 @@ export function forgesToolSchemas() {
         description: "Sort direction; defaults to desc",
       }),
     ),
+    bodyChars,
   });
   const globalIssueSearchParameters = closed({
     platform,
@@ -330,6 +340,7 @@ export function forgesToolSchemas() {
         description: "Sort direction; defaults to desc",
       }),
     ),
+    bodyChars,
   });
   const commitSearchParameters = closed({
     platform,
@@ -530,6 +541,7 @@ export function forgesToolSchemas() {
     cursor,
     perPage,
     state,
+    bodyChars,
   });
   /** A long issue or pull-request body reads in slices, like release notes. */
   const bodyOffset = Type.Optional(

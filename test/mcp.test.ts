@@ -58,6 +58,7 @@ const mocks = vi.hoisted(() => {
     listReviews: vi.fn(),
     getReview: vi.fn(),
     search: vi.fn(),
+    searchGlobal: vi.fn(),
     get: vi.fn(),
     create: vi.fn(),
     listComments: vi.fn(),
@@ -1878,6 +1879,147 @@ describe("forges MCP server", () => {
       note: "Pull-request bodies and revision details are omitted from search output; use forges_pull_requests_get to read one in full.",
       result: { items: [{ number: 82, merged: true }], incomplete: false },
     });
+  });
+
+  it("keeps the start of each pull request body when search asks for bodyChars", async () => {
+    const hit = {
+      id: "391",
+      title: "Return body previews",
+      state: "open",
+      labels: [],
+      author: { login: "aeitwoen" },
+      assignees: [],
+      createdAt: "2026-11-18T00:00:00Z",
+      updatedAt: "2026-11-18T00:00:00Z",
+      merged: false,
+      draft: false,
+      repository: "agntn/forges",
+    };
+    mocks.pullRequests.searchGlobal.mockResolvedValue({
+      items: [
+        { ...hit, number: 1, url: "u1", body: "Short." },
+        { ...hit, number: 2, url: "u2", body: "abcdefghij-rest of a long body" },
+        { ...hit, number: 3, url: "u3", body: "abcdefghi\u{1F600}tail" },
+      ],
+      totalCount: 3,
+      incomplete: false,
+      hasNextPage: false,
+      resultLimit: 1000,
+    });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_search_global",
+      arguments: { author: "aeitwoen", owner: "agntn", bodyChars: 10 },
+    });
+
+    const answer = JSON.parse(text(response.content));
+    expect(answer.result.items.map((item: { body: string }) => item.body)).toEqual([
+      "Short.",
+      "abcdefghij",
+      "abcdefghi",
+    ]);
+    expect(answer.result.items.map((item: { bodyTruncated?: true }) => item.bodyTruncated)).toEqual(
+      [undefined, true, true],
+    );
+    expect(answer.note).toBe(
+      "Bodies are cut to bodyChars, and bodyTruncated marks the cut ones; use forges_pull_requests_get with the hit's repository and number to read one in full.",
+    );
+  });
+
+  it("reads bodyChars 0, OMP's filler for an unused number, as no preview", async () => {
+    const issue = {
+      id: "46",
+      number: 46,
+      title: "Add repository issue search",
+      body: "large body",
+      state: "open",
+      labels: [],
+      author: { login: "aeitwoen" },
+      assignees: [],
+      createdAt: "2026-08-27T00:00:00Z",
+      updatedAt: "2026-08-27T00:00:00Z",
+      url: "https://github.com/agntn/forges/issues/46",
+    };
+    mocks.issues.search.mockResolvedValue({
+      items: [issue],
+      incomplete: false,
+      hasNextPage: false,
+    });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_issues_search",
+      arguments: { repo: "agntn/forges", query: "issue search", bodyChars: 0 },
+    });
+
+    const answer = text(response.content);
+    expect(answer).not.toContain("large body");
+    expect(JSON.parse(answer).note).toBe(
+      "Issue bodies are omitted from search output; use forges_issues_get to read one body.",
+    );
+  });
+
+  it("previews issue bodies in global and repository search alike", async () => {
+    const issue = {
+      id: "228",
+      number: 228,
+      title: "Add issue search across repositories",
+      body: "0123456789",
+      state: "open",
+      labels: [],
+      author: { login: "aeitwoen" },
+      assignees: [],
+      createdAt: "2026-10-04T00:00:00Z",
+      updatedAt: "2026-10-04T00:00:00Z",
+      url: "https://github.com/agntn/forges/issues/228",
+    };
+    mocks.issues.searchGlobal.mockResolvedValue({
+      items: [{ ...issue, repository: "agntn/forges" }],
+      totalCount: 1,
+      incomplete: false,
+      hasNextPage: false,
+      resultLimit: 1000,
+    });
+    mocks.pullRequests.search.mockResolvedValue({
+      items: [{ ...issue, merged: false, draft: false }],
+      incomplete: false,
+      hasNextPage: false,
+    });
+    const client = await connectTestClient();
+
+    const global = await client.callTool({
+      name: "forges_issues_search_global",
+      arguments: { owner: "agntn", bodyChars: 4 },
+    });
+    const scoped = await client.callTool({
+      name: "forges_pull_requests_search",
+      arguments: { repo: "agntn/forges", query: "search", bodyChars: 4 },
+    });
+
+    for (const response of [global, scoped]) {
+      expect(JSON.parse(text(response.content)).result.items[0]).toMatchObject({
+        body: "0123",
+        bodyTruncated: true,
+      });
+    }
+  });
+
+  it("refuses bodyChars past the cap before any search runs", async () => {
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "forges_pull_requests_search_global",
+      arguments: { author: "aeitwoen", bodyChars: 2001 },
+    });
+    const search = forgesTools().find((tool) => tool.name === "forges_issues_search")!;
+
+    expect(response.isError).toBe(true);
+    await expect(
+      search.execute({ repo: "agntn/forges", query: "bug", bodyChars: 2.5 }, {}),
+    ).rejects.toThrow("bodyChars must be an integer from 0 to 2000");
+    expect(mocks.pullRequests.searchGlobal).not.toHaveBeenCalled();
+    expect(mocks.issues.search).not.toHaveBeenCalled();
   });
 
   it("reads a comment's reactions on a pull request from an owner/name slug", async () => {

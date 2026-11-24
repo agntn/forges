@@ -9,6 +9,7 @@ import {
 import { forgeToolTitle } from "../extensions/shared/tui.ts";
 import { EMPTY_CHECK_GRACE_SECONDS } from "./check-wait.ts";
 import { forgesToolSchemas } from "./tool-schemas.ts";
+import { MAX_BODY_PREVIEW_CHARS } from "./text-window.ts";
 
 type Operations = typeof import("./tool-operations.ts");
 
@@ -360,8 +361,7 @@ function defineTools(): ToolDefinition[] {
     defineTool({
       name: "forges_issues_search_global",
       title: forgeToolTitle("forges_issues_search_global", "Search Issues Across Repositories"),
-      description:
-        "Search issues across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. author, state and labels filter on every platform, and an issue must carry every label. Pull requests never appear. Returns repository identity, totalCount and incomplete. Pass nextCursor back as cursor while it is present; narrow the query when incomplete is true.",
+      description: `Search issues across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. author, state and labels filter on every platform, and an issue must carry every label. Pull requests never appear. Returns repository identity, totalCount and incomplete. Bodies are left out; bodyChars keeps the start of each, up to ${MAX_BODY_PREVIEW_CHARS} characters, with bodyTruncated on the cut ones. Pass nextCursor back as cursor while it is present; narrow the query when incomplete is true.`,
       snippet: "Find issues across an owner's repositories, filtered by label, state or author.",
       ...effect("forges_issues_search_global"),
       input: schemas.globalIssueSearchParameters,
@@ -370,8 +370,7 @@ function defineTools(): ToolDefinition[] {
     defineTool({
       name: "forges_issues_search",
       title: forgeToolTitle("forges_issues_search", "Search Issues"),
-      description:
-        "Search issues inside one repository with the selected platform's query syntax, optionally filtered by state. Bodies are omitted; read one result with forges_issues_get. Results are paged, and incomplete says whether the search is known to be partial.",
+      description: `Search issues inside one repository with the selected platform's query syntax, optionally filtered by state. Bodies are left out unless bodyChars asks for the start of each, up to ${MAX_BODY_PREVIEW_CHARS} characters, with bodyTruncated on the cut ones; read one in full with forges_issues_get. Results are paged, and incomplete says whether the search is known to be partial.`,
       snippet: "Search issues inside one GitHub, GitLab, or Gitea repository.",
       ...effect("forges_issues_search"),
       input: schemas.searchRepositoryItemsParameters,
@@ -557,11 +556,11 @@ function defineTools(): ToolDefinition[] {
         "forges_pull_requests_search_global",
         "Search Pull Requests Across Repositories",
       ),
-      description:
-        "Search pull requests across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. author filters by login on every platform. Returns repository identity, totalCount and incomplete. Pass nextCursor back as cursor while it is present; narrow the query when incomplete is true.",
+      description: `Search pull requests across repositories, optionally scoped to an owner or one repository. GitHub takes sort/order (created/desc for newest) and caps hits at resultLimit 1000; Gitea matches keywords, always newest first; GitLab matches keywords, sorted by created or updated, and takes a group as owner. Gitea and GitLab set resultLimit null. author filters by login on every platform. Returns repository identity, totalCount and incomplete. Bodies are left out; bodyChars keeps the start of each, up to ${MAX_BODY_PREVIEW_CHARS} characters, with bodyTruncated on the cut ones. Pass nextCursor back as cursor while it is present; narrow the query when incomplete is true.`,
       snippet: "Find an author's pull requests across repositories, optionally newest first.",
       guidelines: [
         "Use forges_pull_requests_search_global with author, sort created and order desc for recent author contributions; narrow the query when incomplete is true.",
+        "Pass bodyChars to read recent bodies from the search itself instead of one forges_pull_requests_get per hit.",
       ],
       ...effect("forges_pull_requests_search_global"),
       input: schemas.globalPullRequestSearchParameters,
@@ -570,8 +569,7 @@ function defineTools(): ToolDefinition[] {
     defineTool({
       name: "forges_pull_requests_search",
       title: forgeToolTitle("forges_pull_requests_search", "Search Pull Requests"),
-      description:
-        "Search pull requests inside one repository with the selected platform's query syntax, optionally filtered by state. Bodies and revision details are omitted; read one result with forges_pull_requests_get. Results are paged, and incomplete says whether the search is known to be partial.",
+      description: `Search pull requests inside one repository with the selected platform's query syntax, optionally filtered by state. Revision details are omitted, and bodies too unless bodyChars asks for the start of each, up to ${MAX_BODY_PREVIEW_CHARS} characters, with bodyTruncated on the cut ones; read one in full with forges_pull_requests_get. Results are paged, and incomplete says whether the search is known to be partial.`,
       snippet: "Search pull requests inside one GitHub, GitLab, or Gitea repository.",
       ...effect("forges_pull_requests_search"),
       input: schemas.searchRepositoryItemsParameters,
