@@ -39,7 +39,7 @@ import {
 } from "./body-window.ts";
 import { lazy } from "../extensions/shared/lazy.ts";
 import { MAX_BATCH_ITEMS, type BatchItem } from "./batch.ts";
-import { DEFAULT_WINDOW_CHARS, MAX_WINDOW_CHARS } from "./text-window.ts";
+import { DEFAULT_WINDOW_CHARS, MAX_BODY_PREVIEW_CHARS, MAX_WINDOW_CHARS } from "./text-window.ts";
 import { isCommitSha } from "./repository-contents.ts";
 import type { ForgesPlatform } from "./tool-schemas.ts";
 import type { Provider } from "./provider.ts";
@@ -671,12 +671,18 @@ export interface GetContributionTemplateParams extends RepositoryParams {
   readonly key: string;
 }
 
+/** How much of each hit's body a search returns. */
+export interface BodyPreviewParams {
+  bodyChars?: number;
+}
+
 export interface SearchPullRequestsGlobalParams
-  extends PlatformParams, GlobalPullRequestSearchOptions {
+  extends PlatformParams, GlobalPullRequestSearchOptions, BodyPreviewParams {
   query?: string;
 }
 
-export interface SearchIssuesGlobalParams extends PlatformParams, GlobalIssueSearchOptions {
+export interface SearchIssuesGlobalParams
+  extends PlatformParams, GlobalIssueSearchOptions, BodyPreviewParams {
   query?: string;
 }
 
@@ -747,7 +753,7 @@ export interface ListRepositoryItemsParams extends RepositoryParams {
   state?: IssueState | "all";
 }
 
-export interface SearchRepositoryItemsParams extends ListRepositoryItemsParams {
+export interface SearchRepositoryItemsParams extends ListRepositoryItemsParams, BodyPreviewParams {
   query: string;
 }
 
@@ -987,6 +993,54 @@ function summarizeIssuePage<T extends Issue>(page: PageResult<T>): PageResult<Om
     ...page,
     items: page.items.map(({ body: _body, ...summary }) => summary),
   };
+}
+
+/** A search hit with the start of its body. */
+export type BodyPreview<T extends Issue> = T & { bodyTruncated?: true };
+
+/** Rows with no body, or just the start of one. */
+export type SearchHitPage<T extends Issue> = SearchPageResult<Omit<T, "body"> | BodyPreview<T>>;
+
+/** OMP sends 0 for an unused field, so 0 means no preview. */
+function bodyPreviewChars(params: BodyPreviewParams & { platform: ForgesPlatform }): number {
+  const { bodyChars, platform } = params;
+  if (bodyChars === undefined) return 0;
+  if (!Number.isInteger(bodyChars) || bodyChars < 0 || bodyChars > MAX_BODY_PREVIEW_CHARS) {
+    throw new ForgesError(`bodyChars must be an integer from 0 to ${MAX_BODY_PREVIEW_CHARS}`, {
+      status: 400,
+      platform,
+    });
+  }
+  return bodyChars;
+}
+
+/** An emoji at the cut goes whole or not at all. */
+function previewBody(body: string, chars: number): { body: string; truncated: boolean } {
+  if (body.length <= chars) return { body, truncated: false };
+  const end = /^[\uD800-\uDBFF]$/.test(body.slice(chars - 1, chars)) ? chars - 1 : chars;
+  return { body: body.slice(0, end), truncated: true };
+}
+
+/** No bodies at 0, the start of each above it. */
+function searchHitPage<T extends Issue>(
+  page: SearchPageResult<T>,
+  chars: number,
+): SearchHitPage<T> {
+  if (chars === 0) return summarizeIssuePage(page);
+  return {
+    ...page,
+    items: page.items.map((item) => {
+      const { body, truncated } = previewBody(item.body, chars);
+      return truncated ? { ...item, body, bodyTruncated: true as const } : { ...item, body };
+    }),
+  };
+}
+
+/** Previews get a pointer to the full read; no previews, the old note. */
+function searchBodyNote(chars: number, notes: Readonly<{ omitted: string; read: string }>): string {
+  return chars === 0
+    ? notes.omitted
+    : `Bodies are cut to bodyChars, and bodyTruncated marks the cut ones; use ${notes.read} to read one in full.`;
 }
 
 /** A minified or generated comment can be one very long line, so cap both axes. */
@@ -1484,11 +1538,10 @@ export async function listIssues(
 export async function searchIssuesGlobal(
   args: SearchIssuesGlobalParams,
 ): Promise<
-  ForgesToolResult<
-    SearchPageResult<Omit<GlobalIssueSearchItem, "body">> & { resultLimit: number | null }
-  >
+  ForgesToolResult<SearchHitPage<GlobalIssueSearchItem> & { resultLimit: number | null }>
 > {
   const params = searchTarget(args);
+  const chars = bodyPreviewChars(params);
   const provider = await readProvider(params.platform);
   const search = await provider.issues.searchGlobal(params.query ?? "", {
     author: params.author,
@@ -1502,26 +1555,35 @@ export async function searchIssuesGlobal(
     order: params.order,
   });
   return result(
-    { ...summarizeIssuePage(search), resultLimit: search.resultLimit },
+    { ...searchHitPage(search, chars), resultLimit: search.resultLimit },
     {
       platform: params.platform,
-      note: "Issue bodies are omitted; use forges_issues_get with the hit's repository and number.",
+      note: searchBodyNote(chars, {
+        omitted:
+          "Issue bodies are omitted; use forges_issues_get with the hit's repository and number.",
+        read: "forges_issues_get with the hit's repository and number",
+      }),
     },
   );
 }
 
 export async function searchIssues(
   args: SearchRepositoryIssuesParams,
-): Promise<ForgesToolResult<SearchPageResult<Omit<Issue, "body">>>> {
+): Promise<ForgesToolResult<SearchHitPage<Issue>>> {
   const params = repositoryTarget(args);
+  const chars = bodyPreviewChars(params);
   const provider = await readProvider(params.platform);
   const issues = await provider.issues.search(repoOf(params), {
     query: params.query,
     ...listOptions(params),
   });
-  return result(summarizeIssuePage(issues), {
+  return result(searchHitPage(issues, chars), {
     platform: params.platform,
-    note: "Issue bodies are omitted from search output; use forges_issues_get to read one body.",
+    note: searchBodyNote(chars, {
+      omitted:
+        "Issue bodies are omitted from search output; use forges_issues_get to read one body.",
+      read: "forges_issues_get",
+    }),
   });
 }
 
@@ -1888,11 +1950,10 @@ export async function getPullRequestReview(
 export async function searchPullRequestsGlobal(
   args: SearchPullRequestsGlobalParams,
 ): Promise<
-  ForgesToolResult<
-    SearchPageResult<Omit<GlobalPullRequestSearchItem, "body">> & { resultLimit: number | null }
-  >
+  ForgesToolResult<SearchHitPage<GlobalPullRequestSearchItem> & { resultLimit: number | null }>
 > {
   const params = searchTarget(args);
+  const chars = bodyPreviewChars(params);
   const provider = await readProvider(params.platform);
   const search = await provider.pullRequests.searchGlobal(params.query ?? "", {
     author: params.author,
@@ -1904,26 +1965,35 @@ export async function searchPullRequestsGlobal(
     order: params.order,
   });
   return result(
-    { ...summarizeIssuePage(search), resultLimit: search.resultLimit },
+    { ...searchHitPage(search, chars), resultLimit: search.resultLimit },
     {
       platform: params.platform,
-      note: "Pull-request bodies and revision details are omitted; use forges_pull_requests_get with the hit's repository and number.",
+      note: searchBodyNote(chars, {
+        omitted:
+          "Pull-request bodies and revision details are omitted; use forges_pull_requests_get with the hit's repository and number.",
+        read: "forges_pull_requests_get with the hit's repository and number",
+      }),
     },
   );
 }
 
 export async function searchPullRequests(
   args: SearchRepositoryPullRequestsParams,
-): Promise<ForgesToolResult<SearchPageResult<Omit<PullRequestSearchItem, "body">>>> {
+): Promise<ForgesToolResult<SearchHitPage<PullRequestSearchItem>>> {
   const params = repositoryTarget(args);
+  const chars = bodyPreviewChars(params);
   const provider = await readProvider(params.platform);
   const pullRequests = await provider.pullRequests.search(repoOf(params), {
     query: params.query,
     ...listOptions(params),
   });
-  return result(summarizeIssuePage(pullRequests), {
+  return result(searchHitPage(pullRequests, chars), {
     platform: params.platform,
-    note: "Pull-request bodies and revision details are omitted from search output; use forges_pull_requests_get to read one in full.",
+    note: searchBodyNote(chars, {
+      omitted:
+        "Pull-request bodies and revision details are omitted from search output; use forges_pull_requests_get to read one in full.",
+      read: "forges_pull_requests_get",
+    }),
   });
 }
 
