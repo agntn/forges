@@ -144,7 +144,7 @@ export class GiteeProvider extends ForgeBackedProvider {
           (comparison.raw as { merge_base_commit?: { sha?: string } }).merge_base_commit?.sha ??
           null,
         files: page === 1 ? comparison.files.map(changedFileFromModel) : null,
-        filesComplete: complete ? true : null,
+        filesComplete: page === 1 && complete ? true : null,
       };
     } catch (error) {
       throw normalizeError(error, PLATFORM);
