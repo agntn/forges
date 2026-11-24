@@ -237,6 +237,27 @@ describe("GiteeProvider comparisons", () => {
       filesComplete: null,
     });
   });
+
+  it("calls a later page's missing files unknown, not complete", async () => {
+    serve(
+      at(`${REPO}/compare/OpenHarmony-1.0...OpenHarmony-2.0-Canary`, () => ({
+        commits: [
+          commit("2".repeat(40), "2021-06-15T16:25:07+08:00"),
+          commit("1".repeat(40), "2021-03-29T20:09:29+08:00"),
+        ],
+        files: [{ filename: "README.md", status: "modified", additions: 1, deletions: 0 }],
+        truncated: false,
+      })),
+    );
+    const range = { base: "OpenHarmony-1.0", head: "OpenHarmony-2.0-Canary", perPage: 1 };
+
+    const first = await provider().commits.compare(docs, range);
+    const second = await provider().commits.compare(docs, { ...range, cursor: first.nextCursor! });
+
+    expect(first).toMatchObject({ files: [{ path: "README.md" }], filesComplete: true });
+    expect(second.items.map((item) => item.sha[0])).toEqual(["2"]);
+    expect(second).toMatchObject({ files: null, filesComplete: null });
+  });
 });
 
 describe("GiteeProvider failures", () => {
