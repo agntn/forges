@@ -1594,6 +1594,7 @@ describe("GitHubProvider", () => {
 
       it("says why from the check run's annotations, without the notices", async () => {
         mocks.client.mockResolvedValueOnce(neverStarted).mockResolvedValueOnce([
+          { path: ".github", annotation_level: "warning", title: null, message: null },
           { path: ".github", annotation_level: "failure", title: "", message: billing },
           {
             path: ".github",

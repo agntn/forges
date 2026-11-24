@@ -296,8 +296,8 @@ interface GitHubCheckRun {
 
 /** The annotation fields `reason` reads. */
 interface GitHubCheckRunAnnotation {
-  annotation_level: string;
-  message: string;
+  annotation_level: string | null;
+  message: string | null;
 }
 
 interface GitHubCheckRunsResponse {
@@ -1441,7 +1441,7 @@ export class GitHubProvider extends ForgeBackedProvider<GitHubRawTypes> {
       .catch(() => null);
     return annotations
       ?.filter((annotation) => annotation.annotation_level !== "notice")
-      .map((annotation) => annotation.message.trim())
+      .map((annotation) => annotation.message?.trim() ?? "")
       .filter((message) => message !== "");
   }
 
