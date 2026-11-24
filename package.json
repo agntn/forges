@@ -113,7 +113,8 @@
     "typecheck": "tsc --noEmit && pnpm build && tsc --noEmit -p tsconfig.extensions.json",
     "prepack": "obuild",
     "docs": "pnpm --filter docs dev",
-    "docs:build": "pnpm --filter docs build"
+    "docs:build": "pnpm --filter docs build",
+    "docs:typecheck": "pnpm --filter docs typecheck"
   },
   "dependencies": {
     "@agntn/credentials": "catalog:deps",

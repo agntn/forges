@@ -13,7 +13,7 @@ import type {
 } from "../../utils/explorer";
 import { OPERATIONS } from "../../utils/explorer";
 import { splitSlug } from "../../utils/format";
-import { EXPLORER_PLATFORMS, platformIcon } from "../../utils/platforms";
+import { EXPLORER_PLATFORMS, platformIcon, type PlatformInfo } from "../../utils/platforms";
 import { jsonTokens, tokens } from "../../utils/tokens";
 
 const EXAMPLES = [
@@ -38,8 +38,8 @@ const route = useRoute();
 const { copied, copy } = useCopied();
 
 const operation = ref<Operation>("repo");
-const platform = ref<string>("github");
-const giteaHost = ref<string>("codeberg.org");
+const platform = ref<PlatformInfo["key"]>("github");
+const giteaHost = ref<(typeof GITEA_HOSTS)[number]>("codeberg.org");
 const slug = ref("nitrojs/nitro");
 const number = ref<number | "">("");
 const username = ref("pi0");
@@ -275,17 +275,16 @@ function apply(params: Readonly<Record<string, unknown>>) {
     typeof params.op === "string" && OPERATIONS.some((row) => row.key === params.op)
       ? (params.op as Operation)
       : "repo";
-  if (
-    typeof params.platform === "string" &&
-    EXPLORER_PLATFORMS.some((row) => row.key === params.platform)
-  ) {
-    platform.value = params.platform;
+  const known = EXPLORER_PLATFORMS.find((entry) => entry.key === params.platform);
+  if (known) {
+    platform.value = known.key;
   }
   if (typeof params.repo === "string" && params.repo) {
     slug.value = params.repo;
   }
-  if (typeof params.host === "string" && GITEA_HOSTS.some((row) => row === params.host)) {
-    giteaHost.value = params.host;
+  const host = GITEA_HOSTS.find((entry) => entry === params.host);
+  if (host) {
+    giteaHost.value = host;
   }
   if (typeof params.username === "string" && params.username) {
     username.value = params.username;

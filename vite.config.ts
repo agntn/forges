@@ -3,7 +3,7 @@ import { defineConfig } from "vite-plus";
 export default defineConfig({
   /**
    * One tsconfig for every transformed file. `test/docs-query.test.ts` loads a docs module, and
-   * `docs/tsconfig.json` extends `.nuxt` files that exist only after the docs install, which CI skips.
+   * `docs/tsconfig.json` extends `.nuxt` files only the docs install writes, which `test` skips.
    */
   tsconfig: "tsconfig.json",
   fmt: {
