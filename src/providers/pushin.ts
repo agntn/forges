@@ -65,28 +65,29 @@ function reviewCommentOf(
   raw: Readonly<PushinReviewComment>,
 ): ReviewComment {
   const id = String(raw.id);
-  const root = raw.in_reply_to_id === null ? id : String(raw.in_reply_to_id);
   return {
     ref: { forge: thread.forge, instance: thread.instance, thread, id },
     body: raw.body,
     ...(raw.user?.login ? { author: authorOf(thread, raw.user) } : {}),
     ...(raw.path === null ? {} : { path: raw.path }),
     ...(raw.line === null ? {} : { line: raw.line }),
-    ...(raw.in_reply_to_id === null ? {} : { inReplyTo: root }),
-    thread: { id: root, resolved: raw.resolved },
+    ...(raw.in_reply_to_id === null ? {} : { inReplyTo: String(raw.in_reply_to_id) }),
     createdAt: new Date(raw.created_at),
     url: raw.html_url,
     raw,
   };
 }
 
-/** Conversations with the first line of a range their root comment covers. */
-function withRanges(comments: readonly ReviewComment[]): ReviewConversation[] {
+/** Threads by their root comment, which holds the resolved flag and the start of a range. */
+function threadsOf(comments: readonly ReviewComment[]): ReviewConversation[] {
   return conversationsOf(comments).map((conversation) => {
-    const start = (conversation.comments[0]?.raw as PushinReviewComment | undefined)?.start_line;
-    return start === null || start === undefined
-      ? conversation
-      : { ...conversation, startLine: start };
+    const root = conversation.comments[0]?.raw as PushinReviewComment | undefined;
+    const start = root?.start_line;
+    return {
+      ...conversation,
+      resolved: root?.resolved ?? false,
+      ...(start === null || start === undefined ? {} : { startLine: start }),
+    };
   });
 }
 
@@ -135,7 +136,7 @@ export class PushinProvider extends ForgeBackedProvider {
         query: { per_page: COMMENT_PAGE, page },
       });
       comments.push(...(data ?? []).map((raw) => reviewCommentOf(thread, raw)));
-      if (parseLinkHeader(headers.get("Link")).next === undefined) return withRanges(comments);
+      if (parseLinkHeader(headers.get("Link")).next === undefined) return threadsOf(comments);
     }
     throw new ForgesError(
       `Pull request #${number} has more than ${MAX_COMMENT_PAGES * COMMENT_PAGE} inline comments`,

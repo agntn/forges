@@ -274,6 +274,23 @@ describe("PushinProvider review threads", () => {
     expect(urls(fetch)).toContain("/repos/pjullrich/pushin/pulls/9/comments?per_page=100&page=1");
   });
 
+  it("follows a reply to a reply back to the comment that opened the thread", async () => {
+    serve(
+      at(`${REPO}/pulls/9`, () => pull),
+      at(`${REPO}/pulls/9/comments`, () => [
+        inline(1, { resolved: true }),
+        inline(3, { in_reply_to_id: 1 }),
+        inline(4, { in_reply_to_id: 3 }),
+      ]),
+    );
+
+    const page = await provider().threads.list({ ...tracker, number: 9 }, { state: "all" });
+
+    expect(
+      page.items.map(({ id, isResolved, comments }) => [id, isResolved, comments.length]),
+    ).toEqual([["1", true, 3]]);
+  });
+
   it("reads every page of inline comments before grouping them", async () => {
     const fetch = serve(
       at(`${REPO}/pulls/9`, () => pull),
