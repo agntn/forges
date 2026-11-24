@@ -9,6 +9,7 @@ export type ContextPlatform =
   | "gitee"
   | "azure-devops"
   | "gitcafe"
+  | "pushin"
   | "artifacts";
 
 export const platformLabels: Record<ContextPlatform, string> = {
@@ -19,6 +20,7 @@ export const platformLabels: Record<ContextPlatform, string> = {
   gitee: "Gitee",
   "azure-devops": "Azure DevOps",
   gitcafe: "GitCafe",
+  pushin: "Pushin.eu",
   artifacts: "Cloudflare Artifacts",
 };
 
@@ -33,16 +35,23 @@ export interface ForgeRemote {
   repo: string;
 }
 
-/** The web host behind each provider's default API, the variable that moves it, its API path. */
-const endpoints: Partial<Record<ContextPlatform, { host: string; variable: string; api: RegExp }>> =
-  {
-    github: { host: "github.com", variable: "FORGES_GITHUB_BASE_URL", api: /\/api\/v3$/ },
-    gitlab: { host: "gitlab.com", variable: "FORGES_GITLAB_BASE_URL", api: /\/api\/v4$/ },
-    gitea: { host: "gitea.com", variable: "FORGES_GITEA_BASE_URL", api: /\/api\/v1$/ },
-    bitbucket: { host: "bitbucket.org", variable: "FORGES_BITBUCKET_BASE_URL", api: /\/2\.0$/ },
-    gitee: { host: "gitee.com", variable: "FORGES_GITEE_BASE_URL", api: /\/api\/v5$/ },
-    gitcafe: { host: "git.cafe", variable: "FORGES_GITCAFE_BASE_URL", api: /\/api$/ },
-  };
+/** Each provider's web host, the variable that moves it, its API path and its clone host. */
+const endpoints: Partial<
+  Record<ContextPlatform, { host: string; variable: string; api: RegExp; git?: string }>
+> = {
+  github: { host: "github.com", variable: "FORGES_GITHUB_BASE_URL", api: /\/api\/v3$/ },
+  gitlab: { host: "gitlab.com", variable: "FORGES_GITLAB_BASE_URL", api: /\/api\/v4$/ },
+  gitea: { host: "gitea.com", variable: "FORGES_GITEA_BASE_URL", api: /\/api\/v1$/ },
+  bitbucket: { host: "bitbucket.org", variable: "FORGES_BITBUCKET_BASE_URL", api: /\/2\.0$/ },
+  gitee: { host: "gitee.com", variable: "FORGES_GITEE_BASE_URL", api: /\/api\/v5$/ },
+  gitcafe: { host: "git.cafe", variable: "FORGES_GITCAFE_BASE_URL", api: /\/api$/ },
+  pushin: {
+    host: "pushin.eu",
+    variable: "FORGES_PUSHIN_BASE_URL",
+    api: /\/api\/v1$/,
+    git: "git.pushin.eu",
+  },
+};
 
 const azureHosts = new Set(["dev.azure.com", "ssh.dev.azure.com"]);
 
@@ -65,10 +74,12 @@ function endpointOf(location: Location): Endpoint | undefined {
   if (azureHosts.has(name) || name.endsWith(".visualstudio.com")) {
     return { platform: "azure-devops", prefix: "" };
   }
-  for (const [platform, { host: fallback, variable, api }] of Object.entries(endpoints)) {
+  for (const [platform, { host: fallback, variable, api, git }] of Object.entries(endpoints)) {
     const value = process.env[variable!];
     if (value === undefined || value === "") {
-      if (fallback === name) return { platform: platform as ContextPlatform, prefix: "" };
+      if (fallback === name || git === name) {
+        return { platform: platform as ContextPlatform, prefix: "" };
+      }
       continue;
     }
     if (!URL.canParse(value)) continue;

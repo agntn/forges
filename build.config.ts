@@ -18,6 +18,7 @@ export default defineBuildConfig({
         "./src/gitee.ts",
         "./src/azure-devops.ts",
         "./src/gitcafe.ts",
+        "./src/pushin.ts",
         "./src/artifacts.ts",
         "./src/provider.ts",
         "./src/types.ts",

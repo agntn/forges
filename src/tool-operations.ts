@@ -131,6 +131,7 @@ const baseUrlEnvByPlatform: Record<ForgesPlatform, string> = {
   gitee: "FORGES_GITEE_BASE_URL",
   "azure-devops": "FORGES_AZURE_DEVOPS_BASE_URL",
   gitcafe: "FORGES_GITCAFE_BASE_URL",
+  pushin: "FORGES_PUSHIN_BASE_URL",
   artifacts: "FORGES_ARTIFACTS_BASE_URL",
 };
 
@@ -174,6 +175,7 @@ const DEFAULT_API_HOSTS = [
   "gitee.com",
   "dev.azure.com",
   "git.cafe",
+  "pushin.eu",
   "api.cloudflare.com",
 ] as const;
 
@@ -262,6 +264,7 @@ const credentialSetup: Record<ForgesPlatform, Readonly<{ variable: string; login
   gitee: { variable: "GITEE_TOKEN" },
   "azure-devops": { variable: "AZURE_DEVOPS_EXT_PAT", login: "az devops login" },
   gitcafe: { variable: "CAFE_TOKEN", login: "cafe auth login" },
+  pushin: { variable: "PUSHIN_TOKEN", login: "pun login" },
   artifacts: {
     variable: "CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID",
     login: "cf auth login",
@@ -275,6 +278,7 @@ const loginCli = {
   gitea: "tea",
   "azure-devops": "az devops",
   gitcafe: "cafe",
+  pushin: "pun",
 } satisfies Record<Exclude<ForgesPlatform, "artifacts" | "bitbucket" | "gitee">, string>;
 
 function credentialSetupHint(platform: ForgesPlatform): string {

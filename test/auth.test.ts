@@ -29,6 +29,9 @@ const TOKEN_VARIABLES = [
   "CAFE_HOST",
   "CAFE_AUTH_FILE",
   "CAFE_CREDENTIAL_FILE",
+  "PUSHIN_TOKEN",
+  "PUSHIN_URL",
+  "PUN_CONFIG_DIR",
 ];
 
 let home: string;
@@ -169,6 +172,25 @@ describe("resolveToken", () => {
       token: "gct_env",
       source: "env",
       origin: "CAFE_TOKEN",
+    });
+  });
+
+  it("reads a Pushin token from PUSHIN_TOKEN, then from the login pun saved", () => {
+    config(
+      "pun/hosts.json",
+      JSON.stringify({ hosts: { "https://pushin.eu": { token: "pun_saved" } } }),
+    );
+    expect(resolveToken("pushin")).toEqual({
+      token: "pun_saved",
+      source: "config",
+      origin: "pun hosts.json",
+    });
+
+    vi.stubEnv("PUSHIN_TOKEN", "pun_env");
+    expect(resolveToken("pushin")).toEqual({
+      token: "pun_env",
+      source: "env",
+      origin: "PUSHIN_TOKEN",
     });
   });
 

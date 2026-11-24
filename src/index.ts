@@ -110,6 +110,9 @@ const providers: Record<ProviderPlatform, () => Promise<ProviderConstructor>> = 
   gitcafe: /* @__PURE__ */ lazy(
     /* @__PURE__ */ queued(() => import("./providers/gitcafe.ts").then((m) => m.GitCafeProvider)),
   ),
+  pushin: /* @__PURE__ */ lazy(
+    /* @__PURE__ */ queued(() => import("./providers/pushin.ts").then((m) => m.PushinProvider)),
+  ),
   artifacts: /* @__PURE__ */ lazy(
     /* @__PURE__ */ queued(() =>
       import("./providers/artifacts.ts").then((m) => m.ArtifactsProvider),
@@ -136,7 +139,7 @@ export async function createProvider(
 ): Promise<Provider> {
   if (!Object.hasOwn(providers, platform)) {
     throw new ForgesError(
-      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea, bitbucket, gitee, azure-devops, gitcafe, artifacts`,
+      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea, bitbucket, gitee, azure-devops, gitcafe, pushin, artifacts`,
       { platform },
     );
   }
@@ -195,6 +198,8 @@ function envHint(platform: string): string {
       return "AZURE_DEVOPS_EXT_PAT";
     case "gitcafe":
       return "CAFE_TOKEN";
+    case "pushin":
+      return "PUSHIN_TOKEN";
     default:
       return `${platform.toUpperCase()}_TOKEN`;
   }
@@ -213,6 +218,8 @@ function cliHint(platform: string): string | undefined {
       return "`az devops login`";
     case "gitcafe":
       return "`cafe auth login`";
+    case "pushin":
+      return "`pun login`";
     case "bitbucket":
     case "gitee":
       return undefined;

@@ -18,6 +18,7 @@ import { resolve as resolveGitCafe } from "@agntn/credentials/gitcafe";
 import { resolve as resolveGitee } from "@agntn/credentials/gitee";
 import { resolve as resolveGitHub } from "@agntn/credentials/github";
 import { resolve as resolveGitLab } from "@agntn/credentials/gitlab";
+import { resolve as resolvePushin } from "@agntn/credentials/pushin";
 import { CredentialsError } from "@agntn/credentials";
 import type { CloudflareCredential, CloudflareOptions } from "@agntn/credentials/cloudflare";
 import { AuthenticationError } from "./errors.ts";
@@ -29,7 +30,8 @@ export type Platform =
   | "bitbucket"
   | "gitee"
   | "azure-devops"
-  | "gitcafe";
+  | "gitcafe"
+  | "pushin";
 
 export interface AuthResult {
   token: string;
@@ -50,6 +52,7 @@ const resolvers = {
   gitee: resolveGitee,
   "azure-devops": resolveAzureDevOps,
   gitcafe: resolveGitCafe,
+  pushin: resolvePushin,
 } satisfies Record<Platform, unknown>;
 
 /**

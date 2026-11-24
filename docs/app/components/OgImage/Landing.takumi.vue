@@ -11,7 +11,7 @@ import { AGENT_TOOLS, WRITE_TOOLS } from "../../utils/tools";
 defineProps<{ title?: string; description?: string }>();
 
 const TAGLINE =
-  "GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, GitCafe and GitBucket behind one TypeScript provider. Same shapes, token found for you.";
+  "GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, GitCafe, Pushin.eu and GitBucket behind one TypeScript provider. Same shapes, token found for you.";
 
 /** The same three readouts as the hero, counted from the same platform table. */
 const METRICS = [
