@@ -2,7 +2,10 @@ import { createProvider, type Platform as ForgePlatform, type Provider } from "@
 import { createError } from "nuxt/server";
 
 /** The forges the explorer reads. The others stay off the docs worker. */
-export type Platform = Exclude<ForgePlatform, "bitbucket" | "gitee" | "azure-devops" | "gitcafe">;
+export type Platform = Exclude<
+  ForgePlatform,
+  "bitbucket" | "gitee" | "azure-devops" | "gitcafe" | "pushin"
+>;
 
 export const WORKER_PLATFORMS: readonly Platform[] = ["github", "gitlab", "gitea"];
 

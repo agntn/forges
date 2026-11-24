@@ -891,7 +891,7 @@ export abstract class ForgeBackedProvider<
     const ref = this.threadRef(forge, { ...pull, kind: "pull_request" });
     const [thread, conversations] = await Promise.allSettled([
       this.#readThread(forge, ref),
-      this.#readConversations(forge, ref),
+      this.readConversations(forge, ref),
     ]);
     if (thread.status === "rejected") throw thread.reason;
     if (conversations.status === "rejected") throw conversations.reason;
@@ -899,7 +899,7 @@ export abstract class ForgeBackedProvider<
   }
 
   /** The forge's own conversations where it has them; elsewhere every review is read, as a reply can land in a later one. */
-  async #readConversations(forge: Forge, ref: ThreadRef): Promise<ReviewConversation[]> {
+  protected async readConversations(forge: Forge, ref: ThreadRef): Promise<ReviewConversation[]> {
     const support = forge.capabilities.threads.reviewThreads;
     if (support === true || support === "emulated") {
       return Array.fromAsync(forge.threads.reviewThreads(ref, { perPage: 100 }));

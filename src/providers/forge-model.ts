@@ -339,9 +339,13 @@ function rootId(comment: ReviewComment, byId: ReadonlyMap<string, ReviewComment>
   return current.ref?.id ?? "";
 }
 
-/** Comments per conversation; lacking ids, a reply joins the comment its chain started from. */
+/** Every inline comment of the reviews, grouped by conversation. */
 export function reviewConversations(reviews: readonly Review[]): ReviewConversation[] {
-  const comments = reviews.flatMap((review) => review.comments || []);
+  return conversationsOf(reviews.flatMap((review) => review.comments || []));
+}
+
+/** Comments per conversation; lacking ids, a reply joins the comment its chain started from. */
+export function conversationsOf(comments: readonly ReviewComment[]): ReviewConversation[] {
   const byId = new Map(
     comments.flatMap((comment) => (comment.ref ? [[comment.ref.id, comment]] : [])),
   );

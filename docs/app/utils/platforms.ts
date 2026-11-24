@@ -9,6 +9,7 @@ export interface PlatformInfo {
     | "gitee"
     | "azure-devops"
     | "gitcafe"
+    | "pushin"
     | "artifacts";
   /** Page slug. GitBucket rides on the GitHub provider, Forgejo on Gitea. */
   readonly slug: string;
@@ -160,6 +161,23 @@ export const PLATFORMS: readonly PlatformInfo[] = [
     to: "/platforms/gitcafe",
   },
   {
+    key: "pushin",
+    slug: "pushin",
+    label: "Pushin.eu",
+    icon: "i-lucide-euro",
+    blurb: "GitHub shaped REST on pushin.eu/api/v1. The clones live next door on git.pushin.eu.",
+    host: "pushin.eu/api/v1",
+    envVars: ["PUSHIN_TOKEN"],
+    cli: "pun login",
+    configFile: "~/.config/pun/hosts.json",
+    authHeader: "Authorization: Bearer",
+    anonymousReads: "public repositories, 90 requests a window",
+    threads: "inline comments with their replies, resolvable",
+    codeSearch: "unsupported, explicit error",
+    templates: "none",
+    to: "/platforms/pushin",
+  },
+  {
     key: "github",
     slug: "gitbucket",
     label: "GitBucket",
@@ -203,7 +221,9 @@ export const PROVIDER_PLATFORMS = PLATFORMS.filter((platform) => platform.slug =
 /** What the docs worker reads; the rest want a token or an account it doesn't hold. */
 export const EXPLORER_PLATFORMS = PROVIDER_PLATFORMS.filter(
   (platform) =>
-    !["artifacts", "bitbucket", "gitee", "azure-devops", "gitcafe"].includes(platform.key),
+    !["artifacts", "bitbucket", "gitee", "azure-devops", "gitcafe", "pushin"].includes(
+      platform.key,
+    ),
 );
 
 const BY_SLUG = new Map(PLATFORMS.map((platform) => [platform.slug, platform]));

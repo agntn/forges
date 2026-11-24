@@ -364,6 +364,7 @@ describe("forges MCP server", () => {
             "gitee",
             "azure-devops",
             "gitcafe",
+            "pushin",
             "artifacts",
           ],
           default: "github",
@@ -2835,7 +2836,7 @@ describe("forges MCP server", () => {
 
     expect(response.isError).toBe(true);
     expect(text(response.content)).toBe(
-      "Invalid arguments at /platform: must be one of github, gitlab, gitea, bitbucket, gitee, azure-devops, gitcafe, artifacts",
+      "Invalid arguments at /platform: must be one of github, gitlab, gitea, bitbucket, gitee, azure-devops, gitcafe, pushin, artifacts",
     );
     expect(mocks.createProvider).not.toHaveBeenCalled();
   });

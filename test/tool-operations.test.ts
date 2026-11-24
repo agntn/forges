@@ -775,6 +775,16 @@ describe("configured provider", () => {
     );
   });
 
+  it("points a Pushin user at PUSHIN_TOKEN or the pun login", async () => {
+    mocks.credentialToken.current = null;
+
+    await expect(
+      createIssueComment({ platform: "pushin", repo: "pjullrich/pushin", number: 68, body: "hi" }),
+    ).rejects.toThrow(
+      "No auth token found for pushin. Set PUSHIN_TOKEN or log in with `pun login`.",
+    );
+  });
+
   it("resolves separately for each platform and endpoint", async () => {
     await getRepository({ platform: "github", owner: "agntn", repo: "forges" });
     await getRepository({ platform: "gitea", owner: "agntn", repo: "forges" });

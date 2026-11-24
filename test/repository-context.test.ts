@@ -34,6 +34,9 @@ describe("parseRemote", () => {
     ["git@bitbucket.org:team/repo.git", "bitbucket", "team", "repo"],
     ["https://gitee.com/openharmony/docs.git", "gitee", "openharmony", "docs"],
     ["https://git.cafe/versecafe/ashlar.git", "gitcafe", "versecafe", "ashlar"],
+    ["https://pushin.eu/pjullrich/pushin", "pushin", "pjullrich", "pushin"],
+    ["https://git.pushin.eu/pjullrich/pushin.git", "pushin", "pjullrich", "pushin"],
+    ["git@git.pushin.eu:pjullrich/pushin.git", "pushin", "pjullrich", "pushin"],
     ["https://dev.azure.com/acme/Web%20App/_git/site", "azure-devops", "acme/Web App", "site"],
     ["git@ssh.dev.azure.com:v3/acme/Web/site", "azure-devops", "acme/Web", "site"],
     ["https://acme.visualstudio.com/Web/_git/site", "azure-devops", "acme/Web", "site"],
@@ -77,6 +80,27 @@ describe("parseRemote", () => {
     expect(parseRemote("origin", url)).toBeUndefined();
     vi.stubEnv(variable, value);
     expect(parseRemote("origin", url)).toMatchObject({ platform });
+  });
+
+  it.each(["https://pushin.eu/api/v1", "https://pushin.eu"])(
+    "keeps Pushin.eu clones on git.pushin.eu with FORGES_PUSHIN_BASE_URL=%s",
+    (value) => {
+      vi.stubEnv("FORGES_PUSHIN_BASE_URL", value);
+      for (const url of [
+        "https://git.pushin.eu/pjullrich/pushin.git",
+        "git@git.pushin.eu:pjullrich/pushin.git",
+      ]) {
+        expect(parseRemote("origin", url)).toMatchObject({
+          platform: "pushin",
+          owner: "pjullrich",
+        });
+      }
+    },
+  );
+
+  it("drops git.pushin.eu once Pushin.eu points at another instance", () => {
+    vi.stubEnv("FORGES_PUSHIN_BASE_URL", "https://pushin.example.test/api/v1");
+    expect(parseRemote("origin", "git@git.pushin.eu:pjullrich/pushin.git")).toBeUndefined();
   });
 
   it("drops a public forge the tools no longer call", () => {

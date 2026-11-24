@@ -13,6 +13,7 @@ import { BitbucketProvider } from "../src/providers/bitbucket.ts";
 import { GiteeProvider } from "../src/providers/gitee.ts";
 import { AzureDevOpsProvider } from "../src/providers/azure-devops.ts";
 import { GitCafeProvider } from "../src/providers/gitcafe.ts";
+import { PushinProvider } from "../src/providers/pushin.ts";
 import { AuthenticationError, ForgesError } from "../src/errors.ts";
 
 describe("createProvider factory", () => {
@@ -25,6 +26,7 @@ describe("createProvider factory", () => {
     ["bitbucket", BitbucketProvider],
     ["gitee", GiteeProvider],
     ["gitcafe", GitCafeProvider],
+    ["pushin", PushinProvider],
   ] as const)("builds the %s provider", async (platform, ProviderClass) => {
     expect(await createProvider(platform, baseConfig)).toBeInstanceOf(ProviderClass);
   });
@@ -66,6 +68,7 @@ describe("createProvider factory", () => {
       "Set AZURE_DEVOPS_EXT_PAT, pass { token: '...' }, or log in with `az devops login`.",
     ],
     ["gitcafe", "Set CAFE_TOKEN, pass { token: '...' }, or log in with `cafe auth login`."],
+    ["pushin", "Set PUSHIN_TOKEN, pass { token: '...' }, or log in with `pun login`."],
   ] as const)("tells a %s user only about logins that exist", async (platform, hint) => {
     const auth = await import("../src/auth.ts");
     const spy = vi.spyOn(auth, "resolveToken").mockReturnValue(null);
@@ -182,6 +185,7 @@ describe("entry points", () => {
     ["gitlab", () => import("../src/gitlab.ts"), { GitLabProvider, Provider }],
     ["gitea", () => import("../src/gitea.ts"), { GiteaProvider, Provider }],
     ["gitcafe", () => import("../src/gitcafe.ts"), { GitCafeProvider, Provider }],
+    ["pushin", () => import("../src/pushin.ts"), { PushinProvider, Provider }],
     ["artifacts", () => import("../src/artifacts.ts"), { ArtifactsProvider, Provider }],
   ])("the %s sub-path exports its classes and nothing else", async (_, load, classes) => {
     expect({ ...(await load()) }).toEqual(classes);
@@ -197,6 +201,7 @@ describe("entry point types", () => {
     "bitbucket",
     "azure-devops",
     "gitcafe",
+    "pushin",
     "artifacts",
   ] as const;
   const exported = new Map<string, string[]>();

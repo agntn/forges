@@ -15,7 +15,7 @@ Docs and an explorer for the same calls: [forges.agntn.dev](https://forges.agntn
 
 ## ✨ Features
 
-- 🧩 **One `Provider` for every forge.** GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, GitCafe and GitBucket. Same `repos.get`, same `PullRequest`, same `Thread`.
+- 🧩 **One `Provider` for every forge.** GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, GitCafe, Pushin.eu and GitBucket. Same `repos.get`, same `PullRequest`, same `Thread`.
 - 🔑 **It finds the token.** Explicit value, then env, then `gh` or `glab`, then the CLI config file. First hit wins.
 - 📦 **Loads one platform.** `createProvider("github")` is async. It imports GitHub and leaves GitLab on disk.
 - 🆔 **IDs are strings.** Even when the API sent a number. A count the forge withholds is missing, not `0`.
@@ -149,6 +149,7 @@ Replace the sample `mergeCommit` with the forge's actual merge or squash SHA for
 | [Gitee](https://forges.agntn.dev/platforms/gitee)                    | `gitee`              | `Authorization: token`  | none                          | none                               |
 | [Azure DevOps](https://forges.agntn.dev/platforms/azure-devops)      | `azure-devops`       | `Basic` with a PAT      | file threads, resolvable      | none                               |
 | [GitCafe](https://forges.agntn.dev/platforms/gitcafe)                | `gitcafe`            | `Bearer` with `gct_`    | inline comments, resolvable   | none                               |
+| [Pushin.eu](https://forges.agntn.dev/platforms/pushin)               | `pushin`             | `Bearer`                | inline comments, resolvable   | none                               |
 | [GitBucket](https://forges.agntn.dev/platforms/gitbucket)            | `github` + `baseURL` | `Authorization: token`  | none                          | none                               |
 | [Cloudflare Artifacts](https://forges.agntn.dev/platforms/artifacts) | `artifacts`          | `Authorization: Bearer` | none                          | none                               |
 
