@@ -68,6 +68,12 @@ interface Endpoint {
   prefix: string;
 }
 
+/** Whether the tools call the public instance, unset or set to its own host. */
+function servesDefault(value: string | undefined, host: string): boolean {
+  if (value === undefined || value === "") return true;
+  return URL.canParse(value) && bareHost(new URL(value).hostname) === host;
+}
+
 /** The forge the tools would actually call; a web remote on another port is another forge. */
 function endpointOf(location: Location): Endpoint | undefined {
   const name = bareHost(location.host);
@@ -76,10 +82,11 @@ function endpointOf(location: Location): Endpoint | undefined {
   }
   for (const [platform, { host: fallback, variable, api, git }] of Object.entries(endpoints)) {
     const value = process.env[variable!];
+    if (git === name && servesDefault(value, fallback!)) {
+      return { platform: platform as ContextPlatform, prefix: "" };
+    }
     if (value === undefined || value === "") {
-      if (fallback === name || git === name) {
-        return { platform: platform as ContextPlatform, prefix: "" };
-      }
+      if (fallback === name) return { platform: platform as ContextPlatform, prefix: "" };
       continue;
     }
     if (!URL.canParse(value)) continue;

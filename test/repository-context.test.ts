@@ -82,6 +82,27 @@ describe("parseRemote", () => {
     expect(parseRemote("origin", url)).toMatchObject({ platform });
   });
 
+  it.each(["https://pushin.eu/api/v1", "https://pushin.eu"])(
+    "keeps Pushin.eu clones on git.pushin.eu with FORGES_PUSHIN_BASE_URL=%s",
+    (value) => {
+      vi.stubEnv("FORGES_PUSHIN_BASE_URL", value);
+      for (const url of [
+        "https://git.pushin.eu/pjullrich/pushin.git",
+        "git@git.pushin.eu:pjullrich/pushin.git",
+      ]) {
+        expect(parseRemote("origin", url)).toMatchObject({
+          platform: "pushin",
+          owner: "pjullrich",
+        });
+      }
+    },
+  );
+
+  it("drops git.pushin.eu once Pushin.eu points at another instance", () => {
+    vi.stubEnv("FORGES_PUSHIN_BASE_URL", "https://pushin.example.test/api/v1");
+    expect(parseRemote("origin", "git@git.pushin.eu:pjullrich/pushin.git")).toBeUndefined();
+  });
+
   it("drops a public forge the tools no longer call", () => {
     vi.stubEnv("FORGES_GITHUB_BASE_URL", "https://github.example.com/api/v3");
     expect(parseRemote("origin", "git@github.com:agntn/forges.git")).toBeUndefined();
