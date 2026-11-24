@@ -211,13 +211,40 @@ describe("PushinProvider issues", () => {
   });
 });
 
+describe("PushinProvider pull requests", () => {
+  const merged = {
+    ...pull,
+    state: "closed",
+    merged: true,
+    merged_at: "2026-11-21T09:00:00Z",
+    merge_commit_sha: "0549abd44267f5eb5c6e219fb9ab43b7129aa470",
+  };
+
+  it("keeps the merge commit of a merged pull request on get and list", async () => {
+    serve(
+      at(`${REPO}/pulls/9`, () => merged),
+      at(`${REPO}/pulls`, () => [merged, { ...pull, number: 10, merge_commit_sha: "abc" }]),
+    );
+
+    await expect(provider().pullRequests.get({ ...tracker, number: 9 })).resolves.toMatchObject({
+      merged: true,
+      mergeCommitSha: "0549abd44267f5eb5c6e219fb9ab43b7129aa470",
+    });
+    const page = await provider().pullRequests.list(tracker, { state: "all" });
+    expect(page.items.map(({ number, mergeCommitSha }) => [number, mergeCommitSha])).toEqual([
+      [9, "0549abd44267f5eb5c6e219fb9ab43b7129aa470"],
+      [10, ""],
+    ]);
+  });
+});
+
 describe("PushinProvider review threads", () => {
   it("groups inline comments without a review, replies included, by their root", async () => {
     const fetch = serve(
       at(`${REPO}/pulls/9`, () => pull),
       at(`${REPO}/pulls/9/comments`, () => [
         inline(1, { resolved: true }),
-        inline(2, { path: "README.md", line: 3 }),
+        inline(2, { path: "README.md", line: 5, start_line: 3 }),
         inline(3, { in_reply_to_id: 1, resolved: true }),
       ]),
     );
@@ -230,12 +257,19 @@ describe("PushinProvider review threads", () => {
         isResolved: true,
         path: "lib/pushin/repo.ex",
         line: 12,
+        startLine: null,
         comments: [
           expect.objectContaining({ id: "1", body: "comment 1", author: { login: "krios" } }),
           expect.objectContaining({ id: "3", body: "comment 3" }),
         ],
       }),
-      expect.objectContaining({ id: "2", isResolved: false, path: "README.md", line: 3 }),
+      expect.objectContaining({
+        id: "2",
+        isResolved: false,
+        path: "README.md",
+        line: 5,
+        startLine: 3,
+      }),
     ]);
     expect(urls(fetch)).toContain("/repos/pjullrich/pushin/pulls/9/comments?per_page=100&page=1");
   });

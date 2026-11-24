@@ -5,7 +5,13 @@
  * - Commits, contents, CI runs, tags and other people's repositories have no REST route
  */
 
-import type { Actor, ForgeProvider as Forge, ReviewComment, ThreadRef } from "forges";
+import type {
+  Actor,
+  ForgeProvider as Forge,
+  ReviewComment,
+  Thread as ForgeThread,
+  ThreadRef,
+} from "forges";
 import { pushin } from "forges/pushin";
 
 import { ForgeBackedProvider, type ForgeOptions } from "./forge.ts";
@@ -14,7 +20,7 @@ import { encodePathSegment, normalizeApiBaseURL } from "./base-url.ts";
 import { ForgesError } from "../errors.ts";
 import { parseLinkHeader } from "../pagination.ts";
 import { assertProviderConfig } from "../provider-config.ts";
-import type { ProviderConfig } from "../types.ts";
+import type { ProviderConfig, PullRequest } from "../types.ts";
 
 const PLATFORM = "pushin";
 
@@ -31,11 +37,17 @@ interface PushinReviewComment {
   user: { id?: number; login: string | null } | null;
   path: string | null;
   line: number | null;
+  start_line: number | null;
   side: "LEFT" | "RIGHT" | null;
   in_reply_to_id: number | null;
   resolved: boolean;
   html_url: string;
   created_at: string;
+}
+
+/** The part of a pull request payload the shared model drops. */
+interface PushinPull {
+  merge_commit_sha?: string | null;
 }
 
 /** An imported author has no id, so the login stands in. */
@@ -68,6 +80,16 @@ function reviewCommentOf(
   };
 }
 
+/** Conversations with the first line of a range their root comment covers. */
+function withRanges(comments: readonly ReviewComment[]): ReviewConversation[] {
+  return conversationsOf(comments).map((conversation) => {
+    const start = (conversation.comments[0]?.raw as PushinReviewComment | undefined)?.start_line;
+    return start === null || start === undefined
+      ? conversation
+      : { ...conversation, startLine: start };
+  });
+}
+
 /** Pushin.eu on the shared `forges` mapping, threads read from inline comments. */
 export class PushinProvider extends ForgeBackedProvider {
   /**
@@ -90,6 +112,13 @@ export class PushinProvider extends ForgeBackedProvider {
     return pushin(options) as Forge;
   }
 
+  /** `forges` keeps `merge_commit_sha` in `raw` alone. */
+  protected override mapPullRequest(thread: never): PullRequest {
+    const mapped = super.mapPullRequest(thread);
+    const sha = ((thread as ForgeThread).raw as PushinPull).merge_commit_sha;
+    return mapped.merged && sha ? { ...mapped, mergeCommitSha: sha } : mapped;
+  }
+
   /** Pushin.eu leaves standalone inline comments out of every review. */
   protected override async readConversations(
     _forge: Forge,
@@ -106,7 +135,7 @@ export class PushinProvider extends ForgeBackedProvider {
         query: { per_page: COMMENT_PAGE, page },
       });
       comments.push(...(data ?? []).map((raw) => reviewCommentOf(thread, raw)));
-      if (parseLinkHeader(headers.get("Link")).next === undefined) return conversationsOf(comments);
+      if (parseLinkHeader(headers.get("Link")).next === undefined) return withRanges(comments);
     }
     throw new ForgesError(
       `Pull request #${number} has more than ${MAX_COMMENT_PAGES * COMMENT_PAGE} inline comments`,
