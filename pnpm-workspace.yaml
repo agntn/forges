@@ -42,6 +42,7 @@ catalogs:
     shiki: 4.5.0
     typebox: 1.4.7
     typescript: 5.9.3
+    vue-tsc: 3.3.14
     wrangler: 4.152.0
 
 cleanupUnusedCatalogs: true

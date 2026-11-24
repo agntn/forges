@@ -4,7 +4,7 @@ import { createError } from "nuxt/server";
 /** The forges the explorer reads. The others stay off the docs worker. */
 export type Platform = Exclude<ForgePlatform, "bitbucket" | "gitee" | "azure-devops" | "gitcafe">;
 
-export const PLATFORMS: readonly Platform[] = ["github", "gitlab", "gitea"];
+export const WORKER_PLATFORMS: readonly Platform[] = ["github", "gitlab", "gitea"];
 
 /** The token env vars per platform, in the order `resolveToken()` reads them. */
 const TOKEN_ENV: Record<Platform, readonly string[]> = {

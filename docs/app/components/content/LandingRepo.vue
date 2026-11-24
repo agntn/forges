@@ -99,7 +99,6 @@ const runs = computed(() => {
       key: run.id,
       branch: run.branch,
       sha: run.revision.slice(0, 7),
-      status: run.status,
       badge:
         run.status !== "completed"
           ? { color: "primary" as const, variant: "outline" as const, label: run.status }
@@ -125,7 +124,6 @@ const runs = computed(() => {
       key: `empty-${rows.length}`,
       branch: "",
       sha: "",
-      status: "",
       badge: { color: "neutral", variant: "outline", label: "" },
       url: "",
       empty: true,

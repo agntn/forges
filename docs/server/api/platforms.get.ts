@@ -10,5 +10,5 @@ export interface PlatformsAnswer {
 /** The platforms as the worker sees them; `authenticated` says whether the worker holds a token, nothing more. */
 export default defineEventHandler((event): PlatformsAnswer => {
   markPublic(event, TTL.platforms);
-  return { version, platforms: PLATFORMS.map(platformStatus) };
+  return { version, platforms: WORKER_PLATFORMS.map(platformStatus) };
 });
