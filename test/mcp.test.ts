@@ -2262,6 +2262,21 @@ describe("forges MCP server", () => {
     expect(mocks.repos.get).not.toHaveBeenCalled();
   });
 
+  it("drops a write cancelled while the executors load", async () => {
+    const create = forgesTools().find((tool) => tool.name === "forges_issues_create")!;
+    const cancel = new AbortController();
+
+    const call = invokeTool(
+      create,
+      { repo: "agntn/forges", title: "Bug", body: "It broke." },
+      { signal: cancel.signal },
+    );
+    cancel.abort();
+
+    await expect(call).rejects.toMatchObject({ name: "AbortError" });
+    expect(mocks.issues.create).not.toHaveBeenCalled();
+  });
+
   it("waits out a cancelled write, since the host may already have it", async () => {
     const pending = Promise.withResolvers<{ id: string; number: number; title: string }>();
     mocks.issues.create.mockReturnValue(pending.promise);
