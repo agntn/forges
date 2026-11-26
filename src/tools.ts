@@ -1,6 +1,5 @@
-import { defineTool, type ToolDefinition } from "@agntn/tools";
+import { defineTool, lazy, type ToolDefinition } from "@agntn/tools";
 
-import { lazy } from "../extensions/shared/lazy.ts";
 import {
   toolEffects,
   type ForgesToolName,
@@ -35,8 +34,11 @@ function effect(name: ForgesToolName): (typeof hostEffects)[ToolEffect] {
 }
 
 /** Runs one executor; a failure from outside a provider loses its endpoint on the way out. */
-async function call<T>(run: (operations: Operations) => Promise<T>): Promise<T> {
-  const operations = await loadOperations();
+async function call<T>(
+  signal: AbortSignal | undefined,
+  run: (operations: Operations) => Promise<T>,
+): Promise<T> {
+  const operations = await loadOperations(signal);
   try {
     return await run(operations);
   } catch (error) {
@@ -113,7 +115,8 @@ function defineTools(): ToolDefinition[] {
         "List repositories through GitHub, GitLab, Gitea, Bitbucket, or Cloudflare Artifacts.",
       ...effect("forges_repos_list"),
       input: schemas.listRepositoriesParameters,
-      execute: (args) => call((operations) => operations.listRepositories(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.listRepositories(args)),
     }),
     defineTool({
       name: "forges_repos_get",
@@ -129,7 +132,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_repos_get"),
       input: schemas.repositoryParameters,
-      execute: (args) => call((operations) => operations.getRepository(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.getRepository(args)),
     }),
     defineTool({
       name: "forges_repos_contents",
@@ -139,7 +142,8 @@ function defineTools(): ToolDefinition[] {
       snippet: "Read a file or list a directory of a remote repository without cloning it.",
       ...effect("forges_repos_contents"),
       input: schemas.repositoryContentsParameters,
-      execute: (args) => call((operations) => operations.readRepositoryContents(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.readRepositoryContents(args)),
     }),
     defineTool({
       name: "forges_repos_tags",
@@ -149,7 +153,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "List repository tags from GitHub, GitLab, Gitea, or Bitbucket.",
       ...effect("forges_repos_tags"),
       input: schemas.listTagsParameters,
-      execute: (args) => call((operations) => operations.listTags(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.listTags(args)),
     }),
     defineTool({
       name: "forges_repos_tree",
@@ -162,7 +166,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_repos_tree"),
       input: schemas.listTreeParameters,
-      execute: (args) => call((operations) => operations.listRepositoryTree(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.listRepositoryTree(args)),
     }),
     defineTool({
       name: "forges_contribution_templates_list",
@@ -175,7 +180,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_contribution_templates_list"),
       input: schemas.listContributionTemplatesParameters,
-      execute: (args) => call((operations) => operations.listContributionTemplates(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.listContributionTemplates(args)),
     }),
     defineTool({
       name: "forges_contribution_templates_get",
@@ -185,7 +191,8 @@ function defineTools(): ToolDefinition[] {
       snippet: "Read one issue or pull-request template in full.",
       ...effect("forges_contribution_templates_get"),
       input: schemas.contributionTemplateParameters,
-      execute: (args) => call((operations) => operations.getContributionTemplate(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.getContributionTemplate(args)),
     }),
     defineTool({
       name: "forges_code_search",
@@ -195,7 +202,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "Search repository code on GitHub or GitLab.",
       ...effect("forges_code_search"),
       input: schemas.codeSearchParameters,
-      execute: (args) => call((operations) => operations.searchCode(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.searchCode(args)),
     }),
     defineTool({
       name: "forges_ci_runs_list",
@@ -205,7 +212,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "Read CI runs from GitHub Actions, GitLab pipelines, or Gitea Actions.",
       ...effect("forges_ci_runs_list"),
       input: schemas.listCiRunsParameters,
-      execute: (args) => call((operations) => operations.listCiRuns(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.listCiRuns(args)),
     }),
     defineTool({
       name: "forges_ci_jobs_list",
@@ -215,7 +222,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "List the jobs and steps of one CI run to find the one that failed.",
       ...effect("forges_ci_jobs_list"),
       input: schemas.listCiJobsParameters,
-      execute: (args) => call((operations) => operations.listCiJobs(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.listCiJobs(args)),
     }),
     defineTool({
       name: "forges_ci_jobs_log",
@@ -225,7 +232,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "Read why a CI job failed from its log, failing step first.",
       ...effect("forges_ci_jobs_log"),
       input: schemas.ciJobLogParameters,
-      execute: (args) => call((operations) => operations.readCiJobLog(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.readCiJobLog(args)),
     }),
     defineTool({
       name: "forges_commits_search",
@@ -235,7 +242,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "Find commits without knowing their repository first.",
       ...effect("forges_commits_search"),
       input: schemas.commitSearchParameters,
-      execute: (args) => call((operations) => operations.searchCommits(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.searchCommits(args)),
     }),
     defineTool({
       name: "forges_commits_list",
@@ -246,7 +253,7 @@ function defineTools(): ToolDefinition[] {
         "Read repository commit history from GitHub, GitLab, Gitea, Bitbucket, or Cloudflare Artifacts.",
       ...effect("forges_commits_list"),
       input: schemas.listCommitsParameters,
-      execute: (args) => call((operations) => operations.listCommits(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.listCommits(args)),
     }),
     defineTool({
       name: "forges_commits_compare",
@@ -257,7 +264,7 @@ function defineTools(): ToolDefinition[] {
         "Compare two branches, tags, or commits on GitHub, GitLab, or Gitea without a checkout.",
       ...effect("forges_commits_compare"),
       input: schemas.compareCommitsParameters,
-      execute: (args) => call((operations) => operations.compareCommits(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.compareCommits(args)),
     }),
     defineTool({
       name: "forges_commits_get",
@@ -271,7 +278,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_commits_get"),
       input: schemas.commitParameters,
-      execute: (args) => call((operations) => operations.getCommit(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.getCommit(args)),
     }),
     defineTool({
       name: "forges_commits_checks",
@@ -290,7 +297,7 @@ function defineTools(): ToolDefinition[] {
       ...effect("forges_commits_checks"),
       input: schemas.listCommitChecksParameters,
       execute: (args, { signal, progress }) =>
-        call((operations) => operations.listCommitChecks(args, { signal, progress })),
+        call(signal, (operations) => operations.listCommitChecks(args, { signal, progress })),
     }),
     defineTool({
       name: "forges_commits_patch",
@@ -300,7 +307,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "Read code changes from one known commit without materializing an unbounded diff.",
       ...effect("forges_commits_patch"),
       input: schemas.commitPatchParameters,
-      execute: (args) => call((operations) => operations.readCommitPatch(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.readCommitPatch(args)),
     }),
     defineTool({
       name: "forges_releases_list",
@@ -310,7 +317,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "List releases from GitHub, GitLab, or Gitea.",
       ...effect("forges_releases_list"),
       input: schemas.listReleasesParameters,
-      execute: (args) => call((operations) => operations.listReleases(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.listReleases(args)),
     }),
     defineTool({
       name: "forges_releases_get",
@@ -320,7 +327,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "Read one release by tag from GitHub, GitLab, or Gitea.",
       ...effect("forges_releases_get"),
       input: schemas.releaseParameters,
-      execute: (args) => call((operations) => operations.getRelease(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.getRelease(args)),
     }),
     defineTool({
       name: "forges_releases_create",
@@ -333,7 +340,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_releases_create"),
       input: schemas.createReleaseParameters,
-      execute: (args) => call((operations) => operations.createRelease(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.createRelease(args)),
     }),
     defineTool({
       name: "forges_releases_update",
@@ -346,7 +353,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_releases_update"),
       input: schemas.updateReleaseParameters,
-      execute: (args) => call((operations) => operations.updateRelease(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.updateRelease(args)),
     }),
     defineTool({
       name: "forges_issues_list",
@@ -356,7 +363,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "List repository issues across GitHub, GitLab, or Gitea.",
       ...effect("forges_issues_list"),
       input: schemas.listRepositoryItemsParameters,
-      execute: (args) => call((operations) => operations.listIssues(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.listIssues(args)),
     }),
     defineTool({
       name: "forges_issues_search_global",
@@ -365,7 +372,8 @@ function defineTools(): ToolDefinition[] {
       snippet: "Find issues across an owner's repositories, filtered by label, state or author.",
       ...effect("forges_issues_search_global"),
       input: schemas.globalIssueSearchParameters,
-      execute: (args) => call((operations) => operations.searchIssuesGlobal(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.searchIssuesGlobal(args)),
     }),
     defineTool({
       name: "forges_issues_search",
@@ -374,7 +382,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "Search issues inside one GitHub, GitLab, or Gitea repository.",
       ...effect("forges_issues_search"),
       input: schemas.searchRepositoryItemsParameters,
-      execute: (args) => call((operations) => operations.searchIssues(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.searchIssues(args)),
     }),
     defineTool({
       name: "forges_issues_get",
@@ -387,7 +395,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_issues_get"),
       input: schemas.issueParameters,
-      execute: (args) => call((operations) => operations.getIssue(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.getIssue(args)),
     }),
     defineTool({
       name: "forges_issues_comments",
@@ -397,7 +405,8 @@ function defineTools(): ToolDefinition[] {
       snippet: "Read the discussion under an issue on GitHub, GitLab, or Gitea.",
       ...effect("forges_issues_comments"),
       input: schemas.listIssueCommentsParameters,
-      execute: (args) => call((operations) => operations.listIssueComments(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.listIssueComments(args)),
     }),
     defineTool({
       name: "forges_issues_comments_get",
@@ -407,7 +416,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "Read one issue comment in full on GitHub, GitLab, or Gitea.",
       ...effect("forges_issues_comments_get"),
       input: schemas.issueCommentParameters,
-      execute: (args) => call((operations) => operations.getIssueComment(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.getIssueComment(args)),
     }),
     defineTool({
       name: "forges_issues_reactions",
@@ -417,7 +426,8 @@ function defineTools(): ToolDefinition[] {
       snippet: "Read the reactions on an issue or its comments on GitHub, GitLab, or Gitea.",
       ...effect("forges_issues_reactions"),
       input: schemas.listReactionsParameters,
-      execute: (args) => call((operations) => operations.listIssueReactions(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.listIssueReactions(args)),
     }),
     defineTool({
       name: "forges_issues_events",
@@ -427,7 +437,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "Read an issue's timeline on GitHub, GitLab, or Gitea.",
       ...effect("forges_issues_events"),
       input: schemas.listIssueEventsParameters,
-      execute: (args) => call((operations) => operations.listIssueEvents(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.listIssueEvents(args)),
     }),
     defineTool({
       name: "forges_issues_comments_create",
@@ -440,7 +450,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_issues_comments_create"),
       input: schemas.createIssueCommentParameters,
-      execute: (args) => call((operations) => operations.createIssueComment(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.createIssueComment(args)),
     }),
     defineTool({
       name: "forges_issues_comments_update",
@@ -453,7 +464,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_issues_comments_update"),
       input: schemas.updateIssueCommentParameters,
-      execute: (args) => call((operations) => operations.updateIssueComment(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.updateIssueComment(args)),
     }),
     defineTool({
       name: "forges_issues_comments_delete",
@@ -466,7 +478,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_issues_comments_delete"),
       input: schemas.deleteIssueCommentParameters,
-      execute: (args) => call((operations) => operations.deleteIssueComment(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.deleteIssueComment(args)),
     }),
     defineTool({
       name: "forges_issues_fields",
@@ -476,7 +489,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "See which issue types and fields a GitHub repository takes.",
       ...effect("forges_issues_fields"),
       input: schemas.issuesFieldsParameters,
-      execute: (args) => call((operations) => operations.getIssueFields(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.getIssueFields(args)),
     }),
     defineTool({
       name: "forges_issues_create",
@@ -489,7 +502,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_issues_create"),
       input: schemas.createIssueParameters,
-      execute: (args) => call((operations) => operations.createIssue(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.createIssue(args)),
     }),
     defineTool({
       name: "forges_issues_update",
@@ -502,7 +515,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_issues_update"),
       input: schemas.updateIssueParameters,
-      execute: (args) => call((operations) => operations.updateIssue(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.updateIssue(args)),
     }),
     defineTool({
       name: "forges_issues_sub_issues",
@@ -512,7 +525,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "Read the sub-issues of a GitHub issue.",
       ...effect("forges_issues_sub_issues"),
       input: schemas.listSubIssuesParameters,
-      execute: (args) => call((operations) => operations.listSubIssues(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.listSubIssues(args)),
     }),
     defineTool({
       name: "forges_issues_sub_issues_add",
@@ -525,7 +538,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_issues_sub_issues_add"),
       input: schemas.addSubIssueParameters,
-      execute: (args) => call((operations) => operations.addSubIssue(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.addSubIssue(args)),
     }),
     defineTool({
       name: "forges_issues_sub_issues_remove",
@@ -538,7 +551,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_issues_sub_issues_remove"),
       input: schemas.removeSubIssueParameters,
-      execute: (args) => call((operations) => operations.removeSubIssue(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.removeSubIssue(args)),
     }),
     defineTool({
       name: "forges_pull_requests_list",
@@ -548,7 +561,8 @@ function defineTools(): ToolDefinition[] {
       snippet: "List repository pull requests across GitHub, GitLab, Gitea, or Bitbucket.",
       ...effect("forges_pull_requests_list"),
       input: schemas.listRepositoryItemsParameters,
-      execute: (args) => call((operations) => operations.listPullRequests(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.listPullRequests(args)),
     }),
     defineTool({
       name: "forges_pull_requests_search_global",
@@ -564,7 +578,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_pull_requests_search_global"),
       input: schemas.globalPullRequestSearchParameters,
-      execute: (args) => call((operations) => operations.searchPullRequestsGlobal(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.searchPullRequestsGlobal(args)),
     }),
     defineTool({
       name: "forges_pull_requests_search",
@@ -573,7 +588,8 @@ function defineTools(): ToolDefinition[] {
       snippet: "Search pull requests inside one GitHub, GitLab, or Gitea repository.",
       ...effect("forges_pull_requests_search"),
       input: schemas.searchRepositoryItemsParameters,
-      execute: (args) => call((operations) => operations.searchPullRequests(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.searchPullRequests(args)),
     }),
     defineTool({
       name: "forges_pull_requests_get",
@@ -587,7 +603,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_pull_requests_get"),
       input: schemas.pullRequestParameters,
-      execute: (args) => call((operations) => operations.getPullRequest(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.getPullRequest(args)),
     }),
     defineTool({
       name: "forges_pull_requests_files",
@@ -597,7 +613,8 @@ function defineTools(): ToolDefinition[] {
       snippet: "Read changed-file paths and counts for a pull request.",
       ...effect("forges_pull_requests_files"),
       input: schemas.listPullRequestFilesParameters,
-      execute: (args) => call((operations) => operations.listPullRequestFiles(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.listPullRequestFiles(args)),
     }),
     defineTool({
       name: "forges_pull_requests_checks",
@@ -613,7 +630,7 @@ function defineTools(): ToolDefinition[] {
       ...effect("forges_pull_requests_checks"),
       input: schemas.listPullRequestChecksParameters,
       execute: (args, { signal, progress }) =>
-        call((operations) => operations.listPullRequestChecks(args, { signal, progress })),
+        call(signal, (operations) => operations.listPullRequestChecks(args, { signal, progress })),
     }),
     defineTool({
       name: "forges_pull_requests_reviews",
@@ -626,7 +643,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_pull_requests_reviews"),
       input: schemas.listPullRequestReviewsParameters,
-      execute: (args) => call((operations) => operations.listPullRequestReviews(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.listPullRequestReviews(args)),
     }),
     defineTool({
       name: "forges_pull_requests_reviews_get",
@@ -639,7 +657,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_pull_requests_reviews_get"),
       input: schemas.pullRequestReviewParameters,
-      execute: (args) => call((operations) => operations.getPullRequestReview(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.getPullRequestReview(args)),
     }),
     defineTool({
       name: "forges_pull_requests_comments",
@@ -653,7 +672,9 @@ function defineTools(): ToolDefinition[] {
       ...effect("forges_pull_requests_comments"),
       input: schemas.listPullRequestCommentsParameters,
       execute: (args, { signal, progress }) =>
-        call((operations) => operations.listPullRequestComments(args, { signal, progress })),
+        call(signal, (operations) =>
+          operations.listPullRequestComments(args, { signal, progress }),
+        ),
     }),
     defineTool({
       name: "forges_pull_requests_comments_get",
@@ -664,7 +685,8 @@ function defineTools(): ToolDefinition[] {
         "Read one pull-request conversation comment in full on GitHub, GitLab, Gitea, or Bitbucket.",
       ...effect("forges_pull_requests_comments_get"),
       input: schemas.commentParameters,
-      execute: (args) => call((operations) => operations.getPullRequestComment(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.getPullRequestComment(args)),
     }),
     defineTool({
       name: "forges_pull_requests_reactions",
@@ -678,7 +700,9 @@ function defineTools(): ToolDefinition[] {
       ...effect("forges_pull_requests_reactions"),
       input: schemas.listPullRequestReactionsParameters,
       execute: (args, { signal, progress }) =>
-        call((operations) => operations.listPullRequestReactions(args, { signal, progress })),
+        call(signal, (operations) =>
+          operations.listPullRequestReactions(args, { signal, progress }),
+        ),
     }),
     defineTool({
       name: "forges_pull_requests_events",
@@ -688,7 +712,8 @@ function defineTools(): ToolDefinition[] {
       snippet: "Read a pull request's timeline on GitHub, GitLab, Gitea, or Bitbucket.",
       ...effect("forges_pull_requests_events"),
       input: schemas.listEventsParameters,
-      execute: (args) => call((operations) => operations.listPullRequestEvents(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.listPullRequestEvents(args)),
     }),
     defineTool({
       name: "forges_pull_requests_comments_create",
@@ -701,7 +726,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_pull_requests_comments_create"),
       input: schemas.createCommentParameters,
-      execute: (args) => call((operations) => operations.createPullRequestComment(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.createPullRequestComment(args)),
     }),
     defineTool({
       name: "forges_pull_requests_comments_update",
@@ -714,7 +740,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_pull_requests_comments_update"),
       input: schemas.updateCommentParameters,
-      execute: (args) => call((operations) => operations.updatePullRequestComment(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.updatePullRequestComment(args)),
     }),
     defineTool({
       name: "forges_pull_requests_comments_delete",
@@ -727,7 +754,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_pull_requests_comments_delete"),
       input: schemas.deleteCommentParameters,
-      execute: (args) => call((operations) => operations.deletePullRequestComment(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.deletePullRequestComment(args)),
     }),
     defineTool({
       name: "forges_pull_requests_create",
@@ -740,7 +768,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_pull_requests_create"),
       input: schemas.createPullRequestParameters,
-      execute: (args) => call((operations) => operations.createPullRequest(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.createPullRequest(args)),
     }),
     defineTool({
       name: "forges_pull_requests_update",
@@ -753,7 +782,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_pull_requests_update"),
       input: schemas.updatePullRequestParameters,
-      execute: (args) => call((operations) => operations.updatePullRequest(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.updatePullRequest(args)),
     }),
     defineTool({
       name: "forges_pull_requests_merge",
@@ -766,7 +796,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_pull_requests_merge"),
       input: schemas.mergePullRequestParameters,
-      execute: (args) => call((operations) => operations.mergePullRequest(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.mergePullRequest(args)),
     }),
     defineTool({
       name: "forges_users_get",
@@ -776,7 +807,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "Get a user profile from GitHub, GitLab, or Gitea.",
       ...effect("forges_users_get"),
       input: schemas.userParameters,
-      execute: (args) => call((operations) => operations.getUser(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.getUser(args)),
     }),
     defineTool({
       name: "forges_users_authenticated",
@@ -786,7 +817,8 @@ function defineTools(): ToolDefinition[] {
       snippet: "Identify the authenticated GitHub, GitLab, Gitea, or Bitbucket account.",
       ...effect("forges_users_authenticated"),
       input: schemas.authenticatedUserParameters,
-      execute: (args) => call((operations) => operations.getAuthenticatedUser(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.getAuthenticatedUser(args)),
     }),
     defineTool({
       name: "forges_auth_reload",
@@ -799,7 +831,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_auth_reload"),
       input: schemas.authenticatedUserParameters,
-      execute: (args) => call((operations) => operations.reloadAuthentication(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.reloadAuthentication(args)),
     }),
     defineTool({
       name: "forges_threads_list",
@@ -809,7 +842,7 @@ function defineTools(): ToolDefinition[] {
       snippet: "List review threads on a pull request across GitHub, GitLab, Gitea, or Bitbucket.",
       ...effect("forges_threads_list"),
       input: schemas.listThreadsParameters,
-      execute: (args) => call((operations) => operations.listThreads(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.listThreads(args)),
     }),
     defineTool({
       name: "forges_threads_get",
@@ -823,7 +856,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_threads_get"),
       input: schemas.threadParameters,
-      execute: (args) => call((operations) => operations.getThread(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.getThread(args)),
     }),
     defineTool({
       name: "forges_threads_reply",
@@ -836,7 +869,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_threads_reply"),
       input: schemas.replyThreadParameters,
-      execute: (args) => call((operations) => operations.replyToThread(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.replyToThread(args)),
     }),
     defineTool({
       name: "forges_threads_comments_update",
@@ -849,7 +882,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_threads_comments_update"),
       input: schemas.updateThreadCommentParameters,
-      execute: (args) => call((operations) => operations.updateThreadComment(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.updateThreadComment(args)),
     }),
     defineTool({
       name: "forges_threads_comments_delete",
@@ -862,7 +896,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_threads_comments_delete"),
       input: schemas.deleteThreadCommentParameters,
-      execute: (args) => call((operations) => operations.deleteThreadComment(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.deleteThreadComment(args)),
     }),
     defineTool({
       name: "forges_threads_resolve",
@@ -876,7 +911,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_threads_resolve"),
       input: schemas.threadStateParameters,
-      execute: (args) => call((operations) => operations.resolveThread(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.resolveThread(args)),
     }),
     defineTool({
       name: "forges_threads_unresolve",
@@ -890,7 +925,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_threads_unresolve"),
       input: schemas.threadStateParameters,
-      execute: (args) => call((operations) => operations.unresolveThread(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.unresolveThread(args)),
     }),
     defineTool({
       name: "forges_local_inspect",
@@ -903,7 +938,7 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_local_inspect"),
       input: schemas.localInspectParameters,
-      execute: (args) => call((operations) => operations.inspectLocal(args)),
+      execute: (args, { signal }) => call(signal, (operations) => operations.inspectLocal(args)),
     }),
     defineTool({
       name: "forges_local_merge_verify",
@@ -916,7 +951,8 @@ function defineTools(): ToolDefinition[] {
       ],
       ...effect("forges_local_merge_verify"),
       input: schemas.localMergeParameters,
-      execute: (args) => call((operations) => operations.verifyLocalMerge(args)),
+      execute: (args, { signal }) =>
+        call(signal, (operations) => operations.verifyLocalMerge(args)),
     }),
   ];
 }

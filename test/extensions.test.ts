@@ -1222,26 +1222,6 @@ describe("Forges Pi extension", () => {
 
   it("parses a JSON array sent as one string before Pi wraps it", async () => {
     const tools = await registerPiTools();
-    const repaired = [...tools.values()]
-      .filter((tool) => tool.prepareArguments !== undefined)
-      .map((tool) => tool.name);
-    expect(repaired.toSorted()).toEqual([
-      "forges_issues_create",
-      "forges_issues_events",
-      "forges_issues_get",
-      "forges_issues_search_global",
-      "forges_issues_update",
-      "forges_local_inspect",
-      "forges_local_merge_verify",
-      "forges_pull_requests_create",
-      "forges_pull_requests_events",
-      "forges_pull_requests_get",
-      "forges_pull_requests_update",
-      "forges_threads_get",
-      "forges_threads_resolve",
-      "forges_threads_unresolve",
-    ]);
-
     const prepare = (name: string, args: unknown): unknown =>
       Reflect.apply(requirePiTool(tools, name).prepareArguments!, undefined, [args]);
     expect(
@@ -1262,6 +1242,8 @@ describe("Forges Pi extension", () => {
     expect(prepare("forges_pull_requests_events", { kinds: '["assignment"]' })).toEqual({
       kinds: ["assignment"],
     });
+    const plain = { repo: "agntn/forges" };
+    expect(prepare("forges_repos_get", plain)).toBe(plain);
     expect(prepare("forges_issues_get", { number: "[390, 391]" })).toEqual({ number: [390, 391] });
     expect(prepare("forges_threads_resolve", { threadId: '["PRRT_a","PRRT_b"]' })).toEqual({
       threadId: ["PRRT_a", "PRRT_b"],
