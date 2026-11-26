@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
@@ -411,6 +412,35 @@ async function listToolsOver(bin, mode, environment = {}) {
   }
 }
 
+/** Antigravity's opening, raw: the SDK client would stamp the notification itself. */
+async function answersAfterBareNotification(bin, environment) {
+  const { FORGES_DIST: _inherited, ...inherited } = process.env;
+  const meta = {
+    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+    "io.modelcontextprotocol/clientInfo": { name: "raw", version: "0" },
+    "io.modelcontextprotocol/clientCapabilities": { elicitation: { form: {} } },
+  };
+  const opening = [
+    { jsonrpc: "2.0", id: 1, method: "server/discover", params: { _meta: meta } },
+    { jsonrpc: "2.0", method: "notifications/roots/list_changed", params: {} },
+    { jsonrpc: "2.0", id: 2, method: "tools/list", params: { _meta: meta } },
+  ];
+  const child = spawn(process.execPath, [bin, "mcp"], {
+    env: { ...inherited, ...environment },
+    stdio: ["pipe", "pipe", "ignore"],
+  });
+  child.stdin.write(opening.map((message) => `${JSON.stringify(message)}\n`).join(""));
+  try {
+    for await (const line of createInterface({ input: child.stdout })) {
+      const message = JSON.parse(line);
+      if (message.id === 2) return message;
+    }
+    throw new Error("forges mcp closed before answering tools/list");
+  } finally {
+    child.kill();
+  }
+}
+
 /** A 2026 client gets an answer and a 2025 one still gets in, from every build. */
 async function assertProtocolEras() {
   const builds = [
@@ -429,6 +459,12 @@ async function assertProtocolEras() {
     const legacy = await listToolsOver(build.bin, "legacy", build.environment);
     assert.match(legacy.version, /^2025-/u, `${build.from} still opens a 2025 client`);
     assert.deepEqual(legacy.names, expectedToolNames, `${build.from} lists tools to 2025`);
+    const opened = await answersAfterBareNotification(build.bin, build.environment);
+    assert.equal(
+      opened.result?.resultType,
+      "complete",
+      `${build.from} stays on 2026 after a notification without a version`,
+    );
   }
 }
 
