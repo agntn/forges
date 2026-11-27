@@ -9,6 +9,7 @@ import { version } from "./version.ts";
  * pull-request, user, and review-thread tools.
  *
  * The same definitions Pi, OMP and the CLI register; executors load with the first `tools/call`.
+ * Minus `output`: Claude Code and Codex would show `structuredContent` instead of the text.
  *
  * Tokens and endpoints stay out of the tool surface: credentials come from the
  * local detection chain and self-hosted endpoints from the `FORGES_*_BASE_URL`
@@ -17,6 +18,6 @@ import { version } from "./version.ts";
 export function createMcpServer(): Server {
   return createToolServer(
     { name: "forges", title: "Forges", version, websiteUrl: "https://github.com/agntn/forges" },
-    forgesTools(),
+    forgesTools().map(({ output: _output, ...tool }) => tool),
   );
 }

@@ -354,6 +354,56 @@ describe("Forges Pi extension", () => {
     }
   });
 
+  it("hands Pi codemode the issue as an object, a batch included", async () => {
+    const issue = (number: number) => ({
+      id: String(number),
+      number,
+      title: `Issue ${number}`,
+      body: "Body",
+      state: "open",
+      labels: [],
+      author: { login: "oritwoen" },
+      assignees: [],
+      createdAt: "2026-08-18T00:00:00Z",
+      updatedAt: "2026-08-18T00:00:00Z",
+      url: `https://github.com/agntn/forges/issues/${number}`,
+    });
+    mocks.issues.get.mockImplementation(async ({ number }: { number: number }) => {
+      if (number === 2) throw new NotFoundError("Issue not found", { platform: "github" });
+      return issue(number);
+    });
+    const tools = await registerPiTools();
+    const tool = requirePiTool(tools, "forges_issues_get");
+
+    const one = await tool.execute(
+      "test",
+      { repo: "agntn/forges", number: 1 },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+    const many = await tool.execute(
+      "test",
+      { repo: "agntn/forges", number: [1, 2] },
+      undefined,
+      undefined,
+      unusedPiContext,
+    );
+
+    expect([...tools.values()].filter((each) => each.outputSchema === undefined)).toEqual([]);
+    expect(one.structuredContent).toEqual(one.details);
+    expect(one.structuredContent).toMatchObject({
+      platform: "github",
+      result: { title: "Issue 1" },
+    });
+    expect(many.structuredContent).toMatchObject({
+      result: [
+        { number: 1, result: { title: "Issue 1" } },
+        { number: 2, error: "Issue not found" },
+      ],
+    });
+  });
+
   it("renders Pi failures from the render context", async () => {
     const tool = requirePiTool(await registerPiTools(), "forges_issues_get");
     if (!tool.renderCall || !tool.renderResult) throw new Error("Missing Pi renderers");
@@ -843,7 +893,30 @@ describe("Forges Pi extension", () => {
   });
 
   it("passes closingIssues through both extensions", async () => {
-    mocks.pullRequests.get.mockResolvedValue({ number: 5, body: "", closingIssues: null });
+    mocks.pullRequests.get.mockResolvedValue({
+      id: "5",
+      number: 5,
+      title: "Close the loop",
+      body: "",
+      state: "open",
+      labels: [],
+      author: { login: "oritwoen" },
+      assignees: [],
+      createdAt: "2026-08-18T00:00:00Z",
+      updatedAt: "2026-08-18T00:00:00Z",
+      url: "https://gitea.com/agntn/forges/pulls/5",
+      merged: false,
+      draft: false,
+      sourceBranch: "feature",
+      targetBranch: "main",
+      mergeCommitSha: "",
+      mergedAt: null,
+      mergedBy: null,
+      headSha: "abc123",
+      mergeable: null,
+      mergeStatus: "",
+      closingIssues: null,
+    });
     const args = {
       platform: "gitea",
       owner: "agntn",
@@ -1709,8 +1782,10 @@ describe("Forges Pi extension", () => {
       state: "open",
       labels: ["bug"],
       author: { login: "oritwoen" },
+      assignees: [],
       createdAt: "2026-08-18T00:00:00Z",
       updatedAt: "2026-08-18T00:00:00Z",
+      url: `https://github.com/agntn/forges/issues/${index + 1}`,
     }));
     expect(body.length * issues.length).toBeGreaterThan(6_000_000);
     mocks.issues.list.mockResolvedValue({ items: issues, hasNextPage: false });
@@ -1721,6 +1796,12 @@ describe("Forges Pi extension", () => {
         targetBranch: "main",
         merged: false,
         draft: false,
+        mergeCommitSha: "",
+        mergedAt: null,
+        mergedBy: null,
+        headSha: "abc123",
+        mergeable: null,
+        mergeStatus: "",
       })),
       hasNextPage: false,
     });

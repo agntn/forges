@@ -468,6 +468,9 @@ describe("forges MCP server", () => {
     });
     // Details never reach an MCP client, so the unbounded payload stays out of the result.
     expect(response.structuredContent).toBeUndefined();
+    const { tools } = await client.listTools();
+    /* Claude Code and Codex would show structuredContent instead of the trimmed text. */
+    expect(tools.filter((tool) => tool.outputSchema !== undefined)).toEqual([]);
   });
 
   it("lists contribution-template metadata and reads one body by its returned key", async () => {
