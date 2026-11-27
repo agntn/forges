@@ -14,6 +14,7 @@ export type ForgesPlatform =
   | "azure-devops"
   | "gitcafe"
   | "pushin"
+  | "tangled"
   | "artifacts";
 
 /**
@@ -38,6 +39,7 @@ export function forgesToolSchemas() {
         "azure-devops",
         "gitcafe",
         "pushin",
+        "tangled",
       ],
       description: "Forge (default: github)",
       default: "github",
@@ -56,6 +58,7 @@ export function forgesToolSchemas() {
         "azure-devops",
         "gitcafe",
         "pushin",
+        "tangled",
         "artifacts",
       ],
       description: "Forge (default: github). Artifacts uses a namespace as owner.",

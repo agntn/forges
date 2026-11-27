@@ -1,7 +1,7 @@
 {
   "name": "@agntn/forges",
   "version": "0.7.1",
-  "description": "Unified Git Provider - single TypeScript API for GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, GitCafe, Pushin.eu, GitBucket, and Cloudflare Artifacts",
+  "description": "Unified Git Provider - single TypeScript API for GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, GitCafe, Pushin.eu, Tangled, GitBucket, and Cloudflare Artifacts",
   "keywords": [
     "api",
     "azure-devops",
@@ -19,6 +19,7 @@
     "pi-package",
     "provider",
     "pushin",
+    "tangled",
     "unified"
   ],
   "homepage": "https://forges.agntn.dev",
@@ -90,6 +91,10 @@
     "./pushin": {
       "types": "./dist/pushin.d.mts",
       "import": "./dist/pushin.mjs"
+    },
+    "./tangled": {
+      "types": "./dist/tangled.d.mts",
+      "import": "./dist/tangled.mjs"
     },
     "./artifacts": {
       "types": "./dist/artifacts.d.mts",

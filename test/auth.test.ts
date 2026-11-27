@@ -32,6 +32,9 @@ const TOKEN_VARIABLES = [
   "PUSHIN_TOKEN",
   "PUSHIN_URL",
   "PUN_CONFIG_DIR",
+  "TANGLED_HANDLE",
+  "TANGLED_PASSWORD",
+  "TANGLED_PDS_URL",
 ];
 
 let home: string;
@@ -191,6 +194,43 @@ describe("resolveToken", () => {
       token: "pun_env",
       source: "env",
       origin: "PUSHIN_TOKEN",
+    });
+  });
+
+  it("reads a Tangled app password with the handle it signs in as", () => {
+    expect(resolveToken("tangled")).toBeNull();
+
+    vi.stubEnv("TANGLED_PASSWORD", "app-password");
+    expect(resolveToken("tangled")).toBeNull();
+
+    vi.stubEnv("TANGLED_HANDLE", "alice.tngl.sh");
+    expect(resolveToken("tangled")).toEqual({
+      token: "app-password",
+      source: "env",
+      origin: "TANGLED_PASSWORD",
+      username: "alice.tngl.sh",
+    });
+    expect(resolveToken("tangled", { token: "explicit", username: "bob.tngl.sh" })).toEqual({
+      token: "explicit",
+      source: "explicit",
+      origin: "token",
+      username: "bob.tngl.sh",
+    });
+  });
+
+  it("hands a Tangled app password without its handle on, so the provider can refuse it", () => {
+    vi.stubEnv("TANGLED_HANDLE", "alice.tngl.sh");
+    vi.stubEnv("TANGLED_PASSWORD", "app-password");
+
+    expect(resolveToken("tangled", { token: "explicit" })).toEqual({
+      token: "explicit",
+      source: "explicit",
+      origin: "token",
+    });
+    expect(resolveToken("tangled", { token: "" })).toEqual({
+      token: "",
+      source: "explicit",
+      origin: "token",
     });
   });
 

@@ -6,6 +6,7 @@ import { AzureDevOpsProvider } from "../src/providers/azure-devops.ts";
 import { BitbucketProvider } from "../src/providers/bitbucket.ts";
 import { GitCafeProvider } from "../src/providers/gitcafe.ts";
 import { PushinProvider } from "../src/providers/pushin.ts";
+import { TangledProvider } from "../src/providers/tangled.ts";
 import { GiteaProvider } from "../src/providers/gitea.ts";
 import { GiteeProvider } from "../src/providers/gitee.ts";
 import { GitHubProvider } from "../src/providers/github.ts";
@@ -24,6 +25,7 @@ const providers = [
   ["azure-devops", AzureDevOpsProvider],
   ["gitcafe", GitCafeProvider],
   ["pushin", PushinProvider],
+  ["tangled", TangledProvider],
   ["artifacts", ArtifactsProvider],
 ] as const satisfies readonly (readonly [ProviderPlatform, unknown])[];
 

@@ -14,6 +14,7 @@ import { GiteeProvider } from "../src/providers/gitee.ts";
 import { AzureDevOpsProvider } from "../src/providers/azure-devops.ts";
 import { GitCafeProvider } from "../src/providers/gitcafe.ts";
 import { PushinProvider } from "../src/providers/pushin.ts";
+import { TangledProvider } from "../src/providers/tangled.ts";
 import { AuthenticationError, ForgesError } from "../src/errors.ts";
 
 describe("createProvider factory", () => {
@@ -29,6 +30,12 @@ describe("createProvider factory", () => {
     ["pushin", PushinProvider],
   ] as const)("builds the %s provider", async (platform, ProviderClass) => {
     expect(await createProvider(platform, baseConfig)).toBeInstanceOf(ProviderClass);
+  });
+
+  it("builds the tangled provider for the handle its app password signs in as", async () => {
+    const config = { ...baseConfig, username: "alice.tngl.sh" };
+
+    expect(await createProvider("tangled", config)).toBeInstanceOf(TangledProvider);
   });
 
   it("builds the azure-devops provider for one organization", async () => {
@@ -69,6 +76,10 @@ describe("createProvider factory", () => {
     ],
     ["gitcafe", "Set CAFE_TOKEN, pass { token: '...' }, or log in with `cafe auth login`."],
     ["pushin", "Set PUSHIN_TOKEN, pass { token: '...' }, or log in with `pun login`."],
+    [
+      "tangled",
+      "Set TANGLED_HANDLE with TANGLED_PASSWORD, an app password, or pass { username: '...', token: '...' }.",
+    ],
   ] as const)("tells a %s user only about logins that exist", async (platform, hint) => {
     const auth = await import("../src/auth.ts");
     const spy = vi.spyOn(auth, "resolveToken").mockReturnValue(null);
@@ -186,6 +197,7 @@ describe("entry points", () => {
     ["gitea", () => import("../src/gitea.ts"), { GiteaProvider, Provider }],
     ["gitcafe", () => import("../src/gitcafe.ts"), { GitCafeProvider, Provider }],
     ["pushin", () => import("../src/pushin.ts"), { PushinProvider, Provider }],
+    ["tangled", () => import("../src/tangled.ts"), { TangledProvider, Provider }],
     ["artifacts", () => import("../src/artifacts.ts"), { ArtifactsProvider, Provider }],
   ])("the %s sub-path exports its classes and nothing else", async (_, load, classes) => {
     expect({ ...(await load()) }).toEqual(classes);
@@ -202,6 +214,7 @@ describe("entry point types", () => {
     "azure-devops",
     "gitcafe",
     "pushin",
+    "tangled",
     "artifacts",
   ] as const;
   const exported = new Map<string, string[]>();

@@ -10,6 +10,7 @@ export interface PlatformInfo {
     | "azure-devops"
     | "gitcafe"
     | "pushin"
+    | "tangled"
     | "artifacts";
   /** Page slug. GitBucket rides on the GitHub provider, Forgejo on Gitea. */
   readonly slug: string;
@@ -178,6 +179,24 @@ export const PLATFORMS: readonly PlatformInfo[] = [
     to: "/platforms/pushin",
   },
   {
+    key: "tangled",
+    slug: "tangled",
+    label: "Tangled",
+    icon: "i-simple-icons-tangled",
+    blurb:
+      "A forge on atproto. Owners are handles, repositories are DIDs, and the git reads go through the public mirror.",
+    host: "tangled.org",
+    envVars: ["TANGLED_HANDLE", "TANGLED_PASSWORD"],
+    cli: "none, set the handle and an app password",
+    configFile: null,
+    authHeader: "Authorization: Bearer",
+    anonymousReads: "public repositories, no token in sight",
+    threads: "none, review comments ride on the pull request",
+    codeSearch: "unsupported, explicit error",
+    templates: "none",
+    to: "/platforms/tangled",
+  },
+  {
     key: "github",
     slug: "gitbucket",
     label: "GitBucket",
@@ -221,7 +240,7 @@ export const PROVIDER_PLATFORMS = PLATFORMS.filter((platform) => platform.slug =
 /** What the docs worker reads; the rest want a token or an account it doesn't hold. */
 export const EXPLORER_PLATFORMS = PROVIDER_PLATFORMS.filter(
   (platform) =>
-    !["artifacts", "bitbucket", "gitee", "azure-devops", "gitcafe", "pushin"].includes(
+    !["artifacts", "bitbucket", "gitee", "azure-devops", "gitcafe", "pushin", "tangled"].includes(
       platform.key,
     ),
 );

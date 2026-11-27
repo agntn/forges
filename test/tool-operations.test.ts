@@ -785,6 +785,16 @@ describe("configured provider", () => {
     );
   });
 
+  it("points a Tangled user at the handle and app password, which have no CLI login", async () => {
+    mocks.credentialToken.current = null;
+
+    await expect(
+      createIssueComment({ platform: "tangled", repo: "tangled.org/core", number: 1, body: "hi" }),
+    ).rejects.toThrow(
+      "No auth token found for tangled. Set TANGLED_HANDLE with TANGLED_PASSWORD, an app password.",
+    );
+  });
+
   it("resolves separately for each platform and endpoint", async () => {
     await getRepository({ platform: "github", owner: "agntn", repo: "forges" });
     await getRepository({ platform: "gitea", owner: "agntn", repo: "forges" });
