@@ -7,6 +7,7 @@ import {
 } from "../extensions/shared/tool-effects.ts";
 import { forgeToolTitle } from "../extensions/shared/tui.ts";
 import { EMPTY_CHECK_GRACE_SECONDS } from "./check-wait.ts";
+import { forgesToolOutputs } from "./tool-outputs.ts";
 import { forgesToolSchemas } from "./tool-schemas.ts";
 import { MAX_BODY_PREVIEW_CHARS } from "./text-window.ts";
 
@@ -50,8 +51,16 @@ let tools: readonly ToolDefinition[] | undefined;
 
 /** Every tool for every surface, built on the first call so an import parses nothing. */
 export function forgesTools(): readonly ToolDefinition[] {
-  tools ??= defineTools();
+  tools ??= withOutputs(defineTools());
   return tools;
+}
+
+/** Gives each tool its `output`, so Pi codemode stops handing scripts a string. */
+function withOutputs(definitions: readonly ToolDefinition[]): ToolDefinition[] {
+  const outputs = forgesToolOutputs();
+  return definitions.map((tool) =>
+    defineTool({ ...tool, output: outputs[tool.name as ForgesToolName] }),
+  );
 }
 
 /** What a batch tool says about lists, apart so its CLI command can leave it out. */
