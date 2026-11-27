@@ -19,6 +19,7 @@ const provider = computed(() => {
       "azure-devops": "AzureDevOpsProvider",
       gitcafe: "GitCafeProvider",
       pushin: "PushinProvider",
+      tangled: "TangledProvider",
       artifacts: "ArtifactsProvider",
     }[key],
     path: `@agntn/forges/${key}`,

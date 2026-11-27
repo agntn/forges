@@ -132,6 +132,7 @@ const baseUrlEnvByPlatform: Record<ForgesPlatform, string> = {
   "azure-devops": "FORGES_AZURE_DEVOPS_BASE_URL",
   gitcafe: "FORGES_GITCAFE_BASE_URL",
   pushin: "FORGES_PUSHIN_BASE_URL",
+  tangled: "FORGES_TANGLED_BASE_URL",
   artifacts: "FORGES_ARTIFACTS_BASE_URL",
 };
 
@@ -176,6 +177,7 @@ const DEFAULT_API_HOSTS = [
   "dev.azure.com",
   "git.cafe",
   "pushin.eu",
+  "tangled.org",
   "api.cloudflare.com",
 ] as const;
 
@@ -255,7 +257,7 @@ function trackProvider(
   return provider;
 }
 
-/** What a missing credential is told to set up; Bitbucket and Gitee have no login. */
+/** What a missing credential is told to set up; Bitbucket, Gitee and Tangled have no login. */
 const credentialSetup: Record<ForgesPlatform, Readonly<{ variable: string; login?: string }>> = {
   github: { variable: "GITHUB_TOKEN", login: "gh auth login" },
   gitlab: { variable: "GITLAB_TOKEN", login: "glab auth login" },
@@ -265,6 +267,7 @@ const credentialSetup: Record<ForgesPlatform, Readonly<{ variable: string; login
   "azure-devops": { variable: "AZURE_DEVOPS_EXT_PAT", login: "az devops login" },
   gitcafe: { variable: "CAFE_TOKEN", login: "cafe auth login" },
   pushin: { variable: "PUSHIN_TOKEN", login: "pun login" },
+  tangled: { variable: "TANGLED_HANDLE with TANGLED_PASSWORD, an app password" },
   artifacts: {
     variable: "CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID",
     login: "cf auth login",
@@ -279,7 +282,10 @@ const loginCli = {
   "azure-devops": "az devops",
   gitcafe: "cafe",
   pushin: "pun",
-} satisfies Record<Exclude<ForgesPlatform, "artifacts" | "bitbucket" | "gitee">, string>;
+} satisfies Record<
+  Exclude<ForgesPlatform, "artifacts" | "bitbucket" | "gitee" | "tangled">,
+  string
+>;
 
 function credentialSetupHint(platform: ForgesPlatform): string {
   const { variable, login } = credentialSetup[platform];
@@ -294,6 +300,9 @@ function rejectedTokenHint(
   const { source, origin } = credential;
   const expired = "was rejected, so it has likely expired or been revoked.";
   const reload = "then call forges_auth_reload and retry.";
+  if (platform === "tangled") {
+    return `The Tangled app password from ${origin} ${expired} Create a new one, or check that TANGLED_HANDLE names its account, ${reload}`;
+  }
   if (platform === "bitbucket" || platform === "gitee") {
     const where = source === "env" ? `from ${origin} ` : "";
     return `The ${platform} token ${where}${expired} Replace it, ${reload}`;

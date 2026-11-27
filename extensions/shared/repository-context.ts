@@ -10,6 +10,7 @@ export type ContextPlatform =
   | "azure-devops"
   | "gitcafe"
   | "pushin"
+  | "tangled"
   | "artifacts";
 
 export const platformLabels: Record<ContextPlatform, string> = {
@@ -21,6 +22,7 @@ export const platformLabels: Record<ContextPlatform, string> = {
   "azure-devops": "Azure DevOps",
   gitcafe: "GitCafe",
   pushin: "Pushin.eu",
+  tangled: "Tangled",
   artifacts: "Cloudflare Artifacts",
 };
 
@@ -51,6 +53,7 @@ const endpoints: Partial<
     api: /\/api\/v1$/,
     git: "git.pushin.eu",
   },
+  tangled: { host: "tangled.org", variable: "FORGES_TANGLED_BASE_URL", api: /$/ },
 };
 
 const azureHosts = new Set(["dev.azure.com", "ssh.dev.azure.com"]);

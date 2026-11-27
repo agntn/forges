@@ -113,6 +113,9 @@ const providers: Record<ProviderPlatform, () => Promise<ProviderConstructor>> = 
   pushin: /* @__PURE__ */ lazy(
     /* @__PURE__ */ queued(() => import("./providers/pushin.ts").then((m) => m.PushinProvider)),
   ),
+  tangled: /* @__PURE__ */ lazy(
+    /* @__PURE__ */ queued(() => import("./providers/tangled.ts").then((m) => m.TangledProvider)),
+  ),
   artifacts: /* @__PURE__ */ lazy(
     /* @__PURE__ */ queued(() =>
       import("./providers/artifacts.ts").then((m) => m.ArtifactsProvider),
@@ -139,7 +142,7 @@ export async function createProvider(
 ): Promise<Provider> {
   if (!Object.hasOwn(providers, platform)) {
     throw new ForgesError(
-      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea, bitbucket, gitee, azure-devops, gitcafe, pushin, artifacts`,
+      `Unsupported platform: ${platform}. Supported: github, gitlab, gitea, bitbucket, gitee, azure-devops, gitcafe, pushin, tangled, artifacts`,
       { platform },
     );
   }
@@ -162,11 +165,10 @@ export async function createProvider(
 
   if (!resolved) {
     const login = cliHint(platform);
+    const pass = platform === "tangled" ? "{ username: '...', token: '...' }" : "{ token: '...' }";
     throw new AuthenticationError(
       `No auth token found for ${platform}. Set ${envHint(platform)}` +
-        (login === undefined
-          ? `, or pass { token: '...' }.`
-          : `, pass { token: '...' }, or log in with ${login}.`),
+        (login === undefined ? `, or pass ${pass}.` : `, pass ${pass}, or log in with ${login}.`),
       { platform },
     );
   }
@@ -200,6 +202,8 @@ function envHint(platform: string): string {
       return "CAFE_TOKEN";
     case "pushin":
       return "PUSHIN_TOKEN";
+    case "tangled":
+      return "TANGLED_HANDLE with TANGLED_PASSWORD, an app password";
     default:
       return `${platform.toUpperCase()}_TOKEN`;
   }
@@ -222,6 +226,7 @@ function cliHint(platform: string): string | undefined {
       return "`pun login`";
     case "bitbucket":
     case "gitee":
+    case "tangled":
       return undefined;
     default:
       return "the platform CLI";

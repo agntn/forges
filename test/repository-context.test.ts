@@ -37,6 +37,8 @@ describe("parseRemote", () => {
     ["https://pushin.eu/pjullrich/pushin", "pushin", "pjullrich", "pushin"],
     ["https://git.pushin.eu/pjullrich/pushin.git", "pushin", "pjullrich", "pushin"],
     ["git@git.pushin.eu:pjullrich/pushin.git", "pushin", "pjullrich", "pushin"],
+    ["https://tangled.org/tangled.org/core", "tangled", "tangled.org", "core"],
+    ["git@tangled.org:tangled.org/core", "tangled", "tangled.org", "core"],
     ["https://dev.azure.com/acme/Web%20App/_git/site", "azure-devops", "acme/Web App", "site"],
     ["git@ssh.dev.azure.com:v3/acme/Web/site", "azure-devops", "acme/Web", "site"],
     ["https://acme.visualstudio.com/Web/_git/site", "azure-devops", "acme/Web", "site"],

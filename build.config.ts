@@ -19,6 +19,7 @@ export default defineBuildConfig({
         "./src/azure-devops.ts",
         "./src/gitcafe.ts",
         "./src/pushin.ts",
+        "./src/tangled.ts",
         "./src/artifacts.ts",
         "./src/provider.ts",
         "./src/types.ts",

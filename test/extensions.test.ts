@@ -411,6 +411,7 @@ describe("Forges Pi extension", () => {
     ).toBe(true);
     expect(Value.Check(tool.parameters, { platform: "gitcafe", owner: "versecafe" })).toBe(true);
     expect(Value.Check(tool.parameters, { platform: "pushin", owner: "pjullrich" })).toBe(true);
+    expect(Value.Check(tool.parameters, { platform: "tangled", owner: "tangled.org" })).toBe(true);
     expect(Value.Check(tool.parameters, { platform: "sourcehut", owner: "agntn" })).toBe(false);
     expect(Value.Check(tool.parameters, { platform: "artifacts", owner: "tools" })).toBe(true);
     expect(JSON.stringify(tool.parameters)).not.toMatch(/token|baseURL/u);
@@ -1954,6 +1955,7 @@ describe("Forges OMP extension", () => {
     );
     expect(ompAccepts(tool, { platform: "gitcafe", owner: "versecafe" })).toBe(true);
     expect(ompAccepts(tool, { platform: "pushin", owner: "pjullrich" })).toBe(true);
+    expect(ompAccepts(tool, { platform: "tangled", owner: "tangled.org" })).toBe(true);
     expect(ompAccepts(tool, { platform: "sourcehut", owner: "agntn" })).toBe(false);
     /* The adapter hands OMP the wire schema, which the host validates as it is. */
     const schema = tool.parameters as unknown as { properties: Record<string, unknown> };

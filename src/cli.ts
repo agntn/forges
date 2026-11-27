@@ -60,7 +60,7 @@ if (argv.length === 1 && argv[0] === "mcp") {
       name: "forges",
       version,
       description:
-        "One API for GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, GitCafe, Pushin.eu, GitBucket, and Cloudflare Artifacts",
+        "One API for GitHub, GitLab, Gitea, Bitbucket, Gitee, Azure DevOps, GitCafe, Pushin.eu, Tangled, GitBucket, and Cloudflare Artifacts",
       tools: forgesTools(),
       commands: forgesCommands(),
       mcp: true,
